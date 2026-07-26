@@ -1,0 +1,89 @@
+# Test Vector Sets
+
+This directory contains portable CSV manifests for deterministic raw-video
+fixtures. They are generated on demand by `scripts/generate_test_vectors.py`;
+generated `.yuv`, encoded streams, and logs live under
+`verification/generated/` and are not committed.
+External reference source/build trees live under `verification/references/`
+when `make reference-setup` is used; those are local artifacts too.
+
+Manifest format:
+
+```text
+# description=Short description.
+name,width,height,frames,format,pattern,fps,lossless,filters
+black_16x16,16,16,1,yuv420p8,black,30,false,
+identity_16x16,16,16,1,yuv420p8,checker,30,true,identity
+```
+
+`fps` may be an integer, decimal, or fraction such as `30000/1001`.
+`lossless` is optional and defaults to false. When true, validation passes
+`--set lossless` to the encoder and compares the internal reconstruction
+against the generated source bytes.
+`codecs` is optional and defaults to all codecs. Use a `|`-separated list such
+as `av2|vvc` to enable a row only for selected codec validation and compression
+comparison runs, or `none` to keep the vector generateable while no codec path
+currently claims support for it.
+`filters` is optional and uses the same `|`-separated style. Validation appends
+each listed transform filter to the `ff encode` command. The committed portable
+manifests currently use this for the executable `identity` filter; `crop` and
+`scale` remain discovery scaffolds until their frame transforms are implemented.
+Local manifests may use `pattern=source_file` with a `path` column. Raw YUV
+and raw RGB-family sources require explicit width, height, format, and frame count. Y4M source
+rows may leave width, height, format, and fps empty; the generator reads those
+from the Y4M header and strips the Y4M container markers when writing raw
+generated fixtures. Source-file generation supports planar 4:2:0, 4:2:2, and
+4:4:4 rows with the same 8-through-16-bit format spelling accepted by the
+fixture generator, plus `gbrp8` planar RGB rows.
+
+Manifest `format` values follow the CLI raw input contract. Planar YUV and gray
+formats use checked numeric bit depths from 8 through 16, such as
+`yuv420p9le`, `yuv444p12le`, and `gray16le`; see
+`docs/raw-input-formats.md` for the CLI and Rust API details.
+
+Supported generated formats:
+
+- `yuv420p8` through `yuv420p16le`
+- `yuv422p8` through `yuv422p16le`
+- `yuv444p8` through `yuv444p16le`
+- `gbrp8` source-file clips
+
+Supported patterns:
+
+- `black`
+- `checker`
+- `gradient`
+- `color_blocks`
+- `bitdepth_canary`
+- `source_crop_canary` for local high-depth PNG-backed crop fixtures
+
+`bitdepth_canary` is a high-depth smoke pattern that writes deterministic
+non-zero lower bits into generated 10-bit and 12-bit samples. It is intended to
+catch internal truncation, not to act as a compression-efficiency benchmark.
+The committed high-depth smoke manifest keeps 4:2:2 canaries generateable but
+enables them only for codec paths that emit reference-decodable lossless 4:2:2
+streams. VVC 4:2:0, 4:2:2, and 4:4:4 high-depth canaries are enabled through
+12 bits, and AV2 is enabled for the 10-bit 4:2:0, 4:2:2, and 4:4:4 canary
+paths.
+
+`source_crop_canary` behaves like `source_crop` for PNG-backed local fixtures,
+but high-depth output keeps the 8-bit crop value in the upper bits and writes a
+deterministic non-zero pattern into the lower bits. This is useful for lossless
+crop sweeps that should expose accidental low-bit pruning.
+
+Generated filenames include metadata in the CLI-supported form:
+
+```text
+name_<WxH>[_<fps>]_<frames>f_<pixfmt>.yuv
+```
+
+Fractional FPS values use a slash-safe filename label such as
+`30000over1001`; validation and comparison scripts pass the exact FPS from the
+manifest to `ff`.
+
+The same manifests can also drive input-free source-filter validation when the
+pattern is supported by the CLI:
+
+```sh
+make validate-set CODEC=av2 VALIDATION_SET=smoke VALIDATION_SOURCE_FILTERS=1
+```

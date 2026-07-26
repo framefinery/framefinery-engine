@@ -1,0 +1,27 @@
+[package]
+name = "framefinery-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command-line tools for FrameFinery."
+
+[[bin]]
+name = "ff"
+path = "src/main.rs"
+
+[dependencies]
+framefinery-core = { path = "../framefinery-core" }
+framefinery-codecs = { path = "../framefinery-codecs", optional = true }
+
+[features]
+default = []
+codec-av2 = ["dep:framefinery-codecs", "framefinery-codecs/av2"]
+codec-vvc = ["dep:framefinery-codecs", "framefinery-codecs/vvc"]
+filter-pattern = []
+filter-identity = []
+filter-crop = []
+filter-scale = []
+
+[lints]
+workspace = true

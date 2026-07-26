@@ -1,0 +1,17 @@
+{
+  "codec": "av2",
+  "label": "AVM",
+  "repo": "https://github.com/AOMediaCodec/avm.git",
+  "repo_env": ["FRAMEFINERY_AV2_REPO", "FRAMEFINERY_AVM_REPO"],
+  "ref_env": ["FRAMEFINERY_AV2_REF", "FRAMEFINERY_AVM_REF"],
+  "root_env": ["FRAMEFINERY_AV2_ROOT", "FRAMEFINERY_AVM_ROOT"],
+  "encoder_env": ["FRAMEFINERY_AV2_ENCODER", "FRAMEFINERY_AVM_ENCODER"],
+  "decoder_env": ["FRAMEFINERY_AV2_DECODER", "FRAMEFINERY_AVM_DECODER"],
+  "build_dir_env": ["FRAMEFINERY_AV2_BUILD_DIR", "FRAMEFINERY_AVM_BUILD_DIR"],
+  "build_type_env": ["FRAMEFINERY_AV2_BUILD_TYPE", "FRAMEFINERY_AVM_BUILD_TYPE"],
+  "cmake_args_env": ["FRAMEFINERY_AV2_CMAKE_ARGS", "FRAMEFINERY_AVM_CMAKE_ARGS"],
+  "default_root": "verification/references/av2/avm",
+  "decoder_names": ["avmdec", "avmdec.exe", "aomdec", "aomdec.exe"],
+  "encoder_names": ["avmenc", "avmenc.exe", "aomenc", "aomenc.exe"],
+  "decode_style": "avm"
+}

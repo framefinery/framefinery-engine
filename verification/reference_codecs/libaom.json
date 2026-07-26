@@ -1,0 +1,17 @@
+{
+  "codec": "libaom",
+  "label": "libaom AV1",
+  "repo": "https://aomedia.googlesource.com/aom",
+  "repo_env": ["FRAMEFINERY_LIBAOM_REPO"],
+  "ref_env": ["FRAMEFINERY_LIBAOM_REF"],
+  "root_env": ["FRAMEFINERY_LIBAOM_ROOT"],
+  "encoder_env": ["FRAMEFINERY_LIBAOM_ENCODER"],
+  "decoder_env": ["FRAMEFINERY_LIBAOM_DECODER"],
+  "build_dir_env": ["FRAMEFINERY_LIBAOM_BUILD_DIR"],
+  "build_type_env": ["FRAMEFINERY_LIBAOM_BUILD_TYPE"],
+  "cmake_args_env": ["FRAMEFINERY_LIBAOM_CMAKE_ARGS"],
+  "default_root": "verification/references/libaom/libaom",
+  "encoder_names": ["aomenc"],
+  "decoder_names": ["aomdec"],
+  "decode_style": "none"
+}

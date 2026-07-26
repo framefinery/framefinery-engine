@@ -1,0 +1,35 @@
+[package]
+name = "framefinery-codecs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Experimental codec models for FrameFinery."
+
+[dependencies]
+framefinery-core = { path = "../framefinery-core" }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[features]
+default = []
+av2 = []
+av2-lossy-stats = ["av2"]
+av2-sb-bit-profile = ["av2"]
+bench-internals = ["av2", "vvc"]
+vvc = []
+vvc-stats = ["vvc"]
+
+[[bench]]
+name = "av2_micro"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "vvc_micro"
+harness = false
+required-features = ["bench-internals"]
+
+[lints]
+workspace = true

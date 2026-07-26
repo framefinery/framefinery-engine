@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/framefinery-core",
+  "crates/framefinery-codecs",
+  "crates/framefinery-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/gabrieldiego/framefinery-engine"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.optimized]
+inherits = "release"
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+debug = "line-tables-only"
+strip = "none"

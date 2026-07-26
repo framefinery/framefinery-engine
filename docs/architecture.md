@@ -1,0 +1,114 @@
+# Architecture Notes
+
+FrameFinery Engine is organized around a media pipeline:
+
+```text
+input -> decode -> filter -> encode -> output
+```
+
+The shared crate, `framefinery-core`, intentionally contains only stable
+infrastructure:
+
+- frame metadata and owned frame buffers;
+- packet metadata and owned packet buffers;
+- shared error types;
+- source, decoder, filter, encoder, and sink traits.
+
+Codec internals should remain independent until common APIs are proven by real
+implementations. AV2 and VVC may share frame buffers, metrics, validation
+adapters, and byte/bitstream helpers, but should not be forced into one entropy
+or block-tree abstraction early.
+
+Imported experimental AV2/VVC software models live in `framefinery-codecs`.
+Those modules are allowed to keep codec-specific internal structures while they
+are adapted from the hardware workspace model into a software-facing API.
+
+Optional codecs and filters should be selected at build time using Cargo
+features or separate crates. The Makefile default enables the normal product
+feature set so `./ff` is usable after `make build` without compiling
+analysis-only instrumentation; override `CARGO_FEATURES` for narrower binaries.
+Runtime pipeline construction can still choose which compiled stages to
+connect. Instrumentation features should stay behind explicit Makefile switches
+such as `AV2_SB_BITS=1` or `AV2_LOSSY_STATS=1`.
+
+## CLI Contract
+
+The `ff` CLI should remain easy to use for common work while staying explicit
+enough for reproducible validation.
+
+Initial command families:
+
+- `ff codecs` lists known codec stages and the Cargo feature that compiles each
+  one into the binary.
+- `ff filters` lists known filter stages and the Cargo feature that compiles
+  each one into the binary.
+- `ff encode` is the path for one raw or Y4M input, optional input metadata,
+  zero or more filters, one encoder, and one output:
+  `ff encode input.yuv --video 1920x1080:yuv444p --filter identity --encode av2:output.obu --set lossless`.
+  The encode endpoint must name a codec, using `--encode codec:path`.
+  Input-only options belong after the input path; output-only options belong
+  after `--encode codec:path`.
+
+The first executable transform filter is `identity`, which is intentionally
+simple so the shared frame pipeline can be validated before adding mutating
+filters. `crop` and `scale` remain discovery scaffolds until their frame
+transforms are implemented and covered by validation manifests.
+
+Raw video metadata should use the compact `WxH:pixfmt` form, for example
+`--video 1920x1080:yuv444p`, when it cannot be inferred from the input
+filename or Y4M header, or when it needs to be overridden. Explicit `--video`,
+`--fps`, and `--frames` options take precedence over file metadata. File names
+imply metadata with
+`*_<WxH>[_<fps>][_<frames>f][_<pixfmt>].yuv`, for example
+`clip_1920x1080_30_1f_yuv444p8.yuv`. If a `.yuv` filename has dimensions but
+no pixel-format token, the CLI assumes `yuv420p8`. Y4M headers provide width,
+height, frame rate, and planar YUV pixel format; when no explicit `--video` is
+provided, Y4M header metadata takes precedence over filename metadata because
+it describes the container payload. If a file input has no `--frames` value and
+no filename frame-count metadata, the CLI infers the frame count from the raw
+file size or by scanning Y4M frame markers and encodes whole frames until EOF.
+If a user requests more frames than the file contains, the CLI clamps the
+encode to the complete frames available instead of surfacing an EOF read error
+from the codec model. Source filters must still provide `--frames` because
+they generate frames rather than ending at a file EOF.
+
+Raw planar YUV and gray inputs carry bit depth as checked numeric data rather
+than as one enum variant per depth. The public API shape is documented in
+[`raw-input-formats.md`](raw-input-formats.md): use constructors such as
+`PixelFormat::yuv420(10)` and `PixelFormat::gray(16)`. The CLI currently uses
+a shared frame-format converter for reversible packed RGB24 to planar GBR and
+for higher-bit-depth inputs where the selected codec path only accepts the same
+planar layout at 8-bit. The fallback converter does not change chroma sampling
+or convert RGB to YUV. Codec paths that support an exact higher depth, such as
+AV2 4:2:0/4:2:2/4:4:4 at 10 bits and VVC 4:2:0/4:2:2/4:4:4 through 12 bits,
+receive the original raw format without conversion.
+Lossless mode adds a stricter stream-exact requirement and never uses the
+8-bit fallback converter. Current lossless validation is enabled for AV2
+4:2:0/4:2:2/4:4:4 at 8/10 bits and VVC 4:2:0/4:2:2/4:4:4 at 8 through 12
+bits. Planar `gbrp8` and legacy packed `rgb24` are validated as RGB-family
+identity streams through the same shared repacking boundary; codec internals do
+not convert RGB to YUV. AV2 12-bit inputs remain gated because the normal AVM
+reference profiles validate 8-bit and 10-bit streams.
+
+Prefer adding new stage-specific options behind repeated `--set key[=value]`
+arguments until a setting is common enough to deserve a stable top-level flag.
+Bare keys imply `true`, for example `--set lossless`. Shared settings such as
+`lossless` are global and apply to any codec. `--qp <1..255>` is the top-level
+lossy alternative to `--set lossless`; it currently drives AV2 and VVC
+experimental planar residual quantizers and is rejected for codecs that do not
+consume it.
+Codec-specific setting catalogs carry codec-local controls such as AV2's
+experimental `--set predictive` lossless mode. Unknown options should still
+fail early instead of silently becoming unused metadata.
+
+AV2's QP path maps `--qp` to a nonzero frame `base_qindex` and emits regular
+transform-quantized 4x4 residuals for the current lossy intra path. The current
+mapping treats `--qp` as an encoder quality knob rather than the literal AV2
+qindex; for example, `--qp 24` signals `base_qindex=80`. Lossless mode remains
+coded-lossless with `base_qindex=0`. Delta-q syntax is wired into the header
+model but remains disabled until the encoder tracks and emits per-superblock
+qindex adjustments.
+
+VVC maps `--qp` into the slice luma QP used by the current residual path and
+derives chroma QP from the same offset as the default lossy configuration.
+Lossless VVC coding keeps its QP-independent exact paths.
