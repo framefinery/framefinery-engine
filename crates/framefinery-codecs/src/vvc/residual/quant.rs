@@ -473,8 +473,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 && !vvc_luma_exact_min_syntax_mode_search_done(best_luma_score)
             {
                 let refinement_start = luma_directional_candidates.count();
-                luma_directional_candidates
-                    .add_refinement(policy, best_luma_mode.luma_mode_index());
+                luma_directional_candidates.add_refinement(best_luma_mode.luma_mode_index());
                 for mode in luma_directional_candidates.iter_from(refinement_start) {
                     #[cfg(feature = "vvc-stats")]
                     let prediction_start = Instant::now();
@@ -2203,6 +2202,8 @@ fn select_vvc_chroma_bdpcm_prediction(
                 chroma_qp,
                 chroma_ts_quant,
                 stats,
+                transform_scratch,
+                reconstructed_residual,
             ),
             cr: finalize_vvc_chroma_residual_block(
                 baseline_decision.residual_coding,
@@ -2213,6 +2214,8 @@ fn select_vvc_chroma_bdpcm_prediction(
                 chroma_qp,
                 chroma_ts_quant,
                 stats,
+                transform_scratch,
+                reconstructed_residual,
             ),
         };
         let residual = VvcScoredSelectedChromaResidual::new(
@@ -3279,6 +3282,7 @@ const VVC_LUMA_MODE_CELL_SIZE: usize = 4;
 #[derive(Debug, Clone, Copy)]
 struct VvcLumaDirectionalSearchCandidates {
     modes: [VvcIntraPredictionMode; VVC_LUMA_DIRECTIONAL_SEARCH_CANDIDATE_CAPACITY],
+    seen: [bool; 67],
     count: usize,
 }
 
@@ -3287,22 +3291,20 @@ impl VvcLumaDirectionalSearchCandidates {
         Self {
             modes: [VvcIntraPredictionMode::Horizontal;
                 VVC_LUMA_DIRECTIONAL_SEARCH_CANDIDATE_CAPACITY],
+            seen: [false; 67],
             count: 0,
         }
     }
 
     fn add_mode(&mut self, mode: VvcIntraPredictionMode) {
-        debug_assert!((2..=66).contains(&mode.luma_mode_index()));
-        if self
-            .modes
-            .iter()
-            .take(self.count)
-            .any(|candidate| candidate.luma_mode_index() == mode.luma_mode_index())
-        {
+        let index = usize::from(mode.luma_mode_index());
+        debug_assert!((2..=66).contains(&index));
+        if self.seen[index] {
             return;
         }
         assert!(self.count < self.modes.len());
         self.modes[self.count] = mode;
+        self.seen[index] = true;
         self.count += 1;
     }
 
@@ -3321,29 +3323,20 @@ impl VvcLumaDirectionalSearchCandidates {
         }
     }
 
-    fn add_refinement(&mut self, policy: VvcResidualCodingPolicy, center: u8) {
-        if policy.residual_mode() == VvcResidualCodingMode::Lossy {
-            self.add_family(center);
-            return;
-        }
-        for offset in -8..=8 {
-            let index = i16::from(center) + offset;
-            if (2..=66).contains(&index) {
-                self.add_index(index as u8);
-            }
-        }
+    fn add_refinement(&mut self, center: u8) {
+        self.add_family(center);
     }
 
-    fn count(self) -> usize {
+    fn count(&self) -> usize {
         self.count
     }
 
-    fn iter(self) -> impl Iterator<Item = VvcIntraPredictionMode> {
-        self.modes.into_iter().take(self.count)
+    fn iter(&self) -> impl Iterator<Item = VvcIntraPredictionMode> + '_ {
+        self.modes[..self.count].iter().copied()
     }
 
-    fn iter_from(self, start: usize) -> impl Iterator<Item = VvcIntraPredictionMode> {
-        self.modes.into_iter().skip(start).take(self.count - start)
+    fn iter_from(&self, start: usize) -> impl Iterator<Item = VvcIntraPredictionMode> + '_ {
+        self.modes[start..self.count].iter().copied()
     }
 }
 
@@ -4721,6 +4714,8 @@ fn finalize_vvc_chroma_tu(
                 chroma_qp,
                 chroma_ts_quant,
                 stats,
+                transform_scratch,
+                reconstructed_residual,
             ),
             cr: finalize_vvc_chroma_residual_block(
                 coding_decision.residual_coding,
@@ -4731,6 +4726,8 @@ fn finalize_vvc_chroma_tu(
                 chroma_qp,
                 chroma_ts_quant,
                 stats,
+                transform_scratch,
+                reconstructed_residual,
             ),
         });
     #[cfg(feature = "vvc-stats")]
@@ -4819,6 +4816,8 @@ fn finalize_vvc_chroma_residual_block(
     chroma_qp: i32,
     chroma_ts_quant: &VvcTransformSkipQuantTable,
     stats: &mut VvcIntraSearchStats,
+    transform_scratch: &mut VvcInverseTransformScratch,
+    reconstructed_residual: &mut Vec<i16>,
 ) -> VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU> {
     match residual_coding {
         VvcTuResidualCodingMode::TransformSkip => {
@@ -4863,6 +4862,8 @@ fn finalize_vvc_chroma_residual_block(
                 chroma_ts_quant,
                 transformed,
                 stats,
+                transform_scratch,
+                reconstructed_residual,
             )
         }
     }
@@ -5021,6 +5022,8 @@ fn select_vvc_chroma_residual_block_with_transform_skip(
     chroma_ts_quant: &VvcTransformSkipQuantTable,
     transformed: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
     stats: &mut VvcIntraSearchStats,
+    transform_scratch: &mut VvcInverseTransformScratch,
+    reconstructed_residual: &mut Vec<i16>,
 ) -> VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU> {
     #[cfg(not(feature = "vvc-stats"))]
     let _ = stats;
@@ -5028,8 +5031,6 @@ fn select_vvc_chroma_residual_block_with_transform_skip(
     {
         return transformed;
     }
-    let mut scratch = VvcInverseTransformScratch::default();
-    let mut reconstructed = Vec::new();
 
     #[cfg(feature = "vvc-stats")]
     let quant_start = Instant::now();
@@ -5053,8 +5054,8 @@ fn select_vvc_chroma_residual_block_with_transform_skip(
         chroma_qp,
         chroma_ts_quant,
         transformed,
-        &mut scratch,
-        &mut reconstructed,
+        transform_scratch,
+        reconstructed_residual,
     );
     let transform_skip_score = vvc_chroma_residual_block_score(
         residuals,
@@ -5064,8 +5065,8 @@ fn select_vvc_chroma_residual_block_with_transform_skip(
         chroma_qp,
         chroma_ts_quant,
         transform_skip,
-        &mut scratch,
-        &mut reconstructed,
+        transform_scratch,
+        reconstructed_residual,
     );
     if transform_skip_score.selects_quality_over(transformed_score) {
         transform_skip
