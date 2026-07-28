@@ -218,6 +218,51 @@ fn vvc_lossy_luma_directional_search_keeps_exact_neighbor_modes() {
 }
 
 #[test]
+fn vvc_lossless_speed_luma_directional_search_uses_source_seed_index() {
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
+    let frame = sampled_luma_frame(
+        8,
+        8,
+        (0..8)
+            .flat_map(|_| (0..8).map(|x| (x * 16) as VvcSample))
+            .collect(),
+    );
+    let state = VvcLumaModeSearchState::new_for_geometry(frame.geometry);
+    let policy = VvcResidualCodingPolicy::new(frame.format, VvcResidualCodingMode::Lossy)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+
+    let candidates = vvc_luma_directional_search_candidates(policy, &frame, &state, node);
+    let indexes: Vec<_> = candidates
+        .iter()
+        .map(|mode| mode.luma_mode_index())
+        .collect();
+
+    assert_eq!(indexes, vec![50]);
+}
+
+#[test]
+fn vvc_lossless_speed_luma_directional_search_uses_neighbor_index() {
+    let mut target = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
+    target.x = 8;
+    let frame = sampled_luma_frame(16, 8, vec![64; 128]);
+    let mut state = VvcLumaModeSearchState::new_for_geometry(frame.geometry);
+    state.mark_node(
+        VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma),
+        VvcIntraPredictionMode::Angular(42),
+    );
+    let policy = VvcResidualCodingPolicy::new(frame.format, VvcResidualCodingMode::Lossy)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+
+    let candidates = vvc_luma_directional_search_candidates(policy, &frame, &state, target);
+    let indexes: Vec<_> = candidates
+        .iter()
+        .map(|mode| mode.luma_mode_index())
+        .collect();
+
+    assert_eq!(indexes, vec![42]);
+}
+
+#[test]
 fn vvc_lossy_luma_rd_shortlist_keeps_best_winners() {
     let format = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs420,
@@ -247,6 +292,31 @@ fn vvc_lossy_luma_rd_shortlist_keeps_best_winners() {
     assert_eq!(indexes, vec![34, 66, 18, 50, 2]);
     assert!(!indexes.contains(&0));
     assert!(!indexes.contains(&1));
+}
+
+#[test]
+fn vvc_lossless_speed_luma_rd_shortlist_keeps_best_winner() {
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let policy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
+    let costs = VvcLumaIntraCandidateCosts::new(1_000_000)
+        .with_candidate(VvcIntraPredictionMode::Planar, Some(200_000))
+        .with_candidate(VvcIntraPredictionMode::Horizontal, Some(50_000))
+        .with_candidate(VvcIntraPredictionMode::Vertical, Some(75_000))
+        .with_candidate(VvcIntraPredictionMode::Angular(34), Some(25_000))
+        .with_candidate(VvcIntraPredictionMode::Angular(66), Some(10_000));
+
+    let shortlist = VvcLumaModeRdShortlist::from_candidate_costs(policy, node, costs);
+    let indexes: Vec<_> = shortlist
+        .iter()
+        .map(|candidate| candidate.mode().luma_mode_index())
+        .collect();
+
+    assert_eq!(indexes, vec![66]);
 }
 
 #[test]

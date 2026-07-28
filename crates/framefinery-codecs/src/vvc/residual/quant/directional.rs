@@ -188,12 +188,7 @@ fn vvc_luma_directional_search_candidates(
     mode_state: &VvcLumaModeSearchState,
     global_node: VvcCodingTreeNode,
 ) -> VvcLumaDirectionalSearchCandidates {
-    if policy.fast_search() != VvcFastSearch::Off
-        && !matches!(
-            (policy.fast_search(), policy.residual_mode()),
-            (VvcFastSearch::LosslessSpeed, VvcResidualCodingMode::Lossy)
-        )
-    {
+    if policy.fast_search() != VvcFastSearch::Off {
         return vvc_luma_fast_directional_search_candidates(
             policy,
             source_frame,
@@ -282,9 +277,7 @@ fn vvc_luma_fast_directional_search_candidates(
         }
         VvcFastSearch::Moderate | VvcFastSearch::LosslessSpeed => {
             if let Some(index) = source_seed {
-                if fast_search == VvcFastSearch::LosslessSpeed
-                    && policy.residual_mode() == VvcResidualCodingMode::Lossless
-                {
+                if fast_search == VvcFastSearch::LosslessSpeed {
                     candidates.add_index(index);
                 } else {
                     candidates.add_compact_family(index);
@@ -297,10 +290,7 @@ fn vvc_luma_fast_directional_search_candidates(
                 fast_search,
                 policy.residual_mode(),
             );
-            if fast_search != VvcFastSearch::LosslessSpeed
-                || policy.residual_mode() != VvcResidualCodingMode::Lossless
-                || candidates.count() == 0
-            {
+            if fast_search != VvcFastSearch::LosslessSpeed || candidates.count() == 0 {
                 for index in VVC_LUMA_CARDINAL_DIRECTIONAL_SEEDS {
                     candidates.add_index(index);
                 }
@@ -336,9 +326,7 @@ fn add_vvc_luma_spatial_directional_candidates(
     residual_mode: VvcResidualCodingMode,
 ) {
     if let Some(consensus) = vvc_luma_spatial_consensus_directional_seed(left, above) {
-        if fast_search == VvcFastSearch::LosslessSpeed
-            && residual_mode == VvcResidualCodingMode::Lossless
-        {
+        if fast_search == VvcFastSearch::LosslessSpeed {
             candidates.add_index(consensus);
         } else {
             add_vvc_luma_policy_directional_family(candidates, consensus, fast_search);
@@ -354,12 +342,10 @@ fn add_vvc_luma_spatial_directional_candidates(
             VvcFastSearch::Conservative if residual_mode == VvcResidualCodingMode::Lossless => {
                 candidates.add_family(index);
             }
-            VvcFastSearch::LosslessSpeed if residual_mode == VvcResidualCodingMode::Lossless => {
+            VvcFastSearch::LosslessSpeed => {
                 candidates.add_index(index);
             }
-            VvcFastSearch::Conservative
-            | VvcFastSearch::Moderate
-            | VvcFastSearch::LosslessSpeed => {
+            VvcFastSearch::Conservative | VvcFastSearch::Moderate => {
                 candidates.add_compact_family(index);
             }
             VvcFastSearch::Aggressive => candidates.add_index(index),

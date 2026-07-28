@@ -562,7 +562,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             vvc_elapsed_nanos(prediction_start),
         );
         let (raw_chroma_mode, chroma_candidate_costs) =
-            if vvc_chroma_lossless_speed_uses_derived_only(policy) {
+            if vvc_chroma_fast_search_uses_derived_only(policy) {
                 #[cfg(feature = "vvc-stats")]
                 intra_search_stats.add_chroma_derived();
                 (
@@ -1043,9 +1043,8 @@ fn vvc_chroma_lossless_speed_skips_near_exact_explicit_search(
         && best_score <= vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
 }
 
-fn vvc_chroma_lossless_speed_uses_derived_only(policy: VvcResidualCodingPolicy) -> bool {
-    policy.residual_mode() == VvcResidualCodingMode::Lossless
-        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+fn vvc_chroma_fast_search_uses_derived_only(policy: VvcResidualCodingPolicy) -> bool {
+    policy.fast_search() == VvcFastSearch::LosslessSpeed
 }
 
 fn vvc_luma_lossless_speed_skips_directional_refinement(

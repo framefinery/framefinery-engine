@@ -59,9 +59,7 @@ fn select_vvc_luma_max_leaf_size_for_ctu(
     luma_qp: i32,
 ) -> u16 {
     let default_leaf_size = policy.luma_max_leaf_size();
-    if policy.residual_mode() == VvcResidualCodingMode::Lossless
-        && policy.fast_search() == VvcFastSearch::LosslessSpeed
-    {
+    if policy.fast_search() == VvcFastSearch::LosslessSpeed {
         return VVC_CURRENT_MAX_LUMA_LEAF_SIZE;
     }
     if policy.residual_mode() != VvcResidualCodingMode::Lossy
