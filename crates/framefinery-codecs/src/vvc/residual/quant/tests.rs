@@ -263,6 +263,73 @@ fn vvc_lossless_speed_luma_directional_search_uses_neighbor_index() {
 }
 
 #[test]
+fn vvc_lossless_speed_luma_search_prunes_dc_for_lossy() {
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let default_lossy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy);
+    let fast_lossy = default_lossy.with_fast_search(VvcFastSearch::LosslessSpeed);
+    let fast_lossless = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossless)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+
+    assert!(!vvc_luma_lossless_speed_skips_dc(default_lossy));
+    assert!(vvc_luma_lossless_speed_skips_dc(fast_lossy));
+    assert!(vvc_luma_lossless_speed_skips_dc(fast_lossless));
+}
+
+#[test]
+fn vvc_lossless_speed_luma_planar_search_uses_neighbor_context_for_lossy() {
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let default_lossy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy);
+    let fast_lossy = default_lossy.with_fast_search(VvcFastSearch::LosslessSpeed);
+
+    assert!(vvc_luma_lossless_speed_evaluates_planar(
+        default_lossy,
+        Some(VvcIntraPredictionMode::Horizontal),
+        Some(VvcIntraPredictionMode::Vertical),
+    ));
+    assert!(!vvc_luma_lossless_speed_evaluates_planar(
+        fast_lossy,
+        Some(VvcIntraPredictionMode::Horizontal),
+        Some(VvcIntraPredictionMode::Vertical),
+    ));
+    assert!(vvc_luma_lossless_speed_evaluates_planar(
+        fast_lossy,
+        Some(VvcIntraPredictionMode::Planar),
+        Some(VvcIntraPredictionMode::Horizontal),
+    ));
+    assert!(vvc_luma_lossless_speed_evaluates_planar(
+        fast_lossy, None, None,
+    ));
+}
+
+#[test]
+fn vvc_lossless_speed_luma_rd_prefers_transform_skip_for_lossy() {
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let default_lossy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy);
+    let fast_lossy = default_lossy.with_fast_search(VvcFastSearch::LosslessSpeed);
+    let fast_lossless = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossless)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+
+    assert!(!vvc_luma_fast_search_prefers_transform_skip_candidate(
+        default_lossy
+    ));
+    assert!(vvc_luma_fast_search_prefers_transform_skip_candidate(
+        fast_lossy
+    ));
+    assert!(!vvc_luma_fast_search_prefers_transform_skip_candidate(
+        fast_lossless
+    ));
+}
+
+#[test]
 fn vvc_lossy_luma_rd_shortlist_keeps_best_winners() {
     let format = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs420,

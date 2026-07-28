@@ -164,4 +164,5 @@ impl VvcTransformSkipQuantTable {
 enum VvcLumaResidualQuantizationSearch {
     Full,
     FastModeDecision,
+    TransformSkipFirstModeDecision,
 }

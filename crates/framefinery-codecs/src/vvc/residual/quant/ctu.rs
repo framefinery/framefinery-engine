@@ -1055,8 +1055,7 @@ fn vvc_luma_lossless_speed_skips_directional_refinement(
 }
 
 fn vvc_luma_lossless_speed_skips_dc(policy: VvcResidualCodingPolicy) -> bool {
-    policy.residual_mode() == VvcResidualCodingMode::Lossless
-        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+    policy.fast_search() == VvcFastSearch::LosslessSpeed
 }
 
 fn vvc_luma_lossless_speed_evaluates_planar(
@@ -1064,9 +1063,7 @@ fn vvc_luma_lossless_speed_evaluates_planar(
     left: Option<VvcIntraPredictionMode>,
     above: Option<VvcIntraPredictionMode>,
 ) -> bool {
-    if policy.residual_mode() != VvcResidualCodingMode::Lossless
-        || policy.fast_search() != VvcFastSearch::LosslessSpeed
-    {
+    if policy.fast_search() != VvcFastSearch::LosslessSpeed {
         return true;
     }
     matches!(left, None | Some(VvcIntraPredictionMode::Planar))

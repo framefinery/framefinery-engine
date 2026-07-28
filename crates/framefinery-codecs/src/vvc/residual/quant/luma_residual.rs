@@ -341,6 +341,12 @@ fn select_vvc_scored_luma_residual_block_with_mts(
         reconstructed_residual,
     );
     if let Some(transform_skip) = transform_skip {
+        if matches!(
+            quantization_search,
+            VvcLumaResidualQuantizationSearch::TransformSkipFirstModeDecision
+        ) {
+            return transform_skip;
+        }
         if vvc_transform_skip_short_circuits_transformed(transform_skip.score) {
             return transform_skip;
         }
@@ -723,6 +729,18 @@ fn finalize_vvc_luma_residual_block(
                     )
                 }
                 VvcLumaResidualQuantizationSearch::FastModeDecision => {
+                    quantize_vvc_luma_residual_fast_with_qp_and_mts_into(
+                        residuals,
+                        width,
+                        height,
+                        bit_depth,
+                        luma_qp,
+                        mts_index,
+                        transform_scratch,
+                        reconstructed_residual,
+                    )
+                }
+                VvcLumaResidualQuantizationSearch::TransformSkipFirstModeDecision => {
                     quantize_vvc_luma_residual_fast_with_qp_and_mts_into(
                         residuals,
                         width,

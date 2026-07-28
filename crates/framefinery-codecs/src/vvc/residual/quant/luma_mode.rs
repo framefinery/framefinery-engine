@@ -158,6 +158,7 @@ fn select_vvc_luma_mode_with_rd_refinement(
     #[cfg(feature = "vvc-stats")]
     let score_start = Instant::now();
     let mut best_candidate = score_vvc_luma_mode_rd_candidate(
+        policy,
         raw_decision,
         node,
         raw_mode,
@@ -198,6 +199,7 @@ fn select_vvc_luma_mode_with_rd_refinement(
             #[cfg(feature = "vvc-stats")]
             let score_start = Instant::now();
             let rd_candidate = score_vvc_luma_mode_rd_candidate(
+                policy,
                 coding_decision,
                 node,
                 mode,
@@ -275,6 +277,7 @@ fn select_vvc_luma_mode_with_rd_refinement(
         #[cfg(feature = "vvc-stats")]
         let score_start = Instant::now();
         let rd_candidate = score_vvc_luma_mode_rd_candidate(
+            policy,
             coding_decision,
             node,
             mode,
@@ -356,6 +359,7 @@ impl VvcLumaModeRdCandidate {
 }
 
 fn score_vvc_luma_mode_rd_candidate(
+    policy: VvcResidualCodingPolicy,
     coding_decision: VvcLumaTuCodingDecision,
     node: VvcCodingTreeNode,
     mode: VvcIntraPredictionMode,
@@ -369,6 +373,12 @@ fn score_vvc_luma_mode_rd_candidate(
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcLumaModeRdCandidate {
+    let quantization_search =
+        if vvc_luma_fast_search_prefers_transform_skip_candidate(policy) {
+            VvcLumaResidualQuantizationSearch::TransformSkipFirstModeDecision
+        } else {
+            VvcLumaResidualQuantizationSearch::FastModeDecision
+        };
     let scored_residual = select_vvc_scored_luma_residual_block_with_mts(
         coding_decision.residual_coding,
         coding_decision.mts_index,
@@ -379,7 +389,7 @@ fn score_vvc_luma_mode_rd_candidate(
         luma_qp,
         luma_ts_quant,
         false,
-        VvcLumaResidualQuantizationSearch::FastModeDecision,
+        quantization_search,
         stats,
         transform_scratch,
         reconstructed_residual,
@@ -391,6 +401,13 @@ fn score_vvc_luma_mode_rd_candidate(
         rate_cost: scored_residual.score.rate_cost.saturating_add(mode_cost),
         residual,
     }
+}
+
+fn vvc_luma_fast_search_prefers_transform_skip_candidate(
+    policy: VvcResidualCodingPolicy,
+) -> bool {
+    policy.residual_mode() == VvcResidualCodingMode::Lossy
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
 }
 
 #[derive(Debug, Clone, Copy)]
