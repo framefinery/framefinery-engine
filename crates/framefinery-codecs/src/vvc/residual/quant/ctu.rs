@@ -844,6 +844,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             policy,
             node,
             chroma_mode,
+            co_located_luma_mode,
             cclm_syntax_enabled,
             source_frame,
             frame_recon,
@@ -1050,8 +1051,7 @@ fn vvc_chroma_fast_search_uses_derived_only(policy: VvcResidualCodingPolicy) -> 
 fn vvc_luma_lossless_speed_skips_directional_refinement(
     policy: VvcResidualCodingPolicy,
 ) -> bool {
-    policy.residual_mode() == VvcResidualCodingMode::Lossless
-        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+    policy.fast_search() == VvcFastSearch::LosslessSpeed
 }
 
 fn vvc_luma_lossless_speed_skips_dc(policy: VvcResidualCodingPolicy) -> bool {

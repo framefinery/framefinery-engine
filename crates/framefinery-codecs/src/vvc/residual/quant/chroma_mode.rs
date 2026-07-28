@@ -43,6 +43,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
     #[cfg(feature = "vvc-stats")]
     let score_start = Instant::now();
     let mut best_candidate = score_vvc_chroma_mode_rd_candidate(
+        policy,
         raw_decision,
         raw_mode,
         cclm_syntax_enabled,
@@ -78,6 +79,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
             #[cfg(feature = "vvc-stats")]
             let score_start = Instant::now();
             let rd_candidate = score_vvc_chroma_mode_rd_candidate(
+                policy,
                 coding_decision,
                 mode,
                 cclm_syntax_enabled,
@@ -197,6 +199,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
         #[cfg(feature = "vvc-stats")]
         let score_start = Instant::now();
         let rd_candidate = score_vvc_chroma_mode_rd_candidate(
+            policy,
             coding_decision,
             mode,
             cclm_syntax_enabled,
@@ -258,6 +261,7 @@ fn select_vvc_chroma_bdpcm_prediction(
     policy: VvcResidualCodingPolicy,
     node: VvcCodingTreeNode,
     selected_mode: VvcChromaIntraPredictionMode,
+    co_located_luma_mode: VvcIntraPredictionMode,
     cclm_syntax_enabled: bool,
     source_frame: &VvcSampledFrame,
     frame_recon: &VvcReconstructionFrame,
@@ -339,7 +343,10 @@ fn select_vvc_chroma_bdpcm_prediction(
     );
     let mut best = None;
 
-    for bdpcm_mode in [VvcBdpcmMode::Horizontal, VvcBdpcmMode::Vertical] {
+    for bdpcm_mode in vvc_chroma_bdpcm_candidate_modes(policy, co_located_luma_mode)
+        .into_iter()
+        .flatten()
+    {
         #[cfg(feature = "vvc-stats")]
         let prediction_start = Instant::now();
         predict_vvc_chroma_bdpcm_block_into_with_availability(
@@ -457,6 +464,27 @@ fn select_vvc_chroma_bdpcm_prediction(
     best
 }
 
+fn vvc_chroma_bdpcm_candidate_modes(
+    policy: VvcResidualCodingPolicy,
+    co_located_luma_mode: VvcIntraPredictionMode,
+) -> [Option<VvcBdpcmMode>; 2] {
+    if policy.residual_mode() == VvcResidualCodingMode::Lossy
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+    {
+        match co_located_luma_mode {
+            VvcIntraPredictionMode::Horizontal => [Some(VvcBdpcmMode::Horizontal), None],
+            VvcIntraPredictionMode::Vertical => [Some(VvcBdpcmMode::Vertical), None],
+            VvcIntraPredictionMode::Planar
+            | VvcIntraPredictionMode::Dc
+            | VvcIntraPredictionMode::Angular(_) => {
+                [Some(VvcBdpcmMode::Horizontal), Some(VvcBdpcmMode::Vertical)]
+            }
+        }
+    } else {
+        [Some(VvcBdpcmMode::Horizontal), Some(VvcBdpcmMode::Vertical)]
+    }
+}
+
 fn vvc_chroma_bdpcm_fast_search_allowed(
     policy: VvcResidualCodingPolicy,
     selected_mode: VvcChromaIntraPredictionMode,
@@ -529,6 +557,7 @@ impl VvcChromaModeRdCandidate {
 }
 
 fn score_vvc_chroma_mode_rd_candidate(
+    policy: VvcResidualCodingPolicy,
     coding_decision: VvcChromaTuCodingDecision,
     mode: VvcChromaIntraPredictionMode,
     cclm_syntax_enabled: bool,
@@ -544,6 +573,7 @@ fn score_vvc_chroma_mode_rd_candidate(
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcChromaModeRdCandidate {
     let cb = select_vvc_scored_chroma_residual_block_with_transform_skip(
+        policy,
         coding_decision.residual_coding,
         cb_residuals,
         chroma_width,
@@ -556,6 +586,7 @@ fn score_vvc_chroma_mode_rd_candidate(
         reconstructed_residual,
     );
     let cr = select_vvc_scored_chroma_residual_block_with_transform_skip(
+        policy,
         coding_decision.residual_coding,
         cr_residuals,
         chroma_width,
@@ -639,14 +670,15 @@ fn chroma_reconstructed_residual_sse(
         chroma_qp,
         chroma_ts_quant,
     );
-    source_residuals
-        .iter()
-        .zip(reconstructed_residual.iter())
-        .map(|(source, reconstructed)| {
-            let diff = i64::from(*source) - i64::from(*reconstructed);
-            (diff * diff) as u64
-        })
-        .sum()
+    reconstructed_residual_sse(source_residuals, reconstructed_residual)
+}
+
+fn reconstructed_residual_sse(source_residuals: &[i16], reconstructed_residuals: &[i16]) -> u64 {
+    let mut sse = 0u64;
+    for (&source, &reconstructed) in source_residuals.iter().zip(reconstructed_residuals.iter()) {
+        sse += residual_diff_square(source, reconstructed);
+    }
+    sse
 }
 
 fn chroma_transform_skip_residual_sse(

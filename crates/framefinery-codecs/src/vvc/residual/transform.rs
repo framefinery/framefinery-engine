@@ -1310,14 +1310,12 @@ pub(in crate::vvc::residual) fn luma_reconstructed_residual_sse_with_mts_into(
         qp,
         mts_index,
     );
-    source_residuals
-        .iter()
-        .zip(reconstructed.iter())
-        .map(|(source, reconstructed)| {
-            let diff = i64::from(*source) - i64::from(*reconstructed);
-            (diff * diff) as u64
-        })
-        .sum()
+    let mut sse = 0u64;
+    for (&source, &reconstructed) in source_residuals.iter().zip(reconstructed.iter()) {
+        let diff = i64::from(source) - i64::from(reconstructed);
+        sse += (diff * diff) as u64;
+    }
+    sse
 }
 
 pub(in crate::vvc::residual) fn luma_coeff_rd_lambda(qp: i32, bit_depth: SampleBitDepth) -> u64 {

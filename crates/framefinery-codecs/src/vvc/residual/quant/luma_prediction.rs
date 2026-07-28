@@ -130,8 +130,7 @@ fn select_vvc_luma_mrl_prediction(
 }
 
 fn vvc_luma_lossless_speed_skips_mrl(policy: VvcResidualCodingPolicy) -> bool {
-    policy.residual_mode() == VvcResidualCodingMode::Lossless
-        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+    policy.fast_search() == VvcFastSearch::LosslessSpeed
 }
 
 fn select_vvc_luma_bdpcm_prediction(
@@ -194,9 +193,7 @@ fn select_vvc_luma_bdpcm_prediction(
         ),
     );
     let mut best = None;
-    let direct_residual =
-        policy.residual_mode() == VvcResidualCodingMode::Lossless
-            && policy.fast_search() == VvcFastSearch::LosslessSpeed;
+    let direct_residual = policy.fast_search() == VvcFastSearch::LosslessSpeed;
     let mut best_bdpcm_mode = None;
 
     for bdpcm_mode in [VvcBdpcmMode::Horizontal, VvcBdpcmMode::Vertical] {
@@ -631,19 +628,38 @@ fn transform_skip_residual_sse(
 ) -> u64 {
     debug_assert_eq!(source_residuals.len(), width * height);
     let mut sse = 0u64;
-    for y in 0..height {
-        for x in 0..width {
-            let reconstructed_sample = if x < active_width && y < active_height {
-                let idx = y * reconstructed_stride + x;
-                reconstructed.get(idx).copied().unwrap_or(0)
-            } else {
-                0
-            };
-            let diff = i64::from(source_residuals[y * width + x]) - i64::from(reconstructed_sample);
-            sse = sse.saturating_add((diff * diff) as u64);
+    let active_width = active_width.min(width);
+    let active_height = active_height.min(height);
+    for y in 0..active_height {
+        let source_row = &source_residuals[y * width..(y + 1) * width];
+        let reconstructed_row =
+            &reconstructed[y * reconstructed_stride..y * reconstructed_stride + active_width];
+        for x in 0..active_width {
+            sse += residual_diff_square(source_row[x], reconstructed_row[x]);
+        }
+        for &source in &source_row[active_width..] {
+            sse += residual_square(source);
+        }
+    }
+    for y in active_height..height {
+        let source_row = &source_residuals[y * width..(y + 1) * width];
+        for &source in source_row {
+            sse += residual_square(source);
         }
     }
     sse
+}
+
+#[inline]
+fn residual_square(sample: i16) -> u64 {
+    let sample = i64::from(sample);
+    (sample * sample) as u64
+}
+
+#[inline]
+fn residual_diff_square(source: i16, reconstructed: i16) -> u64 {
+    let diff = i64::from(source) - i64::from(reconstructed);
+    (diff * diff) as u64
 }
 
 fn vvc_luma_mrl_syntax_bin_count(node: VvcCodingTreeNode, mrl_index: u8) -> u8 {

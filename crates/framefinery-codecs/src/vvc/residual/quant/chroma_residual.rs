@@ -366,6 +366,7 @@ impl VvcScoredChromaResidualBlock {
 }
 
 fn select_vvc_scored_chroma_residual_block_with_transform_skip(
+    policy: VvcResidualCodingPolicy,
     residual_coding: VvcTuResidualCodingMode,
     residuals: &[i16],
     width: usize,
@@ -404,6 +405,41 @@ fn select_vvc_scored_chroma_residual_block_with_transform_skip(
             )
         }
         VvcTuResidualCodingMode::Transformed => {
+            let mut transform_skip_candidate = None;
+            if vvc_chroma_lossy_transform_skip_selection_allowed(
+                residual_coding,
+                width,
+                height,
+                chroma_qp,
+            ) {
+                #[cfg(feature = "vvc-stats")]
+                let quant_start = Instant::now();
+                let transform_skip = finalize_vvc_chroma_transform_skip_residual_block(
+                    residuals,
+                    width,
+                    height,
+                    chroma_ts_quant,
+                );
+                #[cfg(feature = "vvc-stats")]
+                stats.add_chroma_transform_skip_candidate_nanos(vvc_elapsed_nanos(quant_start));
+                if transform_skip.has_ac || transform_skip.dc_level != 0 {
+                    let transform_skip = VvcScoredChromaResidualBlock::new(
+                        residuals,
+                        width,
+                        height,
+                        bit_depth,
+                        chroma_qp,
+                        chroma_ts_quant,
+                        transform_skip,
+                        transform_scratch,
+                        reconstructed_residual,
+                    );
+                    if vvc_chroma_fast_search_uses_transform_skip_candidate(policy) {
+                        return transform_skip;
+                    }
+                    transform_skip_candidate = Some(transform_skip);
+                }
+            }
             #[cfg(feature = "vvc-stats")]
             let quant_start = Instant::now();
             let quantized = quantize_vvc_chroma_residual_greedy_with_qp(
@@ -433,42 +469,19 @@ fn select_vvc_scored_chroma_residual_block_with_transform_skip(
                 transform_scratch,
                 reconstructed_residual,
             );
-            if vvc_chroma_lossy_transform_skip_selection_allowed(
-                residual_coding,
-                width,
-                height,
-                chroma_qp,
-            ) {
-                #[cfg(feature = "vvc-stats")]
-                let quant_start = Instant::now();
-                let transform_skip = finalize_vvc_chroma_transform_skip_residual_block(
-                    residuals,
-                    width,
-                    height,
-                    chroma_ts_quant,
-                );
-                #[cfg(feature = "vvc-stats")]
-                stats.add_chroma_transform_skip_candidate_nanos(vvc_elapsed_nanos(quant_start));
-                if transform_skip.has_ac || transform_skip.dc_level != 0 {
-                    let transform_skip = VvcScoredChromaResidualBlock::new(
-                        residuals,
-                        width,
-                        height,
-                        bit_depth,
-                        chroma_qp,
-                        chroma_ts_quant,
-                        transform_skip,
-                        transform_scratch,
-                        reconstructed_residual,
-                    );
-                    if transform_skip.selects_over(best) {
-                        best = transform_skip;
-                    }
+            if let Some(transform_skip) = transform_skip_candidate {
+                if transform_skip.selects_over(best) {
+                    best = transform_skip;
                 }
             }
             best
         }
     }
+}
+
+fn vvc_chroma_fast_search_uses_transform_skip_candidate(policy: VvcResidualCodingPolicy) -> bool {
+    policy.residual_mode() == VvcResidualCodingMode::Lossy
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
 }
 
 fn select_vvc_chroma_residual_block_with_transform_skip(
