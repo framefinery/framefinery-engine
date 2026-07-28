@@ -236,7 +236,7 @@ fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<R: Read, W: 
     let residual_policy =
         VvcResidualCodingPolicy::new(stream_format, residual_mode).with_fast_search(options.fast_search);
     let mut slice_config = vvc_slice_config_for_input_format(
-        residual_mode.slice_config(stream_format, options.qp),
+        residual_mode.slice_config(stream_format, options.qp, options.fast_search),
         format,
     );
     if residual_mode.is_lossless() && options.fast_search == VvcFastSearch::LosslessSpeed {

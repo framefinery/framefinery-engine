@@ -799,33 +799,48 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         }
         #[cfg(feature = "vvc-stats")]
         let chroma_rd_start = Instant::now();
-        let selected_chroma_mode = select_vvc_chroma_mode_with_rd_refinement(
+        let selected_chroma_mode = if vvc_chroma_lossy_speed_direct_bdpcm_mode(
             policy,
-            node,
+            source_frame.format.chroma_sampling,
+            source_frame.format.bit_depth,
             raw_chroma_mode,
-            chroma_candidate_costs,
-            &chroma_rd_cache,
-            &mut intra_search_stats,
             co_located_luma_mode,
-            cclm_syntax_enabled,
-            source_frame,
-            frame_recon,
-            chroma_width,
-            chroma_height,
-            chroma_qp,
-            chroma_ts_quant,
-            &mut prediction_scratch,
-            &mut predicted_cb,
-            &mut predicted_cr,
-            &mut cb_residuals,
-            &mut cr_residuals,
-            &mut candidate_cb_prediction,
-            &mut candidate_cr_prediction,
-            &mut candidate_cb_residuals,
-            &mut candidate_cr_residuals,
-            &mut transform_scratch,
-            &mut reconstructed_residual,
-        );
+        )
+        .is_some()
+        {
+            VvcSelectedChromaMode {
+                mode: raw_chroma_mode,
+                residual: None,
+            }
+        } else {
+            select_vvc_chroma_mode_with_rd_refinement(
+                policy,
+                node,
+                raw_chroma_mode,
+                chroma_candidate_costs,
+                &chroma_rd_cache,
+                &mut intra_search_stats,
+                co_located_luma_mode,
+                cclm_syntax_enabled,
+                source_frame,
+                frame_recon,
+                chroma_width,
+                chroma_height,
+                chroma_qp,
+                chroma_ts_quant,
+                &mut prediction_scratch,
+                &mut predicted_cb,
+                &mut predicted_cr,
+                &mut cb_residuals,
+                &mut cr_residuals,
+                &mut candidate_cb_prediction,
+                &mut candidate_cr_prediction,
+                &mut candidate_cb_residuals,
+                &mut candidate_cr_residuals,
+                &mut transform_scratch,
+                &mut reconstructed_residual,
+            )
+        };
         #[cfg(feature = "vvc-stats")]
         intra_search_stats
             .add_chroma_rd_refinement_nanos(chroma_rd_start.elapsed().as_nanos() as u64);

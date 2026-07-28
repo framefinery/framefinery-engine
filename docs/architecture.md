@@ -109,6 +109,9 @@ coded-lossless with `base_qindex=0`. Delta-q syntax is wired into the header
 model but remains disabled until the encoder tracks and emits per-superblock
 qindex adjustments.
 
-VVC maps `--qp` into the slice luma QP used by the current residual path and
-derives chroma QP from the same offset as the default lossy configuration.
-Lossless VVC coding keeps its QP-independent exact paths.
+VVC treats `--qp` as a lossy quality request for the current residual path.
+With `fast-search=lossless-speed`, the encoder may apply format-specific
+signaled slice-QP offsets to keep the screen-content bitrate/PSNR tradeoff
+closer across 8-bit 4:4:4 and high-depth inputs. Chroma QP is derived from
+the signaled slice QP through the SPS chroma QP mapping table. Lossless VVC
+coding keeps its QP-independent exact paths.

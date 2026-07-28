@@ -289,6 +289,122 @@ fn select_vvc_chroma_bdpcm_prediction(
         return None;
     }
 
+    if let Some(bdpcm_mode) = vvc_chroma_lossy_speed_direct_bdpcm_mode(
+        policy,
+        source_frame.format.chroma_sampling,
+        source_frame.format.bit_depth,
+        selected_mode,
+        co_located_luma_mode,
+    ) {
+        #[cfg(feature = "vvc-stats")]
+        let prediction_start = Instant::now();
+        predict_vvc_chroma_bdpcm_block_into_with_availability(
+            candidate_cb_prediction,
+            prediction_scratch,
+            bdpcm_mode,
+            &frame_recon.cb,
+            source_frame.geometry,
+            node,
+            source_frame.format.chroma_sampling,
+            source_frame.format.bit_depth,
+            Some(frame_recon.cb_availability()),
+        );
+        predict_vvc_chroma_bdpcm_block_into_with_availability(
+            candidate_cr_prediction,
+            prediction_scratch,
+            bdpcm_mode,
+            &frame_recon.cr,
+            source_frame.geometry,
+            node,
+            source_frame.format.chroma_sampling,
+            source_frame.format.bit_depth,
+            Some(frame_recon.cr_availability()),
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_prediction_nanos(
+            VvcChromaPredictionStatsFamily::Bdpcm,
+            vvc_elapsed_nanos(prediction_start),
+        );
+        let chroma_x =
+            usize::from(node.x) / chroma_subsample_x(source_frame.format.chroma_sampling);
+        let chroma_y =
+            usize::from(node.y) / chroma_subsample_y(source_frame.format.chroma_sampling);
+        #[cfg(feature = "vvc-stats")]
+        let residual_start = Instant::now();
+        residual_chroma_tu_at_into(
+            candidate_cb_residuals,
+            &source_frame.cb,
+            source_frame.geometry,
+            source_frame.format,
+            chroma_x,
+            chroma_y,
+            chroma_width,
+            chroma_height,
+            candidate_cb_prediction,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+        #[cfg(feature = "vvc-stats")]
+        let residual_start = Instant::now();
+        residual_chroma_tu_at_into(
+            candidate_cr_residuals,
+            &source_frame.cr,
+            source_frame.geometry,
+            source_frame.format,
+            chroma_x,
+            chroma_y,
+            chroma_width,
+            chroma_height,
+            candidate_cr_prediction,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+        if vvc_chroma_direct_bdpcm_residual_is_safe(
+            selected_cb_residuals,
+            selected_cr_residuals,
+            candidate_cb_residuals,
+            candidate_cr_residuals,
+        ) {
+            std::mem::swap(selected_cb_prediction, candidate_cb_prediction);
+            std::mem::swap(selected_cr_prediction, candidate_cr_prediction);
+            std::mem::swap(selected_cb_residuals, candidate_cb_residuals);
+            std::mem::swap(selected_cr_residuals, candidate_cr_residuals);
+            let residual = VvcSelectedChromaResidual {
+                cb: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
+                    selected_cb_residuals,
+                    chroma_width,
+                    chroma_height,
+                    chroma_ts_quant,
+                    bdpcm_mode,
+                ),
+                cr: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
+                    selected_cr_residuals,
+                    chroma_width,
+                    chroma_height,
+                    chroma_ts_quant,
+                    bdpcm_mode,
+                ),
+            };
+            let mode = VvcChromaIntraPredictionMode::Explicit(
+                bdpcm_mode
+                    .inferred_intra_mode()
+                    .expect("enabled BDPCM mode has an inferred intra mode"),
+            );
+            return Some(VvcSelectedChromaBdpcm {
+                mode,
+                residual: VvcScoredSelectedChromaResidual {
+                    residual,
+                    // The direct path has already selected BDPCM; finalization
+                    // only consumes the residual payload from this wrapper.
+                    score: VvcResidualBlockScore {
+                        distortion: 0,
+                        rate_cost: 0,
+                    },
+                },
+            });
+        }
+    }
+
     let baseline_decision = policy.select_chroma_tu_coding_decision(node, selected_mode);
     let baseline_residual = selected_residual.unwrap_or_else(|| {
         #[cfg(feature = "vvc-stats")]
@@ -483,6 +599,52 @@ fn vvc_chroma_bdpcm_candidate_modes(
     } else {
         [Some(VvcBdpcmMode::Horizontal), Some(VvcBdpcmMode::Vertical)]
     }
+}
+
+fn vvc_chroma_lossy_speed_direct_bdpcm_mode(
+    policy: VvcResidualCodingPolicy,
+    chroma_sampling: ChromaSampling,
+    bit_depth: SampleBitDepth,
+    selected_mode: VvcChromaIntraPredictionMode,
+    co_located_luma_mode: VvcIntraPredictionMode,
+) -> Option<VvcBdpcmMode> {
+    if policy.residual_mode() != VvcResidualCodingMode::Lossy
+        || policy.fast_search() != VvcFastSearch::LosslessSpeed
+        || chroma_sampling != ChromaSampling::Cs444
+        || bit_depth.bits() != 8
+        || !matches!(selected_mode, VvcChromaIntraPredictionMode::Derived)
+    {
+        return None;
+    }
+    match co_located_luma_mode {
+        VvcIntraPredictionMode::Horizontal => Some(VvcBdpcmMode::Horizontal),
+        VvcIntraPredictionMode::Vertical => Some(VvcBdpcmMode::Vertical),
+        VvcIntraPredictionMode::Planar
+        | VvcIntraPredictionMode::Dc
+        | VvcIntraPredictionMode::Angular(_) => None,
+    }
+}
+
+fn vvc_chroma_direct_bdpcm_residual_is_safe(
+    selected_cb_residuals: &[i16],
+    selected_cr_residuals: &[i16],
+    candidate_cb_residuals: &[i16],
+    candidate_cr_residuals: &[i16],
+) -> bool {
+    let selected_sse = vvc_chroma_pair_residual_sse(selected_cb_residuals, selected_cr_residuals);
+    let candidate_sse = vvc_chroma_pair_residual_sse(candidate_cb_residuals, candidate_cr_residuals);
+    // Bypass the RD check only when BDPCM clearly improves raw prediction SSE.
+    candidate_sse.saturating_mul(4) <= selected_sse.saturating_mul(3)
+}
+
+fn vvc_chroma_pair_residual_sse(cb_residuals: &[i16], cr_residuals: &[i16]) -> u64 {
+    cb_residuals
+        .iter()
+        .chain(cr_residuals.iter())
+        .fold(0u64, |sse, residual| {
+            let residual = i64::from(*residual);
+            sse.saturating_add((residual * residual) as u64)
+        })
 }
 
 fn vvc_chroma_bdpcm_fast_search_allowed(

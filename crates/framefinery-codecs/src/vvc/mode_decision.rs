@@ -66,12 +66,17 @@ impl VvcResidualCodingMode {
         }
     }
 
-    fn slice_config(self, stream_format: VvcPictureFormat, qp: Option<u8>) -> VvcSliceSyntaxConfig {
+    fn slice_config(
+        self,
+        stream_format: VvcPictureFormat,
+        qp: Option<u8>,
+        fast_search: VvcFastSearch,
+    ) -> VvcSliceSyntaxConfig {
         let mut config = VvcSliceSyntaxConfig::residual(stream_format.chroma_sampling, self);
         if self.is_lossless() {
             config.slice_qp = vvc_lossless_slice_qp(stream_format.bit_depth);
         } else {
-            config.slice_qp = vvc_lossy_slice_qp(qp);
+            config.slice_qp = vvc_lossy_slice_qp(stream_format, qp, fast_search);
         }
         config
     }
@@ -693,8 +698,25 @@ fn vvc_lossless_slice_qp(bit_depth: SampleBitDepth) -> i32 {
     -((i32::from(bit_depth.bits()) - 8) * 6)
 }
 
-fn vvc_lossy_slice_qp(qp: Option<u8>) -> i32 {
-    qp.map_or(VVC_DEFAULT_LOSSY_LUMA_QP, |qp| i32::from(qp).clamp(1, 63))
+fn vvc_lossy_slice_qp(
+    stream_format: VvcPictureFormat,
+    qp: Option<u8>,
+    fast_search: VvcFastSearch,
+) -> i32 {
+    let requested_qp = qp.map_or(VVC_DEFAULT_LOSSY_LUMA_QP, |qp| i32::from(qp).clamp(1, 63));
+    if fast_search != VvcFastSearch::LosslessSpeed {
+        return requested_qp;
+    }
+    let tuned_qp = if stream_format.chroma_sampling == ChromaSampling::Cs444
+        && stream_format.bit_depth.bits() == 8
+    {
+        requested_qp.saturating_add(3)
+    } else if stream_format.bit_depth.bits() > 8 {
+        requested_qp.saturating_sub(2)
+    } else {
+        requested_qp
+    };
+    tuned_qp.clamp(1, 63)
 }
 
 fn vvc_lossy_chroma_qp_for_slice_qp(slice_qp: i32) -> i32 {

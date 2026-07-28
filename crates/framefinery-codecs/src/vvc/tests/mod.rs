@@ -78,6 +78,43 @@ fn vvc_lossy_chroma_qp_matches_signaled_sps_mapping_table() {
     }
 }
 
+#[test]
+fn vvc_lossless_speed_tunes_lossy_slice_qp_by_format() {
+    let yuv420_8 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let yuv444_8 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let yuv444_10 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
+    };
+
+    assert_eq!(
+        vvc_lossy_slice_qp(yuv420_8, Some(19), VvcFastSearch::LosslessSpeed),
+        19
+    );
+    assert_eq!(
+        vvc_lossy_slice_qp(yuv444_8, Some(19), VvcFastSearch::LosslessSpeed),
+        22
+    );
+    assert_eq!(
+        vvc_lossy_slice_qp(yuv444_10, Some(19), VvcFastSearch::LosslessSpeed),
+        17
+    );
+    assert_eq!(
+        vvc_lossy_slice_qp(yuv444_8, Some(19), VvcFastSearch::Off),
+        19
+    );
+    assert_eq!(
+        vvc_lossy_slice_qp(yuv444_10, Some(1), VvcFastSearch::LosslessSpeed),
+        1
+    );
+}
+
 fn vvc_ue_value(rbsp: &VvcSyntaxRbsp, name: &str) -> u32 {
     let field = vvc_named_field(rbsp, name).unwrap_or_else(|| panic!("missing {name}"));
     assert_eq!(field.code, VvcSyntaxCode::Ue, "{name} should be ue(v)");

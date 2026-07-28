@@ -510,6 +510,118 @@ fn vvc_lossless_chroma_rd_shortlist_keeps_all_candidates() {
 }
 
 #[test]
+fn vvc_lossless_speed_direct_chroma_bdpcm_is_scoped_to_8bit_444_hv() {
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let policy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+
+    assert_eq!(
+        vvc_chroma_lossy_speed_direct_bdpcm_mode(
+            policy,
+            ChromaSampling::Cs444,
+            format.bit_depth,
+            VvcChromaIntraPredictionMode::Derived,
+            VvcIntraPredictionMode::Horizontal,
+        ),
+        Some(VvcBdpcmMode::Horizontal)
+    );
+    assert_eq!(
+        vvc_chroma_lossy_speed_direct_bdpcm_mode(
+            policy,
+            ChromaSampling::Cs444,
+            format.bit_depth,
+            VvcChromaIntraPredictionMode::Derived,
+            VvcIntraPredictionMode::Vertical,
+        ),
+        Some(VvcBdpcmMode::Vertical)
+    );
+    assert_eq!(
+        vvc_chroma_lossy_speed_direct_bdpcm_mode(
+            policy,
+            ChromaSampling::Cs444,
+            format.bit_depth,
+            VvcChromaIntraPredictionMode::Derived,
+            VvcIntraPredictionMode::Planar,
+        ),
+        None
+    );
+    assert_eq!(
+        vvc_chroma_lossy_speed_direct_bdpcm_mode(
+            policy,
+            ChromaSampling::Cs444,
+            format.bit_depth,
+            VvcChromaIntraPredictionMode::Explicit(VvcIntraPredictionMode::Horizontal),
+            VvcIntraPredictionMode::Horizontal,
+        ),
+        None
+    );
+    assert_eq!(
+        vvc_chroma_lossy_speed_direct_bdpcm_mode(
+            policy,
+            ChromaSampling::Cs422,
+            format.bit_depth,
+            VvcChromaIntraPredictionMode::Derived,
+            VvcIntraPredictionMode::Horizontal,
+        ),
+        None
+    );
+    assert_eq!(
+        vvc_chroma_lossy_speed_direct_bdpcm_mode(
+            policy,
+            ChromaSampling::Cs444,
+            SampleBitDepth::new(10).expect("valid bit depth"),
+            VvcChromaIntraPredictionMode::Derived,
+            VvcIntraPredictionMode::Horizontal,
+        ),
+        None
+    );
+    assert_eq!(
+        vvc_chroma_lossy_speed_direct_bdpcm_mode(
+            VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy),
+            ChromaSampling::Cs444,
+            format.bit_depth,
+            VvcChromaIntraPredictionMode::Derived,
+            VvcIntraPredictionMode::Horizontal,
+        ),
+        None
+    );
+}
+
+#[test]
+fn vvc_direct_chroma_bdpcm_residual_gate_requires_clear_sse_gain() {
+    let selected_cb = [4i16; 16];
+    let selected_cr = [4i16; 16];
+    let better_cb = [3i16; 16];
+    let better_cr = [3i16; 16];
+    let equal_cb = selected_cb;
+    let equal_cr = selected_cr;
+    let worse_cb = [5i16; 16];
+    let worse_cr = [5i16; 16];
+
+    assert!(vvc_chroma_direct_bdpcm_residual_is_safe(
+        &selected_cb,
+        &selected_cr,
+        &better_cb,
+        &better_cr,
+    ));
+    assert!(!vvc_chroma_direct_bdpcm_residual_is_safe(
+        &selected_cb,
+        &selected_cr,
+        &equal_cb,
+        &equal_cr,
+    ));
+    assert!(!vvc_chroma_direct_bdpcm_residual_is_safe(
+        &selected_cb,
+        &selected_cr,
+        &worse_cb,
+        &worse_cr,
+    ));
+}
+
+#[test]
 fn vvc_luma_quality_gate_can_spend_bits_for_lower_distortion() {
     let best = VvcLumaQuantizedResidualScore {
         distortion: 1_000,
