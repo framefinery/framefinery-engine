@@ -651,8 +651,8 @@ fn vvc_chroma_direct_bdpcm_residual_is_safe(
 ) -> bool {
     let selected_sse = vvc_chroma_pair_residual_sse(selected_cb_residuals, selected_cr_residuals);
     let candidate_sse = vvc_chroma_pair_residual_sse(candidate_cb_residuals, candidate_cr_residuals);
-    // Bypass the RD check only when BDPCM clearly improves raw prediction SSE.
-    candidate_sse.saturating_mul(4) <= selected_sse.saturating_mul(3)
+    // Bypass the RD check only when BDPCM materially improves raw prediction SSE.
+    candidate_sse.saturating_mul(16) <= selected_sse.saturating_mul(15)
 }
 
 fn vvc_chroma_pair_residual_sse(cb_residuals: &[i16], cr_residuals: &[i16]) -> u64 {

@@ -591,7 +591,7 @@ fn vvc_lossless_speed_direct_chroma_bdpcm_is_scoped_to_lossy_444_derived() {
 }
 
 #[test]
-fn vvc_direct_chroma_bdpcm_residual_gate_requires_clear_sse_gain() {
+fn vvc_direct_chroma_bdpcm_residual_gate_requires_sse_gain() {
     let selected_cb = [4i16; 16];
     let selected_cr = [4i16; 16];
     let better_cb = [3i16; 16];
