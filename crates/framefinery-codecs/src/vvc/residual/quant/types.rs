@@ -20,7 +20,7 @@ use super::super::{
 use super::transform::{
     luma_ac_syntax_cost_estimate, luma_reconstructed_residual_sse_with_mts_into,
     quantize_vvc_luma_residual_fast_with_qp_and_mts_into,
-    quantize_vvc_luma_residual_greedy_with_qp_and_mts_into,
+    quantize_vvc_luma_residual_greedy_with_qp_and_mts_into, transformed_dc_only_residual_sse,
 };
 use super::{
     fill_visible_chroma_node, fill_visible_luma_node,

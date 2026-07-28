@@ -799,14 +799,12 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         }
         #[cfg(feature = "vvc-stats")]
         let chroma_rd_start = Instant::now();
-        let selected_chroma_mode = if vvc_chroma_lossy_speed_direct_bdpcm_mode(
+        let selected_chroma_mode = if vvc_chroma_lossy_speed_direct_bdpcm_candidates_allowed(
             policy,
             source_frame.format.chroma_sampling,
             source_frame.format.bit_depth,
             raw_chroma_mode,
-            co_located_luma_mode,
         )
-        .is_some()
         {
             VvcSelectedChromaMode {
                 mode: raw_chroma_mode,

@@ -289,13 +289,16 @@ fn select_vvc_chroma_bdpcm_prediction(
         return None;
     }
 
-    if let Some(bdpcm_mode) = vvc_chroma_lossy_speed_direct_bdpcm_mode(
+    for bdpcm_mode in vvc_chroma_lossy_speed_direct_bdpcm_candidate_modes(
         policy,
         source_frame.format.chroma_sampling,
         source_frame.format.bit_depth,
         selected_mode,
         co_located_luma_mode,
-    ) {
+    )
+    .into_iter()
+    .flatten()
+    {
         #[cfg(feature = "vvc-stats")]
         let prediction_start = Instant::now();
         predict_vvc_chroma_bdpcm_block_into_with_availability(
@@ -601,28 +604,43 @@ fn vvc_chroma_bdpcm_candidate_modes(
     }
 }
 
-fn vvc_chroma_lossy_speed_direct_bdpcm_mode(
+fn vvc_chroma_lossy_speed_direct_bdpcm_candidate_modes(
     policy: VvcResidualCodingPolicy,
     chroma_sampling: ChromaSampling,
     bit_depth: SampleBitDepth,
     selected_mode: VvcChromaIntraPredictionMode,
     co_located_luma_mode: VvcIntraPredictionMode,
-) -> Option<VvcBdpcmMode> {
-    if policy.residual_mode() != VvcResidualCodingMode::Lossy
-        || policy.fast_search() != VvcFastSearch::LosslessSpeed
-        || chroma_sampling != ChromaSampling::Cs444
-        || bit_depth.bits() != 8
-        || !matches!(selected_mode, VvcChromaIntraPredictionMode::Derived)
-    {
-        return None;
+) -> [Option<VvcBdpcmMode>; 2] {
+    if !vvc_chroma_lossy_speed_direct_bdpcm_candidates_allowed(
+        policy,
+        chroma_sampling,
+        bit_depth,
+        selected_mode,
+    ) {
+        return [None, None];
     }
     match co_located_luma_mode {
-        VvcIntraPredictionMode::Horizontal => Some(VvcBdpcmMode::Horizontal),
-        VvcIntraPredictionMode::Vertical => Some(VvcBdpcmMode::Vertical),
+        VvcIntraPredictionMode::Horizontal => [Some(VvcBdpcmMode::Horizontal), None],
+        VvcIntraPredictionMode::Vertical => [Some(VvcBdpcmMode::Vertical), None],
         VvcIntraPredictionMode::Planar
         | VvcIntraPredictionMode::Dc
-        | VvcIntraPredictionMode::Angular(_) => None,
+        | VvcIntraPredictionMode::Angular(_) => {
+            [Some(VvcBdpcmMode::Horizontal), Some(VvcBdpcmMode::Vertical)]
+        }
     }
+}
+
+fn vvc_chroma_lossy_speed_direct_bdpcm_candidates_allowed(
+    policy: VvcResidualCodingPolicy,
+    chroma_sampling: ChromaSampling,
+    bit_depth: SampleBitDepth,
+    selected_mode: VvcChromaIntraPredictionMode,
+) -> bool {
+    policy.residual_mode() == VvcResidualCodingMode::Lossy
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+        && chroma_sampling == ChromaSampling::Cs444
+        && bit_depth.bits() == 8
+        && matches!(selected_mode, VvcChromaIntraPredictionMode::Derived)
 }
 
 fn vvc_chroma_direct_bdpcm_residual_is_safe(
@@ -820,6 +838,16 @@ fn chroma_reconstructed_residual_sse(
             height,
             chroma_ts_quant,
             residual,
+        );
+    }
+    if !residual.has_ac {
+        return transformed_dc_only_residual_sse(
+            source_residuals,
+            width as u16,
+            height as u16,
+            bit_depth,
+            chroma_qp,
+            residual.dc_level,
         );
     }
     reconstruct_vvc_chroma_residual_block_into(

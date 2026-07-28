@@ -457,6 +457,19 @@ fn inverse_transform_vvc_quantized_block_into(
     let active_coefficients = ac_levels.len().saturating_add(1);
     let active_width = width_usize.min(coeff_stride);
     let active_height = height_usize.min(active_coefficients.div_ceil(coeff_stride));
+    if mts_index == 0 && ac_levels.iter().all(|level| *level == 0) {
+        let dequant_params = vvc_transform_dequant_params(width, height, qp);
+        let reconstructed_dc = dc_only_residual_from_level_with_params(
+            dc_level,
+            width,
+            height,
+            bit_depth,
+            dequant_params,
+        ) as i16;
+        residuals.clear();
+        residuals.resize(coefficient_count, reconstructed_dc);
+        return;
+    }
     let dequantized = &mut scratch.dequantized[..coefficient_count];
     for level in dequantized.iter_mut() {
         *level = 0;
@@ -1299,6 +1312,16 @@ pub(in crate::vvc::residual) fn luma_reconstructed_residual_sse_with_mts_into(
     scratch: &mut VvcInverseTransformScratch,
     reconstructed: &mut Vec<i16>,
 ) -> u64 {
+    if mts_index == 0 && ac_levels.iter().all(|level| *level == 0) {
+        return transformed_dc_only_residual_sse(
+            source_residuals,
+            width,
+            height,
+            bit_depth,
+            qp,
+            dc_level,
+        );
+    }
     inverse_transform_vvc_luma_quantized_block_into_with_qp_and_mts(
         reconstructed,
         scratch,
@@ -1316,6 +1339,28 @@ pub(in crate::vvc::residual) fn luma_reconstructed_residual_sse_with_mts_into(
         sse += (diff * diff) as u64;
     }
     sse
+}
+
+pub(in crate::vvc) fn transformed_dc_only_residual_sse(
+    source_residuals: &[i16],
+    width: u16,
+    height: u16,
+    bit_depth: SampleBitDepth,
+    qp: i32,
+    dc_level: i16,
+) -> u64 {
+    debug_assert_eq!(
+        source_residuals.len(),
+        usize::from(width) * usize::from(height)
+    );
+    let dequant_params = vvc_transform_dequant_params(width, height, qp);
+    let reconstructed =
+        dc_only_residual_from_level_with_params(dc_level, width, height, bit_depth, dequant_params)
+            as i16;
+    source_residuals.iter().fold(0u64, |sse, source| {
+        let diff = i64::from(*source) - i64::from(reconstructed);
+        sse + (diff * diff) as u64
+    })
 }
 
 pub(in crate::vvc::residual) fn luma_coeff_rd_lambda(qp: i32, bit_depth: SampleBitDepth) -> u64 {
