@@ -666,3 +666,8 @@ fn vvc_transform_skip_dequant_params(bit_depth: SampleBitDepth, qp: i32) -> (i32
     let right_shift = 6 - qp_per;
     (scale, right_shift)
 }
+
+fn vvc_transform_skip_qp_reconstructs_exact(bit_depth: SampleBitDepth, qp: i32) -> bool {
+    let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
+    right_shift >= 0 && i64::from(scale) == (1i64 << (right_shift as u32))
+}

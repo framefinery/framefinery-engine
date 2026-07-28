@@ -871,7 +871,7 @@ impl VvcCabacContexts {
         bin: bool,
     ) {
         let record_dump = cabac.records_dump();
-        let trace = vvc_cabac_trace_enabled();
+        let trace = cabac.traces_contexts();
         if record_dump || trace {
             if record_dump {
                 cabac.context_bin_count += 1;
@@ -1038,13 +1038,407 @@ impl VvcCabacContexts {
             }
         }
     }
-}
 
-fn vvc_cabac_trace_enabled() -> bool {
-    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var_os("FRAMEFINERY_CABAC_TRACE").is_some_and(|value| value != "0")
-    })
+    #[inline]
+    pub(in crate::vvc) fn encode_split_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::SplitFlag(idx),
+            &mut self.split_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_split_qt_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::SplitQtFlag(idx),
+            &mut self.split_qt_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_mtt_split_cu_vertical_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::MttSplitCuVerticalFlag(idx),
+            &mut self.mtt_split_cu_vertical_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_mtt_split_cu_binary_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::MttSplitCuBinaryFlag(idx),
+            &mut self.mtt_split_cu_binary_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_multi_ref_line_idx(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::MultiRefLineIdx(idx),
+            &mut self.multi_ref_line_idx[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_mip_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::MipFlag(idx),
+            &mut self.mip_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_intra_luma_mpm_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::IntraLumaMpmFlag,
+            &mut self.intra_luma_mpm_flag,
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_intra_luma_planar_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::IntraLumaPlanarFlag(idx),
+            &mut self.intra_luma_planar_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_isp_mode(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::IspMode(idx),
+            &mut self.isp_mode[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_cclm_mode_flag(&mut self, cabac: &mut VvcCabacEncoder, bin: bool) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::CclmModeFlag,
+            &mut self.cclm_mode_flag,
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_cclm_mode_idx(&mut self, cabac: &mut VvcCabacEncoder, bin: bool) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::CclmModeIdx,
+            &mut self.cclm_mode_idx,
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_intra_chroma_pred_mode(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::IntraChromaPredMode(idx),
+            &mut self.intra_chroma_pred_mode[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_qt_cbf_y(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::QtCbfY(idx),
+            &mut self.qt_cbf_y[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_qt_cbf_cb(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::QtCbfCb(idx),
+            &mut self.qt_cbf_cb[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_qt_cbf_cr(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::QtCbfCr(idx),
+            &mut self.qt_cbf_cr[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_transform_skip_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::TransformSkipFlag(idx),
+            &mut self.transform_skip_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_bdpcm_mode(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::BdpcmMode(idx),
+            &mut self.bdpcm_mode[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_mts_idx(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::MtsIdx(idx),
+            &mut self.mts_idx[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_lfnst_idx(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::LfnstIdx(idx),
+            &mut self.lfnst_idx[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_last_sig_coeff_x_prefix(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::LastSigCoeffXPrefix(idx),
+            &mut self.last_sig_coeff_x_prefix[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_last_sig_coeff_y_prefix(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::LastSigCoeffYPrefix(idx),
+            &mut self.last_sig_coeff_y_prefix[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_sb_coded_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::SbCodedFlag(idx),
+            &mut self.sb_coded_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_sig_coeff_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::SigCoeffFlag(idx),
+            &mut self.sig_coeff_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_par_level_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::ParLevelFlag(idx),
+            &mut self.par_level_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_abs_level_gtx_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::AbsLevelGtxFlag(idx),
+            &mut self.abs_level_gtx_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    fn encode_model(
+        cabac: &mut VvcCabacEncoder,
+        ctx: VvcCabacContext,
+        model: &mut VvcCabacProbModel,
+        bin: bool,
+    ) {
+        let record_dump = cabac.records_dump();
+        let trace = cabac.traces_contexts();
+        if record_dump {
+            cabac.context_bin_count += 1;
+            if let Some(ctx_id) = ctx.rtl_context_id() {
+                cabac
+                    .semantic_symbols
+                    .push(VvcCabacDumpSymbol::bin_ctx(bin, ctx_id));
+                cabac.context_events.push(VvcCabacDumpContextEvent {
+                    ctx_id,
+                    bin,
+                    range: cabac.range as u16,
+                    lps: model.lps(cabac.range),
+                    mps: model.mps(),
+                });
+            }
+        }
+        if trace {
+            eprintln!(
+                "FF_CABAC {:?} range={} lps={} mps={} bin={}",
+                ctx,
+                cabac.range,
+                model.lps(cabac.range),
+                u8::from(model.mps()),
+                u8::from(bin)
+            );
+        }
+        model.encode(cabac, bin);
+    }
 }
 
 #[derive(Debug, Clone)]

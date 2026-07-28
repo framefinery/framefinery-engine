@@ -3,7 +3,7 @@ use crate::picture::{ChromaSampling, SampleBitDepth};
 #[cfg(test)]
 use super::vvc_cabac_bits_with_luma_max_leaf_size;
 use super::{
-    vvc_frame_cabac_bits, VvcCodingTreeConfig, VvcNalUnit, VvcNalUnitType, VvcQuantizedCtu,
+    vvc_frame_cabac_payload, VvcCodingTreeConfig, VvcNalUnit, VvcNalUnitType, VvcQuantizedCtu,
     VvcSliceSyntaxConfig, VvcSyntaxRbsp, VvcSyntaxWriter, VvcVideoGeometry, VvcVuiSignal,
     VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
 };
@@ -680,7 +680,7 @@ fn vvc_frame_slice_rbsp_with_poc(
     ctus: &[VvcQuantizedCtu],
     slice_config: VvcSliceSyntaxConfig,
 ) -> VvcSyntaxRbsp {
-    let mut writer = VvcSyntaxWriter::new();
+    let mut writer = VvcSyntaxWriter::without_fields();
     let tool_flags = slice_config.tools;
     writer.write_flag("sh_picture_header_in_slice_header_flag", true);
     write_vvc_picture_header(&mut writer, picture_kind, poc_lsb, slice_config);
@@ -788,7 +788,7 @@ pub(in crate::vvc) fn write_vvc_coding_tree_entropy_with_luma_max_leaf_size(
     luma_max_leaf_size: u16,
 ) {
     let bits =
-        vvc_cabac_bits_with_luma_max_leaf_size(geometry, color, slice_config, luma_max_leaf_size);
+        vvc_cabac_bits_with_luma_max_leaf_size(geometry, &color, slice_config, luma_max_leaf_size);
     writer.write_cabac_bits("cabac_vvc_quantized_residual_bits", &bits);
 }
 
@@ -798,8 +798,12 @@ fn write_vvc_frame_coding_tree_entropy(
     ctus: &[VvcQuantizedCtu],
     slice_config: VvcSliceSyntaxConfig,
 ) {
-    let bits = vvc_frame_cabac_bits(picture_geometry, ctus, slice_config);
-    writer.write_cabac_bits("cabac_vvc_frame_quantized_residual_bits", &bits);
+    let payload = vvc_frame_cabac_payload(picture_geometry, ctus, slice_config);
+    writer.write_packed_cabac_bits(
+        "cabac_vvc_frame_quantized_residual_bits",
+        &payload.bytes,
+        payload.bit_len,
+    );
 }
 
 pub(in crate::vvc) fn vvc_picture_ctu_cols(geometry: VvcVideoGeometry) -> usize {

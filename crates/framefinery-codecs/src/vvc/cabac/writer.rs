@@ -79,13 +79,16 @@ impl VvcCabacDumpSymbol {
 
 #[derive(Debug, Clone)]
 pub(in crate::vvc) struct VvcCabacEncoder {
+    #[cfg(test)]
     pub(in crate::vvc) bits: Vec<bool>,
+    packed_bits: VvcPackedBits,
     pub(in crate::vvc) dump_symbols: Vec<VvcCabacDumpSymbol>,
     pub(in crate::vvc) semantic_symbols: Vec<VvcCabacDumpSymbol>,
     pub(in crate::vvc) context_events: Vec<VvcCabacDumpContextEvent>,
     pub(in crate::vvc) context_bin_count: usize,
     pub(in crate::vvc) bin_engine_events: Vec<VvcCabacDumpBinEngineEvent>,
     record_dump: bool,
+    trace_contexts: bool,
     pub(in crate::vvc) low: u32,
     pub(in crate::vvc) range: u32,
     pub(in crate::vvc) buffered_byte: u32,
@@ -98,19 +101,29 @@ impl VvcCabacEncoder {
         Self::with_dump_recording(false)
     }
 
+    pub(in crate::vvc) fn new_with_payload_capacity(payload_capacity: usize) -> Self {
+        let mut encoder = Self::with_dump_recording(false);
+        encoder.packed_bits.reserve(payload_capacity);
+        encoder
+    }
+
     pub(in crate::vvc) fn new_with_dump() -> Self {
         Self::with_dump_recording(true)
     }
 
     fn with_dump_recording(record_dump: bool) -> Self {
         Self {
+            #[cfg(test)]
             bits: Vec::new(),
+            packed_bits: VvcPackedBits::new(),
             dump_symbols: Vec::new(),
             semantic_symbols: Vec::new(),
             context_events: Vec::new(),
             context_bin_count: 0,
             bin_engine_events: Vec::new(),
             record_dump,
+            trace_contexts: std::env::var_os("FRAMEFINERY_CABAC_TRACE")
+                .is_some_and(|value| value != "0"),
             low: 0,
             range: 0,
             buffered_byte: 0,
@@ -121,6 +134,10 @@ impl VvcCabacEncoder {
 
     pub(in crate::vvc) fn records_dump(&self) -> bool {
         self.record_dump
+    }
+
+    pub(in crate::vvc) fn traces_contexts(&self) -> bool {
+        self.trace_contexts
     }
 
     pub(in crate::vvc) fn start(&mut self) {
@@ -321,7 +338,7 @@ impl VvcCabacEncoder {
         }
     }
 
-    pub(in crate::vvc) fn finish(mut self) -> Vec<bool> {
+    pub(in crate::vvc) fn finish_payload(mut self) -> VvcCabacPayload {
         if (self.low >> (32 - self.bits_left)) != 0 {
             self.write_bits(self.buffered_byte + 1, 8);
             while self.num_buffered_bytes > 1 {
@@ -342,7 +359,11 @@ impl VvcCabacEncoder {
         if final_bits > 0 {
             self.write_bits(self.low >> 8, final_bits as u32);
         }
-        self.bits
+        self.packed_bits.finish()
+    }
+
+    pub(in crate::vvc) fn finish(self) -> Vec<bool> {
+        self.finish_payload().into_bits()
     }
 
     fn write_out(&mut self) {
@@ -368,9 +389,7 @@ impl VvcCabacEncoder {
     }
 
     fn write_bits(&mut self, value: u32, bit_count: u32) {
-        for bit in (0..bit_count).rev() {
-            self.bits.push(((value >> bit) & 1) != 0);
-        }
+        self.packed_bits.write_bits(value, bit_count);
     }
 
     fn encode_aligned_bins_ep(&mut self, bins: u32, num_bins: u32) {
@@ -389,11 +408,80 @@ impl VvcCabacEncoder {
     }
 }
 
-fn renorm_bits(mut range: u32) -> u32 {
-    let mut bits = 0;
-    while range < 256 {
-        range <<= 1;
-        bits += 1;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::vvc) struct VvcCabacPayload {
+    pub(in crate::vvc) bytes: Vec<u8>,
+    pub(in crate::vvc) bit_len: usize,
+}
+
+impl VvcCabacPayload {
+    pub(in crate::vvc) fn into_bits(self) -> Vec<bool> {
+        let mut bits = Vec::with_capacity(self.bit_len);
+        for bit_index in 0..self.bit_len {
+            let byte = self.bytes[bit_index / 8];
+            let shift = 7 - (bit_index % 8);
+            bits.push(((byte >> shift) & 1) != 0);
+        }
+        bits
     }
-    bits
+}
+
+#[derive(Debug, Clone)]
+struct VvcPackedBits {
+    bytes: Vec<u8>,
+    current_byte: u8,
+    bits_filled: u8,
+    bit_len: usize,
+}
+
+impl VvcPackedBits {
+    fn new() -> Self {
+        Self {
+            bytes: Vec::new(),
+            current_byte: 0,
+            bits_filled: 0,
+            bit_len: 0,
+        }
+    }
+
+    fn reserve(&mut self, additional: usize) {
+        self.bytes.reserve(additional);
+    }
+
+    fn write_bits(&mut self, value: u32, bit_count: u32) {
+        if bit_count == 8 && self.bits_filled == 0 {
+            self.bytes.push(value as u8);
+            self.bit_len += 8;
+            return;
+        }
+        for bit in (0..bit_count).rev() {
+            self.current_byte <<= 1;
+            if ((value >> bit) & 1) != 0 {
+                self.current_byte |= 1;
+            }
+            self.bits_filled += 1;
+            self.bit_len += 1;
+            if self.bits_filled == 8 {
+                self.bytes.push(self.current_byte);
+                self.current_byte = 0;
+                self.bits_filled = 0;
+            }
+        }
+    }
+
+    fn finish(mut self) -> VvcCabacPayload {
+        if self.bits_filled != 0 {
+            self.current_byte <<= 8 - self.bits_filled;
+            self.bytes.push(self.current_byte);
+        }
+        VvcCabacPayload {
+            bytes: self.bytes,
+            bit_len: self.bit_len,
+        }
+    }
+}
+
+fn renorm_bits(range: u32) -> u32 {
+    debug_assert!((1..256).contains(&range));
+    8 - (u32::BITS - 1 - range.leading_zeros())
 }

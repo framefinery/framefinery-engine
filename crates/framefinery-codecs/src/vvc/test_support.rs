@@ -124,7 +124,7 @@ fn append_vvc_luma_partition(
 #[cfg(test)]
 fn vvc_cabac_bits(
     geometry: VvcVideoGeometry,
-    color: VvcQuantizedColor,
+    color: &VvcQuantizedColor,
     slice_config: VvcSliceSyntaxConfig,
 ) -> Vec<bool> {
     vvc_cabac_bits_with_luma_max_leaf_size(
@@ -138,13 +138,13 @@ fn vvc_cabac_bits(
 #[cfg(test)]
 fn vvc_cabac_bits_with_luma_max_leaf_size(
     geometry: VvcVideoGeometry,
-    color: VvcQuantizedColor,
+    color: &VvcQuantizedColor,
     slice_config: VvcSliceSyntaxConfig,
     luma_max_leaf_size: u16,
 ) -> Vec<bool> {
     if let Some(params) = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
         geometry,
-        color,
+        color.clone(),
         luma_max_leaf_size,
         slice_config.coding_tree.chroma_sampling,
         slice_config.coding_tree.dual_tree_intra,
@@ -163,7 +163,7 @@ fn vvc_cabac_bits_with_luma_max_leaf_size(
 #[cfg(test)]
 fn vvc_ctu_partition_params(
     geometry: VvcVideoGeometry,
-    color: VvcQuantizedColor,
+    color: &VvcQuantizedColor,
 ) -> Option<VvcCtuPartitionParams> {
     vvc_ctu_partition_params_with_luma_max_leaf_size(
         geometry,
@@ -175,7 +175,7 @@ fn vvc_ctu_partition_params(
 #[cfg(test)]
 fn vvc_ctu_partition_params_with_luma_max_leaf_size(
     geometry: VvcVideoGeometry,
-    color: VvcQuantizedColor,
+    color: &VvcQuantizedColor,
     luma_max_leaf_size: u16,
 ) -> Option<VvcCtuPartitionParams> {
     let coded = geometry.coded();
@@ -188,7 +188,7 @@ fn vvc_ctu_partition_params_with_luma_max_leaf_size(
     }
     vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
         geometry,
-        color,
+        color.clone(),
         luma_max_leaf_size,
         ChromaSampling::Cs420,
         true,

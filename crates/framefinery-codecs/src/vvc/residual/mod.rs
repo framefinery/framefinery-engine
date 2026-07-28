@@ -33,7 +33,8 @@ pub(super) use prediction::{
     predict_vvc_chroma_intra_block_into_with_availability,
     predict_vvc_luma_bdpcm_block_into_with_availability,
     predict_vvc_luma_intra_block_into_with_availability,
-    predict_vvc_luma_intra_block_into_with_mrl_and_availability, VvcDcPredictionScratch,
+    predict_vvc_luma_intra_block_into_with_mrl_and_availability,
+    residual_vvc_luma_bdpcm_block_into_with_availability, VvcDcPredictionScratch,
     VvcPlaneAvailability,
 };
 pub use quant::quantize_vvc_color;
@@ -55,7 +56,7 @@ pub(super) use syntax::{
     VvcResidualCabacSymbol, VvcResidualCtxConfig, VvcResidualLocalStats, VvcResidualPass1State,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VvcQuantizedColor {
     pub y: u8,
     pub u: u8,

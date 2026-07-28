@@ -88,6 +88,7 @@ fn finalize_vvc_luma_tu(
     residuals: &[i16],
     luma_qp: i32,
     luma_ts_quant: &VvcTransformSkipQuantTable,
+    exact_transform_skip_qp: bool,
     preselected_residual: Option<VvcScoredSelectedLumaResidual>,
     stats: &mut VvcIntraSearchStats,
     transform_scratch: &mut VvcInverseTransformScratch,
@@ -131,33 +132,48 @@ fn finalize_vvc_luma_tu(
     stats.add_luma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
     let residual = selected_residual.block;
     let mts_index = selected_residual.mts_index;
-    #[cfg(feature = "vvc-stats")]
-    let recon_start = Instant::now();
-    reconstruct_vvc_luma_residual_block_into(
+    if exact_transform_skip_qp
+        && vvc_luma_transform_skip_score_is_exact(
         residual,
-        mts_index,
-        reconstructed_residual,
-        transform_scratch,
         node.width,
         node.height,
         source_frame.format.bit_depth,
         luma_qp,
-        luma_ts_quant,
-    );
-    #[cfg(feature = "vvc-stats")]
-    stats.add_luma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
-    #[cfg(feature = "vvc-stats")]
-    let fill_start = Instant::now();
-    fill_visible_luma_node(
-        &mut frame_recon.luma,
-        source_frame.geometry,
-        node,
-        predicted_luma,
-        reconstructed_residual,
-        source_frame.format.bit_depth,
-    );
-    #[cfg(feature = "vvc-stats")]
-    stats.add_luma_fill_nanos(vvc_elapsed_nanos(fill_start));
+    ) {
+        #[cfg(feature = "vvc-stats")]
+        let fill_start = Instant::now();
+        copy_source_luma_node_into_reconstruction(&mut frame_recon.luma, source_frame, node);
+        #[cfg(feature = "vvc-stats")]
+        stats.add_luma_fill_nanos(vvc_elapsed_nanos(fill_start));
+    } else {
+        #[cfg(feature = "vvc-stats")]
+        let recon_start = Instant::now();
+        reconstruct_vvc_luma_residual_block_into(
+            residual,
+            mts_index,
+            reconstructed_residual,
+            transform_scratch,
+            node.width,
+            node.height,
+            source_frame.format.bit_depth,
+            luma_qp,
+            luma_ts_quant,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_luma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
+        #[cfg(feature = "vvc-stats")]
+        let fill_start = Instant::now();
+        fill_visible_luma_node(
+            &mut frame_recon.luma,
+            source_frame.geometry,
+            node,
+            predicted_luma,
+            reconstructed_residual,
+            source_frame.format.bit_depth,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_luma_fill_nanos(vvc_elapsed_nanos(fill_start));
+    }
     let finalized = VvcFinalizedLumaTu {
         abs_remainder: residual.abs_remainder(),
         negative: residual.negative(),
@@ -171,6 +187,26 @@ fn finalize_vvc_luma_tu(
     };
     frame_recon.mark_luma_node_available(node);
     finalized
+}
+
+fn copy_source_luma_node_into_reconstruction(
+    luma: &mut [VvcSample],
+    source_frame: &VvcSampledFrame,
+    node: VvcCodingTreeNode,
+) {
+    let start_x = usize::from(node.x);
+    let start_y = usize::from(node.y);
+    let end_x = start_x
+        .saturating_add(usize::from(node.width))
+        .min(source_frame.geometry.width);
+    let end_y = start_y
+        .saturating_add(usize::from(node.height))
+        .min(source_frame.geometry.height);
+    for y in start_y..end_y {
+        let row = y * source_frame.geometry.width;
+        luma[row + start_x..row + end_x]
+            .copy_from_slice(&source_frame.luma[row + start_x..row + end_x]);
+    }
 }
 
 fn refine_vvc_luma_final_mts_residual(
@@ -554,18 +590,23 @@ fn vvc_luma_residual_block_score(
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcResidualBlockScore {
-    let distortion = luma_reconstructed_residual_sse(
-        source_residuals,
-        width,
-        height,
-        bit_depth,
-        qp,
-        ts_quant,
-        residual,
-        mts_index,
-        transform_scratch,
-        reconstructed_residual,
-    );
+    let distortion = if vvc_luma_transform_skip_score_is_exact(residual, width, height, bit_depth, qp)
+    {
+        0
+    } else {
+        luma_reconstructed_residual_sse(
+            source_residuals,
+            width,
+            height,
+            bit_depth,
+            qp,
+            ts_quant,
+            residual,
+            mts_index,
+            transform_scratch,
+            reconstructed_residual,
+        )
+    };
     let rate_cost = u64::from(residual.dc_level != 0)
         .saturating_mul(8)
         .saturating_add(luma_ac_syntax_cost_estimate(
@@ -582,6 +623,22 @@ fn vvc_luma_residual_block_score(
         distortion,
         rate_cost,
     }
+}
+
+fn vvc_luma_transform_skip_score_is_exact(
+    residual: VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU>,
+    width: u16,
+    height: u16,
+    bit_depth: SampleBitDepth,
+    qp: i32,
+) -> bool {
+    if !residual.transform_skip {
+        return false;
+    }
+    let width = usize::from(width);
+    let height = usize::from(height);
+    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
+    active_width == width && active_height == height && vvc_transform_skip_qp_reconstructs_exact(bit_depth, qp)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -750,11 +807,8 @@ fn finalize_vvc_luma_transform_skip_residual_block(
         .copied()
         .map(|level| quant_table.level(level))
         .unwrap_or(0);
-    let (ac_levels, has_ac) = transform_skip_luma_ac_levels_and_flag_with_table(
-        residuals,
-        usize::from(width),
-        quant_table,
-    );
+    let (ac_levels, has_ac) =
+        transform_skip_luma_ac_levels_and_flag_with_table(residuals, usize::from(width), quant_table);
     VvcFinalizedResidualBlock {
         dc_level,
         ac_levels,

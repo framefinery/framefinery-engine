@@ -35,20 +35,19 @@ mod palette;
 mod residual;
 #[path = "bitstream/syntax.rs"]
 mod syntax;
-#[cfg(feature = "vvc-stats")]
 use cabac::VvcFrameCtuCabacState;
 use cabac::{
-    encode_ctu_partition_body, encode_frame_partition_body_with_contexts,
-    initial_vvc_cabac_contexts, vvc_chroma_intra_mode_syntax_bin_count, vvc_chroma_transform_nodes,
+    encode_ctu_partition_body, vvc_chroma_intra_mode_syntax_bin_count, vvc_chroma_transform_nodes,
     vvc_luma_intra_mode_is_mpm, vvc_luma_intra_mode_syntax_bin_count, vvc_luma_transform_nodes,
     VvcCabacContext, VvcCabacContexts, VvcCabacDumpContextEvent, VvcCabacDumpSymbol,
-    VvcCabacEncoder, VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams, VvcCtuPartitionShape,
-    VvcLastSigCoeffPrefixCtxInput, VvcPartSplit,
+    VvcCabacEncoder, VvcCabacPayload, VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams,
+    VvcCtuPartitionShape, VvcLastSigCoeffPrefixCtxInput, VvcPartSplit,
 };
 #[cfg(test)]
 use cabac::{
-    encode_ctu_partition_body_with_contexts, vvc_luma_mpm_list_for_test, VvcCtuCabacGenerator,
-    VvcQtSplitCtxInput, VvcSplitCtxInput, VvcTreeType,
+    encode_ctu_partition_body_with_contexts, initial_vvc_cabac_contexts,
+    vvc_luma_mpm_list_for_test, VvcCtuCabacGenerator, VvcQtSplitCtxInput, VvcSplitCtxInput,
+    VvcTreeType,
 };
 use header::{
     vvc_frame_slice_unit, vvc_picture_ctu_cols, vvc_picture_ctu_count, vvc_picture_ctu_rows,

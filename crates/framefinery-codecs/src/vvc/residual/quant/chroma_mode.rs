@@ -461,6 +461,11 @@ fn vvc_chroma_bdpcm_fast_search_allowed(
     policy: VvcResidualCodingPolicy,
     selected_mode: VvcChromaIntraPredictionMode,
 ) -> bool {
+    if policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+    {
+        return false;
+    }
     match policy.fast_search() {
         VvcFastSearch::Off | VvcFastSearch::Conservative => true,
         VvcFastSearch::LosslessSpeed if policy.residual_mode() == VvcResidualCodingMode::Lossy => {

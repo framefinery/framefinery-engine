@@ -157,7 +157,5 @@ struct VvcCtuRegion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::vvc) struct VvcQuantizedCtu {
     slice_address: usize,
-    geometry: VvcVideoGeometry,
-    color: VvcQuantizedColor,
-    luma_max_leaf_size: u16,
+    params: VvcCtuPartitionParams,
 }

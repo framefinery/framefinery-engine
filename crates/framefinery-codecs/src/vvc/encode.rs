@@ -235,10 +235,13 @@ fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<R: Read, W: 
     let residual_mode = VvcResidualCodingMode::for_encode_options(options);
     let residual_policy =
         VvcResidualCodingPolicy::new(stream_format, residual_mode).with_fast_search(options.fast_search);
-    let slice_config = vvc_slice_config_for_input_format(
+    let mut slice_config = vvc_slice_config_for_input_format(
         residual_mode.slice_config(stream_format, options.qp),
         format,
     );
+    if residual_mode.is_lossless() && options.fast_search == VvcFastSearch::LosslessSpeed {
+        slice_config = slice_config.without_lossless_speed_unused_tools();
+    }
     let luma_qp = slice_config.slice_qp;
     let chroma_qp = if residual_mode.is_lossless() {
         slice_config.slice_qp
@@ -361,11 +364,23 @@ fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<R: Read, W: 
                     }
                     #[cfg(feature = "vvc-stats")]
                     frame_stats.add_elapsed("ctu_quantize", stage_start);
+                    let Some(params) = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
+                        region.geometry,
+                        quantized,
+                        luma_max_leaf_size,
+                        slice_config.coding_tree.chroma_sampling,
+                        slice_config.coding_tree.dual_tree_intra,
+                    ) else {
+                        return Err(format!(
+                            "VVC frame CABAC CTU {} has unsupported coded geometry {}x{}",
+                            region.slice_address,
+                            region.geometry.coded_width(),
+                            region.geometry.coded_height()
+                        ));
+                    };
                     frame_ctus.push(VvcQuantizedCtu {
                         slice_address: region.slice_address,
-                        geometry: region.geometry,
-                        color: quantized,
-                        luma_max_leaf_size,
+                        params,
                     });
                 }
                 #[cfg(feature = "vvc-stats")]

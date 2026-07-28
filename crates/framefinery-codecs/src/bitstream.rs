@@ -35,6 +35,32 @@ impl BitWriter {
         }
     }
 
+    pub fn write_packed_bits(&mut self, bytes: &[u8], bit_count: usize) {
+        assert!(
+            bit_count <= bytes.len().saturating_mul(8),
+            "packed bit count exceeds source bytes"
+        );
+        if bit_count == 0 {
+            return;
+        }
+        if self.bits_filled != 0 {
+            for bit_index in 0..bit_count {
+                let byte = bytes[bit_index / 8];
+                let shift = 7 - (bit_index % 8);
+                self.write_bit(((byte >> shift) & 1) != 0);
+            }
+            return;
+        }
+
+        let full_bytes = bit_count / 8;
+        self.bytes.extend_from_slice(&bytes[..full_bytes]);
+        let remaining_bits = bit_count % 8;
+        if remaining_bits != 0 {
+            self.current_byte = bytes[full_bytes] >> (8 - remaining_bits);
+            self.bits_filled = remaining_bits as u8;
+        }
+    }
+
     pub fn byte_align_zero(&mut self) {
         if self.bits_filled == 0 {
             return;
@@ -72,6 +98,7 @@ pub struct SyntaxBitWriter<C> {
     writer: BitWriter,
     fields: Vec<SyntaxField<C>>,
     bit_offset: usize,
+    record_fields: bool,
 }
 
 impl<C> Default for SyntaxBitWriter<C> {
@@ -80,6 +107,7 @@ impl<C> Default for SyntaxBitWriter<C> {
             writer: BitWriter::new(),
             fields: Vec::new(),
             bit_offset: 0,
+            record_fields: true,
         }
     }
 }
@@ -89,13 +117,22 @@ impl<C: Copy> SyntaxBitWriter<C> {
         Self::default()
     }
 
+    pub fn without_fields() -> Self {
+        Self {
+            record_fields: false,
+            ..Self::default()
+        }
+    }
+
     pub fn record_field(&mut self, name: &'static str, code: C, bit_count: usize) {
-        self.fields.push(SyntaxField {
-            name,
-            code,
-            bit_offset: self.bit_offset,
-            bit_count,
-        });
+        if self.record_fields {
+            self.fields.push(SyntaxField {
+                name,
+                code,
+                bit_offset: self.bit_offset,
+                bit_count,
+            });
+        }
     }
 
     pub fn write_bit(&mut self, bit: bool) {
@@ -127,6 +164,18 @@ impl<C: Copy> SyntaxBitWriter<C> {
         for bit in bits {
             self.write_bit(*bit);
         }
+    }
+
+    pub fn write_field_packed_bits(
+        &mut self,
+        name: &'static str,
+        code: C,
+        bytes: &[u8],
+        bit_count: usize,
+    ) {
+        self.record_field(name, code, bit_count);
+        self.writer.write_packed_bits(bytes, bit_count);
+        self.bit_offset += bit_count;
     }
 
     pub fn write_byte_align_zero(&mut self, name: &'static str, code: C) {

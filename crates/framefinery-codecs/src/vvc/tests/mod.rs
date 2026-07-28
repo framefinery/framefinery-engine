@@ -742,8 +742,8 @@ fn vvc_cabac_tool_flags_are_read_from_the_active_slice_config() {
         false,
     );
     assert_ne!(
-        vvc_cabac_bits(geometry, black, enabled),
-        vvc_cabac_bits(geometry, black, disabled_mrl),
+        vvc_cabac_bits(geometry, &black, enabled),
+        vvc_cabac_bits(geometry, &black, disabled_mrl),
         "CABAC must consume the same slice tool flags that are written in SPS"
     );
 }
@@ -760,7 +760,7 @@ fn vvc_luma_mrl_syntax_supports_nonzero_reference_lines() {
             width: 16,
             height: 16,
         },
-        neutral,
+        &neutral,
     )
     .expect("16x16 partition parameters");
     assert!(
@@ -795,7 +795,7 @@ fn vvc_slice_header_is_generated_before_cabac_tokens() {
     let idr = vvc_slice_rbsp(
         VvcPictureKind::Idr,
         geometry,
-        black,
+        black.clone(),
         vvc_test_slice_config(),
     );
     let cra = vvc_slice_rbsp(
@@ -876,7 +876,7 @@ fn vvc_cabac_bits_generate_ctu_bodies_for_small_and_edge_geometries() {
         },
     ] {
         assert!(
-            !vvc_cabac_bits(geometry, black, vvc_test_slice_config()).is_empty(),
+            !vvc_cabac_bits(geometry, &black, vvc_test_slice_config()).is_empty(),
             "{}x{} should be generated from the CTU path",
             geometry.width,
             geometry.height
@@ -887,7 +887,7 @@ fn vvc_cabac_bits_generate_ctu_bodies_for_small_and_edge_geometries() {
             width: 32,
             height: 32
         },
-        black,
+        &black,
         vvc_test_slice_config()
     )
     .is_empty());
@@ -896,7 +896,7 @@ fn vvc_cabac_bits_generate_ctu_bodies_for_small_and_edge_geometries() {
             width: 64,
             height: 64
         },
-        black,
+        &black,
         vvc_test_slice_config()
     )
     .is_empty());
@@ -905,7 +905,7 @@ fn vvc_cabac_bits_generate_ctu_bodies_for_small_and_edge_geometries() {
             width: 8,
             height: 8
         },
-        black,
+        &black,
         vvc_test_slice_config()
     )
     .is_empty());
@@ -960,7 +960,7 @@ fn vvc_ctu_partition_params_are_geometry_derived() {
         (32, 32, 16),
         (16, 16, 4),
     ] {
-        let params = vvc_ctu_partition_params(VvcVideoGeometry { width, height }, black)
+        let params = vvc_ctu_partition_params(VvcVideoGeometry { width, height }, &black)
             .expect("partition parameters");
         assert_eq!(params.root_width, 64);
         assert_eq!(params.root_height, 64);
@@ -991,7 +991,7 @@ fn vvc_ctu_partition_params_cover_all_8_sample_geometries_up_to_64() {
     for width in (8..=64).step_by(8) {
         for height in (8..=64).step_by(8) {
             let geometry = VvcVideoGeometry { width, height };
-            let params = vvc_ctu_partition_params(geometry, black)
+            let params = vvc_ctu_partition_params(geometry, &black)
                 .unwrap_or_else(|| panic!("missing CTU params for {width}x{height}"));
             assert_eq!(params.root_width, 64);
             assert_eq!(params.root_height, 64);
@@ -1002,7 +1002,7 @@ fn vvc_ctu_partition_params_cover_all_8_sample_geometries_up_to_64() {
                 vvc_chroma_transform_nodes(params.shape()).len()
             );
             assert_eq!(
-                vvc_cabac_bits(geometry, black, vvc_test_slice_config()),
+                vvc_cabac_bits(geometry, &black, vvc_test_slice_config()),
                 vvc_ctu_partition_cabac_bits(&params, vvc_test_slice_config())
             );
         }
@@ -1033,7 +1033,7 @@ fn vvc_luma_transform_nodes_match_cabac_luma_leaves() {
         ] {
             let params = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
                 geometry,
-                black,
+                black.clone(),
                 VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
                 chroma_sampling,
                 true,
@@ -1309,7 +1309,7 @@ fn vvc_ctu_body_emits_mts_idx_after_luma_residual_when_enabled() {
             width: 16,
             height: 16,
         },
-        neutral,
+        &neutral,
     )
     .expect("16x16 partition parameters");
     params.luma_tu_ac_levels[0][0] = 1;
@@ -1355,7 +1355,7 @@ fn vvc_ctu_body_emits_inactive_lfnst_idx_when_enabled() {
             width: 16,
             height: 16,
         },
-        neutral,
+        &neutral,
     )
     .expect("16x16 partition parameters");
     params.luma_tu_ac_levels[0][0] = 1;
@@ -1401,7 +1401,7 @@ fn vvc_luma_mts_syntax_supports_non_default_transform_indices() {
             width: 16,
             height: 16,
         },
-        neutral,
+        &neutral,
     )
     .expect("16x16 partition parameters");
     params.luma_tu_ac_levels[0][0] = 1;
@@ -1472,7 +1472,7 @@ fn vvc_ctu_body_routes_ac_coefficients_without_a_feature_gate() {
             width: 16,
             height: 16,
         },
-        neutral,
+        &neutral,
     )
     .expect("16x16 partition parameters");
     assert_eq!(params.luma_tu_abs_levels[0], 0);
@@ -1507,7 +1507,7 @@ fn vvc_chroma_lm_modes_have_distinct_cabac_syntax() {
                 width: 64,
                 height: 64,
             },
-            black,
+            &black,
         )
         .expect("64x64 partition parameters");
         assert!(params.chroma_tu_count > 0);
@@ -1667,7 +1667,7 @@ fn vvc_ctu_cabac_generator_is_embedded_in_ctu_body() {
             width: 64,
             height: 64,
         },
-        black,
+        &black,
     )
     .expect("64x64 partition parameters");
     let via_body = vvc_ctu_partition_cabac_bits(&params, vvc_test_slice_config());
@@ -1694,7 +1694,7 @@ fn vvc_lossless_cabac_body_uses_active_chroma_sampling() {
     let config = VvcSliceSyntaxConfig::residual_lossless(ChromaSampling::Cs422, bit_depth);
     let params = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
         geometry,
-        black,
+        black.clone(),
         VVC_LOSSLESS_LUMA_LEAF_SIZE,
         ChromaSampling::Cs422,
         true,
@@ -1704,7 +1704,7 @@ fn vvc_lossless_cabac_body_uses_active_chroma_sampling() {
 
     let via_slice_config = vvc_cabac_bits_with_luma_max_leaf_size(
         geometry,
-        black,
+        &black,
         config,
         VVC_LOSSLESS_LUMA_LEAF_SIZE,
     );
@@ -1715,7 +1715,7 @@ fn vvc_lossless_cabac_body_uses_active_chroma_sampling() {
 
     let legacy_420_params = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
         geometry,
-        black,
+        black.clone(),
         VVC_LOSSLESS_LUMA_LEAF_SIZE,
         ChromaSampling::Cs420,
         true,
@@ -2289,7 +2289,7 @@ fn vvc_boundary_partition_uses_qt_until_implicit_bt_is_allowed_for_thin_shapes()
             height: 64,
         },
     ] {
-        let params = vvc_ctu_partition_params(geometry, black).expect("thin rectangular params");
+        let params = vvc_ctu_partition_params(geometry, &black).expect("thin rectangular params");
         let ops = VvcCtuCabacOp::ctu_partition(&params);
         assert!(
             !ops.iter().any(|op| matches!(
@@ -2382,7 +2382,7 @@ fn vvc_ctu_cabac_generator_handles_rectangular_64_sample_bodies() {
             height: 64,
         },
     ] {
-        let params = vvc_ctu_partition_params(geometry, black).expect("rectangular params");
+        let params = vvc_ctu_partition_params(geometry, &black).expect("rectangular params");
         let bits = vvc_ctu_partition_cabac_bits(&params, vvc_test_slice_config());
         assert!(!bits.is_empty());
     }
@@ -2401,9 +2401,9 @@ fn vvc_cabac_bits_uses_ctu_partition_generator_for_rectangular_bodies() {
             height: 64,
         },
     ] {
-        let params = vvc_ctu_partition_params(geometry, black).expect("rectangular params");
+        let params = vvc_ctu_partition_params(geometry, &black).expect("rectangular params");
         assert_eq!(
-            vvc_cabac_bits(geometry, black, vvc_test_slice_config()),
+            vvc_cabac_bits(geometry, &black, vvc_test_slice_config()),
             vvc_ctu_partition_cabac_bits(&params, vvc_test_slice_config())
         );
     }
@@ -2453,7 +2453,7 @@ fn vvc_ctu_partition_accepts_4x4_luma_leaf_limit() {
             width: 64,
             height: 64,
         },
-        black,
+        &black,
     )
     .expect("64x64 partition params");
     params.luma_max_leaf_size = 4;
@@ -2656,7 +2656,8 @@ fn vvc_lossless_input_path_accepts_16x16_gbrp8_frames() {
             VvcSliceSyntaxConfig::residual_lossless(
                 ChromaSampling::Cs444,
                 PixelFormat::Gbrp8.bit_depth(),
-            ),
+            )
+            .without_lossless_speed_unused_tools(),
             PixelFormat::Gbrp8,
         ),
         PixelFormat::Gbrp8.bit_depth(),

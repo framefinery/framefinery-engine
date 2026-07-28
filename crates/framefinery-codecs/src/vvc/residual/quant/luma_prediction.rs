@@ -21,6 +21,7 @@ fn select_vvc_luma_mrl_prediction(
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcSelectedLumaMrl {
     if !VVC_ENABLE_LUMA_MRL_SELECTION
+        || vvc_luma_lossless_speed_skips_mrl(policy)
         || !policy.luma_mrl_candidate_allowed(node, mode)
         || !vvc_luma_intra_mode_is_mpm(mode, left, above)
         || vvc_luma_exact_prediction_skips_rd(selected_residuals)
@@ -128,6 +129,11 @@ fn select_vvc_luma_mrl_prediction(
     }
 }
 
+fn vvc_luma_lossless_speed_skips_mrl(policy: VvcResidualCodingPolicy) -> bool {
+    policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+}
+
 fn select_vvc_luma_bdpcm_prediction(
     policy: VvcResidualCodingPolicy,
     node: VvcCodingTreeNode,
@@ -188,38 +194,60 @@ fn select_vvc_luma_bdpcm_prediction(
         ),
     );
     let mut best = None;
+    let direct_residual =
+        policy.residual_mode() == VvcResidualCodingMode::Lossless
+            && policy.fast_search() == VvcFastSearch::LosslessSpeed;
+    let mut best_bdpcm_mode = None;
 
     for bdpcm_mode in [VvcBdpcmMode::Horizontal, VvcBdpcmMode::Vertical] {
-        #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
-        predict_vvc_luma_bdpcm_block_into_with_availability(
-            candidate_prediction,
-            prediction_scratch,
-            bdpcm_mode,
-            &frame_recon.luma,
-            source_frame.geometry,
-            node,
-            source_frame.format.bit_depth,
-            Some(frame_recon.luma_availability()),
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_luma_prediction_nanos(
-            VvcLumaPredictionStatsFamily::Bdpcm,
-            vvc_elapsed_nanos(prediction_start),
-        );
-        #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
-        residual_luma_tu_at_into(
-            candidate_residuals,
-            source_frame,
-            usize::from(node.x),
-            usize::from(node.y),
-            usize::from(node.width),
-            usize::from(node.height),
-            candidate_prediction,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+        if direct_residual {
+            #[cfg(feature = "vvc-stats")]
+            let residual_start = Instant::now();
+            residual_vvc_luma_bdpcm_block_into_with_availability(
+                candidate_residuals,
+                prediction_scratch,
+                bdpcm_mode,
+                &source_frame.luma,
+                &frame_recon.luma,
+                source_frame.geometry,
+                node,
+                source_frame.format.bit_depth,
+                Some(frame_recon.luma_availability()),
+            );
+            #[cfg(feature = "vvc-stats")]
+            stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+        } else {
+            #[cfg(feature = "vvc-stats")]
+            let prediction_start = Instant::now();
+            predict_vvc_luma_bdpcm_block_into_with_availability(
+                candidate_prediction,
+                prediction_scratch,
+                bdpcm_mode,
+                &frame_recon.luma,
+                source_frame.geometry,
+                node,
+                source_frame.format.bit_depth,
+                Some(frame_recon.luma_availability()),
+            );
+            #[cfg(feature = "vvc-stats")]
+            stats.add_luma_prediction_nanos(
+                VvcLumaPredictionStatsFamily::Bdpcm,
+                vvc_elapsed_nanos(prediction_start),
+            );
+            #[cfg(feature = "vvc-stats")]
+            let residual_start = Instant::now();
+            residual_luma_tu_at_into(
+                candidate_residuals,
+                source_frame,
+                usize::from(node.x),
+                usize::from(node.y),
+                usize::from(node.width),
+                usize::from(node.height),
+                candidate_prediction,
+            );
+            #[cfg(feature = "vvc-stats")]
+            stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+        }
         #[cfg(feature = "vvc-stats")]
         let score_start = Instant::now();
         let residual = VvcSelectedLumaResidual {
@@ -250,6 +278,7 @@ fn select_vvc_luma_bdpcm_prediction(
         stats.add_luma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
         if candidate_score.selects_over(best_score) {
             best_score = candidate_score;
+            best_bdpcm_mode = Some(bdpcm_mode);
             let mode = bdpcm_mode
                 .inferred_intra_mode()
                 .expect("enabled BDPCM mode has an inferred intra mode");
@@ -262,8 +291,56 @@ fn select_vvc_luma_bdpcm_prediction(
                 },
                 residual,
             });
-            std::mem::swap(selected_prediction, candidate_prediction);
+            if !direct_residual {
+                std::mem::swap(selected_prediction, candidate_prediction);
+            }
             std::mem::swap(selected_residuals, candidate_residuals);
+        }
+    }
+
+    if direct_residual {
+        let Some(bdpcm_mode) = best_bdpcm_mode else {
+            return best;
+        };
+        #[cfg(feature = "vvc-stats")]
+        {
+            let prediction_start = Instant::now();
+            predict_vvc_luma_bdpcm_block_into_with_availability(
+                selected_prediction,
+                prediction_scratch,
+                bdpcm_mode,
+                &frame_recon.luma,
+                source_frame.geometry,
+                node,
+                source_frame.format.bit_depth,
+                Some(frame_recon.luma_availability()),
+            );
+            stats.add_luma_prediction_nanos(
+                VvcLumaPredictionStatsFamily::Bdpcm,
+                vvc_elapsed_nanos(prediction_start),
+            );
+        }
+        #[cfg(not(feature = "vvc-stats"))]
+        if best.as_ref().is_some_and(|selected| {
+            !(vvc_transform_skip_qp_reconstructs_exact(source_frame.format.bit_depth, luma_qp)
+                && vvc_luma_transform_skip_score_is_exact(
+                    selected.residual.residual.block,
+                    node.width,
+                    node.height,
+                    source_frame.format.bit_depth,
+                    luma_qp,
+                ))
+        }) {
+            predict_vvc_luma_bdpcm_block_into_with_availability(
+                selected_prediction,
+                prediction_scratch,
+                bdpcm_mode,
+                &frame_recon.luma,
+                source_frame.geometry,
+                node,
+                source_frame.format.bit_depth,
+                Some(frame_recon.luma_availability()),
+            );
         }
     }
 

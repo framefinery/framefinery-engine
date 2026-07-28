@@ -567,7 +567,7 @@ fn vvc_420_chroma_dc_residual_preserves_decoder_visible_color() {
     assert!(quantized.cb_tu_dc_levels[0] < 0);
     assert!(quantized.cr_tu_dc_levels[0] > 0);
 
-    let params = vvc_ctu_partition_params(frame.geometry, quantized).expect("16x16 params");
+    let params = vvc_ctu_partition_params(frame.geometry, &quantized).expect("16x16 params");
     let recon = reconstruct_vvc_residual_frame(&frame, quantized, params);
     let chroma = &recon[16 * 16..];
     assert!(chroma.iter().any(|sample| *sample != 128));
@@ -600,7 +600,7 @@ fn vvc_420_chroma_dc_residual_predicts_from_prior_chroma_leaves() {
     assert!(quantized.cb_tu_dc_levels[0] < 0);
     assert!(quantized.cr_tu_dc_levels[0] > 0);
 
-    let params = vvc_ctu_partition_params(frame.geometry, quantized).expect("64x48 params");
+    let params = vvc_ctu_partition_params(frame.geometry, &quantized).expect("64x48 params");
     let recon = reconstruct_vvc_residual_frame(&frame, quantized, params);
     let chroma = &recon[64 * 48..];
     assert!(chroma[..32 * 24]
@@ -648,7 +648,7 @@ fn vvc_420_chroma_ac_residual_preserves_visible_chroma_variation() {
         .take(quantized.chroma_tu_count)
         .any(|levels| levels.iter().any(|level| *level != 0)));
 
-    let params = vvc_ctu_partition_params(frame.geometry, quantized).expect("16x16 params");
+    let params = vvc_ctu_partition_params(frame.geometry, &quantized).expect("16x16 params");
     let recon = reconstruct_vvc_residual_frame(&frame, quantized, params);
     let chroma = &recon[16 * 16..];
     let cb_recon = &chroma[..8 * 8];
@@ -712,7 +712,7 @@ fn vvc_quantized_frame_reconstruction_matches_explicit_reconstruction() {
 
     let quantized = quantize_vvc_frame_with_reconstruction(&frame);
     let params =
-        vvc_ctu_partition_params(frame.geometry, quantized.quantized).expect("32x24 CTU params");
+        vvc_ctu_partition_params(frame.geometry, &quantized.quantized).expect("32x24 CTU params");
     let explicit = reconstruct_vvc_residual_frame(&frame, quantized.quantized, params);
     assert_eq!(quantized.reconstruction_yuv, explicit);
 }
@@ -762,7 +762,7 @@ fn vvc_lossless_transform_skip_reconstruction_matches_explicit_reconstruction() 
     );
     let params = vvc_ctu_partition_params_with_luma_max_leaf_size(
         frame.geometry,
-        quantized.clone(),
+        &quantized,
         VVC_LOSSLESS_LUMA_LEAF_SIZE,
     )
     .expect("lossless 16x16 CTU params");

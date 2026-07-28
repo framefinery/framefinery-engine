@@ -3,7 +3,7 @@ use super::ctu_split::{
     VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams, VvcLumaNeighbourState, VvcPartSplit,
     VvcQtSplitCtxInput, VvcSplitCtxInput, VvcTreeType,
 };
-use super::{VvcCabacContext, VvcCabacContexts, VvcCabacEncoder};
+use super::{VvcCabacContexts, VvcCabacEncoder};
 use crate::picture::ChromaSampling;
 use crate::vvc::residual::{VvcResidualCabacEncoder, VvcResidualCabacSymbolStream};
 use crate::vvc::{
@@ -222,64 +222,17 @@ pub(in crate::vvc) fn encode_ctu_partition_body_with_contexts(
     }
 }
 
-pub(in crate::vvc) fn encode_frame_partition_body_with_contexts(
-    cabac: &mut VvcCabacEncoder,
-    contexts: &mut VvcCabacContexts,
-    picture_geometry: VvcVideoGeometry,
-    params: &[VvcCtuPartitionParams],
-    slice_config: VvcSliceSyntaxConfig,
-) {
-    let Some(first_ctu) = params.first() else {
-        return;
-    };
-    let picture_width = picture_geometry.coded_width() as u16;
-    let picture_height = picture_geometry.coded_height() as u16;
-    let ctu_cols = picture_geometry.coded_width().div_ceil(VVC_CTU_SIZE);
-    let mut luma_neighbours = VvcLumaNeighbourState::new(picture_width, picture_height);
-    let mut luma_mode_neighbours = VvcLumaModeNeighbourState::new(picture_width, picture_height);
-    let mut chroma_neighbours =
-        VvcChromaNeighbourState::new(picture_width, picture_height, first_ctu.chroma_sampling);
-
-    for (slice_address, ctu) in params.iter().enumerate() {
-        let ctu_x = slice_address % ctu_cols;
-        let ctu_y = slice_address / ctu_cols;
-        let origin_x = (ctu_x * VVC_CTU_SIZE) as u16;
-        let origin_y = (ctu_y * VVC_CTU_SIZE) as u16;
-        let mut ops = Vec::new();
-        VvcCtuCabacOp::append_intra_ctu_partition_with_luma_neighbours(
-            &mut ops,
-            &mut luma_neighbours,
-            ctu.shape(),
-            origin_x,
-            origin_y,
-            picture_width,
-            picture_height,
-            ctu.luma_max_leaf_size,
-        );
-        let mut ctu_encoder = VvcCtuCabacGenerator::new(contexts, ctu, slice_config);
-        for op in ops {
-            ctu_encoder.emit_with_frame_neighbours(
-                cabac,
-                op,
-                &mut luma_mode_neighbours,
-                &mut chroma_neighbours,
-            );
-        }
-    }
-}
-
-#[cfg(feature = "vvc-stats")]
 pub(in crate::vvc) struct VvcFrameCtuCabacState {
     contexts: VvcCabacContexts,
     luma_neighbours: VvcLumaNeighbourState,
     luma_mode_neighbours: VvcLumaModeNeighbourState,
     chroma_neighbours: VvcChromaNeighbourState,
+    ops: Vec<VvcCtuCabacOp>,
     picture_width: u16,
     picture_height: u16,
     ctu_cols: usize,
 }
 
-#[cfg(feature = "vvc-stats")]
 impl VvcFrameCtuCabacState {
     pub(in crate::vvc) fn new(
         picture_geometry: VvcVideoGeometry,
@@ -296,6 +249,7 @@ impl VvcFrameCtuCabacState {
                 picture_height,
                 slice_config.coding_tree.chroma_sampling,
             ),
+            ops: Vec::with_capacity(160),
             picture_width,
             picture_height,
             ctu_cols: picture_geometry.coded_width().div_ceil(VVC_CTU_SIZE),
@@ -313,9 +267,9 @@ impl VvcFrameCtuCabacState {
         let ctu_y = slice_address / self.ctu_cols;
         let origin_x = (ctu_x * VVC_CTU_SIZE) as u16;
         let origin_y = (ctu_y * VVC_CTU_SIZE) as u16;
-        let mut ops = Vec::new();
+        self.ops.clear();
         VvcCtuCabacOp::append_intra_ctu_partition_with_luma_neighbours(
-            &mut ops,
+            &mut self.ops,
             &mut self.luma_neighbours,
             params.shape(),
             origin_x,
@@ -325,7 +279,7 @@ impl VvcFrameCtuCabacState {
             params.luma_max_leaf_size,
         );
         let mut ctu_encoder = VvcCtuCabacGenerator::new(&mut self.contexts, params, slice_config);
-        for op in ops {
+        for op in self.ops.iter().copied() {
             ctu_encoder.emit_with_frame_neighbours(
                 cabac,
                 op,
@@ -696,26 +650,18 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         debug_assert!(node.cqt_depth >= 1 || node.mtt_depth > 0 || (node.x == 0 && node.y == 0));
         debug_assert_eq!(node.tree_type, VvcTreeType::DualTreeLuma);
         if write_split_flag {
-            self.contexts
-                .encode(cabac, VvcCabacContext::SplitFlag(split_ctx), true);
+            self.contexts.encode_split_flag(cabac, split_ctx, true);
         }
         if write_qt_flag {
-            self.contexts
-                .encode(cabac, VvcCabacContext::SplitQtFlag(qt_ctx), false);
+            self.contexts.encode_split_qt_flag(cabac, qt_ctx, false);
         }
         if write_mtt_vertical_flag {
-            self.contexts.encode(
-                cabac,
-                VvcCabacContext::MttSplitCuVerticalFlag(mtt_vertical_ctx),
-                vertical,
-            );
+            self.contexts
+                .encode_mtt_split_cu_vertical_flag(cabac, mtt_vertical_ctx, vertical);
         }
         if write_binary_flag {
-            self.contexts.encode(
-                cabac,
-                VvcCabacContext::MttSplitCuBinaryFlag(mtt_binary_ctx),
-                mtt_binary_value,
-            );
+            self.contexts
+                .encode_mtt_split_cu_binary_flag(cabac, mtt_binary_ctx, mtt_binary_value);
         }
     }
 
@@ -735,12 +681,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         // nodes. Some root-only geometries infer split_qt_flag, while boundary
         // constrained rectangular CTU views write it explicitly.
         if write_split_flag {
-            self.contexts
-                .encode(cabac, VvcCabacContext::SplitFlag(split_ctx), true);
+            self.contexts.encode_split_flag(cabac, split_ctx, true);
         }
         if write_qt_flag {
-            self.contexts
-                .encode(cabac, VvcCabacContext::SplitQtFlag(qt_ctx), true);
+            self.contexts.encode_split_qt_flag(cabac, qt_ctx, true);
         }
     }
 
@@ -757,8 +701,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         if !write_split_flag {
             return;
         }
-        self.contexts
-            .encode(cabac, VvcCabacContext::SplitFlag(split_ctx), false);
+        self.contexts.encode_split_flag(cabac, split_ctx, false);
     }
 
     fn emit_luma_intra_prediction_mode(
@@ -775,7 +718,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         let mpm_idx = vvc_luma_mpm_index_for_mode_index(mode_index, mpm);
         if mrl_index == 0 {
             self.contexts
-                .encode(cabac, VvcCabacContext::IntraLumaMpmFlag, mpm_idx.is_some());
+                .encode_intra_luma_mpm_flag(cabac, mpm_idx.is_some());
         } else {
             assert!(
                 mpm_idx.is_some(),
@@ -785,7 +728,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         if let Some(mpm_idx) = mpm_idx {
             if mrl_index == 0 {
                 self.contexts
-                    .encode(cabac, VvcCabacContext::IntraLumaPlanarFlag(1), mpm_idx > 0);
+                    .encode_intra_luma_planar_flag(cabac, 1, mpm_idx > 0);
             } else {
                 assert_ne!(
                     mpm_idx, 0,
@@ -828,14 +771,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             return false;
         }
         let mode = self.params.luma_tu_bdpcm_modes[self.luma_tu_index];
-        self.contexts
-            .encode(cabac, VvcCabacContext::BdpcmMode(0), mode.is_enabled());
+        self.contexts.encode_bdpcm_mode(cabac, 0, mode.is_enabled());
         if mode.is_enabled() {
-            self.contexts.encode(
-                cabac,
-                VvcCabacContext::BdpcmMode(1),
-                matches!(mode, VvcBdpcmMode::Vertical),
-            );
+            self.contexts
+                .encode_bdpcm_mode(cabac, 1, matches!(mode, VvcBdpcmMode::Vertical));
             neighbours.mark_leaf(
                 node,
                 mode.inferred_intra_mode()
@@ -858,8 +797,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         // Active MIP prediction still needs the matrix predictor tables and
         // syntax payload. Keep the spec flag site wired and emit no-MIP for
         // now when a gated config enables the SPS capability.
-        self.contexts
-            .encode(cabac, VvcCabacContext::MipFlag(ctx), false);
+        self.contexts.encode_mip_flag(cabac, ctx, false);
         false
     }
 
@@ -888,10 +826,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                 "VVC MRL index must be one of 0, 1, or 2"
             );
             self.contexts
-                .encode(cabac, VvcCabacContext::MultiRefLineIdx(0), mrl_index != 0);
+                .encode_multi_ref_line_idx(cabac, 0, mrl_index != 0);
             if mrl_index != 0 {
                 self.contexts
-                    .encode(cabac, VvcCabacContext::MultiRefLineIdx(1), mrl_index != 1);
+                    .encode_multi_ref_line_idx(cabac, 1, mrl_index != 1);
             }
         }
     }
@@ -902,8 +840,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         }
         // Active ISP needs split transform-tree ownership. Emit the NONE flag
         // at the VTM syntax site while the production selector remains absent.
-        self.contexts
-            .encode(cabac, VvcCabacContext::IspMode(0), false);
+        self.contexts.encode_isp_mode(cabac, 0, false);
     }
 
     fn luma_bdpcm_allowed(&self, node: VvcCodingTreeNode) -> bool {
@@ -935,8 +872,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         debug_assert_eq!(node.tree_type, VvcTreeType::DualTreeLuma);
         // VVC 7.3.11.10 transform_unit emits tu_y_coded_flag / cbf_comp
         // through QtCbf[Y].
-        self.contexts
-            .encode(cabac, VvcCabacContext::QtCbfY(u8::from(bdpcm)), cbf);
+        self.contexts.encode_qt_cbf_y(cabac, u8::from(bdpcm), cbf);
     }
 
     fn emit_luma_residual(&mut self, cabac: &mut VvcCabacEncoder, node: VvcCodingTreeNode) {
@@ -1009,8 +945,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         // Active LFNST needs transform-domain candidate ownership and
         // coefficient-group constraints. Keep the syntax site wired and emit
         // lfnst_idx=0 while production selection is absent.
-        self.contexts
-            .encode(cabac, VvcCabacContext::LfnstIdx(0), false);
+        self.contexts.encode_lfnst_idx(cabac, 0, false);
     }
 
     fn emit_luma_mts_idx(
@@ -1037,13 +972,11 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         // H.266 cu_residual() writes mts_idx after the transform tree. The
         // current selector still chooses DCT2_DCT2, but keep the VTM-shaped
         // syntax ready for later non-default transform candidates.
-        self.contexts
-            .encode(cabac, VvcCabacContext::MtsIdx(0), mts_index != 0);
+        self.contexts.encode_mts_idx(cabac, 0, mts_index != 0);
         if mts_index != 0 {
             for offset in 0..3 {
                 let bin = mts_index > 2 + offset;
-                self.contexts
-                    .encode(cabac, VvcCabacContext::MtsIdx(1 + offset), bin);
+                self.contexts.encode_mts_idx(cabac, 1 + offset, bin);
                 if !bin {
                     break;
                 }
@@ -1198,9 +1131,9 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         );
         if split.allow_qt {
             if split.allow_btt() {
-                self.contexts.encode(
+                self.contexts.encode_split_qt_flag(
                     cabac,
-                    VvcCabacContext::SplitQtFlag(Self::chroma_qt_split_ctx(node, neighbours)),
+                    Self::chroma_qt_split_ctx(node, neighbours),
                     true,
                 );
             }
@@ -1269,15 +1202,14 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
     ) {
         let qt_ctx = Self::chroma_qt_split_ctx(node, neighbours);
         if split.can_no {
-            self.contexts.encode(
+            self.contexts.encode_split_flag(
                 cabac,
-                VvcCabacContext::SplitFlag(Self::chroma_split_ctx(node, split, neighbours)),
+                Self::chroma_split_ctx(node, split, neighbours),
                 true,
             );
         }
         if split.allow_btt() {
-            self.contexts
-                .encode(cabac, VvcCabacContext::SplitQtFlag(qt_ctx), true);
+            self.contexts.encode_split_qt_flag(cabac, qt_ctx, true);
         }
     }
 
@@ -1292,26 +1224,23 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
     ) {
         debug_assert!(!split.allow_qt || split.allow_btt());
         if split.can_no {
-            self.contexts.encode(
+            self.contexts.encode_split_flag(
                 cabac,
-                VvcCabacContext::SplitFlag(Self::chroma_split_ctx(node, split, neighbours)),
+                Self::chroma_split_ctx(node, split, neighbours),
                 true,
             );
         }
         if split.allow_qt {
             let qt_ctx = Self::chroma_qt_split_ctx(node, neighbours);
-            self.contexts
-                .encode(cabac, VvcCabacContext::SplitQtFlag(qt_ctx), false);
+            self.contexts.encode_split_qt_flag(cabac, qt_ctx, false);
         }
 
         let can_hor = split.allow_bt_horizontal || split.allow_tt_horizontal;
         let can_ver = split.allow_bt_vertical || split.allow_tt_vertical;
         if can_ver && can_hor {
-            self.contexts.encode(
+            self.contexts.encode_mtt_split_cu_vertical_flag(
                 cabac,
-                VvcCabacContext::MttSplitCuVerticalFlag(Self::chroma_mtt_vertical_ctx(
-                    node, split, neighbours,
-                )),
+                Self::chroma_mtt_vertical_ctx(node, split, neighbours),
                 vertical,
             );
         }
@@ -1327,12 +1256,9 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             split.allow_tt_horizontal
         };
         if can_binary && can_ternary {
-            self.contexts.encode(
+            self.contexts.encode_mtt_split_cu_binary_flag(
                 cabac,
-                VvcCabacContext::MttSplitCuBinaryFlag(VvcCtuCabacOp::mtt_binary_ctx(
-                    vertical,
-                    node.mtt_depth,
-                )),
+                VvcCtuCabacOp::mtt_binary_ctx(vertical, node.mtt_depth),
                 binary,
             );
         }
@@ -1350,9 +1276,9 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         // boundary BT when both QT and BTT are available; split_cu_flag itself
         // is inferred by 7.4.12.4 and therefore not written.
         if split.allow_qt && split.allow_btt() {
-            self.contexts.encode(
+            self.contexts.encode_split_qt_flag(
                 cabac,
-                VvcCabacContext::SplitQtFlag(Self::chroma_qt_split_ctx(node, neighbours)),
+                Self::chroma_qt_split_ctx(node, neighbours),
                 false,
             );
         }
@@ -1401,9 +1327,9 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
     ) {
         debug_assert_eq!(node.tree_type, VvcTreeType::DualTreeChroma);
         if split.can_no && split.can_split() {
-            self.contexts.encode(
+            self.contexts.encode_split_flag(
                 cabac,
-                VvcCabacContext::SplitFlag(Self::chroma_split_ctx(node, split, neighbours)),
+                Self::chroma_split_ctx(node, split, neighbours),
                 false,
             );
         }
@@ -1431,10 +1357,8 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         } else {
             u8::from(cbf_cb)
         };
-        self.contexts
-            .encode(cabac, VvcCabacContext::QtCbfCb(cbf_cb_ctx), cbf_cb);
-        self.contexts
-            .encode(cabac, VvcCabacContext::QtCbfCr(cbf_cr_ctx), cbf_cr);
+        self.contexts.encode_qt_cbf_cb(cabac, cbf_cb_ctx, cbf_cb);
+        self.contexts.encode_qt_cbf_cr(cabac, cbf_cr_ctx, cbf_cr);
         if cbf_cb {
             Self::emit_chroma_residual(
                 &mut *self.contexts,
@@ -1477,14 +1401,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         if !self.chroma_bdpcm_allowed(node) {
             return false;
         }
-        self.contexts
-            .encode(cabac, VvcCabacContext::BdpcmMode(2), mode.is_enabled());
+        self.contexts.encode_bdpcm_mode(cabac, 2, mode.is_enabled());
         if mode.is_enabled() {
-            self.contexts.encode(
-                cabac,
-                VvcCabacContext::BdpcmMode(3),
-                matches!(mode, VvcBdpcmMode::Vertical),
-            );
+            self.contexts
+                .encode_bdpcm_mode(cabac, 3, matches!(mode, VvcBdpcmMode::Vertical));
         }
         mode.is_enabled()
     }
@@ -1503,15 +1423,14 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                 _ => None,
             };
             self.contexts
-                .encode(cabac, VvcCabacContext::CclmModeFlag, cclm_mode.is_some());
+                .encode_cclm_mode_flag(cabac, cclm_mode.is_some());
             if let Some(cclm_mode) = cclm_mode {
                 let symbol = match cclm_mode {
                     VvcChromaCclmMode::Linear => 0,
                     VvcChromaCclmMode::MdlmLeft => 1,
                     VvcChromaCclmMode::MdlmTop => 2,
                 };
-                self.contexts
-                    .encode(cabac, VvcCabacContext::CclmModeIdx, symbol != 0);
+                self.contexts.encode_cclm_mode_idx(cabac, symbol != 0);
                 if symbol > 0 {
                     cabac.encode_bin_ep(symbol == 2);
                 }
@@ -1520,12 +1439,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         }
         match mode {
             VvcChromaIntraPredictionMode::Derived => {
-                self.contexts
-                    .encode(cabac, VvcCabacContext::IntraChromaPredMode(0), false);
+                self.contexts.encode_intra_chroma_pred_mode(cabac, 0, false);
             }
             VvcChromaIntraPredictionMode::Explicit(mode) => {
-                self.contexts
-                    .encode(cabac, VvcCabacContext::IntraChromaPredMode(0), true);
+                self.contexts.encode_intra_chroma_pred_mode(cabac, 0, true);
                 let co_located_luma_mode = luma_mode_neighbours
                     .co_located_for_chroma(node)
                     .unwrap_or(VvcIntraPredictionMode::Dc);
@@ -1539,8 +1456,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                     false,
                     "selected VVC CCLM mode for a node where CCLM is not signaled"
                 );
-                self.contexts
-                    .encode(cabac, VvcCabacContext::IntraChromaPredMode(0), false);
+                self.contexts.encode_intra_chroma_pred_mode(cabac, 0, false);
             }
         }
     }

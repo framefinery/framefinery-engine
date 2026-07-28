@@ -184,6 +184,12 @@ impl VvcSliceSyntaxConfig {
         config
     }
 
+    const fn without_lossless_speed_unused_tools(mut self) -> Self {
+        self.tools.mrl_enabled = false;
+        self.tools.cclm_enabled = false;
+        self
+    }
+
     #[cfg(test)]
     const fn palette_444_lossless(bit_depth: SampleBitDepth) -> Self {
         let mut config = Self::palette_444();

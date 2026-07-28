@@ -578,6 +578,85 @@ pub(in crate::vvc) fn predict_vvc_luma_bdpcm_block_into_with_availability(
     );
 }
 
+pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
+    residuals: &mut Vec<i16>,
+    scratch: &mut VvcDcPredictionScratch,
+    mode: VvcBdpcmMode,
+    source_luma: &[VvcSample],
+    reference_luma: &[VvcSample],
+    geometry: VvcVideoGeometry,
+    node: VvcCodingTreeNode,
+    bit_depth: SampleBitDepth,
+    availability: Option<VvcPlaneAvailability<'_>>,
+) {
+    let start_x = usize::from(node.x);
+    let start_y = usize::from(node.y);
+    let width = usize::from(node.width);
+    let height = usize::from(node.height);
+    let copy_width = width.min(geometry.width.saturating_sub(start_x));
+    let copy_height = height.min(geometry.height.saturating_sub(start_y));
+
+    residuals.clear();
+    residuals.resize(width * height, 0);
+    match mode {
+        VvcBdpcmMode::None => unreachable!("BDPCM residual requires an enabled direction"),
+        VvcBdpcmMode::Horizontal => {
+            left_references_into(
+                &mut scratch.left[..height],
+                reference_luma,
+                geometry.width,
+                geometry.height,
+                start_x,
+                start_y,
+                height,
+                bit_depth,
+                0,
+                availability,
+            );
+            for y in 0..height {
+                let predictor = scratch.left[y];
+                let dst = y * width;
+                if y < copy_height {
+                    let src = (start_y + y) * geometry.width + start_x;
+                    for x in 0..copy_width {
+                        residuals[dst + x] = vvc_sample_delta_i16(source_luma[src + x], predictor);
+                    }
+                }
+                for x in copy_width..width {
+                    residuals[dst + x] = vvc_sample_delta_i16(0, predictor);
+                }
+            }
+        }
+        VvcBdpcmMode::Vertical => {
+            top_references_into(
+                &mut scratch.top[..width],
+                reference_luma,
+                geometry.width,
+                geometry.height,
+                start_x,
+                start_y,
+                width,
+                bit_depth,
+                0,
+                availability,
+            );
+            for y in 0..height {
+                let dst = y * width;
+                if y < copy_height {
+                    let src = (start_y + y) * geometry.width + start_x;
+                    for x in 0..copy_width {
+                        residuals[dst + x] =
+                            vvc_sample_delta_i16(source_luma[src + x], scratch.top[x]);
+                    }
+                }
+                for x in copy_width..width {
+                    residuals[dst + x] = vvc_sample_delta_i16(0, scratch.top[x]);
+                }
+            }
+        }
+    }
+}
+
 pub(in crate::vvc) fn predict_vvc_chroma_bdpcm_block_into_with_availability(
     prediction: &mut Vec<VvcSample>,
     scratch: &mut VvcDcPredictionScratch,
@@ -669,6 +748,11 @@ fn predict_vvc_bdpcm_block_into(
             }
         }
     }
+}
+
+fn vvc_sample_delta_i16(sample: VvcSample, predicted: VvcSample) -> i16 {
+    (i32::from(sample) - i32::from(predicted)).clamp(i32::from(i16::MIN), i32::from(i16::MAX))
+        as i16
 }
 
 #[derive(Clone, Copy)]
@@ -1556,6 +1640,7 @@ fn predict_vvc_planar_block_into(
     let final_shift = 1 + log2_w + log2_h;
     let bottom_left = i32::from(scratch.left[height]);
     let top_right = i32::from(scratch.top[width]);
+    let max_sample = i32::from(bit_depth.max_sample());
 
     for x in 0..width {
         let top = i32::from(scratch.top[x]);
@@ -1573,9 +1658,9 @@ fn predict_vvc_planar_block_into(
             hor_pred += right_delta;
             scratch.top_work[x] += scratch.bottom_delta[x];
             let vert_pred = scratch.top_work[x];
-            prediction[y * width + x] =
-                (((hor_pred << log2_h) + (vert_pred << log2_w) + offset) >> final_shift)
-                    .clamp(0, i32::from(bit_depth.max_sample())) as VvcSample;
+            let sample = ((hor_pred << log2_h) + (vert_pred << log2_w) + offset) >> final_shift;
+            debug_assert!((0..=max_sample).contains(&sample));
+            prediction[y * width + x] = sample as VvcSample;
         }
     }
 
@@ -1639,6 +1724,30 @@ fn predict_vvc_angular_block_into(
     if is_luma && reference_line != 0 {
         params.interpolation = VvcAngularInterpolation::FourTapDct;
         params.filter_luma_references = false;
+    }
+    if params.angle == 0 && reference_line == 0 {
+        let top_left = top_left_reference(
+            plane,
+            plane_width,
+            plane_height,
+            start_x,
+            start_y,
+            bit_depth,
+            reference_line,
+            availability,
+        );
+        predict_vvc_zero_angle_angular_block_into(
+            prediction,
+            scratch,
+            width,
+            height,
+            params.is_vertical,
+            params.abs_inv_angle,
+            params.pdpc_scale,
+            top_left,
+            bit_depth,
+        );
+        return;
     }
     let mut top_left = angular_main_zero_reference(
         plane,
@@ -1716,6 +1825,56 @@ fn predict_vvc_angular_block_into(
             (reference_line == 0).then_some(params.pdpc_scale).flatten(),
             bit_depth,
         );
+    }
+}
+
+fn predict_vvc_zero_angle_angular_block_into(
+    prediction: &mut Vec<VvcSample>,
+    scratch: &VvcDcPredictionScratch,
+    width: usize,
+    height: usize,
+    is_vertical: bool,
+    abs_inv_angle: i32,
+    pdpc_scale: Option<u32>,
+    top_left: VvcSample,
+    bit_depth: SampleBitDepth,
+) {
+    prediction.clear();
+    prediction.resize(width * height, 0);
+    if is_vertical {
+        for y in 0..height {
+            let row = &mut prediction[y * width..(y + 1) * width];
+            row.copy_from_slice(&scratch.top[..width]);
+            apply_vvc_angular_pdpc_to_vertical_row(
+                row,
+                &scratch.left,
+                top_left,
+                y,
+                width,
+                0,
+                abs_inv_angle,
+                pdpc_scale,
+                bit_depth,
+            );
+        }
+    } else {
+        for y in 0..height {
+            prediction[y * width..(y + 1) * width].fill(scratch.left[y]);
+        }
+        for x in 0..width {
+            apply_vvc_angular_pdpc_to_horizontal_column(
+                prediction,
+                &scratch.top,
+                top_left,
+                x,
+                width,
+                height,
+                0,
+                abs_inv_angle,
+                pdpc_scale,
+                bit_depth,
+            );
+        }
     }
 }
 

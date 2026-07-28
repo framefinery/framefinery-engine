@@ -35,6 +35,7 @@ PGO_CODECS ?= av2 vvc
 PGO_MODES ?= lossless lossy
 PGO_DIRECT_SOURCE_FILES ?= 0
 PGO_GENERATE_VECTORS ?= 1
+PGO_PROFILE ?= release
 PGO_TARGET_DIR ?= target/pgo
 PGO_AV2_LOSSY_QP ?= 24
 PGO_VVC_LOSSY_QP ?= 24
@@ -208,6 +209,7 @@ help:
 		'                         Run Criterion microbenchmarks for VVC residual CTU kernels' \
 		'  make build-pgo' \
 		'                         Train PGO on PGO_SET=smoke and build ./ff-pgo' \
+		'                         Set PGO_PROFILE=optimized for ThinLTO/codegen-units=1 PGO' \
 		'  make llvm-vector-remarks' \
 		'                         Emit LLVM vectorization remarks for framefinery-codecs' \
 		'  make profile-vvc-hotspots' \
@@ -293,6 +295,7 @@ build-pgo:
 	PGO_MODES="$(PGO_MODES)" \
 	PGO_DIRECT_SOURCE_FILES="$(PGO_DIRECT_SOURCE_FILES)" \
 	PGO_GENERATE_VECTORS="$(PGO_GENERATE_VECTORS)" \
+	PGO_PROFILE="$(PGO_PROFILE)" \
 	PGO_TARGET_DIR="$(PGO_TARGET_DIR)" \
 	PGO_AV2_LOSSY_QP="$(PGO_AV2_LOSSY_QP)" \
 	PGO_VVC_LOSSY_QP="$(PGO_VVC_LOSSY_QP)" \

@@ -166,51 +166,16 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         let above_luma_mode = luma_mode_search_state.above_of(node);
         #[cfg(feature = "vvc-stats")]
         let luma_mode_search_start = Instant::now();
-        #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
-        predict_vvc_luma_intra_block_into_with_availability(
-            &mut predicted_luma,
-            &mut prediction_scratch,
-            VvcIntraPredictionMode::Dc,
-            &frame_recon.luma,
-            source_frame.geometry,
-            node,
-            source_frame.format.bit_depth,
-            Some(frame_recon.luma_availability()),
-        );
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats.add_luma_prediction_nanos(
-            VvcLumaPredictionStatsFamily::Dc,
-            vvc_elapsed_nanos(prediction_start),
-        );
-        #[cfg(feature = "vvc-stats")]
-        let score_start = Instant::now();
-        let dc_score = score_luma_mode_candidate(
-            &mut luma_rd_cache,
-            score_metric,
-            VvcIntraPredictionMode::Dc,
-            source_frame,
-            node,
-            &predicted_luma,
-            left_luma_mode,
-            above_luma_mode,
-            &mut candidate_luma_residuals,
-            &mut intra_search_stats,
-        );
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats.add_luma_mode_score_nanos(vvc_elapsed_nanos(score_start));
         let mut best_luma_mode = VvcIntraPredictionMode::Dc;
-        let mut best_luma_score = dc_score;
-        let mut luma_candidate_costs = VvcLumaIntraCandidateCosts::new(dc_score);
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats.add_luma_dc();
-        if policy.luma_planar_candidate_allowed(node) {
+        let mut best_luma_score = u64::MAX;
+        let mut luma_candidate_costs = VvcLumaIntraCandidateCosts::new(u64::MAX);
+        if !vvc_luma_lossless_speed_skips_dc(policy) {
             #[cfg(feature = "vvc-stats")]
             let prediction_start = Instant::now();
             predict_vvc_luma_intra_block_into_with_availability(
-                &mut candidate_luma_prediction,
+                &mut predicted_luma,
                 &mut prediction_scratch,
-                VvcIntraPredictionMode::Planar,
+                VvcIntraPredictionMode::Dc,
                 &frame_recon.luma,
                 source_frame.geometry,
                 node,
@@ -219,18 +184,18 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             );
             #[cfg(feature = "vvc-stats")]
             intra_search_stats.add_luma_prediction_nanos(
-                VvcLumaPredictionStatsFamily::Planar,
+                VvcLumaPredictionStatsFamily::Dc,
                 vvc_elapsed_nanos(prediction_start),
             );
             #[cfg(feature = "vvc-stats")]
             let score_start = Instant::now();
-            let candidate_score = score_luma_mode_candidate(
+            let dc_score = score_luma_mode_candidate(
                 &mut luma_rd_cache,
                 score_metric,
-                VvcIntraPredictionMode::Planar,
+                VvcIntraPredictionMode::Dc,
                 source_frame,
                 node,
-                &candidate_luma_prediction,
+                &predicted_luma,
                 left_luma_mode,
                 above_luma_mode,
                 &mut candidate_luma_residuals,
@@ -238,6 +203,27 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             );
             #[cfg(feature = "vvc-stats")]
             intra_search_stats.add_luma_mode_score_nanos(vvc_elapsed_nanos(score_start));
+            best_luma_score = dc_score;
+            luma_candidate_costs = VvcLumaIntraCandidateCosts::new(dc_score);
+            #[cfg(feature = "vvc-stats")]
+            intra_search_stats.add_luma_dc();
+        }
+        if policy.luma_planar_candidate_allowed(node)
+            && vvc_luma_lossless_speed_evaluates_planar(policy, left_luma_mode, above_luma_mode)
+        {
+            let candidate_score = score_vvc_luma_planar_candidate(
+                &mut luma_rd_cache,
+                score_metric,
+                source_frame,
+                frame_recon,
+                node,
+                left_luma_mode,
+                above_luma_mode,
+                &mut prediction_scratch,
+                &mut candidate_luma_prediction,
+                &mut candidate_luma_residuals,
+                &mut intra_search_stats,
+            );
             #[cfg(feature = "vvc-stats")]
             intra_search_stats.add_luma_planar();
             luma_candidate_costs = luma_candidate_costs
@@ -306,6 +292,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             }
             if (2..=66).contains(&best_luma_mode.luma_mode_index())
                 && !vvc_luma_exact_min_syntax_mode_search_done(best_luma_score)
+                && !vvc_luma_lossless_speed_skips_directional_refinement(policy)
             {
                 let refinement_start = luma_directional_candidates.count();
                 let refinement_fast_search =
@@ -501,6 +488,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             &luma_residuals,
             luma_qp,
             luma_ts_quant,
+            vvc_transform_skip_qp_reconstructs_exact(source_frame.format.bit_depth, luma_qp),
             selected_luma_residual,
             &mut intra_search_stats,
             &mut transform_scratch,
@@ -573,75 +561,28 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             VvcChromaPredictionStatsFamily::Derived,
             vvc_elapsed_nanos(prediction_start),
         );
-        #[cfg(feature = "vvc-stats")]
-        let score_start = Instant::now();
-        let initial_score = score_chroma_mode_candidate(
-            &mut chroma_rd_cache,
-            score_metric,
-            initial_chroma_mode,
-            source_frame,
-            chroma_x,
-            chroma_y,
-            chroma_width,
-            chroma_height,
-            &predicted_cb,
-            &predicted_cr,
-            cclm_syntax_enabled,
-            chroma_syntax_tie_breaker,
-            &mut candidate_cb_residuals,
-            &mut candidate_cr_residuals,
-            &mut intra_search_stats,
-        );
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats.add_chroma_mode_score_nanos(vvc_elapsed_nanos(score_start));
-        let mut best_chroma_mode = initial_chroma_mode;
-        let mut best_chroma_score = initial_score;
-        let mut chroma_candidate_costs = VvcChromaIntraCandidateCosts::new(initial_score);
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats.add_chroma_derived();
-        if !vvc_chroma_lossy_exact_mode_search_done(chroma_syntax_tie_breaker, best_chroma_score) {
-            for explicit_mode in vvc_chroma_explicit_candidates(co_located_luma_mode) {
-                if !vvc_residual_chroma_explicit_candidate_allowed(explicit_mode) {
-                    continue;
-                }
-                let chroma_mode = VvcChromaIntraPredictionMode::Explicit(explicit_mode);
+        let (raw_chroma_mode, chroma_candidate_costs) =
+            if vvc_chroma_lossless_speed_uses_derived_only(policy) {
                 #[cfg(feature = "vvc-stats")]
-                let prediction_start = Instant::now();
-                predict_vvc_chroma_mode_pair_blocks_into_with_availability(
-                    &mut candidate_cb_prediction,
-                    &mut candidate_cr_prediction,
-                    &mut prediction_scratch,
-                    chroma_mode,
-                    co_located_luma_mode,
-                    &frame_recon.cb,
-                    &frame_recon.cr,
-                    &frame_recon.luma,
-                    source_frame.geometry,
-                    node,
-                    source_frame.format.chroma_sampling,
-                    source_frame.format.bit_depth,
-                    Some(frame_recon.cb_availability()),
-                    Some(frame_recon.cr_availability()),
-                    Some(frame_recon.luma_availability()),
-                );
-                #[cfg(feature = "vvc-stats")]
-                intra_search_stats.add_chroma_prediction_nanos(
-                    VvcChromaPredictionStatsFamily::Explicit,
-                    vvc_elapsed_nanos(prediction_start),
-                );
+                intra_search_stats.add_chroma_derived();
+                (
+                    initial_chroma_mode,
+                    VvcChromaIntraCandidateCosts::new(0),
+                )
+            } else {
                 #[cfg(feature = "vvc-stats")]
                 let score_start = Instant::now();
-                let candidate_score = score_chroma_mode_candidate(
+                let initial_score = score_chroma_mode_candidate(
                     &mut chroma_rd_cache,
                     score_metric,
-                    chroma_mode,
+                    initial_chroma_mode,
                     source_frame,
                     chroma_x,
                     chroma_y,
                     chroma_width,
                     chroma_height,
-                    &candidate_cb_prediction,
-                    &candidate_cr_prediction,
+                    &predicted_cb,
+                    &predicted_cr,
                     cclm_syntax_enabled,
                     chroma_syntax_tie_breaker,
                     &mut candidate_cb_residuals,
@@ -650,102 +591,172 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 );
                 #[cfg(feature = "vvc-stats")]
                 intra_search_stats.add_chroma_mode_score_nanos(vvc_elapsed_nanos(score_start));
+                let mut best_chroma_mode = initial_chroma_mode;
+                let mut best_chroma_score = initial_score;
+                let mut chroma_candidate_costs =
+                    VvcChromaIntraCandidateCosts::new(initial_score);
                 #[cfg(feature = "vvc-stats")]
-                intra_search_stats.add_chroma_explicit();
-                chroma_candidate_costs =
-                    chroma_candidate_costs.with_candidate(chroma_mode, Some(candidate_score));
-                if candidate_score < best_chroma_score {
-                    best_chroma_score = candidate_score;
-                    best_chroma_mode = chroma_mode;
-                    std::mem::swap(&mut predicted_cb, &mut candidate_cb_prediction);
-                    std::mem::swap(&mut predicted_cr, &mut candidate_cr_prediction);
-                }
-                if vvc_chroma_lossy_exact_mode_search_done(
+                intra_search_stats.add_chroma_derived();
+                if !vvc_chroma_lossless_speed_skips_near_exact_explicit_search(
+                    policy,
+                    best_chroma_score,
+                    chroma_width,
+                    chroma_height,
+                ) && !vvc_chroma_lossy_exact_mode_search_done(
                     chroma_syntax_tie_breaker,
                     best_chroma_score,
                 ) {
-                    break;
+                    for explicit_mode in vvc_chroma_explicit_candidates(co_located_luma_mode) {
+                        if !vvc_chroma_explicit_candidate_allowed_for_search(policy, explicit_mode)
+                        {
+                            continue;
+                        }
+                        let chroma_mode = VvcChromaIntraPredictionMode::Explicit(explicit_mode);
+                        #[cfg(feature = "vvc-stats")]
+                        let prediction_start = Instant::now();
+                        predict_vvc_chroma_mode_pair_blocks_into_with_availability(
+                            &mut candidate_cb_prediction,
+                            &mut candidate_cr_prediction,
+                            &mut prediction_scratch,
+                            chroma_mode,
+                            co_located_luma_mode,
+                            &frame_recon.cb,
+                            &frame_recon.cr,
+                            &frame_recon.luma,
+                            source_frame.geometry,
+                            node,
+                            source_frame.format.chroma_sampling,
+                            source_frame.format.bit_depth,
+                            Some(frame_recon.cb_availability()),
+                            Some(frame_recon.cr_availability()),
+                            Some(frame_recon.luma_availability()),
+                        );
+                        #[cfg(feature = "vvc-stats")]
+                        intra_search_stats.add_chroma_prediction_nanos(
+                            VvcChromaPredictionStatsFamily::Explicit,
+                            vvc_elapsed_nanos(prediction_start),
+                        );
+                        #[cfg(feature = "vvc-stats")]
+                        let score_start = Instant::now();
+                        let candidate_score = score_chroma_mode_candidate(
+                            &mut chroma_rd_cache,
+                            score_metric,
+                            chroma_mode,
+                            source_frame,
+                            chroma_x,
+                            chroma_y,
+                            chroma_width,
+                            chroma_height,
+                            &candidate_cb_prediction,
+                            &candidate_cr_prediction,
+                            cclm_syntax_enabled,
+                            chroma_syntax_tie_breaker,
+                            &mut candidate_cb_residuals,
+                            &mut candidate_cr_residuals,
+                            &mut intra_search_stats,
+                        );
+                        #[cfg(feature = "vvc-stats")]
+                        intra_search_stats
+                            .add_chroma_mode_score_nanos(vvc_elapsed_nanos(score_start));
+                        #[cfg(feature = "vvc-stats")]
+                        intra_search_stats.add_chroma_explicit();
+                        chroma_candidate_costs =
+                            chroma_candidate_costs.with_candidate(chroma_mode, Some(candidate_score));
+                        if candidate_score < best_chroma_score {
+                            best_chroma_score = candidate_score;
+                            best_chroma_mode = chroma_mode;
+                            std::mem::swap(&mut predicted_cb, &mut candidate_cb_prediction);
+                            std::mem::swap(&mut predicted_cr, &mut candidate_cr_prediction);
+                        }
+                        if vvc_chroma_lossy_exact_mode_search_done(
+                            chroma_syntax_tie_breaker,
+                            best_chroma_score,
+                        ) {
+                            break;
+                        }
+                    }
                 }
-            }
-        }
-        if policy.chroma_cclm_candidate_allowed(node, source_frame.geometry)
-            && vvc_chroma_cclm_fast_search_allowed(
-                policy,
-                best_chroma_score,
-                chroma_width,
-                chroma_height,
-            )
-            && !vvc_chroma_lossy_exact_mode_search_done(
-                chroma_syntax_tie_breaker,
-                best_chroma_score,
-            )
-        {
-            for cclm_mode in [
-                VvcChromaCclmMode::Linear,
-                VvcChromaCclmMode::MdlmLeft,
-                VvcChromaCclmMode::MdlmTop,
-            ] {
-                let chroma_mode = VvcChromaIntraPredictionMode::Cclm(cclm_mode);
-                #[cfg(feature = "vvc-stats")]
-                let prediction_start = Instant::now();
-                predict_vvc_chroma_mode_pair_blocks_into_with_availability(
-                    &mut candidate_cb_prediction,
-                    &mut candidate_cr_prediction,
-                    &mut prediction_scratch,
-                    chroma_mode,
-                    co_located_luma_mode,
-                    &frame_recon.cb,
-                    &frame_recon.cr,
-                    &frame_recon.luma,
-                    source_frame.geometry,
-                    node,
-                    source_frame.format.chroma_sampling,
-                    source_frame.format.bit_depth,
-                    Some(frame_recon.cb_availability()),
-                    Some(frame_recon.cr_availability()),
-                    Some(frame_recon.luma_availability()),
-                );
-                #[cfg(feature = "vvc-stats")]
-                intra_search_stats.add_chroma_prediction_nanos(
-                    VvcChromaPredictionStatsFamily::Cclm,
-                    vvc_elapsed_nanos(prediction_start),
-                );
-                #[cfg(feature = "vvc-stats")]
-                let score_start = Instant::now();
-                let candidate_score = score_chroma_mode_candidate(
-                    &mut chroma_rd_cache,
-                    score_metric,
-                    chroma_mode,
-                    source_frame,
-                    chroma_x,
-                    chroma_y,
-                    chroma_width,
-                    chroma_height,
-                    &candidate_cb_prediction,
-                    &candidate_cr_prediction,
-                    cclm_syntax_enabled,
-                    chroma_syntax_tie_breaker,
-                    &mut candidate_cb_residuals,
-                    &mut candidate_cr_residuals,
-                    &mut intra_search_stats,
-                );
-                #[cfg(feature = "vvc-stats")]
-                intra_search_stats.add_chroma_mode_score_nanos(vvc_elapsed_nanos(score_start));
-                #[cfg(feature = "vvc-stats")]
-                intra_search_stats.add_chroma_cclm();
-                chroma_candidate_costs =
-                    chroma_candidate_costs.with_candidate(chroma_mode, Some(candidate_score));
-                if candidate_score < best_chroma_score {
-                    best_chroma_score = candidate_score;
-                    best_chroma_mode = chroma_mode;
-                    std::mem::swap(&mut predicted_cb, &mut candidate_cb_prediction);
-                    std::mem::swap(&mut predicted_cr, &mut candidate_cr_prediction);
+                if policy.chroma_cclm_candidate_allowed(node, source_frame.geometry)
+                    && vvc_chroma_cclm_fast_search_allowed(
+                        policy,
+                        best_chroma_score,
+                        chroma_width,
+                        chroma_height,
+                    )
+                    && !vvc_chroma_lossy_exact_mode_search_done(
+                        chroma_syntax_tie_breaker,
+                        best_chroma_score,
+                    )
+                {
+                    for cclm_mode in [
+                        VvcChromaCclmMode::Linear,
+                        VvcChromaCclmMode::MdlmLeft,
+                        VvcChromaCclmMode::MdlmTop,
+                    ] {
+                        let chroma_mode = VvcChromaIntraPredictionMode::Cclm(cclm_mode);
+                        #[cfg(feature = "vvc-stats")]
+                        let prediction_start = Instant::now();
+                        predict_vvc_chroma_mode_pair_blocks_into_with_availability(
+                            &mut candidate_cb_prediction,
+                            &mut candidate_cr_prediction,
+                            &mut prediction_scratch,
+                            chroma_mode,
+                            co_located_luma_mode,
+                            &frame_recon.cb,
+                            &frame_recon.cr,
+                            &frame_recon.luma,
+                            source_frame.geometry,
+                            node,
+                            source_frame.format.chroma_sampling,
+                            source_frame.format.bit_depth,
+                            Some(frame_recon.cb_availability()),
+                            Some(frame_recon.cr_availability()),
+                            Some(frame_recon.luma_availability()),
+                        );
+                        #[cfg(feature = "vvc-stats")]
+                        intra_search_stats.add_chroma_prediction_nanos(
+                            VvcChromaPredictionStatsFamily::Cclm,
+                            vvc_elapsed_nanos(prediction_start),
+                        );
+                        #[cfg(feature = "vvc-stats")]
+                        let score_start = Instant::now();
+                        let candidate_score = score_chroma_mode_candidate(
+                            &mut chroma_rd_cache,
+                            score_metric,
+                            chroma_mode,
+                            source_frame,
+                            chroma_x,
+                            chroma_y,
+                            chroma_width,
+                            chroma_height,
+                            &candidate_cb_prediction,
+                            &candidate_cr_prediction,
+                            cclm_syntax_enabled,
+                            chroma_syntax_tie_breaker,
+                            &mut candidate_cb_residuals,
+                            &mut candidate_cr_residuals,
+                            &mut intra_search_stats,
+                        );
+                        #[cfg(feature = "vvc-stats")]
+                        intra_search_stats
+                            .add_chroma_mode_score_nanos(vvc_elapsed_nanos(score_start));
+                        #[cfg(feature = "vvc-stats")]
+                        intra_search_stats.add_chroma_cclm();
+                        chroma_candidate_costs =
+                            chroma_candidate_costs.with_candidate(chroma_mode, Some(candidate_score));
+                        if candidate_score < best_chroma_score {
+                            best_chroma_score = candidate_score;
+                            best_chroma_mode = chroma_mode;
+                            std::mem::swap(&mut predicted_cb, &mut candidate_cb_prediction);
+                            std::mem::swap(&mut predicted_cr, &mut candidate_cr_prediction);
+                        }
+                    }
                 }
-            }
-        }
-        let raw_chroma_mode = policy.select_chroma_intra_mode(node, chroma_candidate_costs);
-        debug_assert_eq!(raw_chroma_mode, best_chroma_mode);
-        let _best_chroma_score = best_chroma_score;
+                let raw_chroma_mode = policy.select_chroma_intra_mode(node, chroma_candidate_costs);
+                debug_assert_eq!(raw_chroma_mode, best_chroma_mode);
+                let _best_chroma_score = best_chroma_score;
+                (raw_chroma_mode, chroma_candidate_costs)
+            };
         #[cfg(feature = "vvc-stats")]
         intra_search_stats
             .add_chroma_mode_search_nanos(chroma_mode_search_start.elapsed().as_nanos() as u64);
@@ -881,6 +892,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             chroma_height,
             chroma_qp,
             chroma_ts_quant,
+            vvc_transform_skip_qp_reconstructs_exact(source_frame.format.bit_depth, chroma_qp),
             selected_chroma_residual,
             &mut intra_search_stats,
             &mut transform_scratch,
@@ -971,19 +983,130 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     }
 }
 
+fn score_vvc_luma_planar_candidate(
+    luma_rd_cache: &mut VvcLumaModeRdCache,
+    score_metric: VvcResidualScoreMetric,
+    source_frame: &VvcSampledFrame,
+    frame_recon: &VvcReconstructionFrame,
+    node: VvcCodingTreeNode,
+    left_luma_mode: Option<VvcIntraPredictionMode>,
+    above_luma_mode: Option<VvcIntraPredictionMode>,
+    prediction_scratch: &mut VvcDcPredictionScratch,
+    candidate_luma_prediction: &mut Vec<VvcSample>,
+    candidate_luma_residuals: &mut Vec<i16>,
+    intra_search_stats: &mut VvcIntraSearchStats,
+) -> u64 {
+    #[cfg(feature = "vvc-stats")]
+    let prediction_start = Instant::now();
+    predict_vvc_luma_intra_block_into_with_availability(
+        candidate_luma_prediction,
+        prediction_scratch,
+        VvcIntraPredictionMode::Planar,
+        &frame_recon.luma,
+        source_frame.geometry,
+        node,
+        source_frame.format.bit_depth,
+        Some(frame_recon.luma_availability()),
+    );
+    #[cfg(feature = "vvc-stats")]
+    intra_search_stats.add_luma_prediction_nanos(
+        VvcLumaPredictionStatsFamily::Planar,
+        vvc_elapsed_nanos(prediction_start),
+    );
+    #[cfg(feature = "vvc-stats")]
+    let score_start = Instant::now();
+    let candidate_score = score_luma_mode_candidate(
+        luma_rd_cache,
+        score_metric,
+        VvcIntraPredictionMode::Planar,
+        source_frame,
+        node,
+        candidate_luma_prediction,
+        left_luma_mode,
+        above_luma_mode,
+        candidate_luma_residuals,
+        intra_search_stats,
+    );
+    #[cfg(feature = "vvc-stats")]
+    intra_search_stats.add_luma_mode_score_nanos(vvc_elapsed_nanos(score_start));
+    candidate_score
+}
+
+fn vvc_chroma_lossless_speed_skips_near_exact_explicit_search(
+    policy: VvcResidualCodingPolicy,
+    best_score: u64,
+    chroma_width: usize,
+    chroma_height: usize,
+) -> bool {
+    policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+        && best_score <= vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
+}
+
+fn vvc_chroma_lossless_speed_uses_derived_only(policy: VvcResidualCodingPolicy) -> bool {
+    policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+}
+
+fn vvc_luma_lossless_speed_skips_directional_refinement(
+    policy: VvcResidualCodingPolicy,
+) -> bool {
+    policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+}
+
+fn vvc_luma_lossless_speed_skips_dc(policy: VvcResidualCodingPolicy) -> bool {
+    policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+}
+
+fn vvc_luma_lossless_speed_evaluates_planar(
+    policy: VvcResidualCodingPolicy,
+    left: Option<VvcIntraPredictionMode>,
+    above: Option<VvcIntraPredictionMode>,
+) -> bool {
+    if policy.residual_mode() != VvcResidualCodingMode::Lossless
+        || policy.fast_search() != VvcFastSearch::LosslessSpeed
+    {
+        return true;
+    }
+    matches!(left, None | Some(VvcIntraPredictionMode::Planar))
+        || matches!(above, None | Some(VvcIntraPredictionMode::Planar))
+}
+
+fn vvc_chroma_explicit_candidate_allowed_for_search(
+    policy: VvcResidualCodingPolicy,
+    mode: VvcIntraPredictionMode,
+) -> bool {
+    if !vvc_residual_chroma_explicit_candidate_allowed(mode) {
+        return false;
+    }
+    if policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+    {
+        return false;
+    }
+    true
+}
+
 fn vvc_chroma_cclm_fast_search_allowed(
     policy: VvcResidualCodingPolicy,
     best_score: u64,
     chroma_width: usize,
     chroma_height: usize,
 ) -> bool {
+    if policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+    {
+        return false;
+    }
     match policy.fast_search() {
         VvcFastSearch::Off | VvcFastSearch::Conservative => true,
         VvcFastSearch::LosslessSpeed if policy.residual_mode() == VvcResidualCodingMode::Lossy => {
             true
         }
         VvcFastSearch::Moderate | VvcFastSearch::LosslessSpeed => {
-            best_score > vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
+            best_score > vvc_chroma_cclm_fast_search_score(policy, chroma_width, chroma_height)
         }
         VvcFastSearch::Aggressive => {
             best_score
@@ -1004,6 +1127,20 @@ fn vvc_chroma_fast_search_near_exact_score(
             .saturating_mul(chroma_height as u64)
             .saturating_mul(2)
             .saturating_mul(64)
+    }
+}
+
+fn vvc_chroma_cclm_fast_search_score(
+    policy: VvcResidualCodingPolicy,
+    chroma_width: usize,
+    chroma_height: usize,
+) -> u64 {
+    if policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+    {
+        256
+    } else {
+        vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
     }
 }
 

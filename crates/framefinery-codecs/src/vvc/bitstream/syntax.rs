@@ -23,6 +23,12 @@ impl VvcSyntaxWriter {
         Self::default()
     }
 
+    pub fn without_fields() -> Self {
+        Self {
+            writer: SyntaxBitWriter::without_fields(),
+        }
+    }
+
     pub fn write_flag(&mut self, name: &'static str, value: bool) {
         self.writer
             .write_field_bool(name, VvcSyntaxCode::Flag, value);
@@ -78,6 +84,11 @@ impl VvcSyntaxWriter {
     pub fn write_cabac_bits(&mut self, name: &'static str, bits: &[bool]) {
         self.writer
             .write_field_bit_slice(name, VvcSyntaxCode::CabacToken, bits);
+    }
+
+    pub fn write_packed_cabac_bits(&mut self, name: &'static str, bytes: &[u8], bit_count: usize) {
+        self.writer
+            .write_field_packed_bits(name, VvcSyntaxCode::CabacToken, bytes, bit_count);
     }
 
     pub fn byte_align_zero(&mut self, name: &'static str) {

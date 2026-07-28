@@ -14,8 +14,9 @@ Environment:
   PGO_RUN                 Matrix run name. Default: pgo-training
   PGO_DIRECT_SOURCE_FILES Use source_file rows directly when true/1/yes. Default: 0
   PGO_GENERATE_VECTORS    Generate vectors before training when true/1/yes. Default: 1
+  PGO_PROFILE             Cargo profile for PGO builds: release or optimized. Default: release
   PGO_TARGET_DIR          Cargo target directory. Default: target/pgo
-  LLVM_PROFDATA           llvm-profdata path. Auto-detected from active rustup toolchain.
+  LLVM_PROFDATA           llvm-profdata path. Auto-detected from rustup, then PATH.
 EOF
     exit 0
 fi
@@ -34,6 +35,7 @@ PGO_CODECS="${PGO_CODECS:-av2 vvc}"
 PGO_MODES="${PGO_MODES:-lossless lossy}"
 PGO_DIRECT_SOURCE_FILES="${PGO_DIRECT_SOURCE_FILES:-0}"
 PGO_GENERATE_VECTORS="${PGO_GENERATE_VECTORS:-1}"
+PGO_PROFILE="${PGO_PROFILE:-release}"
 PGO_TARGET_DIR="${PGO_TARGET_DIR:-target/pgo}"
 PGO_AV2_LOSSY_QP="${PGO_AV2_LOSSY_QP:-24}"
 PGO_VVC_LOSSY_QP="${PGO_VVC_LOSSY_QP:-24}"
@@ -44,13 +46,23 @@ if [[ -z "$HOST_TARGET" ]]; then
     exit 2
 fi
 
-if [[ -z "${LLVM_PROFDATA:-}" ]]; then
+rustup_llvm_profdata=""
+if command -v rustup >/dev/null 2>&1; then
     TOOLCHAIN="$(rustup show active-toolchain | awk '{ print $1 }')"
-    LLVM_PROFDATA="$HOME/.rustup/toolchains/$TOOLCHAIN/lib/rustlib/$HOST_TARGET/bin/llvm-profdata"
+    rustup_llvm_profdata="$HOME/.rustup/toolchains/$TOOLCHAIN/lib/rustlib/$HOST_TARGET/bin/llvm-profdata"
+fi
+if [[ -z "${LLVM_PROFDATA:-}" ]]; then
+    if [[ -x "$rustup_llvm_profdata" ]]; then
+        LLVM_PROFDATA="$rustup_llvm_profdata"
+    elif command -v llvm-profdata >/dev/null 2>&1; then
+        LLVM_PROFDATA="$(command -v llvm-profdata)"
+    else
+        LLVM_PROFDATA="$rustup_llvm_profdata"
+    fi
 fi
 if [[ ! -x "$LLVM_PROFDATA" ]]; then
     echo "error: missing llvm-profdata at $LLVM_PROFDATA" >&2
-    echo "hint: rustup component add llvm-tools-preview" >&2
+    echo "hint: rustup component add llvm-tools-preview, install llvm-profdata, or set LLVM_PROFDATA" >&2
     exit 2
 fi
 
@@ -67,6 +79,20 @@ mode_flags=()
 for mode in $PGO_MODES; do
     mode_flags+=(--mode "$mode")
 done
+case "$PGO_PROFILE" in
+    release)
+        cargo_profile_flags=(--release)
+        artifact_profile="release"
+        ;;
+    optimized)
+        cargo_profile_flags=(--profile optimized)
+        artifact_profile="optimized"
+        ;;
+    *)
+        echo "error: unsupported PGO_PROFILE '$PGO_PROFILE'; expected release or optimized" >&2
+        exit 2
+        ;;
+esac
 frame_flags=()
 if [[ -n "$PGO_FRAMES" && "$PGO_FRAMES" != "0" ]]; then
     frame_flags=(--frames "$PGO_FRAMES")
@@ -90,10 +116,10 @@ esac
 
 RUSTFLAGS="${RUSTFLAGS:-} -Cprofile-generate=$raw_dir_abs" \
     CARGO_TARGET_DIR="$PGO_TARGET_DIR" \
-    "$CARGO" build --release --target "$HOST_TARGET" -p framefinery-cli \
+    "$CARGO" build "${cargo_profile_flags[@]}" --target "$HOST_TARGET" -p framefinery-cli \
     --features "$PRODUCT_FEATURES"
 
-training_ff="$ROOT/$PGO_TARGET_DIR/$HOST_TARGET/release/ff"
+training_ff="$ROOT/$PGO_TARGET_DIR/$HOST_TARGET/$artifact_profile/ff"
 "$PYTHON" scripts/benchmark_encode_matrix.py "$PGO_SET" \
     --ff "$training_ff" \
     --set-dir verification/test_vector_sets \
@@ -116,7 +142,7 @@ fi
 
 RUSTFLAGS="${RUSTFLAGS:-} -Cprofile-use=$merged_profile_abs -Cllvm-args=-pgo-warn-missing-function" \
     CARGO_TARGET_DIR="$PGO_TARGET_DIR" \
-    "$CARGO" build --release --target "$HOST_TARGET" -p framefinery-cli \
+    "$CARGO" build "${cargo_profile_flags[@]}" --target "$HOST_TARGET" -p framefinery-cli \
     --features "$PRODUCT_FEATURES"
 
 cp "$training_ff" ./ff-pgo

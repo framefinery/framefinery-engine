@@ -282,7 +282,13 @@ fn vvc_luma_fast_directional_search_candidates(
         }
         VvcFastSearch::Moderate | VvcFastSearch::LosslessSpeed => {
             if let Some(index) = source_seed {
-                candidates.add_compact_family(index);
+                if fast_search == VvcFastSearch::LosslessSpeed
+                    && policy.residual_mode() == VvcResidualCodingMode::Lossless
+                {
+                    candidates.add_index(index);
+                } else {
+                    candidates.add_compact_family(index);
+                }
             }
             add_vvc_luma_spatial_directional_candidates(
                 &mut candidates,
@@ -291,8 +297,13 @@ fn vvc_luma_fast_directional_search_candidates(
                 fast_search,
                 policy.residual_mode(),
             );
-            for index in VVC_LUMA_CARDINAL_DIRECTIONAL_SEEDS {
-                candidates.add_index(index);
+            if fast_search != VvcFastSearch::LosslessSpeed
+                || policy.residual_mode() != VvcResidualCodingMode::Lossless
+                || candidates.count() == 0
+            {
+                for index in VVC_LUMA_CARDINAL_DIRECTIONAL_SEEDS {
+                    candidates.add_index(index);
+                }
             }
         }
         VvcFastSearch::Aggressive => {
@@ -325,7 +336,13 @@ fn add_vvc_luma_spatial_directional_candidates(
     residual_mode: VvcResidualCodingMode,
 ) {
     if let Some(consensus) = vvc_luma_spatial_consensus_directional_seed(left, above) {
-        add_vvc_luma_policy_directional_family(candidates, consensus, fast_search);
+        if fast_search == VvcFastSearch::LosslessSpeed
+            && residual_mode == VvcResidualCodingMode::Lossless
+        {
+            candidates.add_index(consensus);
+        } else {
+            add_vvc_luma_policy_directional_family(candidates, consensus, fast_search);
+        }
         return;
     }
     for mode in [left, above].into_iter().flatten() {
@@ -336,6 +353,9 @@ fn add_vvc_luma_spatial_directional_candidates(
             VvcFastSearch::Off => candidates.add_family(index),
             VvcFastSearch::Conservative if residual_mode == VvcResidualCodingMode::Lossless => {
                 candidates.add_family(index);
+            }
+            VvcFastSearch::LosslessSpeed if residual_mode == VvcResidualCodingMode::Lossless => {
+                candidates.add_index(index);
             }
             VvcFastSearch::Conservative
             | VvcFastSearch::Moderate
@@ -387,7 +407,11 @@ fn vvc_source_luma_directional_seed_allowed(
         VvcFastSearch::Moderate | VvcFastSearch::Aggressive => {
             node.width >= 8 && node.height >= 8
         }
-        VvcFastSearch::LosslessSpeed => node.width >= 8 && node.height >= 8,
+        VvcFastSearch::LosslessSpeed => {
+            policy.residual_mode() == VvcResidualCodingMode::Lossy
+                && node.width >= 8
+                && node.height >= 8
+        }
     }
 }
 
@@ -487,30 +511,19 @@ fn luma_prediction_residual_score(
     debug_assert_eq!(predicted.len(), width * height);
     let copy_width = width.min(frame.geometry.width.saturating_sub(origin_x));
     let copy_height = height.min(frame.geometry.height.saturating_sub(origin_y));
-    let mut score = 0u64;
-    for y in 0..height {
-        let dst = y * width;
-        if y < copy_height {
-            let src = (origin_y + y) * frame.geometry.width + origin_x;
-            for x in 0..width {
-                let sample = if x < copy_width {
-                    frame.luma[src + x]
-                } else {
-                    0
-                };
-                score = score.saturating_add(vvc_sample_delta_score(
-                    metric,
-                    sample,
-                    predicted[dst + x],
-                ));
-            }
-        } else {
-            for x in 0..width {
-                score = score.saturating_add(vvc_sample_delta_score(metric, 0, predicted[dst + x]));
-            }
-        }
-    }
-    score
+    prediction_plane_residual_score(
+        metric,
+        &frame.luma,
+        frame.geometry.width,
+        origin_x,
+        origin_y,
+        width,
+        height,
+        copy_width,
+        copy_height,
+        0,
+        predicted,
+    )
 }
 
 fn chroma_prediction_mode_selection_score(
@@ -619,49 +632,140 @@ fn chroma_plane_prediction_residual_score(
     let neutral = vvc_neutral_sample(format.bit_depth);
     let copy_width = width.min(chroma_width.saturating_sub(origin_x));
     let copy_height = height.min(chroma_height.saturating_sub(origin_y));
+    prediction_plane_residual_score(
+        metric,
+        samples,
+        chroma_width,
+        origin_x,
+        origin_y,
+        width,
+        height,
+        copy_width,
+        copy_height,
+        neutral,
+        predicted,
+    )
+}
+
+fn prediction_plane_residual_score(
+    metric: VvcResidualScoreMetric,
+    samples: &[VvcSample],
+    stride: usize,
+    origin_x: usize,
+    origin_y: usize,
+    width: usize,
+    height: usize,
+    copy_width: usize,
+    copy_height: usize,
+    padding_sample: VvcSample,
+    predicted: &[VvcSample],
+) -> u64 {
+    match metric {
+        VvcResidualScoreMetric::Sad => prediction_plane_residual_sad(
+            samples,
+            stride,
+            origin_x,
+            origin_y,
+            width,
+            height,
+            copy_width,
+            copy_height,
+            padding_sample,
+            predicted,
+        ),
+        VvcResidualScoreMetric::Sse => prediction_plane_residual_sse(
+            samples,
+            stride,
+            origin_x,
+            origin_y,
+            width,
+            height,
+            copy_width,
+            copy_height,
+            padding_sample,
+            predicted,
+        ),
+    }
+}
+
+fn prediction_plane_residual_sad(
+    samples: &[VvcSample],
+    stride: usize,
+    origin_x: usize,
+    origin_y: usize,
+    width: usize,
+    height: usize,
+    copy_width: usize,
+    copy_height: usize,
+    padding_sample: VvcSample,
+    predicted: &[VvcSample],
+) -> u64 {
     let mut score = 0u64;
-    for y in 0..height {
+    for y in 0..copy_height {
         let dst = y * width;
-        if y < copy_height {
-            let src = (origin_y + y) * chroma_width + origin_x;
-            for x in 0..width {
-                let sample = if x < copy_width {
-                    samples[src + x]
-                } else {
-                    neutral
-                };
-                score = score.saturating_add(vvc_sample_delta_score(
-                    metric,
-                    sample,
-                    predicted[dst + x],
-                ));
-            }
-        } else {
-            for x in 0..width {
-                score = score.saturating_add(vvc_sample_delta_score(
-                    metric,
-                    neutral,
-                    predicted[dst + x],
-                ));
-            }
+        let src = (origin_y + y) * stride + origin_x;
+        for (sample, predicted) in samples[src..src + copy_width]
+            .iter()
+            .zip(&predicted[dst..dst + copy_width])
+        {
+            score += vvc_sample_delta_sad_score(*sample, *predicted);
+        }
+        for predicted in &predicted[dst + copy_width..dst + width] {
+            score += vvc_sample_delta_sad_score(padding_sample, *predicted);
+        }
+    }
+    for y in copy_height..height {
+        let dst = y * width;
+        for predicted in &predicted[dst..dst + width] {
+            score += vvc_sample_delta_sad_score(padding_sample, *predicted);
         }
     }
     score
 }
 
-fn vvc_sample_delta_score(
-    metric: VvcResidualScoreMetric,
-    sample: VvcSample,
-    predicted: VvcSample,
+fn prediction_plane_residual_sse(
+    samples: &[VvcSample],
+    stride: usize,
+    origin_x: usize,
+    origin_y: usize,
+    width: usize,
+    height: usize,
+    copy_width: usize,
+    copy_height: usize,
+    padding_sample: VvcSample,
+    predicted: &[VvcSample],
 ) -> u64 {
-    let residual = vvc_sample_delta_i16(sample, predicted);
-    match metric {
-        VvcResidualScoreMetric::Sad => u64::from(residual.unsigned_abs()),
-        VvcResidualScoreMetric::Sse => {
-            let residual = i64::from(residual);
-            (residual * residual) as u64
+    let mut score = 0u64;
+    for y in 0..copy_height {
+        let dst = y * width;
+        let src = (origin_y + y) * stride + origin_x;
+        for (sample, predicted) in samples[src..src + copy_width]
+            .iter()
+            .zip(&predicted[dst..dst + copy_width])
+        {
+            score += vvc_sample_delta_sse_score(*sample, *predicted);
+        }
+        for predicted in &predicted[dst + copy_width..dst + width] {
+            score += vvc_sample_delta_sse_score(padding_sample, *predicted);
         }
     }
+    for y in copy_height..height {
+        let dst = y * width;
+        for predicted in &predicted[dst..dst + width] {
+            score += vvc_sample_delta_sse_score(padding_sample, *predicted);
+        }
+    }
+    score
+}
+
+fn vvc_sample_delta_sad_score(sample: VvcSample, predicted: VvcSample) -> u64 {
+    let residual = vvc_sample_delta_i16(sample, predicted);
+    u64::from(residual.unsigned_abs())
+}
+
+fn vvc_sample_delta_sse_score(sample: VvcSample, predicted: VvcSample) -> u64 {
+    let residual = i64::from(vvc_sample_delta_i16(sample, predicted));
+    (residual * residual) as u64
 }
 
 fn residual_sad(residuals: &[i16]) -> u64 {

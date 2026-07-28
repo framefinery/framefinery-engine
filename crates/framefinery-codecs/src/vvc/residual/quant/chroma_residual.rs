@@ -86,6 +86,7 @@ fn finalize_vvc_chroma_tu(
     chroma_height: usize,
     chroma_qp: i32,
     chroma_ts_quant: &VvcTransformSkipQuantTable,
+    exact_transform_skip_qp: bool,
     preselected_residual: Option<VvcScoredSelectedChromaResidual>,
     stats: &mut VvcIntraSearchStats,
     transform_scratch: &mut VvcInverseTransformScratch,
@@ -125,60 +126,102 @@ fn finalize_vvc_chroma_tu(
     stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
     let cb_residual = selected_residual.cb;
     let cr_residual = selected_residual.cr;
-    #[cfg(feature = "vvc-stats")]
-    let recon_start = Instant::now();
-    reconstruct_vvc_chroma_residual_block_into(
+    if exact_transform_skip_qp
+        && vvc_chroma_transform_skip_score_is_exact(
         cb_residual,
-        reconstructed_residual,
-        transform_scratch,
         chroma_width,
         chroma_height,
         source_frame.format.bit_depth,
         chroma_qp,
-        chroma_ts_quant,
-    );
-    #[cfg(feature = "vvc-stats")]
-    stats.add_chroma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
-    #[cfg(feature = "vvc-stats")]
-    let fill_start = Instant::now();
-    fill_visible_chroma_node(
-        &mut frame_recon.cb,
-        source_frame.geometry,
-        node,
-        source_frame.format.chroma_sampling,
-        predicted_cb,
-        reconstructed_residual,
-        source_frame.format.bit_depth,
-    );
-    #[cfg(feature = "vvc-stats")]
-    stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
-    #[cfg(feature = "vvc-stats")]
-    let recon_start = Instant::now();
-    reconstruct_vvc_chroma_residual_block_into(
+    ) {
+        #[cfg(feature = "vvc-stats")]
+        let fill_start = Instant::now();
+        copy_source_chroma_node_into_reconstruction(
+            &mut frame_recon.cb,
+            &source_frame.cb,
+            source_frame.geometry,
+            source_frame.format,
+            node,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
+    } else {
+        #[cfg(feature = "vvc-stats")]
+        let recon_start = Instant::now();
+        reconstruct_vvc_chroma_residual_block_into(
+            cb_residual,
+            reconstructed_residual,
+            transform_scratch,
+            chroma_width,
+            chroma_height,
+            source_frame.format.bit_depth,
+            chroma_qp,
+            chroma_ts_quant,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
+        #[cfg(feature = "vvc-stats")]
+        let fill_start = Instant::now();
+        fill_visible_chroma_node(
+            &mut frame_recon.cb,
+            source_frame.geometry,
+            node,
+            source_frame.format.chroma_sampling,
+            predicted_cb,
+            reconstructed_residual,
+            source_frame.format.bit_depth,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
+    }
+    if exact_transform_skip_qp
+        && vvc_chroma_transform_skip_score_is_exact(
         cr_residual,
-        reconstructed_residual,
-        transform_scratch,
         chroma_width,
         chroma_height,
         source_frame.format.bit_depth,
         chroma_qp,
-        chroma_ts_quant,
-    );
-    #[cfg(feature = "vvc-stats")]
-    stats.add_chroma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
-    #[cfg(feature = "vvc-stats")]
-    let fill_start = Instant::now();
-    fill_visible_chroma_node(
-        &mut frame_recon.cr,
-        source_frame.geometry,
-        node,
-        source_frame.format.chroma_sampling,
-        predicted_cr,
-        reconstructed_residual,
-        source_frame.format.bit_depth,
-    );
-    #[cfg(feature = "vvc-stats")]
-    stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
+    ) {
+        #[cfg(feature = "vvc-stats")]
+        let fill_start = Instant::now();
+        copy_source_chroma_node_into_reconstruction(
+            &mut frame_recon.cr,
+            &source_frame.cr,
+            source_frame.geometry,
+            source_frame.format,
+            node,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
+    } else {
+        #[cfg(feature = "vvc-stats")]
+        let recon_start = Instant::now();
+        reconstruct_vvc_chroma_residual_block_into(
+            cr_residual,
+            reconstructed_residual,
+            transform_scratch,
+            chroma_width,
+            chroma_height,
+            source_frame.format.bit_depth,
+            chroma_qp,
+            chroma_ts_quant,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
+        #[cfg(feature = "vvc-stats")]
+        let fill_start = Instant::now();
+        fill_visible_chroma_node(
+            &mut frame_recon.cr,
+            source_frame.geometry,
+            node,
+            source_frame.format.chroma_sampling,
+            predicted_cr,
+            reconstructed_residual,
+            source_frame.format.bit_depth,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
+    }
     let finalized = VvcFinalizedChromaTu {
         cb_dc_level: cb_residual.dc_level,
         cr_dc_level: cr_residual.dc_level,
@@ -196,6 +239,31 @@ fn finalize_vvc_chroma_tu(
     };
     frame_recon.mark_chroma_node_available(node);
     finalized
+}
+
+fn copy_source_chroma_node_into_reconstruction(
+    chroma: &mut [VvcSample],
+    source: &[VvcSample],
+    geometry: VvcVideoGeometry,
+    format: VvcPictureFormat,
+    node: VvcCodingTreeNode,
+) {
+    let subsample_x = chroma_subsample_x(format.chroma_sampling);
+    let subsample_y = chroma_subsample_y(format.chroma_sampling);
+    let chroma_width = geometry.width / subsample_x;
+    let chroma_height = geometry.height / subsample_y;
+    let start_x = usize::from(node.x) / subsample_x;
+    let start_y = usize::from(node.y) / subsample_y;
+    let end_x = start_x
+        .saturating_add(usize::from(node.width) / subsample_x)
+        .min(chroma_width);
+    let end_y = start_y
+        .saturating_add(usize::from(node.height) / subsample_y)
+        .min(chroma_height);
+    for y in start_y..end_y {
+        let row = y * chroma_width;
+        chroma[row + start_x..row + end_x].copy_from_slice(&source[row + start_x..row + end_x]);
+    }
 }
 
 fn finalize_vvc_chroma_residual_block(
@@ -490,17 +558,23 @@ fn vvc_chroma_residual_block_score(
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcResidualBlockScore {
-    let distortion = chroma_reconstructed_residual_sse(
-        source_residuals,
-        width,
-        height,
-        bit_depth,
-        qp,
-        chroma_ts_quant,
-        residual,
-        transform_scratch,
-        reconstructed_residual,
-    );
+    let distortion = if vvc_chroma_transform_skip_score_is_exact(
+        residual, width, height, bit_depth, qp,
+    ) {
+        0
+    } else {
+        chroma_reconstructed_residual_sse(
+            source_residuals,
+            width,
+            height,
+            bit_depth,
+            qp,
+            chroma_ts_quant,
+            residual,
+            transform_scratch,
+            reconstructed_residual,
+        )
+    };
     let rate_cost = u64::from(residual.dc_level != 0)
         .saturating_mul(8)
         .saturating_add(chroma_coeff_syntax_cost_estimate(width, height, residual))
@@ -509,6 +583,19 @@ fn vvc_chroma_residual_block_score(
         distortion,
         rate_cost,
     }
+}
+
+fn vvc_chroma_transform_skip_score_is_exact(
+    residual: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
+    width: usize,
+    height: usize,
+    bit_depth: SampleBitDepth,
+    qp: i32,
+) -> bool {
+    residual.transform_skip
+        && width <= 4
+        && height <= 4
+        && vvc_transform_skip_qp_reconstructs_exact(bit_depth, qp)
 }
 
 fn finalize_vvc_chroma_transform_skip_residual_block(

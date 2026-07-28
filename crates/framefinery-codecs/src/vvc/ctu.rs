@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct VvcQuantizedCtuLeafDecision {
     quantized: VvcQuantizedColor,
     luma_max_leaf_size: u16,

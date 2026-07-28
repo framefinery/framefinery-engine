@@ -1,6 +1,4 @@
-use super::super::{
-    VvcCabacContext, VvcCabacContexts, VvcCabacEncoder, VvcLastSigCoeffPrefixCtxInput,
-};
+use super::super::{VvcCabacContexts, VvcCabacEncoder, VvcLastSigCoeffPrefixCtxInput};
 use super::{VvcResidualComponent, VVC_CHROMA_AC_COEFFS_PER_TU, VVC_LUMA_AC_COEFFS_PER_TU};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,12 +106,13 @@ impl<'a> VvcResidualCabacEncoder<'a> {
             bin_idx,
         }
         .ctx_inc();
-        let ctx = if x_prefix {
-            VvcCabacContext::LastSigCoeffXPrefix(ctx_inc)
+        if x_prefix {
+            self.contexts
+                .encode_last_sig_coeff_x_prefix(cabac, ctx_inc, bin);
         } else {
-            VvcCabacContext::LastSigCoeffYPrefix(ctx_inc)
-        };
-        self.contexts.encode(cabac, ctx, bin);
+            self.contexts
+                .encode_last_sig_coeff_y_prefix(cabac, ctx_inc, bin);
+        }
     }
 
     #[cfg(test)]
@@ -155,8 +154,7 @@ impl<'a> VvcResidualCabacEncoder<'a> {
         coded: bool,
     ) {
         let ctx_inc = state.sb_coded_flag_ctx_inc(x_s, y_s);
-        self.contexts
-            .encode(cabac, VvcCabacContext::SbCodedFlag(ctx_inc), coded);
+        self.contexts.encode_sb_coded_flag(cabac, ctx_inc, coded);
     }
 
     pub(in crate::vvc) fn emit_sig_coeff_flag(
@@ -169,7 +167,7 @@ impl<'a> VvcResidualCabacEncoder<'a> {
     ) {
         let ctx_inc = state.sig_coeff_flag_ctx_inc(x, y);
         self.contexts
-            .encode(cabac, VvcCabacContext::SigCoeffFlag(ctx_inc), significant);
+            .encode_sig_coeff_flag(cabac, ctx_inc, significant);
     }
 
     pub(in crate::vvc) fn emit_par_level_flag(
@@ -182,7 +180,7 @@ impl<'a> VvcResidualCabacEncoder<'a> {
     ) {
         let ctx_inc = state.par_level_flag_ctx_inc(x, y);
         self.contexts
-            .encode(cabac, VvcCabacContext::ParLevelFlag(ctx_inc), par_level);
+            .encode_par_level_flag(cabac, ctx_inc, par_level);
     }
 
     pub(in crate::vvc) fn emit_abs_level_gtx_flag(
@@ -199,11 +197,8 @@ impl<'a> VvcResidualCabacEncoder<'a> {
             ctx_inc < 72,
             "cached abs_level_gtx_flag table currently covers ctxInc 0..71"
         );
-        self.contexts.encode(
-            cabac,
-            VvcCabacContext::AbsLevelGtxFlag(ctx_inc),
-            greater_than,
-        );
+        self.contexts
+            .encode_abs_level_gtx_flag(cabac, ctx_inc, greater_than);
     }
 
     pub(in crate::vvc) fn emit_default_tool_control_hooks(
@@ -246,9 +241,9 @@ impl<'a> VvcResidualCabacEncoder<'a> {
             return;
         }
 
-        self.contexts.encode(
+        self.contexts.encode_transform_skip_flag(
             cabac,
-            VvcCabacContext::TransformSkipFlag(component.transform_skip_ctx_inc()),
+            component.transform_skip_ctx_inc(),
             transform_skip,
         );
     }
@@ -1296,6 +1291,7 @@ impl VvcResidualCabacSymbolStream {
             transform_skip,
             bdpcm,
             mts_index,
+            false,
         );
         encoder.emit_default_tool_control_hooks(cabac, &plan.pass1_state);
         let mut progressive_state = VvcResidualPass1State::new(plan.pass1_state.config);
@@ -1636,6 +1632,7 @@ impl VvcResidualCabacSymbolStream {
             transform_skip,
             bdpcm,
             0,
+            true,
         )
     }
 
@@ -1647,6 +1644,7 @@ impl VvcResidualCabacSymbolStream {
         transform_skip: bool,
         bdpcm: bool,
         mts_index: u8,
+        populate_pass1: bool,
     ) -> VvcResidualCoefficientPlan {
         // H.266 7.3.11.11 residual_coding() first codes the last significant
         // coefficient position and then walks earlier scan positions with
@@ -1687,12 +1685,14 @@ impl VvcResidualCabacSymbolStream {
         config.bdpcm = bdpcm;
         config.mts_index = mts_index;
         let mut pass1_state = VvcResidualPass1State::new(config);
-        for pos in scan_slice.iter().take(last_scan_pos + 1) {
-            let level = coeffs.level_at(pos.x, pos.y);
-            let x = pos.x as u8;
-            let y = pos.y as u8;
-            let abs_level = level.unsigned_abs();
-            pass1_state.set_pass1_coeff(x, y, abs_level, level < 0);
+        if populate_pass1 {
+            for pos in scan_slice.iter().take(last_scan_pos + 1) {
+                let level = coeffs.level_at(pos.x, pos.y);
+                let x = pos.x as u8;
+                let y = pos.y as u8;
+                let abs_level = level.unsigned_abs();
+                pass1_state.set_pass1_coeff(x, y, abs_level, level < 0);
+            }
         }
         for subset_start in (0..=last_scan_pos).step_by(16) {
             let subset_end = (subset_start + 15).min(scan_slice.len() - 1);
