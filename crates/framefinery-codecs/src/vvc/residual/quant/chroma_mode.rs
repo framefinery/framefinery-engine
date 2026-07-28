@@ -879,40 +879,90 @@ fn chroma_transform_skip_residual_sse(
     residual: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
 ) -> u64 {
     debug_assert!(residual.transform_skip);
-    let mut reconstructed = [0i16; 16];
     let active_width = width.min(4);
     let active_height = height.min(4);
-    if active_width != 0 && active_height != 0 {
-        reconstructed[0] = residual.dc_level;
-        for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
-            if x < active_width && y < active_height {
-                reconstructed[y * 4 + x] = residual.ac_levels[slot];
-            }
+    if residual.bdpcm_mode.is_enabled() {
+        return chroma_bdpcm_transform_skip_residual_sse(
+            source_residuals,
+            width,
+            height,
+            active_width,
+            active_height,
+            chroma_ts_quant,
+            residual,
+        );
+    }
+
+    let mut sse = 0u64;
+    for y in 0..active_height {
+        let source_row = &source_residuals[y * width..(y + 1) * width];
+        for x in 0..active_width {
+            let level = if x == 0 && y == 0 {
+                residual.dc_level
+            } else {
+                residual.ac_levels[y * 4 + x - 1]
+            };
+            sse += residual_diff_square(source_row[x], chroma_ts_quant.reconstructed(level));
         }
-        if residual.bdpcm_mode.is_enabled() {
-            inverse_bdpcm_quantized_levels_in_place(
-                &mut reconstructed,
-                4,
-                active_height,
-                residual.bdpcm_mode,
-            );
-        }
-        for y in 0..active_height {
-            let row = y * 4;
-            for x in 0..active_width {
-                reconstructed[row + x] = chroma_ts_quant.reconstructed(reconstructed[row + x]);
-            }
+        for &source in &source_row[active_width..] {
+            sse += residual_square(source);
         }
     }
-    transform_skip_residual_sse(
-        source_residuals,
-        width,
-        height,
-        active_width,
-        active_height,
-        4,
-        &reconstructed,
-    )
+    for y in active_height..height {
+        let source_row = &source_residuals[y * width..(y + 1) * width];
+        for &source in source_row {
+            sse += residual_square(source);
+        }
+    }
+    sse
+}
+
+fn chroma_bdpcm_transform_skip_residual_sse(
+    source_residuals: &[i16],
+    width: usize,
+    height: usize,
+    active_width: usize,
+    active_height: usize,
+    chroma_ts_quant: &VvcTransformSkipQuantTable,
+    residual: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
+) -> u64 {
+    debug_assert_eq!(source_residuals.len(), width * height);
+    let mut sse = 0u64;
+    let mut vertical_predictors = [0i16; 4];
+    for y in 0..active_height {
+        let source_row = &source_residuals[y * width..(y + 1) * width];
+        let mut horizontal_predictor = 0i16;
+        for x in 0..active_width {
+            let delta = if x == 0 && y == 0 {
+                residual.dc_level
+            } else {
+                residual.ac_levels[y * 4 + x - 1]
+            };
+            let level = match residual.bdpcm_mode {
+                VvcBdpcmMode::None => unreachable!("BDPCM SSE requires a direction"),
+                VvcBdpcmMode::Horizontal if x > 0 => {
+                    add_bdpcm_quantized_levels(delta, horizontal_predictor)
+                }
+                VvcBdpcmMode::Vertical if y > 0 => {
+                    add_bdpcm_quantized_levels(delta, vertical_predictors[x])
+                }
+                VvcBdpcmMode::Horizontal | VvcBdpcmMode::Vertical => delta,
+            };
+            horizontal_predictor = level;
+            vertical_predictors[x] = level;
+            sse += residual_diff_square(source_row[x], chroma_ts_quant.reconstructed(level));
+        }
+        for &source in &source_row[active_width..] {
+            sse += residual_square(source);
+        }
+    }
+    for y in active_height..height {
+        let source_row = &source_residuals[y * width..(y + 1) * width];
+        for &source in source_row {
+            sse += residual_square(source);
+        }
+    }
+    sse
 }
 
 fn chroma_coeff_syntax_cost_estimate(

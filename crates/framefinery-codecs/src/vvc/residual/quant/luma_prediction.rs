@@ -580,62 +580,28 @@ fn luma_transform_skip_residual_sse(
 ) -> u64 {
     debug_assert!(residual.transform_skip);
     let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
-    let mut reconstructed = [0i16; 64];
-    if active_width != 0 && active_height != 0 {
-        reconstructed[0] = residual.dc_level;
-        for y in 0..active_height {
-            for x in 0..active_width {
-                if x == 0 && y == 0 {
-                    continue;
-                }
-                reconstructed[y * active_width + x] = residual.ac_levels[y * active_width + x - 1];
-            }
-        }
-        if residual.bdpcm_mode.is_enabled() {
-            inverse_bdpcm_quantized_levels_in_place(
-                &mut reconstructed,
-                active_width,
-                active_height,
-                residual.bdpcm_mode,
-            );
-        }
-        for y in 0..active_height {
-            let row = y * active_width;
-            for x in 0..active_width {
-                reconstructed[row + x] = ts_quant.reconstructed(reconstructed[row + x]);
-            }
-        }
+    if residual.bdpcm_mode.is_enabled() {
+        return luma_bdpcm_transform_skip_residual_sse(
+            source_residuals,
+            width,
+            height,
+            active_width,
+            active_height,
+            ts_quant,
+            residual,
+        );
     }
-    transform_skip_residual_sse(
-        source_residuals,
-        width,
-        height,
-        active_width,
-        active_height,
-        active_width,
-        &reconstructed,
-    )
-}
 
-fn transform_skip_residual_sse(
-    source_residuals: &[i16],
-    width: usize,
-    height: usize,
-    active_width: usize,
-    active_height: usize,
-    reconstructed_stride: usize,
-    reconstructed: &[i16],
-) -> u64 {
-    debug_assert_eq!(source_residuals.len(), width * height);
     let mut sse = 0u64;
-    let active_width = active_width.min(width);
-    let active_height = active_height.min(height);
     for y in 0..active_height {
         let source_row = &source_residuals[y * width..(y + 1) * width];
-        let reconstructed_row =
-            &reconstructed[y * reconstructed_stride..y * reconstructed_stride + active_width];
         for x in 0..active_width {
-            sse += residual_diff_square(source_row[x], reconstructed_row[x]);
+            let level = if x == 0 && y == 0 {
+                residual.dc_level
+            } else {
+                residual.ac_levels[y * active_width + x - 1]
+            };
+            sse += residual_diff_square(source_row[x], ts_quant.reconstructed(level));
         }
         for &source in &source_row[active_width..] {
             sse += residual_square(source);
@@ -648,6 +614,60 @@ fn transform_skip_residual_sse(
         }
     }
     sse
+}
+
+fn luma_bdpcm_transform_skip_residual_sse(
+    source_residuals: &[i16],
+    width: usize,
+    height: usize,
+    active_width: usize,
+    active_height: usize,
+    ts_quant: &VvcTransformSkipQuantTable,
+    residual: VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU>,
+) -> u64 {
+    debug_assert_eq!(source_residuals.len(), width * height);
+    let mut sse = 0u64;
+    let mut vertical_predictors = [0i16; 8];
+    for y in 0..active_height {
+        let source_row = &source_residuals[y * width..(y + 1) * width];
+        let mut horizontal_predictor = 0i16;
+        for x in 0..active_width {
+            let delta = if x == 0 && y == 0 {
+                residual.dc_level
+            } else {
+                residual.ac_levels[y * active_width + x - 1]
+            };
+            let level = match residual.bdpcm_mode {
+                VvcBdpcmMode::None => unreachable!("BDPCM SSE requires a direction"),
+                VvcBdpcmMode::Horizontal if x > 0 => {
+                    add_bdpcm_quantized_levels(delta, horizontal_predictor)
+                }
+                VvcBdpcmMode::Vertical if y > 0 => {
+                    add_bdpcm_quantized_levels(delta, vertical_predictors[x])
+                }
+                VvcBdpcmMode::Horizontal | VvcBdpcmMode::Vertical => delta,
+            };
+            horizontal_predictor = level;
+            vertical_predictors[x] = level;
+            sse += residual_diff_square(source_row[x], ts_quant.reconstructed(level));
+        }
+        for &source in &source_row[active_width..] {
+            sse += residual_square(source);
+        }
+    }
+    for y in active_height..height {
+        let source_row = &source_residuals[y * width..(y + 1) * width];
+        for &source in source_row {
+            sse += residual_square(source);
+        }
+    }
+    sse
+}
+
+#[inline]
+fn add_bdpcm_quantized_levels(level: i16, predictor: i16) -> i16 {
+    (i32::from(level) + i32::from(predictor))
+        .clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16
 }
 
 #[inline]

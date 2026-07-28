@@ -134,15 +134,30 @@ fn finalize_vvc_luma_tu(
     let mts_index = selected_residual.mts_index;
     if exact_transform_skip_qp
         && vvc_luma_transform_skip_score_is_exact(
-        residual,
-        node.width,
-        node.height,
-        source_frame.format.bit_depth,
-        luma_qp,
-    ) {
+            residual,
+            node.width,
+            node.height,
+            source_frame.format.bit_depth,
+            luma_qp,
+        )
+    {
         #[cfg(feature = "vvc-stats")]
         let fill_start = Instant::now();
         copy_source_luma_node_into_reconstruction(&mut frame_recon.luma, source_frame, node);
+        #[cfg(feature = "vvc-stats")]
+        stats.add_luma_fill_nanos(vvc_elapsed_nanos(fill_start));
+    } else if residual.transform_skip {
+        #[cfg(feature = "vvc-stats")]
+        let fill_start = Instant::now();
+        fill_visible_luma_transform_skip_node(
+            &mut frame_recon.luma,
+            source_frame.geometry,
+            node,
+            predicted_luma,
+            residual,
+            source_frame.format.bit_depth,
+            luma_ts_quant,
+        );
         #[cfg(feature = "vvc-stats")]
         stats.add_luma_fill_nanos(vvc_elapsed_nanos(fill_start));
     } else {
@@ -187,6 +202,127 @@ fn finalize_vvc_luma_tu(
     };
     frame_recon.mark_luma_node_available(node);
     finalized
+}
+
+fn fill_visible_luma_transform_skip_node(
+    luma: &mut [VvcSample],
+    geometry: VvcVideoGeometry,
+    node: VvcCodingTreeNode,
+    predicted: &[VvcSample],
+    residual: VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU>,
+    bit_depth: SampleBitDepth,
+    quant_table: &VvcTransformSkipQuantTable,
+) {
+    let node_width = usize::from(node.width);
+    let node_height = usize::from(node.height);
+    let start_x = usize::from(node.x);
+    let start_y = usize::from(node.y);
+    let visible_width = node_width.min(geometry.width.saturating_sub(start_x));
+    let visible_height = node_height.min(geometry.height.saturating_sub(start_y));
+    let (active_width, active_height) =
+        vvc_luma_transform_skip_active_extent(node_width, node_height);
+    if residual.bdpcm_mode.is_enabled() {
+        fill_visible_luma_bdpcm_transform_skip_node(
+            luma,
+            geometry,
+            start_x,
+            start_y,
+            visible_width,
+            visible_height,
+            node_width,
+            active_width,
+            active_height,
+            predicted,
+            residual,
+            bit_depth,
+            quant_table,
+        );
+        return;
+    }
+
+    let max_sample = i32::from(bit_depth.max_sample());
+    for local_y in 0..visible_height {
+        let row = (start_y + local_y) * geometry.width + start_x;
+        let predicted_row = local_y * node_width;
+        for local_x in 0..visible_width {
+            let reconstructed_residual =
+                if local_y < active_height && local_x < active_width {
+                    let level = if local_x == 0 && local_y == 0 {
+                        residual.dc_level
+                    } else {
+                        residual.ac_levels[local_y * active_width + local_x - 1]
+                    };
+                    quant_table.reconstructed(level)
+                } else {
+                    0
+                };
+            let idx = predicted_row + local_x;
+            luma[row + local_x] =
+                (i32::from(predicted[idx]) + i32::from(reconstructed_residual))
+                    .clamp(0, max_sample) as VvcSample;
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fill_visible_luma_bdpcm_transform_skip_node(
+    luma: &mut [VvcSample],
+    geometry: VvcVideoGeometry,
+    start_x: usize,
+    start_y: usize,
+    visible_width: usize,
+    visible_height: usize,
+    node_width: usize,
+    active_width: usize,
+    active_height: usize,
+    predicted: &[VvcSample],
+    residual: VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU>,
+    bit_depth: SampleBitDepth,
+    quant_table: &VvcTransformSkipQuantTable,
+) {
+    let max_sample = i32::from(bit_depth.max_sample());
+    let active_rows = visible_height.min(active_height);
+    let mut vertical_predictors = [0i16; 8];
+    for local_y in 0..active_rows {
+        let row = (start_y + local_y) * geometry.width + start_x;
+        let predicted_row = local_y * node_width;
+        let mut horizontal_predictor = 0i16;
+        for local_x in 0..active_width {
+            let delta = if local_x == 0 && local_y == 0 {
+                residual.dc_level
+            } else {
+                residual.ac_levels[local_y * active_width + local_x - 1]
+            };
+            let level = match residual.bdpcm_mode {
+                VvcBdpcmMode::None => unreachable!("BDPCM fill requires a direction"),
+                VvcBdpcmMode::Horizontal if local_x > 0 => {
+                    add_bdpcm_quantized_levels(delta, horizontal_predictor)
+                }
+                VvcBdpcmMode::Vertical if local_y > 0 => {
+                    add_bdpcm_quantized_levels(delta, vertical_predictors[local_x])
+                }
+                VvcBdpcmMode::Horizontal | VvcBdpcmMode::Vertical => delta,
+            };
+            horizontal_predictor = level;
+            vertical_predictors[local_x] = level;
+            if local_x < visible_width {
+                let idx = predicted_row + local_x;
+                luma[row + local_x] =
+                    (i32::from(predicted[idx]) + i32::from(quant_table.reconstructed(level)))
+                        .clamp(0, max_sample) as VvcSample;
+            }
+        }
+        for local_x in active_width..visible_width {
+            let idx = predicted_row + local_x;
+            luma[row + local_x] = predicted[idx];
+        }
+    }
+    for local_y in active_rows..visible_height {
+        let row = (start_y + local_y) * geometry.width + start_x;
+        let predicted_row = local_y * node_width;
+        luma[row..row + visible_width]
+            .copy_from_slice(&predicted[predicted_row..predicted_row + visible_width]);
+    }
 }
 
 fn copy_source_luma_node_into_reconstruction(
