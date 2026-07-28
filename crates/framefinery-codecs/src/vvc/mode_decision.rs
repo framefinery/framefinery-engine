@@ -55,6 +55,7 @@ pub(in crate::vvc) struct VvcResidualCodingPolicy {
     luma_max_leaf_size: u16,
     score_metric: VvcResidualScoreMetric,
     chroma_syntax_tie_breaker: bool,
+    fast_search: VvcFastSearch,
 }
 
 impl VvcResidualCodingMode {
@@ -376,6 +377,7 @@ impl VvcResidualCodingPolicy {
             luma_max_leaf_size: select_vvc_luma_max_leaf_size(context),
             score_metric: select_vvc_residual_score_metric(context),
             chroma_syntax_tie_breaker: select_vvc_chroma_mode_syntax_tie_breaker(context),
+            fast_search: VvcFastSearch::Off,
         }
     }
 
@@ -386,6 +388,15 @@ impl VvcResidualCodingPolicy {
     const fn with_luma_max_leaf_size(mut self, luma_max_leaf_size: u16) -> Self {
         self.luma_max_leaf_size = luma_max_leaf_size;
         self
+    }
+
+    pub(in crate::vvc) const fn with_fast_search(mut self, fast_search: VvcFastSearch) -> Self {
+        self.fast_search = fast_search;
+        self
+    }
+
+    pub(in crate::vvc) const fn fast_search(self) -> VvcFastSearch {
+        self.fast_search
     }
 
     pub(in crate::vvc) const fn score_metric(self) -> VvcResidualScoreMetric {

@@ -149,7 +149,9 @@ fn select_vvc_luma_bdpcm_prediction(
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
 ) -> Option<VvcSelectedLumaBdpcm> {
-    if !vvc_luma_bdpcm_selection_allowed(policy, node) {
+    if !vvc_luma_bdpcm_selection_allowed(policy, node)
+        || !vvc_luma_bdpcm_fast_search_allowed(policy, selected_mode, left, above)
+    {
         return None;
     }
 
@@ -266,6 +268,33 @@ fn select_vvc_luma_bdpcm_prediction(
     }
 
     best
+}
+
+fn vvc_luma_bdpcm_fast_search_allowed(
+    policy: VvcResidualCodingPolicy,
+    selected_mode: VvcIntraPredictionMode,
+    left: Option<VvcIntraPredictionMode>,
+    above: Option<VvcIntraPredictionMode>,
+) -> bool {
+    match policy.fast_search() {
+        VvcFastSearch::Off | VvcFastSearch::Conservative => true,
+        VvcFastSearch::LosslessSpeed if policy.residual_mode() == VvcResidualCodingMode::Lossy => {
+            true
+        }
+        VvcFastSearch::Moderate | VvcFastSearch::LosslessSpeed => {
+            vvc_luma_mode_is_bdpcm_aligned(selected_mode)
+                || left.is_some_and(vvc_luma_mode_is_bdpcm_aligned)
+                || above.is_some_and(vvc_luma_mode_is_bdpcm_aligned)
+        }
+        VvcFastSearch::Aggressive => vvc_luma_mode_is_bdpcm_aligned(selected_mode),
+    }
+}
+
+fn vvc_luma_mode_is_bdpcm_aligned(mode: VvcIntraPredictionMode) -> bool {
+    matches!(
+        mode,
+        VvcIntraPredictionMode::Horizontal | VvcIntraPredictionMode::Vertical
+    )
 }
 
 fn vvc_luma_bdpcm_selection_allowed(

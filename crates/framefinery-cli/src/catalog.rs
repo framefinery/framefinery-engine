@@ -17,6 +17,7 @@ pub struct StageInfo {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingValue {
     Boolean,
+    Choice(&'static [&'static str]),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -50,6 +51,7 @@ impl SettingValue {
                 value,
                 "true" | "false" | "1" | "0" | "yes" | "no" | "on" | "off"
             ),
+            SettingValue::Choice(values) => values.contains(&value),
         }
     }
 }
@@ -68,7 +70,19 @@ const AV2_SETTINGS: &[SettingInfo] = &[SettingInfo {
     summary: "enable experimental AV2 multi-picture predictive coding tools",
 }];
 
-const VVC_SETTINGS: &[SettingInfo] = &[];
+const VVC_FAST_SEARCH_VALUES: &[&str] = &[
+    "off",
+    "conservative",
+    "moderate",
+    "aggressive",
+    "lossless-speed",
+];
+
+const VVC_SETTINGS: &[SettingInfo] = &[SettingInfo {
+    name: "fast-search",
+    value: SettingValue::Choice(VVC_FAST_SEARCH_VALUES),
+    summary: "enable experimental VVC spatially guided mode-search pruning",
+}];
 
 pub fn global_setting(name: &str) -> Option<SettingInfo> {
     GLOBAL_SETTINGS
@@ -91,9 +105,10 @@ pub fn settings_label(global: &[SettingInfo], codec: &[SettingInfo]) -> String {
     }
 }
 
-pub fn setting_values_label(setting: SettingInfo) -> &'static str {
+pub fn setting_values_label(setting: SettingInfo) -> String {
     match setting.value {
-        SettingValue::Boolean => "true|false",
+        SettingValue::Boolean => "true|false".to_string(),
+        SettingValue::Choice(values) => values.join("|"),
     }
 }
 

@@ -1,7 +1,10 @@
 const VVC_LUMA_DIRECTIONAL_SEARCH_CANDIDATE_CAPACITY: usize = 65;
 const VVC_LUMA_DEFAULT_DIRECTIONAL_SEEDS: [u8; 9] = [18, 50, 34, 10, 26, 42, 58, 2, 66];
 const VVC_LUMA_LOSSY_FALLBACK_DIRECTIONAL_SEEDS: [u8; 5] = [18, 50, 34, 2, 66];
+const VVC_LUMA_CARDINAL_DIRECTIONAL_SEEDS: [u8; 3] = [18, 50, 34];
 const VVC_LUMA_NEARBY_DIRECTIONAL_OFFSETS: [i16; 7] = [0, -1, 1, -2, 2, -4, 4];
+const VVC_LUMA_FAST_DIRECTIONAL_OFFSETS: [i16; 5] = [0, -1, 1, -2, 2];
+const VVC_LUMA_AGGRESSIVE_DIRECTIONAL_OFFSETS: [i16; 3] = [0, -1, 1];
 const VVC_LUMA_MODE_CELL_SIZE: usize = 4;
 
 #[derive(Debug, Clone, Copy)]
@@ -40,7 +43,19 @@ impl VvcLumaDirectionalSearchCandidates {
     }
 
     fn add_family(&mut self, center: u8) {
-        for offset in VVC_LUMA_NEARBY_DIRECTIONAL_OFFSETS {
+        self.add_family_with_offsets(center, &VVC_LUMA_NEARBY_DIRECTIONAL_OFFSETS);
+    }
+
+    fn add_compact_family(&mut self, center: u8) {
+        self.add_family_with_offsets(center, &VVC_LUMA_FAST_DIRECTIONAL_OFFSETS);
+    }
+
+    fn add_aggressive_family(&mut self, center: u8) {
+        self.add_family_with_offsets(center, &VVC_LUMA_AGGRESSIVE_DIRECTIONAL_OFFSETS);
+    }
+
+    fn add_family_with_offsets(&mut self, center: u8, offsets: &[i16]) {
+        for offset in offsets {
             let index = i16::from(center) + offset;
             if (2..=66).contains(&index) {
                 self.add_index(index as u8);
@@ -48,8 +63,14 @@ impl VvcLumaDirectionalSearchCandidates {
         }
     }
 
-    fn add_refinement(&mut self, center: u8) {
-        self.add_family(center);
+    fn add_refinement(&mut self, center: u8, fast_search: VvcFastSearch) {
+        match fast_search {
+            VvcFastSearch::Off | VvcFastSearch::Conservative => self.add_family(center),
+            VvcFastSearch::Moderate | VvcFastSearch::LosslessSpeed => {
+                self.add_compact_family(center);
+            }
+            VvcFastSearch::Aggressive => self.add_aggressive_family(center),
+        }
     }
 
     fn count(&self) -> usize {
@@ -167,6 +188,28 @@ fn vvc_luma_directional_search_candidates(
     mode_state: &VvcLumaModeSearchState,
     global_node: VvcCodingTreeNode,
 ) -> VvcLumaDirectionalSearchCandidates {
+    if policy.fast_search() != VvcFastSearch::Off
+        && !matches!(
+            (policy.fast_search(), policy.residual_mode()),
+            (VvcFastSearch::LosslessSpeed, VvcResidualCodingMode::Lossy)
+        )
+    {
+        return vvc_luma_fast_directional_search_candidates(
+            policy,
+            source_frame,
+            mode_state,
+            global_node,
+        );
+    }
+    vvc_luma_default_directional_search_candidates(policy, source_frame, mode_state, global_node)
+}
+
+fn vvc_luma_default_directional_search_candidates(
+    policy: VvcResidualCodingPolicy,
+    source_frame: &VvcSampledFrame,
+    mode_state: &VvcLumaModeSearchState,
+    global_node: VvcCodingTreeNode,
+) -> VvcLumaDirectionalSearchCandidates {
     let mut candidates = VvcLumaDirectionalSearchCandidates::new();
     if policy.residual_mode() == VvcResidualCodingMode::Lossy {
         if vvc_source_luma_directional_seed_allowed(policy, global_node) {
@@ -206,12 +249,146 @@ fn vvc_luma_directional_search_candidates(
     candidates
 }
 
+fn vvc_luma_fast_directional_search_candidates(
+    policy: VvcResidualCodingPolicy,
+    source_frame: &VvcSampledFrame,
+    mode_state: &VvcLumaModeSearchState,
+    global_node: VvcCodingTreeNode,
+) -> VvcLumaDirectionalSearchCandidates {
+    let mut candidates = VvcLumaDirectionalSearchCandidates::new();
+    let fast_search = policy.fast_search();
+    let left = mode_state.left_of(global_node);
+    let above = mode_state.above_of(global_node);
+    let source_seed = vvc_source_luma_directional_seed_allowed(policy, global_node)
+        .then(|| vvc_source_luma_directional_seed(source_frame, global_node))
+        .flatten();
+
+    match fast_search {
+        VvcFastSearch::Off => unreachable!("off fast-search uses the default candidate path"),
+        VvcFastSearch::Conservative => {
+            add_vvc_luma_spatial_directional_candidates(
+                &mut candidates,
+                left,
+                above,
+                fast_search,
+                policy.residual_mode(),
+            );
+            if let Some(index) = source_seed {
+                candidates.add_compact_family(index);
+            }
+            for index in VVC_LUMA_LOSSY_FALLBACK_DIRECTIONAL_SEEDS {
+                candidates.add_index(index);
+            }
+        }
+        VvcFastSearch::Moderate | VvcFastSearch::LosslessSpeed => {
+            if let Some(index) = source_seed {
+                candidates.add_compact_family(index);
+            }
+            add_vvc_luma_spatial_directional_candidates(
+                &mut candidates,
+                left,
+                above,
+                fast_search,
+                policy.residual_mode(),
+            );
+            for index in VVC_LUMA_CARDINAL_DIRECTIONAL_SEEDS {
+                candidates.add_index(index);
+            }
+        }
+        VvcFastSearch::Aggressive => {
+            if let Some(index) = source_seed {
+                candidates.add_aggressive_family(index);
+            }
+            add_vvc_luma_spatial_directional_candidates(
+                &mut candidates,
+                left,
+                above,
+                fast_search,
+                policy.residual_mode(),
+            );
+            if candidates.count() == 0 {
+                for index in VVC_LUMA_CARDINAL_DIRECTIONAL_SEEDS {
+                    candidates.add_index(index);
+                }
+            }
+        }
+    }
+
+    candidates
+}
+
+fn add_vvc_luma_spatial_directional_candidates(
+    candidates: &mut VvcLumaDirectionalSearchCandidates,
+    left: Option<VvcIntraPredictionMode>,
+    above: Option<VvcIntraPredictionMode>,
+    fast_search: VvcFastSearch,
+    residual_mode: VvcResidualCodingMode,
+) {
+    if let Some(consensus) = vvc_luma_spatial_consensus_directional_seed(left, above) {
+        add_vvc_luma_policy_directional_family(candidates, consensus, fast_search);
+        return;
+    }
+    for mode in [left, above].into_iter().flatten() {
+        let Some(index) = vvc_luma_directional_index(mode) else {
+            continue;
+        };
+        match fast_search {
+            VvcFastSearch::Off => candidates.add_family(index),
+            VvcFastSearch::Conservative if residual_mode == VvcResidualCodingMode::Lossless => {
+                candidates.add_family(index);
+            }
+            VvcFastSearch::Conservative
+            | VvcFastSearch::Moderate
+            | VvcFastSearch::LosslessSpeed => {
+                candidates.add_compact_family(index);
+            }
+            VvcFastSearch::Aggressive => candidates.add_index(index),
+        }
+    }
+}
+
+fn add_vvc_luma_policy_directional_family(
+    candidates: &mut VvcLumaDirectionalSearchCandidates,
+    index: u8,
+    fast_search: VvcFastSearch,
+) {
+    match fast_search {
+        VvcFastSearch::Off | VvcFastSearch::Conservative => candidates.add_family(index),
+        VvcFastSearch::Moderate | VvcFastSearch::LosslessSpeed => {
+            candidates.add_compact_family(index);
+        }
+        VvcFastSearch::Aggressive => candidates.add_aggressive_family(index),
+    }
+}
+
+fn vvc_luma_spatial_consensus_directional_seed(
+    left: Option<VvcIntraPredictionMode>,
+    above: Option<VvcIntraPredictionMode>,
+) -> Option<u8> {
+    let left = vvc_luma_directional_index(left?)?;
+    let above = vvc_luma_directional_index(above?)?;
+    (left.abs_diff(above) <= 4).then_some(((u16::from(left) + u16::from(above)) / 2) as u8)
+}
+
+fn vvc_luma_directional_index(mode: VvcIntraPredictionMode) -> Option<u8> {
+    let index = mode.luma_mode_index();
+    (2..=66).contains(&index).then_some(index)
+}
+
 fn vvc_source_luma_directional_seed_allowed(
     policy: VvcResidualCodingPolicy,
     node: VvcCodingTreeNode,
 ) -> bool {
-    policy.residual_mode() == VvcResidualCodingMode::Lossless
-        || (node.width >= 8 && node.height >= 8)
+    match policy.fast_search() {
+        VvcFastSearch::Off | VvcFastSearch::Conservative => {
+            policy.residual_mode() == VvcResidualCodingMode::Lossless
+                || (node.width >= 8 && node.height >= 8)
+        }
+        VvcFastSearch::Moderate | VvcFastSearch::Aggressive => {
+            node.width >= 8 && node.height >= 8
+        }
+        VvcFastSearch::LosslessSpeed => node.width >= 8 && node.height >= 8,
+    }
 }
 
 fn vvc_source_luma_directional_seed(

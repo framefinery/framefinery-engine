@@ -10,11 +10,12 @@ use super::super::{
     vvc_neutral_sample, vvc_residual_chroma_explicit_candidate_allowed, VvcBdpcmMode,
     VvcChromaCclmMode, VvcChromaIntraCandidateCost, VvcChromaIntraCandidateCosts,
     VvcChromaIntraPredictionMode, VvcChromaTuCodingDecision, VvcCodingTreeNode,
-    VvcCtuPartitionShape, VvcCtuRegion, VvcIntraPredictionMode, VvcLumaIntraCandidateCost,
-    VvcLumaIntraCandidateCosts, VvcLumaTuCodingDecision, VvcPictureFormat, VvcReconstructionFrame,
-    VvcResidualCodingMode, VvcResidualCodingPolicy, VvcResidualScoreMetric, VvcSample,
-    VvcSampledColor, VvcSampledFrame, VvcTuResidualCodingMode, VvcVideoGeometry,
-    VVC_CHROMA_INTRA_CANDIDATE_CAPACITY, VVC_CTU_SIZE, VVC_LUMA_INTRA_CANDIDATE_CAPACITY,
+    VvcCtuPartitionShape, VvcCtuRegion, VvcFastSearch, VvcIntraPredictionMode,
+    VvcLumaIntraCandidateCost, VvcLumaIntraCandidateCosts, VvcLumaTuCodingDecision,
+    VvcPictureFormat, VvcReconstructionFrame, VvcResidualCodingMode, VvcResidualCodingPolicy,
+    VvcResidualScoreMetric, VvcSample, VvcSampledColor, VvcSampledFrame,
+    VvcTuResidualCodingMode, VvcVideoGeometry, VVC_CHROMA_INTRA_CANDIDATE_CAPACITY, VVC_CTU_SIZE,
+    VVC_LUMA_INTRA_CANDIDATE_CAPACITY,
 };
 use super::transform::{
     luma_ac_syntax_cost_estimate, luma_reconstructed_residual_sse_with_mts_into,

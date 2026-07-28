@@ -1163,6 +1163,8 @@ struct EncodeJob {
     qp: Option<u8>,
     #[cfg(feature = "codec-av2")]
     av2_predictive: bool,
+    #[cfg(feature = "codec-vvc")]
+    vvc_fast_search: framefinery_codecs::vvc::VvcFastSearch,
 }
 
 fn print_encode_config(codec_name: &str, args: &EncodeArgs, job: &EncodeJob) {
@@ -1242,6 +1244,8 @@ fn encode_job(args: &EncodeArgs) -> Result<EncodeJob, String> {
     let av2_predictive = boolean_setting_enabled(&args.settings, "predictive")?;
     #[cfg(not(feature = "codec-av2"))]
     let _ = boolean_setting_enabled(&args.settings, "predictive")?;
+    #[cfg(feature = "codec-vvc")]
+    let vvc_fast_search = vvc_fast_search_setting(&args.settings)?;
     let format = if lossless && source_format != PixelFormat::Rgb24 {
         source_format
     } else {
@@ -1268,6 +1272,8 @@ fn encode_job(args: &EncodeArgs) -> Result<EncodeJob, String> {
         qp: args.qp,
         #[cfg(feature = "codec-av2")]
         av2_predictive,
+        #[cfg(feature = "codec-vvc")]
+        vvc_fast_search,
     })
 }
 
@@ -1328,6 +1334,20 @@ fn boolean_setting_enabled(settings: &[String], setting_name: &str) -> Result<bo
         }
     }
     Ok(false)
+}
+
+#[cfg(feature = "codec-vvc")]
+fn vvc_fast_search_setting(
+    settings: &[String],
+) -> Result<framefinery_codecs::vvc::VvcFastSearch, String> {
+    for spec in settings {
+        if args::setting_name(spec) != "fast-search" {
+            continue;
+        }
+        let value = args::setting_value(spec).unwrap_or("true");
+        return value.parse::<framefinery_codecs::vvc::VvcFastSearch>();
+    }
+    Ok(framefinery_codecs::vvc::VvcFastSearch::default())
 }
 
 fn codec_input_format(codec: &str, source_format: PixelFormat) -> PixelFormat {
@@ -1653,6 +1673,7 @@ fn encode_vvc(job: EncodeJob) -> Result<(), String> {
             framefinery_codecs::vvc::VvcEncodeOptions {
                 lossless: job.lossless,
                 qp: job.qp,
+                fast_search: job.vvc_fast_search,
             },
             Some(&mut frame_metrics),
         )?;
@@ -1671,6 +1692,7 @@ fn encode_vvc(job: EncodeJob) -> Result<(), String> {
             framefinery_codecs::vvc::VvcEncodeOptions {
                 lossless: job.lossless,
                 qp: job.qp,
+                fast_search: job.vvc_fast_search,
             },
             Some(&mut frame_metrics),
         )?;
@@ -2524,6 +2546,31 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    #[cfg(feature = "codec-vvc")]
+    #[test]
+    fn encode_job_accepts_vvc_fast_search_setting() {
+        let args = EncodeArgs {
+            input: None,
+            output: Some("out.vvc".to_string()),
+            codec: Some("vvc".to_string()),
+            video: Some(args::VideoSpec {
+                width: 8,
+                height: 8,
+                pixel_format: Some("yuv420p8".to_string()),
+            }),
+            filters: vec!["pattern=black".to_string()],
+            frames: Some(1),
+            settings: vec!["fast-search=moderate".to_string()],
+            ..EncodeArgs::default()
+        };
+
+        let job = encode_job(&args).expect("VVC fast-search setting should parse");
+        assert_eq!(
+            job.vvc_fast_search,
+            framefinery_codecs::vvc::VvcFastSearch::Moderate
+        );
+    }
+
     #[test]
     fn open_job_reader_hides_unselected_file_suffix() {
         let path = temp_yuv_path("reader_prefix_8x8");
@@ -2548,6 +2595,8 @@ mod tests {
             qp: None,
             #[cfg(feature = "codec-av2")]
             av2_predictive: false,
+            #[cfg(feature = "codec-vvc")]
+            vvc_fast_search: framefinery_codecs::vvc::VvcFastSearch::Off,
         };
         let mut reader = open_job_reader(&job).expect("open reader");
         let mut bytes = Vec::new();
@@ -2670,6 +2719,8 @@ mod tests {
             qp: None,
             #[cfg(feature = "codec-av2")]
             av2_predictive: false,
+            #[cfg(feature = "codec-vvc")]
+            vvc_fast_search: framefinery_codecs::vvc::VvcFastSearch::Off,
         };
         let source = vec![0; 8];
         let reconstruction = vec![1; 8];
@@ -2702,6 +2753,8 @@ mod tests {
             qp: None,
             #[cfg(feature = "codec-av2")]
             av2_predictive: false,
+            #[cfg(feature = "codec-vvc")]
+            vvc_fast_search: framefinery_codecs::vvc::VvcFastSearch::Off,
         };
         let source = vec![0; 12];
         let mut reconstruction = vec![0; 12];

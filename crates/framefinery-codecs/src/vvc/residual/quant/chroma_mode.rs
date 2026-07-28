@@ -279,7 +279,9 @@ fn select_vvc_chroma_bdpcm_prediction(
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
 ) -> Option<VvcSelectedChromaBdpcm> {
-    if !vvc_chroma_bdpcm_selection_allowed(policy, chroma_width, chroma_height) {
+    if !vvc_chroma_bdpcm_selection_allowed(policy, chroma_width, chroma_height)
+        || !vvc_chroma_bdpcm_fast_search_allowed(policy, selected_mode)
+    {
         return None;
     }
 
@@ -453,6 +455,32 @@ fn select_vvc_chroma_bdpcm_prediction(
     }
 
     best
+}
+
+fn vvc_chroma_bdpcm_fast_search_allowed(
+    policy: VvcResidualCodingPolicy,
+    selected_mode: VvcChromaIntraPredictionMode,
+) -> bool {
+    match policy.fast_search() {
+        VvcFastSearch::Off | VvcFastSearch::Conservative => true,
+        VvcFastSearch::LosslessSpeed if policy.residual_mode() == VvcResidualCodingMode::Lossy => {
+            true
+        }
+        VvcFastSearch::Moderate | VvcFastSearch::LosslessSpeed => {
+            matches!(selected_mode, VvcChromaIntraPredictionMode::Derived)
+                || vvc_chroma_mode_is_bdpcm_aligned(selected_mode)
+        }
+        VvcFastSearch::Aggressive => vvc_chroma_mode_is_bdpcm_aligned(selected_mode),
+    }
+}
+
+fn vvc_chroma_mode_is_bdpcm_aligned(mode: VvcChromaIntraPredictionMode) -> bool {
+    matches!(
+        mode,
+        VvcChromaIntraPredictionMode::Explicit(
+            VvcIntraPredictionMode::Horizontal | VvcIntraPredictionMode::Vertical
+        )
+    )
 }
 
 fn vvc_chroma_bdpcm_selection_allowed(
@@ -773,6 +801,12 @@ impl VvcChromaModeRdShortlist {
 fn vvc_chroma_mode_rd_shortlist_limit(policy: VvcResidualCodingPolicy) -> usize {
     match policy.residual_mode() {
         VvcResidualCodingMode::Lossless => VVC_CHROMA_INTRA_CANDIDATE_CAPACITY,
-        VvcResidualCodingMode::Lossy => VVC_LOSSY_CHROMA_RD_WINNER_CANDIDATES,
+        VvcResidualCodingMode::Lossy => match policy.fast_search() {
+            VvcFastSearch::Off | VvcFastSearch::Conservative | VvcFastSearch::LosslessSpeed => {
+                VVC_LOSSY_CHROMA_RD_WINNER_CANDIDATES
+            }
+            VvcFastSearch::Moderate => 3,
+            VvcFastSearch::Aggressive => 2,
+        },
     }
 }

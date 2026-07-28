@@ -56,6 +56,12 @@ def main() -> int:
     )
     parser.add_argument("--av2-lossy-qp", type=parse_qp, default=24)
     parser.add_argument("--vvc-lossy-qp", type=parse_qp, default=24)
+    parser.add_argument(
+        "--vvc-fast-search",
+        choices=("off", "conservative", "moderate", "aggressive", "lossless-speed"),
+        default="lossless-speed",
+        help="optional VVC mode-search pruning level passed as --set fast-search=<level>",
+    )
     parser.add_argument("--av2-predictive", dest="av2_predictive", action="store_true", default=True)
     parser.add_argument("--no-av2-predictive", dest="av2_predictive", action="store_false")
     parser.add_argument(
@@ -141,6 +147,7 @@ def main() -> int:
         "av2_predictive": args.av2_predictive,
         "av2_lossy_qp": args.av2_lossy_qp,
         "vvc_lossy_qp": args.vvc_lossy_qp,
+        "vvc_fast_search": args.vvc_fast_search,
         "skipped": skipped,
         "results": results,
     }
@@ -157,6 +164,7 @@ def rerender_report(args: argparse.Namespace) -> int:
     report.setdefault("av2_predictive", args.av2_predictive)
     report.setdefault("av2_lossy_qp", args.av2_lossy_qp)
     report.setdefault("vvc_lossy_qp", args.vvc_lossy_qp)
+    report.setdefault("vvc_fast_search", args.vvc_fast_search)
     results = report.get("results", [])
     baseline = load_baseline(args.baseline_json)
     for row in results:
@@ -264,6 +272,8 @@ def run_case(
         settings.append("lossless")
     if codec == "av2" and args.av2_predictive:
         settings.append("predictive")
+    if codec == "vvc" and args.vvc_fast_search != "off":
+        settings.append(f"fast-search={args.vvc_fast_search}")
     for setting in settings:
         command.extend(["--set", setting])
     if codec == "av2" and mode == "lossy":
@@ -488,10 +498,12 @@ def markdown_report(report: dict[str, Any], skipped: int) -> str:
         f"- Set: `{report['set']}`",
         f"- AV2 predictive: `{report['av2_predictive']}`",
         f"- AV2 lossy QP: `{report['av2_lossy_qp']}`",
+        f"- VVC fast search: `{report.get('vvc_fast_search', 'off')}`",
         f"- Skipped combinations: `{skipped}`",
         "",
     ]
     lines.extend(tradeoff_scale_rows(report["results"]))
+    lines.extend(av2_vvc_aggregate_rows(report["results"]))
     lines.extend(
         [
             "",
@@ -524,6 +536,80 @@ def markdown_report(report: dict[str, Any], skipped: int) -> str:
         )
     lines.extend(total_rows(report["results"]))
     return "\n".join(lines)
+
+
+def av2_vvc_aggregate_rows(results: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        "",
+        "## AV2/VVC Aggregate",
+        "",
+        "| Mode | AV2 bytes | VVC bytes | VVC bytes vs AV2 | AV2 FPS | VVC FPS | VVC FPS / AV2 | AV2 PSNR | VVC PSNR | VVC PSNR - AV2 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    rows = 0
+    for mode_key in ("lossless", "lossy"):
+        av2 = aggregate_codec_mode(results, "av2", mode_key)
+        vvc = aggregate_codec_mode(results, "vvc", mode_key)
+        if av2 is None or vvc is None:
+            continue
+        rows += 1
+        psnr_delta = None
+        if finite_number(av2["psnr"]) and finite_number(vvc["psnr"]):
+            psnr_delta = vvc["psnr"] - av2["psnr"]
+        lines.append(
+            "| {mode} | {av2_bytes} | {vvc_bytes} | {byte_delta} | "
+            "{av2_fps:.2f} | {vvc_fps:.2f} | {fps_ratio} | "
+            "{av2_psnr} | {vvc_psnr} | {psnr_delta} |".format(
+                mode=mode_key,
+                av2_bytes=int(av2["bytes"]),
+                vvc_bytes=int(vvc["bytes"]),
+                byte_delta=format_optional_percent(
+                    (vvc["bytes"] / av2["bytes"] - 1.0) * 100.0
+                    if av2["bytes"] > 0.0
+                    else None
+                ),
+                av2_fps=av2["fps"],
+                vvc_fps=vvc["fps"],
+                fps_ratio=format_optional_ratio(
+                    vvc["fps"] / av2["fps"] if av2["fps"] > 0.0 else None
+                ),
+                av2_psnr=format_optional_float(av2["psnr"]),
+                vvc_psnr=format_optional_float(vvc["psnr"]),
+                psnr_delta=format_optional_delta_float(psnr_delta),
+            )
+        )
+    return lines if rows else []
+
+
+def aggregate_codec_mode(
+    results: list[dict[str, Any]], codec: str, mode_key: str
+) -> dict[str, float] | None:
+    rows = [
+        row
+        for row in results
+        if row["codec"] == codec and row["mode_key"] == mode_key
+    ]
+    if not rows:
+        return None
+    frames = sum(row["frames"] for row in rows)
+    seconds = sum(row["seconds"] for row in rows)
+    return {
+        "bytes": float(sum(row["bytes"] for row in rows)),
+        "fps": frames / seconds if seconds > 0.0 else math.inf,
+        "psnr": aggregate_psnr(row.get("psnr_all_mean") for row in rows),
+    }
+
+
+def aggregate_psnr(values: Any) -> float | None:
+    values = [value for value in values if value is not None]
+    if not values:
+        return None
+    finite = [value for value in values if math.isfinite(value)]
+    if finite:
+        return sum(finite) / len(finite)
+    if all(math.isinf(value) for value in values):
+        return math.inf
+    return None
 
 
 def total_rows(results: list[dict[str, Any]]) -> list[str]:
@@ -591,6 +677,12 @@ def mode_label(codec: str, mode: str, args: argparse.Namespace) -> str:
         return "lossless+predictive"
     if codec == "av2" and mode == "lossy":
         return f"qp={args.av2_lossy_qp}"
+    if codec == "vvc" and args.vvc_fast_search != "off":
+        if mode == "lossy":
+            return f"qp={args.vvc_lossy_qp}+fast={args.vvc_fast_search}"
+        return f"lossless+fast={args.vvc_fast_search}"
+    if codec == "vvc" and mode == "lossy":
+        return f"qp={args.vvc_lossy_qp}"
     return mode
 
 

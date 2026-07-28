@@ -308,7 +308,16 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 && !vvc_luma_exact_min_syntax_mode_search_done(best_luma_score)
             {
                 let refinement_start = luma_directional_candidates.count();
-                luma_directional_candidates.add_refinement(best_luma_mode.luma_mode_index());
+                let refinement_fast_search =
+                    if policy.residual_mode() == VvcResidualCodingMode::Lossy
+                        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+                    {
+                        VvcFastSearch::Off
+                    } else {
+                        policy.fast_search()
+                    };
+                luma_directional_candidates
+                    .add_refinement(best_luma_mode.luma_mode_index(), refinement_fast_search);
                 for mode in luma_directional_candidates.iter_from(refinement_start) {
                     #[cfg(feature = "vvc-stats")]
                     let prediction_start = Instant::now();
@@ -660,6 +669,12 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             }
         }
         if policy.chroma_cclm_candidate_allowed(node, source_frame.geometry)
+            && vvc_chroma_cclm_fast_search_allowed(
+                policy,
+                best_chroma_score,
+                chroma_width,
+                chroma_height,
+            )
             && !vvc_chroma_lossy_exact_mode_search_done(
                 chroma_syntax_tie_breaker,
                 best_chroma_score,
@@ -954,4 +969,49 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         #[cfg(feature = "vvc-stats")]
         residual_energy_stats,
     }
+}
+
+fn vvc_chroma_cclm_fast_search_allowed(
+    policy: VvcResidualCodingPolicy,
+    best_score: u64,
+    chroma_width: usize,
+    chroma_height: usize,
+) -> bool {
+    match policy.fast_search() {
+        VvcFastSearch::Off | VvcFastSearch::Conservative => true,
+        VvcFastSearch::LosslessSpeed if policy.residual_mode() == VvcResidualCodingMode::Lossy => {
+            true
+        }
+        VvcFastSearch::Moderate | VvcFastSearch::LosslessSpeed => {
+            best_score > vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
+        }
+        VvcFastSearch::Aggressive => {
+            best_score
+                > vvc_chroma_fast_search_low_residual_score(policy, chroma_width, chroma_height)
+        }
+    }
+}
+
+fn vvc_chroma_fast_search_near_exact_score(
+    policy: VvcResidualCodingPolicy,
+    chroma_width: usize,
+    chroma_height: usize,
+) -> u64 {
+    if policy.residual_mode() == VvcResidualCodingMode::Lossless {
+        64
+    } else {
+        (chroma_width as u64)
+            .saturating_mul(chroma_height as u64)
+            .saturating_mul(2)
+            .saturating_mul(64)
+    }
+}
+
+fn vvc_chroma_fast_search_low_residual_score(
+    policy: VvcResidualCodingPolicy,
+    chroma_width: usize,
+    chroma_height: usize,
+) -> u64 {
+    vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
+        .saturating_mul(4)
 }

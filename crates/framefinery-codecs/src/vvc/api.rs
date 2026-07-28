@@ -61,9 +61,59 @@ impl VvcEncodeRequest {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VvcFastSearch {
+    Off,
+    Conservative,
+    Moderate,
+    Aggressive,
+    #[default]
+    LosslessSpeed,
+}
+
+impl VvcFastSearch {
+    pub const VALUES: &'static [&'static str] =
+        &["off", "conservative", "moderate", "aggressive", "lossless-speed"];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Conservative => "conservative",
+            Self::Moderate => "moderate",
+            Self::Aggressive => "aggressive",
+            Self::LosslessSpeed => "lossless-speed",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "off" => Some(Self::Off),
+            "conservative" => Some(Self::Conservative),
+            "moderate" => Some(Self::Moderate),
+            "aggressive" => Some(Self::Aggressive),
+            "lossless-speed" => Some(Self::LosslessSpeed),
+            _ => None,
+        }
+    }
+}
+
+impl std::str::FromStr for VvcFastSearch {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse(value).ok_or_else(|| {
+            format!(
+                "VVC fast-search expects one of {}, got '{value}'",
+                Self::VALUES.join("|")
+            )
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct VvcEncodeOptions {
     pub lossless: bool,
     pub qp: Option<u8>,
+    pub fast_search: VvcFastSearch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

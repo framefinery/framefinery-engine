@@ -1,4 +1,3 @@
-
 use super::*;
 
 fn sampled_luma_frame(width: usize, height: usize, luma: Vec<VvcSample>) -> VvcSampledFrame {

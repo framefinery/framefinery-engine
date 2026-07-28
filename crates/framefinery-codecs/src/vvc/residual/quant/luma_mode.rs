@@ -460,6 +460,12 @@ impl VvcLumaModeRdShortlist {
 fn vvc_luma_mode_rd_shortlist_limit(policy: VvcResidualCodingPolicy) -> usize {
     match policy.residual_mode() {
         VvcResidualCodingMode::Lossless => VVC_LUMA_INTRA_CANDIDATE_CAPACITY,
-        VvcResidualCodingMode::Lossy => VVC_LOSSY_LUMA_RD_WINNER_CANDIDATES,
+        VvcResidualCodingMode::Lossy => match policy.fast_search() {
+            VvcFastSearch::Off | VvcFastSearch::Conservative | VvcFastSearch::LosslessSpeed => {
+                VVC_LOSSY_LUMA_RD_WINNER_CANDIDATES
+            }
+            VvcFastSearch::Moderate => 3,
+            VvcFastSearch::Aggressive => 2,
+        },
     }
 }

@@ -2746,6 +2746,45 @@ fn vvc_input_stream_zero_frames_reads_until_eof() {
 }
 
 #[test]
+fn vvc_lossless_speed_fast_search_keeps_lossy_output_identical() {
+    let geometry = VvcVideoGeometry {
+        width: 16,
+        height: 16,
+    };
+    let input = (0..Picture::expected_len(geometry.width, geometry.height, PixelFormat::Yuv420p8))
+        .map(|index| ((index * 37 + index / 3 + 11) & 0xff) as u8)
+        .collect::<Vec<_>>();
+
+    let off = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 1 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            qp: Some(24),
+            fast_search: VvcFastSearch::Off,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("baseline lossy encode should succeed");
+    let lossless_speed = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 1 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            qp: Some(24),
+            fast_search: VvcFastSearch::LosslessSpeed,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("lossless-speed lossy encode should succeed");
+
+    assert_eq!(lossless_speed.bitstream, off.bitstream);
+    assert_eq!(lossless_speed.reconstruction, off.reconstruction);
+}
+
+#[test]
 fn vvc_bitstream_path_accepts_sampled_non_black_input() {
     let input = solid_yuv420p8(65, 128, 192, 1);
     let bytes = vvc_yuv420p8_annex_b_from_input(&input, VvcEncodeParams { frames: 1 }).unwrap();
@@ -3737,6 +3776,33 @@ fn rejects_zero_vvc_frame_count() {
 
 fn solid_yuv420p8(y: u8, u: u8, v: u8, frames: usize) -> Vec<u8> {
     solid_yuv420p8_geometry(8, 8, y, u, v, frames)
+}
+
+fn vvc_yuv_encode_artifacts_from_input_with_options(
+    input: &[u8],
+    params: VvcEncodeParams,
+    geometry: VvcVideoGeometry,
+    format: PixelFormat,
+    options: VvcEncodeOptions,
+) -> Result<VvcEncodeArtifacts, String> {
+    let mut reader = std::io::Cursor::new(input);
+    let mut bitstream = Vec::new();
+    let mut reconstruction = Vec::new();
+    vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics(
+        &mut reader,
+        &mut bitstream,
+        Some(&mut reconstruction),
+        params,
+        geometry,
+        VvcVideoLimits::unbounded(),
+        format,
+        options,
+        None,
+    )?;
+    Ok(VvcEncodeArtifacts {
+        bitstream,
+        reconstruction,
+    })
 }
 
 fn solid_yuv420p8_geometry(

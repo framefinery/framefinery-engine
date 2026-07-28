@@ -233,7 +233,8 @@ fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<R: Read, W: 
     )?;
     let frame_len = stream_layout.frame_len();
     let residual_mode = VvcResidualCodingMode::for_encode_options(options);
-    let residual_policy = VvcResidualCodingPolicy::new(stream_format, residual_mode);
+    let residual_policy =
+        VvcResidualCodingPolicy::new(stream_format, residual_mode).with_fast_search(options.fast_search);
     let slice_config = vvc_slice_config_for_input_format(
         residual_mode.slice_config(stream_format, options.qp),
         format,
