@@ -61,6 +61,7 @@ pub(in crate::vvc) enum VvcCabacContext {
     LfnstIdx(u8),
     CuSkipFlag(u8),
     PredModeIbcFlag(u8),
+    PredModeFlag(u8),
     GeneralMergeFlag(u8),
     AbsMvdGreater0Flag(u8),
     AbsMvdGreater1Flag(u8),
@@ -347,6 +348,12 @@ impl VvcCabacContext {
                 const I_SLICE_INIT: [u8; 9] = [17, 42, 36, 0, 57, 44, 0, 43, 45];
                 I_SLICE_INIT[ctx as usize]
             }
+            VvcCabacContext::PredModeFlag(ctx) => {
+                // H.266 pred_mode_flag is only emitted by this encoder for
+                // predictive P slices, so use the P-slice initialization row.
+                const P_SLICE_INIT: [u8; 2] = [40, 35];
+                P_SLICE_INIT[ctx as usize]
+            }
             VvcCabacContext::GeneralMergeFlag(ctx) => {
                 // H.266 Table 82, initType 0 / I-slice.
                 const I_SLICE_INIT: [u8; 3] = [26, 21, 6];
@@ -499,6 +506,10 @@ impl VvcCabacContext {
             }
             VvcCabacContext::PredModeIbcFlag(ctx) => {
                 const LOG2_WINDOW: [u8; 9] = [1, 5, 8, 1, 5, 8, 1, 5, 8];
+                LOG2_WINDOW[ctx as usize]
+            }
+            VvcCabacContext::PredModeFlag(ctx) => {
+                const LOG2_WINDOW: [u8; 2] = [5, 1];
                 LOG2_WINDOW[ctx as usize]
             }
             VvcCabacContext::GeneralMergeFlag(ctx) => {
@@ -906,6 +917,9 @@ impl VvcCabacContexts {
                 VvcCabacContext::LfnstIdx(idx) => &self.lfnst_idx[idx as usize],
                 VvcCabacContext::CuSkipFlag(idx) => &self.cu_skip_flag[idx as usize],
                 VvcCabacContext::PredModeIbcFlag(idx) => &self.pred_mode_ibc_flag[idx as usize],
+                VvcCabacContext::PredModeFlag(_) => {
+                    panic!("pred_mode_flag uses standalone P-slice context models")
+                }
                 VvcCabacContext::GeneralMergeFlag(idx) => &self.general_merge_flag[idx as usize],
                 VvcCabacContext::AbsMvdGreater0Flag(idx) => {
                     &self.abs_mvd_greater0_flag[idx as usize]
@@ -994,6 +1008,9 @@ impl VvcCabacContexts {
             VvcCabacContext::CuSkipFlag(idx) => self.cu_skip_flag[idx as usize].encode(cabac, bin),
             VvcCabacContext::PredModeIbcFlag(idx) => {
                 self.pred_mode_ibc_flag[idx as usize].encode(cabac, bin)
+            }
+            VvcCabacContext::PredModeFlag(_) => {
+                panic!("pred_mode_flag uses standalone P-slice context models")
             }
             VvcCabacContext::GeneralMergeFlag(idx) => {
                 self.general_merge_flag[idx as usize].encode(cabac, bin)
@@ -1314,6 +1331,21 @@ impl VvcCabacContexts {
     }
 
     #[inline]
+    pub(in crate::vvc) fn encode_cu_skip_flag(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        idx: u8,
+        bin: bool,
+    ) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::CuSkipFlag(idx),
+            &mut self.cu_skip_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
     pub(in crate::vvc) fn encode_last_sig_coeff_x_prefix(
         &mut self,
         cabac: &mut VvcCabacEncoder,
@@ -1404,7 +1436,7 @@ impl VvcCabacContexts {
     }
 
     #[inline]
-    fn encode_model(
+    pub(in crate::vvc) fn encode_model(
         cabac: &mut VvcCabacEncoder,
         ctx: VvcCabacContext,
         model: &mut VvcCabacProbModel,
@@ -1412,6 +1444,10 @@ impl VvcCabacContexts {
     ) {
         let record_dump = cabac.records_dump();
         let trace = cabac.traces_contexts();
+        if !record_dump && !trace {
+            model.encode_fast(cabac, bin);
+            return;
+        }
         if record_dump {
             cabac.context_bin_count += 1;
             if let Some(ctx_id) = ctx.rtl_context_id() {
@@ -1452,6 +1488,10 @@ impl VvcCabacProbModel {
     const MASK_0: u16 = 0x7fe0;
     const MASK_1: u16 = 0x7ffe;
 
+    pub(in crate::vvc) fn from_context(ctx: VvcCabacContext, qp: i32) -> Self {
+        Self::from_init_value(ctx.init_value(), qp, ctx.log2_window_size())
+    }
+
     fn from_init_value(init_value: u8, qp: i32, log2_window_size: u8) -> Self {
         let qp = qp.clamp(0, 63);
         let slope = ((init_value >> 3) as i32) - 4;
@@ -1479,16 +1519,23 @@ impl VvcCabacProbModel {
         self.state1 = probability_state & Self::MASK_1;
     }
 
+    #[inline]
     pub(in crate::vvc) fn state(&self) -> u16 {
         (self.state0 + self.state1) >> 8
     }
 
+    #[inline]
     pub(in crate::vvc) fn mps(&self) -> bool {
         self.state() >= 128
     }
 
+    #[inline]
     pub(in crate::vvc) fn lps(&self, range: u32) -> u16 {
-        let mut q = self.state();
+        Self::lps_from_state(self.state(), range)
+    }
+
+    #[inline]
+    fn lps_from_state(mut q: u16, range: u32) -> u16 {
         if (q & 0x80) != 0 {
             q ^= 0xff;
         }
@@ -1496,14 +1543,27 @@ impl VvcCabacProbModel {
     }
 
     fn encode(&mut self, cabac: &mut VvcCabacEncoder, bin: bool) {
+        let state = self.state();
         let event = VvcCtxEvent {
-            lps: self.lps(cabac.range),
-            mps: self.mps(),
+            lps: Self::lps_from_state(state, cabac.range),
+            mps: state >= 128,
         };
         cabac.encode_bin(bin, event);
         self.update(bin);
     }
 
+    #[inline]
+    fn encode_fast(&mut self, cabac: &mut VvcCabacEncoder, bin: bool) {
+        let state = self.state();
+        let event = VvcCtxEvent {
+            lps: Self::lps_from_state(state, cabac.range),
+            mps: state >= 128,
+        };
+        cabac.encode_bin_fast(bin, event);
+        self.update(bin);
+    }
+
+    #[inline]
     fn update(&mut self, bin: bool) {
         let rate0 = (self.rate >> 4) as u16;
         let rate1 = (self.rate & 15) as u16;

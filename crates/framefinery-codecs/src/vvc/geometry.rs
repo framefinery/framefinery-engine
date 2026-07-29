@@ -157,5 +157,12 @@ struct VvcCtuRegion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::vvc) struct VvcQuantizedCtu {
     slice_address: usize,
-    params: VvcCtuPartitionParams,
+    geometry: VvcVideoGeometry,
+    payload: VvcQuantizedCtuPayload,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::vvc) enum VvcQuantizedCtuPayload {
+    Intra(VvcCtuPartitionParams),
+    InterSkip,
 }

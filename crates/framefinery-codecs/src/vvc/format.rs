@@ -80,6 +80,9 @@ pub(super) struct VvcSliceSyntaxConfig {
     tools: VvcSyntaxToolFlags,
     ref_pic_resampling_enabled: bool,
     entry_point_offsets_present: bool,
+    inter_enabled: bool,
+    picture_header_slice_state_enabled: bool,
+    picture_parameter_set_id: u8,
     slice_qp: i32,
     vui_signal: Option<VvcVuiSignal>,
 }
@@ -143,6 +146,9 @@ impl VvcSliceSyntaxConfig {
             tools,
             ref_pic_resampling_enabled: true,
             entry_point_offsets_present: true,
+            inter_enabled: false,
+            picture_header_slice_state_enabled: false,
+            picture_parameter_set_id: 0,
             slice_qp: 32,
             vui_signal: None,
         }
@@ -203,6 +209,26 @@ impl VvcSliceSyntaxConfig {
 
     const fn with_vui_signal(mut self, vui_signal: VvcVuiSignal) -> Self {
         self.vui_signal = Some(vui_signal);
+        self
+    }
+
+    const fn with_inter_enabled(mut self) -> Self {
+        self.inter_enabled = true;
+        self
+    }
+
+    const fn with_picture_header_slice_state(mut self) -> Self {
+        self.picture_header_slice_state_enabled = true;
+        self
+    }
+
+    const fn without_picture_header_slice_state(mut self) -> Self {
+        self.picture_header_slice_state_enabled = false;
+        self
+    }
+
+    const fn with_picture_parameter_set_id(mut self, id: u8) -> Self {
+        self.picture_parameter_set_id = id;
         self
     }
 

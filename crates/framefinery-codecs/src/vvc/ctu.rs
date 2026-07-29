@@ -13,11 +13,17 @@ fn quantize_vvc_ctu_with_luma_leaf_selection(
     chroma_qp: i32,
     luma_mode_search_state: &mut VvcLumaModeSearchState,
     transform_skip_quant_tables: &VvcTransformSkipQuantTables,
+    scratch: &mut VvcCtuQuantScratch,
+    luma_max_leaf_size: u16,
+    luma_inter_skip: Option<&[bool; MAX_VVC_LUMA_TUS]>,
+    chroma_inter_skip: Option<&[bool; MAX_VVC_CHROMA_TUS]>,
+    temporal_mode_hint: Option<&VvcQuantizedCtuLeafDecision>,
 ) -> VvcQuantizedCtuLeafDecision {
-    let luma_max_leaf_size =
-        select_vvc_luma_max_leaf_size_for_ctu(policy, source_frame, region, luma_qp);
     let policy = policy.with_luma_max_leaf_size(luma_max_leaf_size);
-    let quantized = quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes(
+    let temporal_mode_hint = temporal_mode_hint
+        .filter(|hint| hint.luma_max_leaf_size == luma_max_leaf_size)
+        .map(|hint| &hint.quantized);
+    let quantized = quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes_and_scratch_with_mode_hints(
         source_frame,
         frame_recon,
         region,
@@ -26,6 +32,10 @@ fn quantize_vvc_ctu_with_luma_leaf_selection(
         chroma_qp,
         luma_mode_search_state,
         transform_skip_quant_tables,
+        scratch,
+        luma_inter_skip,
+        chroma_inter_skip,
+        temporal_mode_hint,
     );
     VvcQuantizedCtuLeafDecision {
         quantized,

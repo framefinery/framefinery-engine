@@ -84,6 +84,82 @@ impl VvcReconstructionFrame {
         );
     }
 
+    fn copy_ctu_from(&mut self, previous: &Self, region: VvcCtuRegion) {
+        debug_assert_eq!(self.geometry, previous.geometry);
+        debug_assert_eq!(self.format, previous.format);
+        let width = region
+            .geometry
+            .width
+            .min(self.geometry.width.saturating_sub(region.origin_x));
+        let height = region
+            .geometry
+            .height
+            .min(self.geometry.height.saturating_sub(region.origin_y));
+        copy_vvc_plane_region(
+            &mut self.luma,
+            &previous.luma,
+            self.geometry.width,
+            region.origin_x,
+            region.origin_y,
+            width,
+            height,
+        );
+        mark_vvc_plane_node_available(
+            &mut self.luma_available,
+            self.geometry.width,
+            self.geometry.height,
+            region.origin_x,
+            region.origin_y,
+            width,
+            height,
+        );
+
+        let subsample_x = chroma_subsample_x(self.format.chroma_sampling);
+        let subsample_y = chroma_subsample_y(self.format.chroma_sampling);
+        let chroma_width = self.chroma_width();
+        let chroma_height = self.chroma_height();
+        let chroma_x = region.origin_x / subsample_x;
+        let chroma_y = region.origin_y / subsample_y;
+        let chroma_copy_width = width / subsample_x;
+        let chroma_copy_height = height / subsample_y;
+        copy_vvc_plane_region(
+            &mut self.cb,
+            &previous.cb,
+            chroma_width,
+            chroma_x,
+            chroma_y,
+            chroma_copy_width,
+            chroma_copy_height,
+        );
+        copy_vvc_plane_region(
+            &mut self.cr,
+            &previous.cr,
+            chroma_width,
+            chroma_x,
+            chroma_y,
+            chroma_copy_width,
+            chroma_copy_height,
+        );
+        mark_vvc_plane_node_available(
+            &mut self.cb_available,
+            chroma_width,
+            chroma_height,
+            chroma_x,
+            chroma_y,
+            chroma_copy_width,
+            chroma_copy_height,
+        );
+        mark_vvc_plane_node_available(
+            &mut self.cr_available,
+            chroma_width,
+            chroma_height,
+            chroma_x,
+            chroma_y,
+            chroma_copy_width,
+            chroma_copy_height,
+        );
+    }
+
     fn chroma_width(&self) -> usize {
         self.geometry.width / chroma_subsample_x(self.format.chroma_sampling)
     }
@@ -92,7 +168,7 @@ impl VvcReconstructionFrame {
         self.geometry.height / chroma_subsample_y(self.format.chroma_sampling)
     }
 
-    fn into_yuv(self) -> Vec<u8> {
+    fn to_yuv(&self) -> Vec<u8> {
         let layout = PlanarYuvFrameLayout::for_validated_shape(
             self.geometry.width,
             self.geometry.height,
@@ -105,6 +181,24 @@ impl VvcReconstructionFrame {
         pack_planar_samples(&self.cb, cb_plane, self.format.bit_depth);
         pack_planar_samples(&self.cr, cr_plane, self.format.bit_depth);
         output
+    }
+
+}
+
+fn copy_vvc_plane_region(
+    dst: &mut [VvcSample],
+    src: &[VvcSample],
+    stride: usize,
+    start_x: usize,
+    start_y: usize,
+    width: usize,
+    height: usize,
+) {
+    for y in start_y..start_y + height {
+        let row = y * stride;
+        let start = row + start_x;
+        let end = start + width;
+        dst[start..end].copy_from_slice(&src[start..end]);
     }
 }
 

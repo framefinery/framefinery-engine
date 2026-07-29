@@ -42,9 +42,12 @@ pub use quant::quantize_vvc_color;
 pub(super) use quant::quantize_vvc_frame_with_reconstruction;
 #[cfg(test)]
 pub(super) use quant::quantize_vvc_residual_ctu_into_frame_reconstruction;
+#[cfg(feature = "bench-internals")]
+pub(super) use quant::quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes;
 pub(super) use quant::{
-    quantize_vvc_frame, quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes,
-    VvcLumaModeSearchState, VvcTransformSkipQuantTables,
+    quantize_vvc_frame,
+    quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes_and_scratch_with_mode_hints,
+    VvcCtuQuantScratch, VvcLumaModeSearchState, VvcTransformSkipQuantTables,
 };
 #[cfg(test)]
 pub(super) use recon::{reconstruct_vvc_residual_frame, reconstruct_vvc_residual_frame_with_qp};

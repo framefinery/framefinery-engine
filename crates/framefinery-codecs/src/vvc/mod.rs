@@ -37,8 +37,9 @@ mod residual;
 mod syntax;
 use cabac::VvcFrameCtuCabacState;
 use cabac::{
-    encode_ctu_partition_body, vvc_chroma_intra_mode_syntax_bin_count, vvc_chroma_transform_nodes,
-    vvc_luma_intra_mode_is_mpm, vvc_luma_intra_mode_syntax_bin_count, vvc_luma_transform_nodes,
+    encode_ctu_partition_body, encode_inter_skip_ctu_body, vvc_chroma_intra_mode_syntax_bin_count,
+    vvc_chroma_transform_nodes, vvc_chroma_transform_nodes_into, vvc_luma_intra_mode_is_mpm,
+    vvc_luma_intra_mode_syntax_bin_count, vvc_luma_transform_nodes, vvc_luma_transform_nodes_into,
     VvcCabacContext, VvcCabacContexts, VvcCabacDumpContextEvent, VvcCabacDumpSymbol,
     VvcCabacEncoder, VvcCabacPayload, VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams,
     VvcCtuPartitionShape, VvcLastSigCoeffPrefixCtxInput, VvcPartSplit,
@@ -51,12 +52,16 @@ use cabac::{
 };
 use header::{
     vvc_frame_slice_unit, vvc_picture_ctu_cols, vvc_picture_ctu_count, vvc_picture_ctu_rows,
-    vvc_poc_lsb_for_frame_idx, vvc_pps_unit_with_partitioning, vvc_slice_address_bits,
-    vvc_sps_unit, VvcPictureKind, VvcPicturePartitioning,
+    vvc_poc_lsb_for_frame_idx, vvc_pps_unit_with_partitioning_and_config,
+    vvc_predictive_frame_skip_slice_unit_with_cached_payload,
+    vvc_predictive_frame_skip_slice_unit_with_payload, vvc_predictive_frame_slice_unit,
+    vvc_slice_address_bits, vvc_sps_unit, VvcFrameSkipPayloadCache, VvcPictureKind,
+    VvcPicturePartitioning,
 };
 #[cfg(test)]
 use header::{
-    vvc_pps_rbsp, vvc_slice_payload, vvc_slice_rbsp, vvc_sps_payload, vvc_sps_rbsp,
+    vvc_pps_rbsp, vvc_pps_rbsp_with_partitioning_and_config, vvc_predictive_frame_skip_slice_unit,
+    vvc_slice_payload, vvc_slice_rbsp, vvc_sps_payload, vvc_sps_rbsp,
     write_vvc_coding_tree_entropy,
 };
 pub use nal::{
@@ -80,10 +85,12 @@ pub use residual::quantize_vvc_color;
 #[cfg(test)]
 use residual::VVC_LUMA_DC_BASE;
 use residual::{
-    quantize_vvc_frame, quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes,
-    VvcLumaModeSearchState, VvcPlaneAvailability, VvcQuantizedColor, VvcResidualCabacOptions,
-    VvcResidualComponent, VvcTransformSkipQuantTables, MAX_VVC_CHROMA_TUS, MAX_VVC_LUMA_TUS,
-    VVC_CHROMA_AC_COEFFS_PER_TU, VVC_DEFAULT_LOSSY_LUMA_QP, VVC_LUMA_AC_COEFFS_PER_TU,
+    quantize_vvc_frame,
+    quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes_and_scratch_with_mode_hints,
+    VvcCtuQuantScratch, VvcLumaModeSearchState, VvcPlaneAvailability, VvcQuantizedColor,
+    VvcResidualCabacOptions, VvcResidualComponent, VvcTransformSkipQuantTables, MAX_VVC_CHROMA_TUS,
+    MAX_VVC_LUMA_TUS, VVC_CHROMA_AC_COEFFS_PER_TU, VVC_DEFAULT_LOSSY_LUMA_QP,
+    VVC_LUMA_AC_COEFFS_PER_TU,
 };
 #[cfg(test)]
 use residual::{VvcResidualCabacEncoder, VvcResidualCtxConfig, VvcResidualPass1State};

@@ -172,10 +172,12 @@ Current option placement and inference rules:
   preserve more detail.
 
 Global accepted settings are listed by `ff codecs`; codec-specific settings are
-listed with the codec that owns them. The current AV2-specific
-`--set predictive` mode is experimental and lossless-only. It starts a
-multi-picture AV2 stream and uses show-existing-frame for exact repeated frames;
-non-identical frames still fall back to the existing lossless key-frame path.
+listed with the codec that owns them. The current codec-specific
+`--set predictive` mode is experimental. AV2 starts a multi-picture stream and
+uses show-existing-frame, zero-MV tiles, and motion-residual tiles where the
+current subset can encode them; otherwise it falls back to the existing
+key-frame path. VVC accepts the same predictive setting so temporal coding tools
+can be developed and benchmarked behind the same CLI shape.
 
 The positional input is optional when the first filter is a source. The initial
 source filter is `pattern=<name>`, with `black`, `checker`, `gradient`, and

@@ -1,9 +1,10 @@
+use super::context::VvcCabacProbModel;
 use super::ctu_split::{
     vvc_chroma_height, vvc_chroma_split_availability, vvc_chroma_width, VvcChromaSplitAvailability,
-    VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams, VvcLumaNeighbourState, VvcPartSplit,
-    VvcQtSplitCtxInput, VvcSplitCtxInput, VvcTreeType,
+    VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams, VvcCtuPartitionShape,
+    VvcLumaNeighbourState, VvcPartSplit, VvcQtSplitCtxInput, VvcSplitCtxInput, VvcTreeType,
 };
-use super::{VvcCabacContexts, VvcCabacEncoder};
+use super::{VvcCabacContext, VvcCabacContexts, VvcCabacEncoder};
 use crate::picture::ChromaSampling;
 use crate::vvc::residual::{VvcResidualCabacEncoder, VvcResidualCabacSymbolStream};
 use crate::vvc::{
@@ -31,6 +32,119 @@ pub(in crate::vvc) fn encode_ctu_partition_body(
 ) {
     let mut contexts = initial_vvc_cabac_contexts(slice_config);
     encode_ctu_partition_body_with_contexts(cabac, &mut contexts, params, slice_config);
+}
+
+#[allow(dead_code)]
+pub(in crate::vvc) fn encode_inter_skip_ctu_body(
+    cabac: &mut VvcCabacEncoder,
+    ctu_geometry: VvcVideoGeometry,
+    slice_config: VvcSliceSyntaxConfig,
+) {
+    debug_assert!(slice_config.inter_enabled);
+    let mut contexts = initial_vvc_cabac_contexts(slice_config);
+    encode_inter_skip_ctu_body_with_contexts(cabac, &mut contexts, ctu_geometry, slice_config, 0);
+}
+
+fn encode_inter_skip_ctu_body_with_contexts(
+    cabac: &mut VvcCabacEncoder,
+    contexts: &mut VvcCabacContexts,
+    ctu_geometry: VvcVideoGeometry,
+    slice_config: VvcSliceSyntaxConfig,
+    skip_ctx: u8,
+) {
+    if ctu_geometry.coded_width() == VVC_CTU_SIZE && ctu_geometry.coded_height() == VVC_CTU_SIZE {
+        // Root 64x64 inter skip CU. MaxNumMergeCand is one in predictive SPS,
+        // so merge_idx and residual syntax are both absent.
+        contexts.encode_split_flag(cabac, 0, false);
+        contexts.encode_cu_skip_flag(cabac, skip_ctx, true);
+        return;
+    }
+
+    let shape = VvcCtuPartitionShape {
+        root_width: VVC_CTU_SIZE as u16,
+        root_height: VVC_CTU_SIZE as u16,
+        visible_width: ctu_geometry.coded_width() as u16,
+        visible_height: ctu_geometry.coded_height() as u16,
+        chroma_sampling: slice_config.coding_tree.chroma_sampling,
+        dual_tree_intra: false,
+    };
+    let mut split_neighbours =
+        VvcLumaNeighbourState::new(shape.visible_width, shape.visible_height);
+    let mut skip_neighbours =
+        VvcInterSkipNeighbourState::new(shape.visible_width, shape.visible_height);
+    VvcCtuCabacOp::visit_intra_ctu_partition_with_luma_neighbours(
+        &mut split_neighbours,
+        shape,
+        0,
+        0,
+        shape.visible_width,
+        shape.visible_height,
+        VVC_CTU_SIZE as u16,
+        |op| emit_inter_skip_ctu_op(cabac, contexts, op, &mut skip_neighbours),
+    );
+}
+
+fn emit_inter_skip_ctu_op(
+    cabac: &mut VvcCabacEncoder,
+    contexts: &mut VvcCabacContexts,
+    op: VvcCtuCabacOp,
+    skip_neighbours: &mut VvcInterSkipNeighbourState,
+) {
+    match op {
+        VvcCtuCabacOp::QtSplit {
+            split_ctx,
+            write_split_flag,
+            write_qt_flag,
+            qt_ctx,
+            ..
+        } => {
+            if write_split_flag {
+                contexts.encode_split_flag(cabac, split_ctx, true);
+            }
+            if write_qt_flag {
+                contexts.encode_split_qt_flag(cabac, qt_ctx, true);
+            }
+        }
+        VvcCtuCabacOp::BtSplit {
+            vertical,
+            split_ctx,
+            write_split_flag,
+            write_qt_flag,
+            qt_ctx,
+            write_mtt_vertical_flag,
+            mtt_vertical_ctx,
+            write_binary_flag,
+            mtt_binary_ctx,
+            mtt_binary_value,
+            ..
+        } => {
+            if write_split_flag {
+                contexts.encode_split_flag(cabac, split_ctx, true);
+            }
+            if write_qt_flag {
+                contexts.encode_split_qt_flag(cabac, qt_ctx, false);
+            }
+            if write_mtt_vertical_flag {
+                contexts.encode_mtt_split_cu_vertical_flag(cabac, mtt_vertical_ctx, vertical);
+            }
+            if write_binary_flag {
+                contexts.encode_mtt_split_cu_binary_flag(cabac, mtt_binary_ctx, mtt_binary_value);
+            }
+        }
+        VvcCtuCabacOp::LumaLeafWithSplitCtx {
+            node,
+            write_split_flag,
+            split_ctx,
+        } => {
+            if write_split_flag {
+                contexts.encode_split_flag(cabac, split_ctx, false);
+            }
+            let skip_ctx = skip_neighbours.skip_ctx(node);
+            contexts.encode_cu_skip_flag(cabac, skip_ctx, true);
+            skip_neighbours.mark_leaf(node);
+        }
+        VvcCtuCabacOp::ChromaTree { .. } => {}
+    }
 }
 
 fn vvc_luma_mpm_list(
@@ -213,13 +327,24 @@ pub(in crate::vvc) fn encode_ctu_partition_body_with_contexts(
     params: &VvcCtuPartitionParams,
     slice_config: VvcSliceSyntaxConfig,
 ) {
-    let ops = VvcCtuCabacOp::ctu_partition(params);
     let mut ctu = VvcCtuCabacGenerator::new(contexts, params, slice_config);
     let mut luma_mode_neighbours =
         VvcLumaModeNeighbourState::new(params.visible_width as u16, params.visible_height as u16);
-    for op in ops {
-        ctu.emit_with_luma_mode_neighbours(cabac, op, &mut luma_mode_neighbours);
-    }
+    let mut split_neighbours =
+        VvcLumaNeighbourState::new(params.visible_width as u16, params.visible_height as u16);
+    let shape = params.shape();
+    VvcCtuCabacOp::visit_intra_ctu_partition_with_luma_neighbours(
+        &mut split_neighbours,
+        shape,
+        0,
+        0,
+        shape.visible_width,
+        shape.visible_height,
+        params.luma_max_leaf_size,
+        |op| {
+            ctu.emit_with_luma_mode_neighbours(cabac, op, &mut luma_mode_neighbours);
+        },
+    );
 }
 
 pub(in crate::vvc) struct VvcFrameCtuCabacState {
@@ -227,7 +352,10 @@ pub(in crate::vvc) struct VvcFrameCtuCabacState {
     luma_neighbours: VvcLumaNeighbourState,
     luma_mode_neighbours: VvcLumaModeNeighbourState,
     chroma_neighbours: VvcChromaNeighbourState,
-    ops: Vec<VvcCtuCabacOp>,
+    inter_skip_neighbours: VvcInterSkipNeighbourState,
+    skip_neighbours: Vec<bool>,
+    pred_mode_contexts: Option<[VvcCabacProbModel; 2]>,
+    inter_slice: bool,
     picture_width: u16,
     picture_height: u16,
     ctu_cols: usize,
@@ -237,6 +365,7 @@ impl VvcFrameCtuCabacState {
     pub(in crate::vvc) fn new(
         picture_geometry: VvcVideoGeometry,
         slice_config: VvcSliceSyntaxConfig,
+        inter_slice: bool,
     ) -> Self {
         let picture_width = picture_geometry.coded_width() as u16;
         let picture_height = picture_geometry.coded_height() as u16;
@@ -249,7 +378,21 @@ impl VvcFrameCtuCabacState {
                 picture_height,
                 slice_config.coding_tree.chroma_sampling,
             ),
-            ops: Vec::with_capacity(160),
+            inter_skip_neighbours: VvcInterSkipNeighbourState::new(picture_width, picture_height),
+            skip_neighbours: vec![
+                false;
+                picture_geometry.coded_width().div_ceil(VVC_CTU_SIZE)
+                    * picture_geometry.coded_height().div_ceil(VVC_CTU_SIZE)
+            ],
+            pred_mode_contexts: inter_slice.then(|| {
+                std::array::from_fn(|idx| {
+                    VvcCabacProbModel::from_context(
+                        VvcCabacContext::PredModeFlag(idx as u8),
+                        slice_config.slice_qp,
+                    )
+                })
+            }),
+            inter_slice,
             picture_width,
             picture_height,
             ctu_cols: picture_geometry.coded_width().div_ceil(VVC_CTU_SIZE),
@@ -267,26 +410,95 @@ impl VvcFrameCtuCabacState {
         let ctu_y = slice_address / self.ctu_cols;
         let origin_x = (ctu_x * VVC_CTU_SIZE) as u16;
         let origin_y = (ctu_y * VVC_CTU_SIZE) as u16;
-        self.ops.clear();
-        VvcCtuCabacOp::append_intra_ctu_partition_with_luma_neighbours(
-            &mut self.ops,
-            &mut self.luma_neighbours,
+        let skip_ctx = self.skip_ctx(slice_address);
+        let pred_mode_contexts = self.pred_mode_contexts.as_mut();
+        let luma_neighbours = &mut self.luma_neighbours;
+        let luma_mode_neighbours = &mut self.luma_mode_neighbours;
+        let chroma_neighbours = &mut self.chroma_neighbours;
+        let mut ctu_encoder = VvcCtuCabacGenerator::new(&mut self.contexts, params, slice_config)
+            .with_inter_slice(
+                self.inter_slice,
+                skip_ctx,
+                pred_mode_contexts,
+                Some(&mut self.inter_skip_neighbours),
+            );
+        VvcCtuCabacOp::visit_intra_ctu_partition_with_luma_neighbours(
+            luma_neighbours,
             params.shape(),
             origin_x,
             origin_y,
             self.picture_width,
             self.picture_height,
             params.luma_max_leaf_size,
+            |op| {
+                ctu_encoder.emit_with_frame_neighbours(
+                    cabac,
+                    op,
+                    luma_mode_neighbours,
+                    chroma_neighbours,
+                );
+            },
         );
-        let mut ctu_encoder = VvcCtuCabacGenerator::new(&mut self.contexts, params, slice_config);
-        for op in self.ops.iter().copied() {
-            ctu_encoder.emit_with_frame_neighbours(
+        if slice_address < self.skip_neighbours.len() {
+            self.skip_neighbours[slice_address] = false;
+        }
+    }
+
+    pub(in crate::vvc) fn encode_inter_skip_ctu(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        slice_address: usize,
+        ctu_geometry: VvcVideoGeometry,
+        slice_config: VvcSliceSyntaxConfig,
+    ) {
+        let skip_ctx = self.skip_ctx(slice_address);
+        if ctu_geometry.coded_width() == VVC_CTU_SIZE && ctu_geometry.coded_height() == VVC_CTU_SIZE
+        {
+            self.contexts.encode_split_flag(cabac, 0, false);
+            self.contexts.encode_cu_skip_flag(cabac, skip_ctx, true);
+        } else {
+            encode_inter_skip_ctu_body_with_contexts(
                 cabac,
-                op,
-                &mut self.luma_mode_neighbours,
-                &mut self.chroma_neighbours,
+                &mut self.contexts,
+                ctu_geometry,
+                slice_config,
+                skip_ctx,
             );
         }
+        if slice_address < self.skip_neighbours.len() {
+            self.skip_neighbours[slice_address] = true;
+        }
+        let ctu_x = slice_address % self.ctu_cols;
+        let ctu_y = slice_address / self.ctu_cols;
+        self.inter_skip_neighbours.mark_leaf(VvcCodingTreeNode {
+            x: (ctu_x * VVC_CTU_SIZE) as u16,
+            y: (ctu_y * VVC_CTU_SIZE) as u16,
+            width: ctu_geometry.coded_width() as u16,
+            height: ctu_geometry.coded_height() as u16,
+            cqt_depth: 0,
+            mtt_depth: 0,
+            depth_offset: 0,
+            part_idx: 0,
+            parent_split: VvcPartSplit::None,
+            tree_type: VvcTreeType::DualTreeLuma,
+            split_history: [VvcPartSplit::None; 2],
+        });
+    }
+
+    fn skip_ctx(&self, slice_address: usize) -> u8 {
+        let left = slice_address % self.ctu_cols != 0
+            && self
+                .skip_neighbours
+                .get(slice_address - 1)
+                .copied()
+                .unwrap_or(false);
+        let above = slice_address >= self.ctu_cols
+            && self
+                .skip_neighbours
+                .get(slice_address - self.ctu_cols)
+                .copied()
+                .unwrap_or(false);
+        u8::from(left) + u8::from(above)
     }
 }
 
@@ -297,6 +509,10 @@ pub(in crate::vvc) struct VvcCtuCabacGenerator<'a, 'p> {
     luma_tu_index: usize,
     chroma_tu_index: usize,
     slice_config: VvcSliceSyntaxConfig,
+    inter_slice: bool,
+    inter_skip_ctx: u8,
+    inter_pred_mode_contexts: Option<&'a mut [VvcCabacProbModel; 2]>,
+    inter_skip_neighbours: Option<&'a mut VvcInterSkipNeighbourState>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -413,12 +629,83 @@ impl VvcLumaModeNeighbourState {
         let end_cell_x = end_x.div_ceil(VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE);
         let end_cell_y = end_y.div_ceil(VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE);
         for cell_y in start_cell_y..end_cell_y {
-            for cell_x in start_cell_x..end_cell_x {
-                let index = usize::from(cell_y) * self.cell_width + usize::from(cell_x);
-                self.valid[index] = true;
-                self.modes[index] = mode;
-                self.mip_flags[index] = false;
-            }
+            let start = usize::from(cell_y) * self.cell_width + usize::from(start_cell_x);
+            let end = usize::from(cell_y) * self.cell_width + usize::from(end_cell_x);
+            self.valid[start..end].fill(true);
+            self.modes[start..end].fill(mode);
+            self.mip_flags[start..end].fill(false);
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VvcInterSkipNeighbourState {
+    width: u16,
+    height: u16,
+    cell_width: usize,
+    skipped: Vec<bool>,
+}
+
+impl VvcInterSkipNeighbourState {
+    fn new(width: u16, height: u16) -> Self {
+        let cell_width = usize::from(width.div_ceil(VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE));
+        let cell_height = usize::from(height.div_ceil(VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE));
+        Self {
+            width,
+            height,
+            cell_width,
+            skipped: vec![false; cell_width * cell_height],
+        }
+    }
+
+    fn skip_ctx(&self, node: VvcCodingTreeNode) -> u8 {
+        u8::from(self.left_of(node)) + u8::from(self.above_of(node))
+    }
+
+    fn left_of(&self, node: VvcCodingTreeNode) -> bool {
+        let Some(x) = node.x.checked_sub(1) else {
+            return false;
+        };
+        let y = (node.y + node.height)
+            .saturating_sub(1)
+            .min(self.height.saturating_sub(1));
+        self.skipped_at(x, y)
+    }
+
+    fn above_of(&self, node: VvcCodingTreeNode) -> bool {
+        let Some(y) = node.y.checked_sub(1) else {
+            return false;
+        };
+        let x = (node.x + node.width)
+            .saturating_sub(1)
+            .min(self.width.saturating_sub(1));
+        self.skipped_at(x, y)
+    }
+
+    fn skipped_at(&self, x: u16, y: u16) -> bool {
+        self.index(x, y).is_some_and(|index| self.skipped[index])
+    }
+
+    fn index(&self, x: u16, y: u16) -> Option<usize> {
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        let cell_x = usize::from(x / VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE);
+        let cell_y = usize::from(y / VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE);
+        Some(cell_y * self.cell_width + cell_x)
+    }
+
+    fn mark_leaf(&mut self, node: VvcCodingTreeNode) {
+        let end_x = (node.x + node.width).min(self.width);
+        let end_y = (node.y + node.height).min(self.height);
+        let start_cell_x = node.x / VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE;
+        let start_cell_y = node.y / VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE;
+        let end_cell_x = end_x.div_ceil(VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE);
+        let end_cell_y = end_y.div_ceil(VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE);
+        for cell_y in start_cell_y..end_cell_y {
+            let start = usize::from(cell_y) * self.cell_width + usize::from(start_cell_x);
+            let end = usize::from(cell_y) * self.cell_width + usize::from(end_cell_x);
+            self.skipped[start..end].fill(true);
         }
     }
 }
@@ -514,13 +801,12 @@ impl VvcChromaNeighbourState {
         let end_cell_x = end_x.div_ceil(VVC_CHROMA_NEIGHBOUR_CELL_SIZE);
         let end_cell_y = end_y.div_ceil(VVC_CHROMA_NEIGHBOUR_CELL_SIZE);
         for cell_y in start_cell_y..end_cell_y {
-            for cell_x in start_cell_x..end_cell_x {
-                let index = usize::from(cell_y) * self.cell_width + usize::from(cell_x);
-                self.valid[index] = true;
-                self.cb_width[index] = node_width;
-                self.cb_height[index] = node_height;
-                self.cqt_depth[index] = node.cqt_depth;
-            }
+            let start = usize::from(cell_y) * self.cell_width + usize::from(start_cell_x);
+            let end = usize::from(cell_y) * self.cell_width + usize::from(end_cell_x);
+            self.valid[start..end].fill(true);
+            self.cb_width[start..end].fill(node_width);
+            self.cb_height[start..end].fill(node_height);
+            self.cqt_depth[start..end].fill(node.cqt_depth);
         }
     }
 }
@@ -537,7 +823,25 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             luma_tu_index: 0,
             chroma_tu_index: 0,
             slice_config,
+            inter_slice: false,
+            inter_skip_ctx: 0,
+            inter_pred_mode_contexts: None,
+            inter_skip_neighbours: None,
         }
+    }
+
+    fn with_inter_slice(
+        mut self,
+        inter_slice: bool,
+        skip_ctx: u8,
+        pred_mode_contexts: Option<&'a mut [VvcCabacProbModel; 2]>,
+        skip_neighbours: Option<&'a mut VvcInterSkipNeighbourState>,
+    ) -> Self {
+        self.inter_slice = inter_slice;
+        self.inter_skip_ctx = skip_ctx.min(8);
+        self.inter_pred_mode_contexts = pred_mode_contexts;
+        self.inter_skip_neighbours = skip_neighbours;
+        self
     }
 
     #[cfg(test)]
@@ -580,6 +884,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                 split_ctx,
             } => {
                 self.emit_luma_leaf_split_with_ctx(cabac, node, write_split_flag, split_ctx);
+                if self.emit_luma_inter_skip_leaf(cabac, node) {
+                    return;
+                }
+                self.emit_luma_inter_slice_intra_prefix(cabac, node, luma_mode_neighbours);
                 if !self.emit_luma_bdpcm_mode(cabac, node, luma_mode_neighbours) {
                     if !self.emit_luma_mip_mode(cabac, node, luma_mode_neighbours) {
                         self.emit_luma_multi_ref_line(cabac, node);
@@ -702,6 +1010,64 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             return;
         }
         self.contexts.encode_split_flag(cabac, split_ctx, false);
+    }
+
+    fn emit_luma_inter_slice_intra_prefix(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        node: VvcCodingTreeNode,
+        neighbours: &VvcLumaModeNeighbourState,
+    ) {
+        if !self.inter_slice {
+            return;
+        }
+        debug_assert_ne!(
+            (node.width, node.height),
+            (4, 4),
+            "4x4 intra leaves in P slices need explicit modeType handling"
+        );
+        let skip_ctx = self.inter_skip_ctx_for_node(node);
+        self.contexts.encode_cu_skip_flag(cabac, skip_ctx, false);
+        let pred_mode_ctx =
+            u8::from(neighbours.left_of(node).is_some() || neighbours.above_of(node).is_some());
+        let pred_mode_contexts = self
+            .inter_pred_mode_contexts
+            .as_mut()
+            .expect("P-slice intra prefix requires pred_mode_flag contexts");
+        VvcCabacContexts::encode_model(
+            cabac,
+            VvcCabacContext::PredModeFlag(pred_mode_ctx),
+            &mut pred_mode_contexts[pred_mode_ctx as usize],
+            true,
+        );
+    }
+
+    fn emit_luma_inter_skip_leaf(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        node: VvcCodingTreeNode,
+    ) -> bool {
+        if !self.inter_slice
+            || self.luma_tu_index >= self.params.luma_tu_count
+            || !self.params.luma_tu_inter_skip[self.luma_tu_index]
+        {
+            return false;
+        }
+        let skip_ctx = self.inter_skip_ctx_for_node(node);
+        self.contexts.encode_cu_skip_flag(cabac, skip_ctx, true);
+        if let Some(neighbours) = self.inter_skip_neighbours.as_mut() {
+            neighbours.mark_leaf(node);
+        }
+        self.luma_tu_index += 1;
+        true
+    }
+
+    fn inter_skip_ctx_for_node(&self, node: VvcCodingTreeNode) -> u8 {
+        self.inter_skip_neighbours
+            .as_ref()
+            .map(|neighbours| neighbours.skip_ctx(node))
+            .unwrap_or(self.inter_skip_ctx)
+            .min(8)
     }
 
     fn emit_luma_intra_prediction_mode(
@@ -1079,6 +1445,25 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             visible_height,
             self.params.chroma_sampling,
         );
+        if self.inter_slice
+            && self.params.chroma_sampling != ChromaSampling::Cs420
+            && self
+                .params
+                .chroma_tu_inter_skip
+                .get(self.chroma_tu_index)
+                .copied()
+                .unwrap_or(false)
+            && self.emit_chroma_inter_skip_subtree_if_all_skipped(
+                cabac,
+                node,
+                visible_width,
+                visible_height,
+                split,
+                neighbours,
+            )
+        {
+            return;
+        }
         if split.allow_qt {
             self.emit_chroma_visible_qt_split(cabac, node, split, neighbours);
             for child_idx in 0..4 {
@@ -1110,6 +1495,146 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                     neighbours,
                 );
             }
+        }
+    }
+
+    fn emit_chroma_inter_skip_subtree_if_all_skipped(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        node: VvcCodingTreeNode,
+        visible_width: u16,
+        visible_height: u16,
+        split: VvcChromaSplitAvailability,
+        neighbours: &VvcChromaNeighbourState,
+    ) -> bool {
+        if !node.fits_visible(visible_width, visible_height) || !split.can_no {
+            return false;
+        }
+        let Some(leaf_count) =
+            self.chroma_all_inter_skip_subtree_leaf_count(node, visible_width, visible_height)
+        else {
+            return false;
+        };
+        if leaf_count < 4 {
+            return false;
+        }
+
+        if split.can_split() {
+            self.contexts.encode_split_flag(
+                cabac,
+                Self::chroma_split_ctx(node, split, neighbours),
+                false,
+            );
+        }
+        let skip_ctx = self.inter_skip_ctx_for_node(node);
+        self.contexts.encode_cu_skip_flag(cabac, skip_ctx, true);
+        if let Some(neighbours) = self.inter_skip_neighbours.as_mut() {
+            neighbours.mark_leaf(node);
+        }
+        self.chroma_tu_index += leaf_count;
+        true
+    }
+
+    fn chroma_all_inter_skip_subtree_leaf_count(
+        &self,
+        node: VvcCodingTreeNode,
+        visible_width: u16,
+        visible_height: u16,
+    ) -> Option<usize> {
+        let start = self.chroma_tu_index;
+        if start >= self.params.chroma_tu_count
+            || start >= self.params.chroma_tu_inter_skip.len()
+            || !self.params.chroma_tu_inter_skip[start]
+        {
+            return None;
+        }
+
+        let leaf_count = self.chroma_subtree_leaf_count(node, visible_width, visible_height);
+        let end = start.checked_add(leaf_count)?;
+        if end > self.params.chroma_tu_count || end > self.params.chroma_tu_inter_skip.len() {
+            return None;
+        }
+        self.params.chroma_tu_inter_skip[start..end]
+            .iter()
+            .all(|&skip| skip)
+            .then_some(leaf_count)
+    }
+
+    fn chroma_subtree_leaf_count(
+        &self,
+        node: VvcCodingTreeNode,
+        visible_width: u16,
+        visible_height: u16,
+    ) -> usize {
+        if !node.intersects_visible(visible_width, visible_height) {
+            return 0;
+        }
+        if node.fits_visible(visible_width, visible_height) && self.chroma_leaf_allowed(node) {
+            return 1;
+        }
+
+        let split = vvc_chroma_split_availability(
+            node,
+            visible_width,
+            visible_height,
+            self.params.chroma_sampling,
+        );
+        if !node.fits_visible(visible_width, visible_height) {
+            if split.allow_qt || split.implicit_split == VvcPartSplit::Quad {
+                return (0..4)
+                    .map(|child_idx| {
+                        self.chroma_subtree_leaf_count(
+                            node.qt_child(child_idx),
+                            visible_width,
+                            visible_height,
+                        )
+                    })
+                    .sum();
+            }
+            if matches!(
+                split.implicit_split,
+                VvcPartSplit::HorizontalBinary | VvcPartSplit::VerticalBinary
+            ) {
+                let vertical = split.implicit_split == VvcPartSplit::VerticalBinary;
+                return (0..2)
+                    .map(|child_idx| {
+                        self.chroma_subtree_leaf_count(
+                            node.mtt_child_with_boundary_depth_offset(
+                                vertical,
+                                child_idx,
+                                visible_width,
+                                visible_height,
+                            ),
+                            visible_width,
+                            visible_height,
+                        )
+                    })
+                    .sum();
+            }
+            return 0;
+        }
+
+        if split.allow_qt {
+            (0..4)
+                .map(|child_idx| {
+                    self.chroma_subtree_leaf_count(
+                        node.qt_child(child_idx),
+                        visible_width,
+                        visible_height,
+                    )
+                })
+                .sum()
+        } else {
+            let vertical = Self::chroma_prefer_vertical_bt(node, split);
+            (0..2)
+                .map(|child_idx| {
+                    self.chroma_subtree_leaf_count(
+                        node.mtt_child(vertical, child_idx),
+                        visible_width,
+                        visible_height,
+                    )
+                })
+                .sum()
         }
     }
 
@@ -1338,6 +1863,25 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             tu_idx < self.params.chroma_tu_count,
             "missing chroma TU coefficient data for coding-tree leaf {tu_idx}"
         );
+        let chroma_inter_skip_active = self.params.chroma_tu_inter_skip[..self
+            .params
+            .chroma_tu_count
+            .min(self.params.chroma_tu_inter_skip.len())]
+            .iter()
+            .any(|&skip| skip);
+        if self.inter_slice && chroma_inter_skip_active {
+            let chroma_inter_skip = self.params.chroma_tu_inter_skip[tu_idx];
+            let skip_ctx = self.inter_skip_ctx_for_node(node);
+            self.contexts
+                .encode_cu_skip_flag(cabac, skip_ctx, chroma_inter_skip);
+            if chroma_inter_skip {
+                if let Some(neighbours) = self.inter_skip_neighbours.as_mut() {
+                    neighbours.mark_leaf(node);
+                }
+                self.chroma_tu_index += 1;
+                return;
+            }
+        }
         let chroma_bdpcm_mode = self.params.chroma_tu_bdpcm_modes[tu_idx];
         if !self.emit_chroma_bdpcm_mode(cabac, node, chroma_bdpcm_mode) {
             self.emit_chroma_intra_prediction_mode(cabac, node, tu_idx, luma_mode_neighbours);

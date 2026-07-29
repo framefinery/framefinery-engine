@@ -568,7 +568,7 @@ struct VvcResidualCoefficientPlan {
     #[cfg(test)]
     config: VvcResidualCtxConfig,
     pass1_state: VvcResidualPass1State,
-    scan: VvcScanPlan,
+    scan: &'static [VvcScanPosition],
     last_scan_pos: usize,
 }
 
@@ -576,6 +576,9 @@ trait VvcCoeffAccessor {
     fn width(&self) -> usize;
     fn height(&self) -> usize;
     fn level_at(&self, x: usize, y: usize) -> i16;
+    fn level_at_scan_position(&self, pos: VvcScanPosition) -> i16 {
+        self.level_at(pos.x, pos.y)
+    }
 }
 
 struct VvcRasterCoeffAccessor<'a> {
@@ -606,6 +609,14 @@ impl VvcCoeffAccessor for VvcRasterCoeffAccessor<'_> {
 
     fn level_at(&self, x: usize, y: usize) -> i16 {
         self.coeff_levels[y * self.width + x]
+    }
+
+    fn level_at_scan_position(&self, pos: VvcScanPosition) -> i16 {
+        match self.width {
+            4 => self.coeff_levels[pos.raster_idx_4x4],
+            8 => self.coeff_levels[pos.raster_idx_8x8],
+            _ => self.level_at(pos.x, pos.y),
+        }
     }
 }
 
@@ -661,6 +672,24 @@ impl<const AC_COEFFS: usize> VvcCoeffAccessor for VvcStoredCoeffAccessor<'_, AC_
             if compact_idx == 0 || compact_idx > self.ac_levels.len() {
                 return 0;
             }
+            self.ac_levels[compact_idx - 1]
+        }
+    }
+
+    fn level_at_scan_position(&self, pos: VvcScanPosition) -> i16 {
+        if pos.x >= self.width || pos.y >= self.height {
+            return 0;
+        }
+        let compact_idx = match self.coeff_stride {
+            4 => pos.raster_idx_4x4,
+            8 => pos.raster_idx_8x8,
+            _ => pos.y * self.coeff_stride + pos.x,
+        };
+        if compact_idx == 0 {
+            self.dc_level
+        } else if compact_idx > self.ac_levels.len() {
+            0
+        } else {
             self.ac_levels[compact_idx - 1]
         }
     }
@@ -1303,7 +1332,7 @@ impl VvcResidualCabacSymbolStream {
             coeffs,
             log2_tb_width,
             log2_tb_height,
-            plan.scan.as_slice(),
+            plan.scan,
             plan.last_scan_pos,
         );
     }
@@ -1409,7 +1438,7 @@ impl VvcResidualCabacSymbolStream {
             let pos = scan[scan_pos];
             let x = pos.x as u8;
             let y = pos.y as u8;
-            let level = coeffs.level_at(pos.x, pos.y);
+            let level = coeffs.level_at_scan_position(pos);
             let abs_level = level.unsigned_abs();
             let significant = abs_level != 0;
             if num_nonzero != 0 || Some(scan_pos) != infer_sig_pos {
@@ -1435,7 +1464,7 @@ impl VvcResidualCabacSymbolStream {
         if let Some(first_pos_2nd_pass) = first_pos_2nd_pass {
             for scan_pos in ((min_pos_2nd_pass + 1) as usize..=first_pos_2nd_pass).rev() {
                 let pos = scan[scan_pos];
-                let abs_level = coeffs.level_at(pos.x, pos.y).unsigned_abs();
+                let abs_level = coeffs.level_at_scan_position(pos).unsigned_abs();
                 if abs_level >= 4 {
                     debug_assert!(remainder_count < remainder_symbols.len());
                     remainder_symbols[remainder_count] =
@@ -1452,7 +1481,7 @@ impl VvcResidualCabacSymbolStream {
         if min_pos_2nd_pass >= 0 {
             for scan_pos in (min_scan_pos..=min_pos_2nd_pass as usize).rev() {
                 let pos = scan[scan_pos];
-                let level = coeffs.level_at(pos.x, pos.y);
+                let level = coeffs.level_at_scan_position(pos);
                 let abs_level = level.unsigned_abs();
                 let rice_param = derive_rice_param_from_state(scan_pos, state, scan, 0);
                 let zero_pos = go_rice_zero_position(*residual_state, rice_param);
@@ -1601,7 +1630,7 @@ impl VvcResidualCabacSymbolStream {
             &coeffs,
             log2_tb_width,
             log2_tb_height,
-            plan.scan.as_slice(),
+            plan.scan,
             plan.last_scan_pos,
         );
 
@@ -1664,16 +1693,11 @@ impl VvcResidualCabacSymbolStream {
         debug_assert_eq!(width, 1usize << log2_tb_width);
         debug_assert_eq!(height, 1usize << log2_tb_height);
 
-        let scan = if width == 8 && height == 8 {
-            VvcScanPlan::grouped_8x8()
-        } else {
-            VvcScanPlan::first4x4()
-        };
-        let scan_slice = scan.as_slice();
+        let scan = vvc_residual_scan(width, height);
+        let scan_slice = scan;
         let last_scan_pos = scan
-            .as_slice()
             .iter()
-            .rposition(|pos| coeffs.level_at(pos.x, pos.y) != 0)
+            .rposition(|pos| coeffs.level_at_scan_position(*pos) != 0)
             .unwrap_or(0);
         let last_x = scan_slice[last_scan_pos].x as u8;
         let last_y = scan_slice[last_scan_pos].y as u8;
@@ -1687,7 +1711,7 @@ impl VvcResidualCabacSymbolStream {
         let mut pass1_state = VvcResidualPass1State::new(config);
         if populate_pass1 {
             for pos in scan_slice.iter().take(last_scan_pos + 1) {
-                let level = coeffs.level_at(pos.x, pos.y);
+                let level = coeffs.level_at_scan_position(*pos);
                 let x = pos.x as u8;
                 let y = pos.y as u8;
                 let abs_level = level.unsigned_abs();
@@ -1698,7 +1722,7 @@ impl VvcResidualCabacSymbolStream {
             let subset_end = (subset_start + 15).min(scan_slice.len() - 1);
             let subset_coded = scan_slice[subset_start..=subset_end]
                 .iter()
-                .any(|pos| coeffs.level_at(pos.x, pos.y) != 0);
+                .any(|pos| coeffs.level_at_scan_position(*pos) != 0);
             let subblock = scan_slice[subset_start];
             pass1_state.set_sb_coded((subblock.x / 4) as u8, (subblock.y / 4) as u8, subset_coded);
         }
@@ -1799,7 +1823,7 @@ impl VvcResidualCabacSymbolStream {
             let pos = scan[scan_pos];
             let x = pos.x as u8;
             let y = pos.y as u8;
-            let level = coeffs.level_at(pos.x, pos.y);
+            let level = coeffs.level_at_scan_position(pos);
             let abs_level = level.unsigned_abs();
             let significant = abs_level != 0;
             if num_nonzero != 0 || Some(scan_pos) != infer_sig_pos {
@@ -1825,7 +1849,7 @@ impl VvcResidualCabacSymbolStream {
         if let Some(first_pos_2nd_pass) = first_pos_2nd_pass {
             for scan_pos in ((min_pos_2nd_pass + 1) as usize..=first_pos_2nd_pass).rev() {
                 let pos = scan[scan_pos];
-                let abs_level = coeffs.level_at(pos.x, pos.y).unsigned_abs();
+                let abs_level = coeffs.level_at_scan_position(pos).unsigned_abs();
                 if abs_level >= 4 {
                     let x = pos.x as u8;
                     let y = pos.y as u8;
@@ -1846,7 +1870,7 @@ impl VvcResidualCabacSymbolStream {
         if min_pos_2nd_pass >= 0 {
             for scan_pos in (min_scan_pos..=min_pos_2nd_pass as usize).rev() {
                 let pos = scan[scan_pos];
-                let level = coeffs.level_at(pos.x, pos.y);
+                let level = coeffs.level_at_scan_position(pos);
                 let abs_level = level.unsigned_abs();
                 let rice_param = derive_rice_param_from_state(scan_pos, state, scan, 0);
                 let zero_pos = go_rice_zero_position(*residual_state, rice_param);
@@ -2025,72 +2049,70 @@ impl VvcResidualCabacSymbolStream {
 struct VvcScanPosition {
     x: usize,
     y: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct VvcScanPlan {
-    positions: [VvcScanPosition; VVC_RESIDUAL_CONTEXT_COEFFS],
-    len: usize,
-}
-
-impl VvcScanPlan {
-    fn first4x4() -> Self {
-        let mut plan = Self::empty();
-        for pos in VVC_FIRST_4X4_DIAG_SCAN {
-            plan.push(pos);
-        }
-        plan
-    }
-
-    fn grouped_8x8() -> Self {
-        let mut plan = Self::empty();
-        for (group_x, group_y) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
-            for pos in VVC_FIRST_4X4_DIAG_SCAN {
-                plan.push(VvcScanPosition {
-                    x: group_x * 4 + pos.x,
-                    y: group_y * 4 + pos.y,
-                });
-            }
-        }
-        plan
-    }
-
-    fn empty() -> Self {
-        Self {
-            positions: [VvcScanPosition { x: 0, y: 0 }; VVC_RESIDUAL_CONTEXT_COEFFS],
-            len: 0,
-        }
-    }
-
-    fn push(&mut self, pos: VvcScanPosition) {
-        debug_assert!(self.len < self.positions.len());
-        self.positions[self.len] = pos;
-        self.len += 1;
-    }
-
-    fn as_slice(&self) -> &[VvcScanPosition] {
-        &self.positions[..self.len]
-    }
+    raster_idx_4x4: usize,
+    raster_idx_8x8: usize,
 }
 
 const VVC_FIRST_4X4_DIAG_SCAN: [VvcScanPosition; 16] = [
-    VvcScanPosition { x: 0, y: 0 },
-    VvcScanPosition { x: 0, y: 1 },
-    VvcScanPosition { x: 1, y: 0 },
-    VvcScanPosition { x: 0, y: 2 },
-    VvcScanPosition { x: 1, y: 1 },
-    VvcScanPosition { x: 2, y: 0 },
-    VvcScanPosition { x: 0, y: 3 },
-    VvcScanPosition { x: 1, y: 2 },
-    VvcScanPosition { x: 2, y: 1 },
-    VvcScanPosition { x: 3, y: 0 },
-    VvcScanPosition { x: 1, y: 3 },
-    VvcScanPosition { x: 2, y: 2 },
-    VvcScanPosition { x: 3, y: 1 },
-    VvcScanPosition { x: 2, y: 3 },
-    VvcScanPosition { x: 3, y: 2 },
-    VvcScanPosition { x: 3, y: 3 },
+    vvc_scan_position(0, 0),
+    vvc_scan_position(0, 1),
+    vvc_scan_position(1, 0),
+    vvc_scan_position(0, 2),
+    vvc_scan_position(1, 1),
+    vvc_scan_position(2, 0),
+    vvc_scan_position(0, 3),
+    vvc_scan_position(1, 2),
+    vvc_scan_position(2, 1),
+    vvc_scan_position(3, 0),
+    vvc_scan_position(1, 3),
+    vvc_scan_position(2, 2),
+    vvc_scan_position(3, 1),
+    vvc_scan_position(2, 3),
+    vvc_scan_position(3, 2),
+    vvc_scan_position(3, 3),
 ];
+
+const VVC_GROUPED_8X8_SCAN: [VvcScanPosition; VVC_RESIDUAL_CONTEXT_COEFFS] = vvc_grouped_8x8_scan();
+
+const fn vvc_grouped_8x8_scan() -> [VvcScanPosition; VVC_RESIDUAL_CONTEXT_COEFFS] {
+    let mut scan = [vvc_scan_position(0, 0); VVC_RESIDUAL_CONTEXT_COEFFS];
+    let mut group_idx = 0usize;
+    let mut out_idx = 0usize;
+    while group_idx < 4 {
+        let group_x = if group_idx >= 2 { 1usize } else { 0usize };
+        let group_y = if group_idx == 1 || group_idx == 3 {
+            1usize
+        } else {
+            0usize
+        };
+        let mut pos_idx = 0usize;
+        while pos_idx < VVC_FIRST_4X4_DIAG_SCAN.len() {
+            let pos = VVC_FIRST_4X4_DIAG_SCAN[pos_idx];
+            scan[out_idx] = vvc_scan_position(group_x * 4 + pos.x, group_y * 4 + pos.y);
+            out_idx += 1;
+            pos_idx += 1;
+        }
+        group_idx += 1;
+    }
+    scan
+}
+
+const fn vvc_scan_position(x: usize, y: usize) -> VvcScanPosition {
+    VvcScanPosition {
+        x,
+        y,
+        raster_idx_4x4: y * 4 + x,
+        raster_idx_8x8: y * 8 + x,
+    }
+}
+
+fn vvc_residual_scan(width: usize, height: usize) -> &'static [VvcScanPosition] {
+    if width == 8 && height == 8 {
+        &VVC_GROUPED_8X8_SCAN
+    } else {
+        &VVC_FIRST_4X4_DIAG_SCAN
+    }
+}
 
 fn template_abs_sum_level(abs_level: u16) -> u8 {
     abs_level.min(4 + (abs_level & 1)) as u8

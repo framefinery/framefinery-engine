@@ -64,11 +64,18 @@ def main() -> int:
     )
     parser.add_argument("--av2-predictive", dest="av2_predictive", action="store_true", default=True)
     parser.add_argument("--no-av2-predictive", dest="av2_predictive", action="store_false")
+    parser.add_argument("--vvc-predictive", dest="vvc_predictive", action="store_true", default=True)
+    parser.add_argument("--no-vvc-predictive", dest="vvc_predictive", action="store_false")
     parser.add_argument(
         "--direct-source-files",
         action=argparse.BooleanOptionalAction,
         default=True,
         help="feed source_file rows directly instead of materializing raw clips",
+    )
+    parser.add_argument(
+        "--cleanup-recon",
+        action="store_true",
+        help="delete each reconstruction artifact after PSNR and checksums are collected",
     )
     parser.add_argument(
         "--baseline-json",
@@ -145,9 +152,11 @@ def main() -> int:
         "run_name": run_name,
         "ff": str(args.ff),
         "av2_predictive": args.av2_predictive,
+        "vvc_predictive": args.vvc_predictive,
         "av2_lossy_qp": args.av2_lossy_qp,
         "vvc_lossy_qp": args.vvc_lossy_qp,
         "vvc_fast_search": args.vvc_fast_search,
+        "cleanup_recon": args.cleanup_recon,
         "skipped": skipped,
         "results": results,
     }
@@ -162,9 +171,11 @@ def rerender_report(args: argparse.Namespace) -> int:
     report["run_name"] = args.run_name or report.get("run_name") or args.rerender_json.stem
     report.setdefault("set", DEFAULT_SET)
     report.setdefault("av2_predictive", args.av2_predictive)
+    report.setdefault("vvc_predictive", args.vvc_predictive)
     report.setdefault("av2_lossy_qp", args.av2_lossy_qp)
     report.setdefault("vvc_lossy_qp", args.vvc_lossy_qp)
     report.setdefault("vvc_fast_search", args.vvc_fast_search)
+    report.setdefault("cleanup_recon", False)
     results = report.get("results", [])
     baseline = load_baseline(args.baseline_json)
     for row in results:
@@ -272,6 +283,8 @@ def run_case(
         settings.append("lossless")
     if codec == "av2" and args.av2_predictive:
         settings.append("predictive")
+    if codec == "vvc" and args.vvc_predictive:
+        settings.append("predictive")
     if codec == "vvc" and args.vvc_fast_search != "off":
         settings.append(f"fast-search={args.vvc_fast_search}")
     for setting in settings:
@@ -325,6 +338,7 @@ def run_case(
     if vvc_stats_path is not None:
         require_non_empty(vvc_stats_path, "VVC stats", vector.filename, log)
         result["vvc_stats"] = str(relpath(vvc_stats_path))
+    cleanup_recon_artifact(args, recon)
     return result
 
 
@@ -359,6 +373,11 @@ def source_file_path(vector: generate_test_vectors.TestVector) -> Path:
     if vector.source_path.is_absolute():
         return vector.source_path
     return (REPO_ROOT / vector.source_path).resolve(strict=False)
+
+
+def cleanup_recon_artifact(args: argparse.Namespace, recon: Path) -> None:
+    if args.cleanup_recon:
+        recon.unlink(missing_ok=True)
 
 
 def mean_psnr_all(output: str) -> float | None:
@@ -497,8 +516,10 @@ def markdown_report(report: dict[str, Any], skipped: int) -> str:
         "",
         f"- Set: `{report['set']}`",
         f"- AV2 predictive: `{report['av2_predictive']}`",
+        f"- VVC predictive: `{report.get('vvc_predictive', False)}`",
         f"- AV2 lossy QP: `{report['av2_lossy_qp']}`",
         f"- VVC fast search: `{report.get('vvc_fast_search', 'off')}`",
+        f"- Cleanup recon: `{report.get('cleanup_recon', False)}`",
         f"- Skipped combinations: `{skipped}`",
         "",
     ]
@@ -678,11 +699,15 @@ def mode_label(codec: str, mode: str, args: argparse.Namespace) -> str:
     if codec == "av2" and mode == "lossy":
         return f"qp={args.av2_lossy_qp}"
     if codec == "vvc" and args.vvc_fast_search != "off":
+        predictive = "+predictive" if args.vvc_predictive else ""
         if mode == "lossy":
-            return f"qp={args.vvc_lossy_qp}+fast={args.vvc_fast_search}"
-        return f"lossless+fast={args.vvc_fast_search}"
+            return f"qp={args.vvc_lossy_qp}{predictive}+fast={args.vvc_fast_search}"
+        return f"lossless{predictive}+fast={args.vvc_fast_search}"
     if codec == "vvc" and mode == "lossy":
-        return f"qp={args.vvc_lossy_qp}"
+        predictive = "+predictive" if args.vvc_predictive else ""
+        return f"qp={args.vvc_lossy_qp}{predictive}"
+    if codec == "vvc" and args.vvc_predictive:
+        return "lossless+predictive"
     return mode
 
 

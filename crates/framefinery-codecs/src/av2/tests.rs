@@ -343,7 +343,7 @@ fn av2_lossless_predictive_reuses_repeated_frames_as_sef() {
     assert!(frame_sizes[0] > frame_sizes[1]);
     assert_eq!(frame_sizes[1], 6);
     assert_eq!(frame_sizes[2], 6);
-    assert_eq!(output.len(), frame_sizes.iter().sum());
+    assert_eq!(output.len(), frame_sizes.iter().sum::<usize>());
 }
 
 #[test]

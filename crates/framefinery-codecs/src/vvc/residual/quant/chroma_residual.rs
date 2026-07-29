@@ -440,12 +440,8 @@ fn finalize_vvc_chroma_residual_block(
         VvcTuResidualCodingMode::TransformSkip => {
             #[cfg(feature = "vvc-stats")]
             let quant_start = Instant::now();
-            let block = finalize_vvc_chroma_transform_skip_residual_block(
-                residuals,
-                width,
-                height,
-                chroma_ts_quant,
-            );
+            let block =
+                finalize_vvc_chroma_transform_skip_residual_block(residuals, width, height, chroma_ts_quant);
             #[cfg(feature = "vvc-stats")]
             stats.add_chroma_transform_skip_candidate_nanos(vvc_elapsed_nanos(quant_start));
             block

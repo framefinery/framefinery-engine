@@ -132,10 +132,12 @@ impl VvcCabacEncoder {
         }
     }
 
+    #[inline]
     pub(in crate::vvc) fn records_dump(&self) -> bool {
         self.record_dump
     }
 
+    #[inline]
     pub(in crate::vvc) fn traces_contexts(&self) -> bool {
         self.trace_contexts
     }
@@ -195,6 +197,29 @@ impl VvcCabacEncoder {
         }
     }
 
+    #[inline]
+    pub(in crate::vvc) fn encode_bin_fast(&mut self, bin: bool, event: VvcCtxEvent) {
+        let lps = event.lps as u32;
+        self.range -= lps;
+        if bin != event.mps {
+            let num_bits = renorm_bits(lps);
+            self.bits_left -= num_bits as i32;
+            self.low += self.range;
+            self.low <<= num_bits;
+            self.range = lps << num_bits;
+        } else if self.range < 256 {
+            // VVC BinProbModel_Std::getRenormBitsRange() is fixed to 1 for
+            // MPS renormalization. LPS renormalization still uses the table
+            // equivalent implemented by renorm_bits().
+            self.bits_left -= 1;
+            self.low <<= 1;
+            self.range <<= 1;
+        }
+        if self.bits_left < 12 {
+            self.write_out();
+        }
+    }
+
     pub(in crate::vvc) fn encode_bin_ep(&mut self, bin: bool) {
         let record_dump = self.record_dump;
         let (low_in, range_in, bits_left_in) = if record_dump {
@@ -230,6 +255,9 @@ impl VvcCabacEncoder {
     }
 
     pub(in crate::vvc) fn encode_bins_ep(&mut self, bins: u32, num_bins: u32) {
+        if num_bins == 0 {
+            return;
+        }
         if self.record_dump {
             self.dump_symbols
                 .push(VvcCabacDumpSymbol::bins_ep(bins, num_bins));

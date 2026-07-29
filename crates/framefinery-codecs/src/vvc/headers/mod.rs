@@ -3,9 +3,10 @@ use crate::picture::{ChromaSampling, SampleBitDepth};
 #[cfg(test)]
 use super::vvc_cabac_bits_with_luma_max_leaf_size;
 use super::{
-    vvc_frame_cabac_payload, VvcCodingTreeConfig, VvcNalUnit, VvcNalUnitType, VvcQuantizedCtu,
-    VvcSliceSyntaxConfig, VvcSyntaxRbsp, VvcSyntaxWriter, VvcVideoGeometry, VvcVuiSignal,
-    VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
+    vvc_ctu_cabac_payload, vvc_frame_cabac_payload, vvc_frame_inter_skip_cabac_payload,
+    vvc_inter_skip_ctu_cabac_payload, VvcCabacPayload, VvcCodingTreeConfig, VvcNalUnit,
+    VvcNalUnitType, VvcQuantizedCtu, VvcQuantizedCtuPayload, VvcSliceSyntaxConfig, VvcSyntaxRbsp,
+    VvcSyntaxWriter, VvcVideoGeometry, VvcVuiSignal, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
 };
 #[cfg(test)]
 use super::{VvcQuantizedColor, VVC_CURRENT_MAX_LUMA_LEAF_SIZE};
@@ -14,6 +15,7 @@ use super::{VvcQuantizedColor, VVC_CURRENT_MAX_LUMA_LEAF_SIZE};
 pub(in crate::vvc) enum VvcPictureKind {
     Idr,
     Cra,
+    Trail,
 }
 
 const VVC_SPS_LOG2_MAX_POC_LSB_MINUS4: u8 = 12;
@@ -39,11 +41,16 @@ impl VvcPictureKind {
         match self {
             Self::Idr => VvcNalUnitType::IdrNLp,
             Self::Cra => VvcNalUnitType::Cra,
+            Self::Trail => VvcNalUnitType::Trail,
         }
     }
 
     const fn carries_slice_header_ref_pic_lists(self) -> bool {
         !matches!(self, Self::Idr)
+    }
+
+    const fn is_irap(self) -> bool {
+        matches!(self, Self::Idr | Self::Cra)
     }
 }
 
@@ -69,15 +76,16 @@ pub(in crate::vvc) fn vvc_sps_unit(
     }
 }
 
-pub(in crate::vvc) fn vvc_pps_unit_with_partitioning(
+pub(in crate::vvc) fn vvc_pps_unit_with_partitioning_and_config(
     geometry: VvcVideoGeometry,
     partitioning: VvcPicturePartitioning,
+    slice_config: VvcSliceSyntaxConfig,
 ) -> VvcNalUnit {
     VvcNalUnit {
         nal_unit_type: VvcNalUnitType::Pps,
         layer_id: 0,
         temporal_id: 0,
-        rbsp_payload: vvc_pps_payload_with_partitioning(geometry, partitioning),
+        rbsp_payload: vvc_pps_payload_with_partitioning(geometry, partitioning, slice_config),
     }
 }
 
@@ -109,6 +117,265 @@ pub(in crate::vvc) fn vvc_frame_slice_unit(
             slice_config,
         ),
     })
+}
+
+pub(in crate::vvc) fn vvc_predictive_frame_slice_unit(
+    frame_idx: usize,
+    picture_geometry: VvcVideoGeometry,
+    ctus: &[VvcQuantizedCtu],
+    slice_config: VvcSliceSyntaxConfig,
+) -> Result<VvcNalUnit, String> {
+    let picture_kind = vvc_picture_kind_for_frame_idx(frame_idx, true);
+    let poc_lsb = vvc_poc_lsb_for_frame_idx(frame_idx);
+    let expected_ctus = vvc_picture_ctu_count(picture_geometry);
+    if ctus.len() != expected_ctus {
+        return Err(format!(
+            "VVC predictive frame slice expected {expected_ctus} CTU payload(s), got {}",
+            ctus.len()
+        ));
+    }
+
+    Ok(VvcNalUnit {
+        nal_unit_type: picture_kind.nal_unit_type(),
+        layer_id: 0,
+        temporal_id: 0,
+        rbsp_payload: vvc_frame_slice_payload_with_poc(
+            picture_kind,
+            poc_lsb,
+            picture_geometry,
+            ctus,
+            slice_config,
+        ),
+    })
+}
+
+#[cfg(test)]
+pub(in crate::vvc) fn vvc_predictive_frame_skip_slice_unit(
+    frame_idx: usize,
+    picture_geometry: VvcVideoGeometry,
+    ctus: &[VvcQuantizedCtu],
+    slice_config: VvcSliceSyntaxConfig,
+) -> Result<VvcNalUnit, String> {
+    let picture_kind = vvc_picture_kind_for_frame_idx(frame_idx, true);
+    let poc_lsb = vvc_poc_lsb_for_frame_idx(frame_idx);
+    let expected_ctus = vvc_picture_ctu_count(picture_geometry);
+    if ctus.len() != expected_ctus {
+        return Err(format!(
+            "VVC predictive skip frame expected {expected_ctus} CTU payload(s), got {}",
+            ctus.len()
+        ));
+    }
+    if picture_kind.is_irap()
+        || !ctus
+            .iter()
+            .all(|ctu| matches!(ctu.payload, VvcQuantizedCtuPayload::InterSkip))
+    {
+        return Err(
+            "VVC predictive frame-slice skip path requires a non-IRAP all-skip picture".to_string(),
+        );
+    }
+
+    Ok(VvcNalUnit {
+        nal_unit_type: picture_kind.nal_unit_type(),
+        layer_id: 0,
+        temporal_id: 0,
+        rbsp_payload: vvc_frame_slice_payload_with_poc(
+            picture_kind,
+            poc_lsb,
+            picture_geometry,
+            ctus,
+            slice_config,
+        ),
+    })
+}
+
+pub(in crate::vvc) fn vvc_predictive_frame_skip_slice_unit_with_payload(
+    frame_idx: usize,
+    picture_geometry: VvcVideoGeometry,
+    ctus: &[VvcQuantizedCtu],
+    slice_config: VvcSliceSyntaxConfig,
+    inter_skip_payload: &VvcCabacPayload,
+) -> Result<VvcNalUnit, String> {
+    let picture_kind = vvc_picture_kind_for_frame_idx(frame_idx, true);
+    let expected_ctus = vvc_picture_ctu_count(picture_geometry);
+    if ctus.len() != expected_ctus {
+        return Err(format!(
+            "VVC predictive skip frame expected {expected_ctus} CTU payload(s), got {}",
+            ctus.len()
+        ));
+    }
+    if picture_kind.is_irap()
+        || !ctus
+            .iter()
+            .all(|ctu| matches!(ctu.payload, VvcQuantizedCtuPayload::InterSkip))
+    {
+        return Err(
+            "VVC predictive frame-slice skip path requires a non-IRAP all-skip picture".to_string(),
+        );
+    }
+
+    vvc_predictive_frame_skip_slice_unit_with_cached_payload(
+        frame_idx,
+        picture_geometry,
+        slice_config,
+        inter_skip_payload,
+    )
+}
+
+pub(in crate::vvc) fn vvc_predictive_frame_skip_slice_unit_with_cached_payload(
+    frame_idx: usize,
+    picture_geometry: VvcVideoGeometry,
+    slice_config: VvcSliceSyntaxConfig,
+    inter_skip_payload: &VvcCabacPayload,
+) -> Result<VvcNalUnit, String> {
+    let picture_kind = vvc_picture_kind_for_frame_idx(frame_idx, true);
+    if picture_kind.is_irap() {
+        return Err(
+            "VVC predictive frame-slice skip path requires a non-IRAP all-skip picture".to_string(),
+        );
+    }
+    let poc_lsb = vvc_poc_lsb_for_frame_idx(frame_idx);
+    Ok(VvcNalUnit {
+        nal_unit_type: picture_kind.nal_unit_type(),
+        layer_id: 0,
+        temporal_id: 0,
+        rbsp_payload: vvc_frame_slice_payload_with_poc_and_cabac_payload(
+            picture_kind,
+            poc_lsb,
+            picture_geometry,
+            slice_config,
+            inter_skip_payload,
+        ),
+    })
+}
+
+#[derive(Default)]
+pub(in crate::vvc) struct VvcFrameSkipPayloadCache {
+    entries: Vec<(VvcVideoGeometry, VvcSliceSyntaxConfig, VvcCabacPayload)>,
+}
+
+impl VvcFrameSkipPayloadCache {
+    pub(in crate::vvc) fn payload_for(
+        &mut self,
+        picture_geometry: VvcVideoGeometry,
+        slice_config: VvcSliceSyntaxConfig,
+    ) -> &VvcCabacPayload {
+        if let Some(index) = self.entries.iter().position(|(geometry, config, _)| {
+            *geometry == picture_geometry && *config == slice_config
+        }) {
+            return &self.entries[index].2;
+        }
+        self.entries.push((
+            picture_geometry,
+            slice_config,
+            vvc_frame_inter_skip_cabac_payload(picture_geometry, slice_config),
+        ));
+        &self
+            .entries
+            .last()
+            .expect("just pushed frame-skip payload")
+            .2
+    }
+}
+
+#[allow(dead_code)]
+pub(in crate::vvc) fn vvc_picture_header_unit(
+    frame_idx: usize,
+    predictive: bool,
+    slice_config: VvcSliceSyntaxConfig,
+) -> VvcNalUnit {
+    let picture_kind = vvc_picture_kind_for_frame_idx(frame_idx, predictive);
+    let poc_lsb = vvc_poc_lsb_for_frame_idx(frame_idx);
+    let mut writer = VvcSyntaxWriter::without_fields();
+    write_vvc_picture_header(&mut writer, picture_kind, poc_lsb, slice_config);
+    writer.rbsp_trailing_bits();
+    VvcNalUnit {
+        nal_unit_type: VvcNalUnitType::PictureHeader,
+        layer_id: 0,
+        temporal_id: 0,
+        rbsp_payload: writer.into_bytes(),
+    }
+}
+
+#[allow(dead_code)]
+pub(in crate::vvc) fn vvc_ctu_slice_units(
+    frame_idx: usize,
+    picture_geometry: VvcVideoGeometry,
+    ctus: &[VvcQuantizedCtu],
+    slice_config: VvcSliceSyntaxConfig,
+) -> Result<Vec<VvcNalUnit>, String> {
+    let picture_kind = vvc_picture_kind_for_frame_idx(frame_idx, true);
+    let poc_lsb = vvc_poc_lsb_for_frame_idx(frame_idx);
+    let expected_ctus = vvc_picture_ctu_count(picture_geometry);
+    if ctus.len() != expected_ctus {
+        return Err(format!(
+            "VVC CTU-slice picture expected {expected_ctus} CTU payload(s), got {}",
+            ctus.len()
+        ));
+    }
+
+    let mut units = Vec::with_capacity(ctus.len() + 1);
+    let mut inter_skip_payloads = VvcInterSkipPayloadCache::default();
+    units.push(vvc_picture_header_unit(frame_idx, true, slice_config));
+    for ctu in ctus {
+        let inter_skip_payload = match ctu.payload {
+            VvcQuantizedCtuPayload::InterSkip => {
+                Some(inter_skip_payloads.payload_for(ctu.geometry, slice_config))
+            }
+            VvcQuantizedCtuPayload::Intra(_) => None,
+        };
+        units.push(VvcNalUnit {
+            nal_unit_type: picture_kind.nal_unit_type(),
+            layer_id: 0,
+            temporal_id: 0,
+            rbsp_payload: vvc_ctu_slice_rbsp_with_poc(
+                picture_kind,
+                poc_lsb,
+                picture_geometry,
+                ctu,
+                slice_config,
+                inter_skip_payload,
+            )
+            .bytes,
+        });
+    }
+    Ok(units)
+}
+
+#[allow(dead_code)]
+#[derive(Default)]
+struct VvcInterSkipPayloadCache {
+    entries: Vec<(VvcVideoGeometry, VvcCabacPayload)>,
+}
+
+#[allow(dead_code)]
+impl VvcInterSkipPayloadCache {
+    fn payload_for(
+        &mut self,
+        ctu_geometry: VvcVideoGeometry,
+        slice_config: VvcSliceSyntaxConfig,
+    ) -> &VvcCabacPayload {
+        if let Some(index) = self
+            .entries
+            .iter()
+            .position(|(geometry, _)| *geometry == ctu_geometry)
+        {
+            return &self.entries[index].1;
+        }
+        self.entries.push((
+            ctu_geometry,
+            vvc_inter_skip_ctu_cabac_payload(ctu_geometry, slice_config),
+        ));
+        &self.entries.last().expect("just pushed skip payload").1
+    }
+}
+
+fn vvc_picture_kind_for_frame_idx(frame_idx: usize, predictive: bool) -> VvcPictureKind {
+    if predictive && frame_idx > 0 {
+        VvcPictureKind::Trail
+    } else {
+        VvcPictureKind::for_frame_idx(frame_idx)
+    }
 }
 
 #[cfg(test)]
@@ -287,7 +554,15 @@ pub(in crate::vvc) fn vvc_sps_rbsp(
     writer.write_flag("sps_idr_rpl_present_flag", false);
     writer.write_flag("sps_rpl1_same_as_rpl0_flag", true);
     writer.write_ue("sps_num_ref_pic_lists[0]", 1);
-    writer.write_ue("num_ref_entries[listIdx][rplsIdx]", 0);
+    if slice_config.inter_enabled {
+        writer.write_ue("num_ref_entries[listIdx][rplsIdx]", 1);
+        // One short-term reference to the previous POC:
+        // DeltaPocValSt = -(abs_delta_poc_st + 1) = -1.
+        writer.write_ue("abs_delta_poc_st[i]", 0);
+        writer.write_flag("strp_entry_sign_flag[i]", true);
+    } else {
+        writer.write_ue("num_ref_entries[listIdx][rplsIdx]", 0);
+    }
     writer.write_flag("sps_ref_wraparound_enabled_flag", false);
     let temporal_mvp_enabled = false;
     writer.write_flag("sps_temporal_mvp_enabled_flag", temporal_mvp_enabled);
@@ -304,7 +579,10 @@ pub(in crate::vvc) fn vvc_sps_rbsp(
     if mmvd_enabled {
         writer.write_flag("sps_mmvd_fullpel_only_flag", false);
     }
-    writer.write_ue("sps_six_minus_max_num_merge_cand", 0);
+    writer.write_ue(
+        "sps_six_minus_max_num_merge_cand",
+        if slice_config.inter_enabled { 5 } else { 0 },
+    );
     writer.write_flag("sps_sbt_enabled_flag", false);
     let affine_enabled = false;
     writer.write_flag("sps_affine_enabled_flag", affine_enabled);
@@ -411,17 +689,33 @@ fn write_vvc_vui_parameters(writer: &mut VvcSyntaxWriter, vui_signal: VvcVuiSign
 
 pub(in crate::vvc) fn write_vvc_picture_header(
     writer: &mut VvcSyntaxWriter,
-    _picture_kind: VvcPictureKind,
+    picture_kind: VvcPictureKind,
     poc_lsb: u32,
     slice_config: VvcSliceSyntaxConfig,
 ) {
-    writer.write_flag("ph_gdr_or_irap_pic_flag", true);
+    let inter_slice_allowed = slice_config.inter_enabled && !picture_kind.is_irap();
+    writer.write_flag("ph_gdr_or_irap_pic_flag", picture_kind.is_irap());
     writer.write_flag("ph_non_ref_pic_flag", false);
-    writer.write_flag("ph_gdr_pic_flag", false);
-    writer.write_flag("ph_inter_slice_allowed_flag", false);
-    writer.write_ue("ph_pic_parameter_set_id", 0);
+    if picture_kind.is_irap() {
+        writer.write_flag("ph_gdr_pic_flag", false);
+    }
+    writer.write_flag("ph_inter_slice_allowed_flag", inter_slice_allowed);
+    if inter_slice_allowed {
+        writer.write_flag("ph_intra_slice_allowed_flag", true);
+    }
+    writer.write_ue(
+        "ph_pic_parameter_set_id",
+        u32::from(slice_config.picture_parameter_set_id),
+    );
     writer.write_u("ph_pic_order_cnt_lsb", u64::from(poc_lsb), VVC_POC_LSB_BITS);
     writer.write_flag("ph_partition_constraints_override_flag", false);
+    if inter_slice_allowed {
+        writer.write_flag("ph_mvd_l1_zero_flag", true);
+    }
+    if vvc_picture_header_carries_slice_state(slice_config) {
+        write_vvc_picture_header_ref_pic_lists(writer, picture_kind);
+        writer.write_se("ph_qp_delta", slice_config.slice_qp - VVC_PPS_INIT_QP);
+    }
     if slice_config.tools.joint_cbcr_enabled {
         writer.write_flag("ph_joint_cbcr_sign_flag", false);
     }
@@ -438,15 +732,27 @@ pub(in crate::vvc) fn write_vvc_slice_header_ref_pic_lists(
     writer: &mut VvcSyntaxWriter,
     picture_kind: VvcPictureKind,
 ) {
+    write_vvc_ref_pic_lists(writer, picture_kind);
+}
+
+fn write_vvc_picture_header_ref_pic_lists(
+    writer: &mut VvcSyntaxWriter,
+    picture_kind: VvcPictureKind,
+) {
+    write_vvc_ref_pic_lists(writer, picture_kind);
+}
+
+fn write_vvc_ref_pic_lists(writer: &mut VvcSyntaxWriter, picture_kind: VvcPictureKind) {
     if picture_kind.carries_slice_header_ref_pic_lists() {
-        // H.266 7.3.7 requires ref_pic_lists() for non-IDR slices when
-        // pps_rpl_info_in_ph_flag is 0. H.266 7.3.9 then only needs
-        // rpl_sps_flag[0] for the current SPS/PPS subset: the SPS carries one
-        // empty RPL0, sps_rpl1_same_as_rpl0_flag=1, and
-        // pps_rpl1_idx_present_flag=0, so the same empty list is used for both
-        // directions without adding any reference pictures.
+        // The current SPS/PPS subset needs only rpl_sps_flag[0] at whichever
+        // syntax site the active PPS selects. The SPS carries one short-term
+        // RPL0, sps_rpl1_same_as_rpl0_flag=1, and pps_rpl1_idx_present_flag=0.
         writer.write_flag("rpl_sps_flag[0]", true);
     }
+}
+
+const fn vvc_picture_header_carries_slice_state(slice_config: VvcSliceSyntaxConfig) -> bool {
+    slice_config.picture_header_slice_state_enabled
 }
 
 fn chroma_format_idc(chroma_sampling: ChromaSampling) -> u32 {
@@ -488,18 +794,24 @@ fn vvc_general_profile_idc(
 fn vvc_pps_payload_with_partitioning(
     geometry: VvcVideoGeometry,
     partitioning: VvcPicturePartitioning,
+    slice_config: VvcSliceSyntaxConfig,
 ) -> Vec<u8> {
-    vvc_pps_rbsp_with_partitioning(geometry, partitioning).bytes
+    vvc_pps_rbsp_with_partitioning_and_config(geometry, partitioning, slice_config).bytes
 }
 
 #[cfg(test)]
 pub(in crate::vvc) fn vvc_pps_rbsp(geometry: VvcVideoGeometry) -> VvcSyntaxRbsp {
-    vvc_pps_rbsp_with_partitioning(geometry, VvcPicturePartitioning::OneSlicePerCtu)
+    vvc_pps_rbsp_with_partitioning_and_config(
+        geometry,
+        VvcPicturePartitioning::OneSlicePerCtu,
+        VvcSliceSyntaxConfig::yuv420_residual(),
+    )
 }
 
-pub(in crate::vvc) fn vvc_pps_rbsp_with_partitioning(
+pub(in crate::vvc) fn vvc_pps_rbsp_with_partitioning_and_config(
     geometry: VvcVideoGeometry,
     partitioning: VvcPicturePartitioning,
+    slice_config: VvcSliceSyntaxConfig,
 ) -> VvcSyntaxRbsp {
     let mut writer = VvcSyntaxWriter::new();
     let ctu_cols = vvc_picture_ctu_cols(geometry);
@@ -507,7 +819,13 @@ pub(in crate::vvc) fn vvc_pps_rbsp_with_partitioning(
     let has_multiple_ctus = ctu_cols * ctu_rows > 1;
     let use_picture_partitioning =
         has_multiple_ctus && partitioning == VvcPicturePartitioning::OneSlicePerCtu;
-    writer.write_u("pps_pic_parameter_set_id", 0, 6);
+    let picture_header_carries_slice_state =
+        use_picture_partitioning && vvc_picture_header_carries_slice_state(slice_config);
+    writer.write_u(
+        "pps_pic_parameter_set_id",
+        u64::from(slice_config.picture_parameter_set_id),
+        6,
+    );
     writer.write_u("pps_seq_parameter_set_id", 0, 4);
     writer.write_flag("pps_mixed_nalu_types_in_pic_flag", false);
     writer.write_ue(
@@ -557,8 +875,14 @@ pub(in crate::vvc) fn vvc_pps_rbsp_with_partitioning(
         writer.write_flag("pps_loop_filter_across_slices_enabled_flag", false);
     }
     writer.write_flag("pps_cabac_init_present_flag", false);
-    writer.write_ue("pps_num_ref_idx_default_active_minus1[0]", 3);
-    writer.write_ue("pps_num_ref_idx_default_active_minus1[1]", 3);
+    writer.write_ue(
+        "pps_num_ref_idx_default_active_minus1[0]",
+        if slice_config.inter_enabled { 0 } else { 3 },
+    );
+    writer.write_ue(
+        "pps_num_ref_idx_default_active_minus1[1]",
+        if slice_config.inter_enabled { 0 } else { 3 },
+    );
     writer.write_flag("pps_rpl1_idx_present_flag", false);
     writer.write_flag("pps_weighted_pred_flag", false);
     writer.write_flag("pps_weighted_bipred_flag", false);
@@ -578,12 +902,19 @@ pub(in crate::vvc) fn vvc_pps_rbsp_with_partitioning(
     if use_picture_partitioning {
         // H.266 picture_parameter_set_rbsp(): when picture partitioning is
         // present, these flags declare whether later syntax is carried in the
-        // picture header. Keep them false for the current picture-header
-        // subset so the slice headers carry the active RPL/SAO/ALF/QP state.
-        writer.write_flag("pps_rpl_info_in_ph_flag", false);
+        // picture header. Predictive CTU-sliced pictures already emit a
+        // separate picture header, so carry RPL/QP once there instead of
+        // repeating it in every CTU slice header.
+        writer.write_flag(
+            "pps_rpl_info_in_ph_flag",
+            picture_header_carries_slice_state,
+        );
         writer.write_flag("pps_sao_info_in_ph_flag", false);
         writer.write_flag("pps_alf_info_in_ph_flag", false);
-        writer.write_flag("pps_qp_delta_info_in_ph_flag", false);
+        writer.write_flag(
+            "pps_qp_delta_info_in_ph_flag",
+            picture_header_carries_slice_state,
+        );
     }
     writer.write_flag("pps_picture_header_extension_present_flag", false);
     writer.write_flag("pps_slice_header_extension_present_flag", false);
@@ -670,6 +1001,7 @@ fn vvc_test_poc_lsb(picture_kind: VvcPictureKind) -> u32 {
     match picture_kind {
         VvcPictureKind::Idr => 0,
         VvcPictureKind::Cra => 1,
+        VvcPictureKind::Trail => 2,
     }
 }
 
@@ -681,12 +1013,121 @@ fn vvc_frame_slice_rbsp_with_poc(
     slice_config: VvcSliceSyntaxConfig,
 ) -> VvcSyntaxRbsp {
     let mut writer = VvcSyntaxWriter::without_fields();
+    write_vvc_frame_slice_header(
+        &mut writer,
+        picture_kind,
+        poc_lsb,
+        picture_geometry,
+        slice_config,
+    );
+    write_vvc_frame_coding_tree_entropy(
+        &mut writer,
+        picture_kind,
+        picture_geometry,
+        ctus,
+        slice_config,
+    );
+    writer.rbsp_trailing_bits();
+    debug_assert!(writer.is_byte_aligned());
+    writer.finish()
+}
+
+fn vvc_frame_slice_payload_with_poc_and_cabac_payload(
+    picture_kind: VvcPictureKind,
+    poc_lsb: u32,
+    picture_geometry: VvcVideoGeometry,
+    slice_config: VvcSliceSyntaxConfig,
+    payload: &VvcCabacPayload,
+) -> Vec<u8> {
+    let mut writer = VvcSyntaxWriter::without_fields();
+    write_vvc_frame_slice_header(
+        &mut writer,
+        picture_kind,
+        poc_lsb,
+        picture_geometry,
+        slice_config,
+    );
+    writer.write_packed_cabac_bits(
+        "cabac_vvc_frame_quantized_residual_bits",
+        &payload.bytes,
+        payload.bit_len,
+    );
+    writer.rbsp_trailing_bits();
+    debug_assert!(writer.is_byte_aligned());
+    writer.into_bytes()
+}
+
+fn write_vvc_frame_slice_header(
+    writer: &mut VvcSyntaxWriter,
+    picture_kind: VvcPictureKind,
+    poc_lsb: u32,
+    _picture_geometry: VvcVideoGeometry,
+    slice_config: VvcSliceSyntaxConfig,
+) {
     let tool_flags = slice_config.tools;
     writer.write_flag("sh_picture_header_in_slice_header_flag", true);
-    write_vvc_picture_header(&mut writer, picture_kind, poc_lsb, slice_config);
-    writer.write_flag("sh_no_output_of_prior_pics_flag", false);
-    write_vvc_slice_header_ref_pic_lists(&mut writer, picture_kind);
-    writer.write_se("sh_qp_delta", slice_config.slice_qp - VVC_PPS_INIT_QP);
+    write_vvc_picture_header(writer, picture_kind, poc_lsb, slice_config);
+    if picture_kind.is_irap() {
+        writer.write_flag("sh_no_output_of_prior_pics_flag", false);
+    }
+    if slice_config.inter_enabled && !picture_kind.is_irap() {
+        writer.write_ue("sh_slice_type", 1);
+    }
+    if !vvc_picture_header_carries_slice_state(slice_config) {
+        write_vvc_slice_header_ref_pic_lists(writer, picture_kind);
+        writer.write_se("sh_qp_delta", slice_config.slice_qp - VVC_PPS_INIT_QP);
+    }
+    if tool_flags.dependent_quantization_enabled {
+        writer.write_flag("sh_dep_quant_used_flag", true);
+    }
+    if tool_flags.sign_data_hiding_enabled && !tool_flags.dependent_quantization_enabled {
+        writer.write_flag("sh_sign_data_hiding_used_flag", true);
+    }
+    if tool_flags.transform_skip_enabled
+        && !tool_flags.dependent_quantization_enabled
+        && !tool_flags.sign_data_hiding_enabled
+    {
+        writer.write_flag("sh_ts_residual_coding_disabled_flag", true);
+    }
+    write_vvc_slice_header_byte_alignment(writer);
+}
+
+#[allow(dead_code)]
+fn vvc_ctu_slice_rbsp_with_poc(
+    picture_kind: VvcPictureKind,
+    _poc_lsb: u32,
+    picture_geometry: VvcVideoGeometry,
+    ctu: &VvcQuantizedCtu,
+    slice_config: VvcSliceSyntaxConfig,
+    inter_skip_payload: Option<&VvcCabacPayload>,
+) -> VvcSyntaxRbsp {
+    let mut writer = VvcSyntaxWriter::without_fields();
+    let tool_flags = slice_config.tools;
+    let slice_count = vvc_picture_ctu_count(picture_geometry);
+    writer.write_flag("sh_picture_header_in_slice_header_flag", false);
+    if slice_count > 1 {
+        writer.write_u(
+            "sh_slice_address",
+            ctu.slice_address as u64,
+            vvc_slice_address_bits(picture_geometry),
+        );
+    }
+    if slice_config.inter_enabled && !picture_kind.is_irap() {
+        writer.write_ue(
+            "sh_slice_type",
+            match ctu.payload {
+                VvcQuantizedCtuPayload::InterSkip => 1,
+                VvcQuantizedCtuPayload::Intra(_) => 2,
+            },
+        );
+    }
+    if picture_kind.is_irap() {
+        writer.write_flag("sh_no_output_of_prior_pics_flag", false);
+    }
+    if !vvc_picture_header_carries_slice_state(slice_config) {
+        write_vvc_slice_header_ref_pic_lists(&mut writer, picture_kind);
+        writer.write_se("sh_qp_delta", slice_config.slice_qp - VVC_PPS_INIT_QP);
+    }
     if tool_flags.dependent_quantization_enabled {
         writer.write_flag("sh_dep_quant_used_flag", true);
     }
@@ -700,7 +1141,7 @@ fn vvc_frame_slice_rbsp_with_poc(
         writer.write_flag("sh_ts_residual_coding_disabled_flag", true);
     }
     write_vvc_slice_header_byte_alignment(&mut writer);
-    write_vvc_frame_coding_tree_entropy(&mut writer, picture_geometry, ctus, slice_config);
+    write_vvc_ctu_coding_tree_entropy(&mut writer, ctu, slice_config, inter_skip_payload);
     writer.rbsp_trailing_bits();
     debug_assert!(writer.is_byte_aligned());
     writer.finish()
@@ -736,8 +1177,10 @@ pub(in crate::vvc) fn vvc_slice_rbsp_with_poc(
         );
     }
     writer.write_flag("sh_no_output_of_prior_pics_flag", false);
-    write_vvc_slice_header_ref_pic_lists(&mut writer, picture_kind);
-    writer.write_se("sh_qp_delta", slice_config.slice_qp - VVC_PPS_INIT_QP);
+    if !vvc_picture_header_carries_slice_state(slice_config) {
+        write_vvc_slice_header_ref_pic_lists(&mut writer, picture_kind);
+        writer.write_se("sh_qp_delta", slice_config.slice_qp - VVC_PPS_INIT_QP);
+    }
     if tool_flags.dependent_quantization_enabled {
         writer.write_flag("sh_dep_quant_used_flag", true);
     }
@@ -794,13 +1237,36 @@ pub(in crate::vvc) fn write_vvc_coding_tree_entropy_with_luma_max_leaf_size(
 
 fn write_vvc_frame_coding_tree_entropy(
     writer: &mut VvcSyntaxWriter,
+    picture_kind: VvcPictureKind,
     picture_geometry: VvcVideoGeometry,
     ctus: &[VvcQuantizedCtu],
     slice_config: VvcSliceSyntaxConfig,
 ) {
-    let payload = vvc_frame_cabac_payload(picture_geometry, ctus, slice_config);
+    let inter_slice = slice_config.inter_enabled && !picture_kind.is_irap();
+    let payload = vvc_frame_cabac_payload(picture_geometry, ctus, slice_config, inter_slice);
     writer.write_packed_cabac_bits(
         "cabac_vvc_frame_quantized_residual_bits",
+        &payload.bytes,
+        payload.bit_len,
+    );
+}
+
+#[allow(dead_code)]
+fn write_vvc_ctu_coding_tree_entropy(
+    writer: &mut VvcSyntaxWriter,
+    ctu: &VvcQuantizedCtu,
+    slice_config: VvcSliceSyntaxConfig,
+    inter_skip_payload: Option<&VvcCabacPayload>,
+) {
+    let generated_payload;
+    let payload = if let Some(inter_skip_payload) = inter_skip_payload {
+        inter_skip_payload
+    } else {
+        generated_payload = vvc_ctu_cabac_payload(ctu, slice_config);
+        &generated_payload
+    };
+    writer.write_packed_cabac_bits(
+        "cabac_vvc_ctu_quantized_or_skip_bits",
         &payload.bytes,
         payload.bit_len,
     );

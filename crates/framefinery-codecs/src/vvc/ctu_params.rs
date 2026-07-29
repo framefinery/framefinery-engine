@@ -2,6 +2,7 @@ fn vvc_frame_cabac_payload(
     picture_geometry: VvcVideoGeometry,
     ctus: &[VvcQuantizedCtu],
     slice_config: VvcSliceSyntaxConfig,
+    inter_slice: bool,
 ) -> VvcCabacPayload {
     debug_assert_eq!(ctus.len(), vvc_picture_ctu_count(picture_geometry));
     let mut cabac = VvcCabacEncoder::new_with_payload_capacity(
@@ -9,12 +10,87 @@ fn vvc_frame_cabac_payload(
             .coded_width()
             .saturating_mul(picture_geometry.coded_height()),
     );
-    let mut frame_state = VvcFrameCtuCabacState::new(picture_geometry, slice_config);
+    let mut frame_state = VvcFrameCtuCabacState::new(picture_geometry, slice_config, inter_slice);
     cabac.start();
     for (expected_slice_address, ctu) in ctus.iter().enumerate() {
         debug_assert_eq!(ctu.slice_address, expected_slice_address);
-        frame_state.encode_ctu(&mut cabac, ctu.slice_address, &ctu.params, slice_config);
+        match &ctu.payload {
+            VvcQuantizedCtuPayload::Intra(params) => {
+                frame_state.encode_ctu(&mut cabac, ctu.slice_address, params, slice_config);
+            }
+            VvcQuantizedCtuPayload::InterSkip => {
+                frame_state.encode_inter_skip_ctu(
+                    &mut cabac,
+                    ctu.slice_address,
+                    ctu.geometry,
+                    slice_config,
+                );
+            }
+        }
     }
+    cabac.encode_bin_trm(true);
+    cabac.finish_payload()
+}
+
+fn vvc_frame_inter_skip_cabac_payload(
+    picture_geometry: VvcVideoGeometry,
+    slice_config: VvcSliceSyntaxConfig,
+) -> VvcCabacPayload {
+    debug_assert!(slice_config.inter_enabled);
+    let mut cabac = VvcCabacEncoder::new_with_payload_capacity(
+        picture_geometry
+            .coded_width()
+            .saturating_mul(picture_geometry.coded_height()),
+    );
+    let mut frame_state = VvcFrameCtuCabacState::new(picture_geometry, slice_config, true);
+    cabac.start();
+    for region in vvc_ctu_regions(picture_geometry) {
+        frame_state.encode_inter_skip_ctu(
+            &mut cabac,
+            region.slice_address,
+            region.geometry,
+            slice_config,
+        );
+    }
+    cabac.encode_bin_trm(true);
+    cabac.finish_payload()
+}
+
+#[allow(dead_code)]
+fn vvc_ctu_cabac_payload(
+    ctu: &VvcQuantizedCtu,
+    slice_config: VvcSliceSyntaxConfig,
+) -> VvcCabacPayload {
+    let mut cabac = VvcCabacEncoder::new_with_payload_capacity(
+        ctu.geometry
+            .coded_width()
+            .saturating_mul(ctu.geometry.coded_height()),
+    );
+    cabac.start();
+    match &ctu.payload {
+        VvcQuantizedCtuPayload::Intra(params) => {
+            encode_ctu_partition_body(&mut cabac, params, slice_config);
+        }
+        VvcQuantizedCtuPayload::InterSkip => {
+            encode_inter_skip_ctu_body(&mut cabac, ctu.geometry, slice_config);
+        }
+    }
+    cabac.encode_bin_trm(true);
+    cabac.finish_payload()
+}
+
+#[allow(dead_code)]
+fn vvc_inter_skip_ctu_cabac_payload(
+    ctu_geometry: VvcVideoGeometry,
+    slice_config: VvcSliceSyntaxConfig,
+) -> VvcCabacPayload {
+    let mut cabac = VvcCabacEncoder::new_with_payload_capacity(
+        ctu_geometry
+            .coded_width()
+            .saturating_mul(ctu_geometry.coded_height()),
+    );
+    cabac.start();
+    encode_inter_skip_ctu_body(&mut cabac, ctu_geometry, slice_config);
     cabac.encode_bin_trm(true);
     cabac.finish_payload()
 }
@@ -123,6 +199,7 @@ fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
         luma_tu_dc_levels,
         luma_tu_ac_levels,
         luma_tu_has_ac,
+        luma_tu_inter_skip: [false; MAX_VVC_LUMA_TUS],
         luma_tu_transform_skip,
         luma_tu_bdpcm_modes,
         luma_tu_mrl_index,
@@ -136,6 +213,7 @@ fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
         cr_tu_ac_levels,
         cb_tu_has_ac,
         cr_tu_has_ac,
+        chroma_tu_inter_skip: [false; MAX_VVC_CHROMA_TUS],
         cb_tu_transform_skip,
         cr_tu_transform_skip,
         chroma_tu_bdpcm_modes,

@@ -69,8 +69,7 @@ already planar GBR, so validation compares the bytes directly.
 
 Additional encoder settings can be passed to validation with
 `VALIDATION_SETTINGS="key key=value"`. This is intended for codec experiments
-that are not part of a manifest row yet, such as AV2's experimental lossless
-predictive mode:
+that are not part of a manifest row yet, such as experimental predictive modes:
 
 ```sh
 make validate-set CODEC=av2 \

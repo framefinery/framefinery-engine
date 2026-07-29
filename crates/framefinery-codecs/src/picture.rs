@@ -395,6 +395,99 @@ impl PlanarYuvFrameLayout {
         true
     }
 
+    pub(crate) fn luma_regions_equal_between(
+        self,
+        current: &[u8],
+        x0: usize,
+        y0: usize,
+        reference: &[u8],
+        ref_x0: usize,
+        ref_y0: usize,
+        width: usize,
+        height: usize,
+    ) -> bool {
+        if current.len() != self.frame_len() || reference.len() != self.frame_len() {
+            return false;
+        }
+        if !self.luma_region_in_bounds(x0, y0, width, height)
+            || !self.luma_region_in_bounds(ref_x0, ref_y0, width, height)
+        {
+            return false;
+        }
+
+        let (current_y, _, _) = self.plane_slices(current);
+        let (reference_y, _, _) = self.plane_slices(reference);
+        plane_regions_equal_between(
+            current_y,
+            self.width,
+            x0,
+            y0,
+            reference_y,
+            self.width,
+            ref_x0,
+            ref_y0,
+            width,
+            height,
+            self.geometry.bytes_per_sample,
+        )
+    }
+
+    pub(crate) fn chroma_regions_equal_between(
+        self,
+        current: &[u8],
+        x0: usize,
+        y0: usize,
+        reference: &[u8],
+        ref_x0: usize,
+        ref_y0: usize,
+        width: usize,
+        height: usize,
+    ) -> bool {
+        if current.len() != self.frame_len() || reference.len() != self.frame_len() {
+            return false;
+        }
+        if !self.luma_region_in_bounds(x0, y0, width, height)
+            || !self.luma_region_in_bounds(ref_x0, ref_y0, width, height)
+        {
+            return false;
+        }
+
+        let (sub_x, sub_y) = self.plane_subsampling(PlanarYuvPlane::U);
+        if width % sub_x != 0
+            || height % sub_y != 0
+            || x0 % sub_x != 0
+            || y0 % sub_y != 0
+            || ref_x0 % sub_x != 0
+            || ref_y0 % sub_y != 0
+        {
+            return false;
+        }
+
+        let (_, current_u, current_v) = self.plane_slices(current);
+        let (_, reference_u, reference_v) = self.plane_slices(reference);
+        let chroma_width = width / sub_x;
+        let chroma_height = height / sub_y;
+        for (current_plane, reference_plane) in [(current_u, reference_u), (current_v, reference_v)]
+        {
+            if !plane_regions_equal_between(
+                current_plane,
+                self.geometry.chroma_width,
+                x0 / sub_x,
+                y0 / sub_y,
+                reference_plane,
+                self.geometry.chroma_width,
+                ref_x0 / sub_x,
+                ref_y0 / sub_y,
+                chroma_width,
+                chroma_height,
+                self.geometry.bytes_per_sample,
+            ) {
+                return false;
+            }
+        }
+        true
+    }
+
     pub(crate) fn copy_region_between(
         self,
         dst: &mut [u8],

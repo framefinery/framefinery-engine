@@ -591,6 +591,59 @@ fn vvc_lossless_speed_direct_chroma_bdpcm_is_scoped_to_lossy_444_derived() {
 }
 
 #[test]
+fn vvc_lossless_speed_chroma_bdpcm_skips_high_depth_420() {
+    let yuv420p8 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let yuv420p10 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
+    };
+    let yuv422p10 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs422,
+        bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
+    };
+    let yuv444p10 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
+    };
+    let lossless_speed = |format| {
+        VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossless)
+            .with_fast_search(VvcFastSearch::LosslessSpeed)
+    };
+
+    assert!(vvc_chroma_lossless_speed_bdpcm_format_allowed(
+        lossless_speed(yuv420p8),
+        yuv420p8,
+    ));
+    assert!(!vvc_chroma_lossless_speed_bdpcm_format_allowed(
+        lossless_speed(yuv420p10),
+        yuv420p10,
+    ));
+    assert!(vvc_chroma_lossless_speed_bdpcm_format_allowed(
+        lossless_speed(yuv422p10),
+        yuv422p10,
+    ));
+    assert!(vvc_chroma_lossless_speed_bdpcm_format_allowed(
+        lossless_speed(yuv444p10),
+        yuv444p10,
+    ));
+    assert!(vvc_chroma_bdpcm_fast_search_allowed(
+        lossless_speed(yuv444p10),
+        VvcChromaIntraPredictionMode::Derived,
+    ));
+    assert!(!vvc_chroma_bdpcm_fast_search_allowed(
+        lossless_speed(yuv444p10),
+        VvcChromaIntraPredictionMode::Explicit(VvcIntraPredictionMode::Horizontal),
+    ));
+    assert!(vvc_chroma_lossless_speed_bdpcm_format_allowed(
+        VvcResidualCodingPolicy::new(yuv420p10, VvcResidualCodingMode::Lossless),
+        yuv420p10,
+    ));
+}
+
+#[test]
 fn vvc_direct_chroma_bdpcm_residual_gate_requires_sse_gain() {
     let selected_cb = [4i16; 16];
     let selected_cr = [4i16; 16];

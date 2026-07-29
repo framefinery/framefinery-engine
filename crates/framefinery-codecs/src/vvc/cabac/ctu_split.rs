@@ -26,6 +26,7 @@ pub(in crate::vvc) struct VvcCtuPartitionParams {
     pub(in crate::vvc) luma_tu_dc_levels: [i16; MAX_VVC_LUMA_TUS],
     pub(in crate::vvc) luma_tu_ac_levels: [[i16; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
     pub(in crate::vvc) luma_tu_has_ac: [bool; MAX_VVC_LUMA_TUS],
+    pub(in crate::vvc) luma_tu_inter_skip: [bool; MAX_VVC_LUMA_TUS],
     pub(in crate::vvc) luma_tu_transform_skip: [bool; MAX_VVC_LUMA_TUS],
     pub(in crate::vvc) luma_tu_bdpcm_modes: [VvcBdpcmMode; MAX_VVC_LUMA_TUS],
     pub(in crate::vvc) luma_tu_mrl_index: [u8; MAX_VVC_LUMA_TUS],
@@ -39,6 +40,7 @@ pub(in crate::vvc) struct VvcCtuPartitionParams {
     pub(in crate::vvc) cr_tu_ac_levels: [[i16; VVC_CHROMA_AC_COEFFS_PER_TU]; MAX_VVC_CHROMA_TUS],
     pub(in crate::vvc) cb_tu_has_ac: [bool; MAX_VVC_CHROMA_TUS],
     pub(in crate::vvc) cr_tu_has_ac: [bool; MAX_VVC_CHROMA_TUS],
+    pub(in crate::vvc) chroma_tu_inter_skip: [bool; MAX_VVC_CHROMA_TUS],
     pub(in crate::vvc) cb_tu_transform_skip: [bool; MAX_VVC_CHROMA_TUS],
     pub(in crate::vvc) cr_tu_transform_skip: [bool; MAX_VVC_CHROMA_TUS],
     pub(in crate::vvc) chroma_tu_bdpcm_modes: [VvcBdpcmMode; MAX_VVC_CHROMA_TUS],
@@ -83,8 +85,17 @@ pub(in crate::vvc) fn vvc_chroma_transform_nodes(
     shape: VvcCtuPartitionShape,
 ) -> Vec<VvcCodingTreeNode> {
     let mut nodes = Vec::new();
+    vvc_chroma_transform_nodes_into(&mut nodes, shape);
+    nodes
+}
+
+pub(in crate::vvc) fn vvc_chroma_transform_nodes_into(
+    nodes: &mut Vec<VvcCodingTreeNode>,
+    shape: VvcCtuPartitionShape,
+) {
+    nodes.clear();
     append_chroma_visible_qt_subtree(
-        &mut nodes,
+        nodes,
         VvcCodingTreeNode::root(
             shape.root_width,
             shape.root_height,
@@ -94,7 +105,6 @@ pub(in crate::vvc) fn vvc_chroma_transform_nodes(
         shape.visible_height,
         shape.chroma_sampling,
     );
-    nodes
 }
 
 pub(in crate::vvc) fn vvc_luma_transform_nodes(
@@ -102,15 +112,24 @@ pub(in crate::vvc) fn vvc_luma_transform_nodes(
     max_leaf_size: u16,
 ) -> Vec<VvcCodingTreeNode> {
     let mut nodes = Vec::new();
+    vvc_luma_transform_nodes_into(&mut nodes, shape, max_leaf_size);
+    nodes
+}
+
+pub(in crate::vvc) fn vvc_luma_transform_nodes_into(
+    nodes: &mut Vec<VvcCodingTreeNode>,
+    shape: VvcCtuPartitionShape,
+    max_leaf_size: u16,
+) {
+    nodes.clear();
     let tree_type = vvc_luma_tree_type(shape);
     append_visible_luma_transform_nodes(
-        &mut nodes,
+        nodes,
         VvcCodingTreeNode::root(shape.root_width, shape.root_height, tree_type),
         shape.visible_width,
         shape.visible_height,
         max_leaf_size,
     );
-    nodes
 }
 
 fn append_visible_luma_transform_nodes(
@@ -871,13 +890,12 @@ impl VvcLumaNeighbourState {
         let end_cell_x = end_x.div_ceil(VVC_LUMA_NEIGHBOUR_CELL_SIZE);
         let end_cell_y = end_y.div_ceil(VVC_LUMA_NEIGHBOUR_CELL_SIZE);
         for cell_y in start_cell_y..end_cell_y {
-            for cell_x in start_cell_x..end_cell_x {
-                let index = usize::from(cell_y) * self.cell_width + usize::from(cell_x);
-                self.valid[index] = true;
-                self.cb_width[index] = node.width;
-                self.cb_height[index] = node.height;
-                self.cqt_depth[index] = node.cqt_depth;
-            }
+            let start = usize::from(cell_y) * self.cell_width + usize::from(start_cell_x);
+            let end = usize::from(cell_y) * self.cell_width + usize::from(end_cell_x);
+            self.valid[start..end].fill(true);
+            self.cb_width[start..end].fill(node.width);
+            self.cb_height[start..end].fill(node.height);
+            self.cqt_depth[start..end].fill(node.cqt_depth);
         }
     }
 }
@@ -1051,6 +1069,7 @@ pub(in crate::vvc) enum VvcCtuCabacOp {
 }
 
 impl VvcCtuCabacOp {
+    #[cfg(test)]
     pub(in crate::vvc) fn ctu_partition(params: &VvcCtuPartitionParams) -> Vec<Self> {
         Self::intra_ctu_partition(params.shape(), params.luma_max_leaf_size)
     }
@@ -1084,6 +1103,30 @@ impl VvcCtuCabacOp {
         picture_visible_height: u16,
         max_leaf_size: u16,
     ) {
+        Self::visit_intra_ctu_partition_with_luma_neighbours(
+            neighbours,
+            shape,
+            origin_x,
+            origin_y,
+            picture_visible_width,
+            picture_visible_height,
+            max_leaf_size,
+            |op| ops.push(op),
+        );
+    }
+
+    pub(in crate::vvc) fn visit_intra_ctu_partition_with_luma_neighbours<F>(
+        neighbours: &mut VvcLumaNeighbourState,
+        shape: VvcCtuPartitionShape,
+        origin_x: u16,
+        origin_y: u16,
+        picture_visible_width: u16,
+        picture_visible_height: u16,
+        max_leaf_size: u16,
+        mut emit_op: F,
+    ) where
+        F: FnMut(Self),
+    {
         let tree_type = vvc_luma_tree_type(shape);
         let root = VvcCodingTreeNode::root_at(
             origin_x,
@@ -1092,16 +1135,16 @@ impl VvcCtuCabacOp {
             shape.root_height,
             tree_type,
         );
-        Self::append_visible_luma_subtree(
-            ops,
+        Self::visit_visible_luma_subtree(
             neighbours,
             root,
             picture_visible_width,
             picture_visible_height,
             max_leaf_size,
+            &mut emit_op,
         );
         if shape.dual_tree_intra && shape.chroma_sampling != ChromaSampling::Monochrome {
-            ops.push(Self::ChromaTree {
+            emit_op(Self::ChromaTree {
                 node: VvcCodingTreeNode::root_at(
                     origin_x,
                     origin_y,
@@ -1115,14 +1158,16 @@ impl VvcCtuCabacOp {
         }
     }
 
-    fn append_visible_luma_subtree(
-        ops: &mut Vec<Self>,
+    fn visit_visible_luma_subtree<F>(
         neighbours: &mut VvcLumaNeighbourState,
         node: VvcCodingTreeNode,
         visible_width: u16,
         visible_height: u16,
         max_leaf_size: u16,
-    ) {
+        emit_op: &mut F,
+    ) where
+        F: FnMut(Self),
+    {
         if !node.intersects_visible(visible_width, visible_height) {
             return;
         }
@@ -1131,7 +1176,7 @@ impl VvcCtuCabacOp {
         {
             let split = Self::luma_split_availability(node, visible_width, visible_height);
             let write_split_flag = split.has_mtt() || split.allow_qt;
-            ops.push(Self::LumaLeafWithSplitCtx {
+            emit_op(Self::LumaLeafWithSplitCtx {
                 node,
                 write_split_flag,
                 split_ctx: if write_split_flag {
@@ -1145,42 +1190,42 @@ impl VvcCtuCabacOp {
         }
 
         if !node.fits_visible(visible_width, visible_height) {
-            Self::append_implicit_boundary_luma_children(
-                ops,
+            Self::visit_implicit_boundary_luma_children(
                 neighbours,
                 node,
                 visible_width,
                 visible_height,
                 max_leaf_size,
+                emit_op,
             );
             return;
         }
 
         debug_assert!(node.width > max_leaf_size || node.height > max_leaf_size);
         if node.mtt_depth > 0 {
-            Self::append_visible_luma_mtt_subtree(
-                ops,
+            Self::visit_visible_luma_mtt_subtree(
                 neighbours,
                 node,
                 visible_width,
                 visible_height,
                 max_leaf_size,
+                emit_op,
             );
             return;
         }
         let split = Self::luma_split_availability(node, visible_width, visible_height);
         if !split.allow_qt {
-            Self::append_visible_luma_mtt_subtree(
-                ops,
+            Self::visit_visible_luma_mtt_subtree(
                 neighbours,
                 node,
                 visible_width,
                 visible_height,
                 max_leaf_size,
+                emit_op,
             );
             return;
         }
-        ops.push(Self::QtSplit {
+        emit_op(Self::QtSplit {
             node,
             split_ctx: Self::luma_split_ctx(node, split, neighbours),
             write_split_flag: true,
@@ -1188,25 +1233,27 @@ impl VvcCtuCabacOp {
             qt_ctx: Self::luma_qt_split_ctx(node, neighbours),
         });
         for child_idx in 0..4 {
-            Self::append_visible_luma_subtree(
-                ops,
+            Self::visit_visible_luma_subtree(
                 neighbours,
                 node.qt_child(child_idx),
                 visible_width,
                 visible_height,
                 max_leaf_size,
+                emit_op,
             );
         }
     }
 
-    fn append_visible_luma_mtt_subtree(
-        ops: &mut Vec<Self>,
+    fn visit_visible_luma_mtt_subtree<F>(
         neighbours: &mut VvcLumaNeighbourState,
         node: VvcCodingTreeNode,
         visible_width: u16,
         visible_height: u16,
         max_leaf_size: u16,
-    ) {
+        emit_op: &mut F,
+    ) where
+        F: FnMut(Self),
+    {
         let vertical = node.width > max_leaf_size
             && (node.height <= max_leaf_size || node.width >= node.height);
         let split = Self::luma_split_availability(node, visible_width, visible_height);
@@ -1222,7 +1269,7 @@ impl VvcCtuCabacOp {
         } else {
             split.allow_tt_horizontal
         };
-        ops.push(Self::BtSplit {
+        emit_op(Self::BtSplit {
             node,
             vertical,
             split_ctx: Self::luma_split_ctx(node, split, neighbours),
@@ -1236,8 +1283,7 @@ impl VvcCtuCabacOp {
             mtt_binary_value: true,
         });
         for child_idx in 0..2 {
-            Self::append_visible_luma_subtree(
-                ops,
+            Self::visit_visible_luma_subtree(
                 neighbours,
                 node.mtt_child_with_boundary_depth_offset(
                     vertical,
@@ -1248,38 +1294,41 @@ impl VvcCtuCabacOp {
                 visible_width,
                 visible_height,
                 max_leaf_size,
+                emit_op,
             );
         }
     }
 
-    fn append_implicit_boundary_luma_children(
-        ops: &mut Vec<Self>,
+    fn visit_implicit_boundary_luma_children<F>(
         neighbours: &mut VvcLumaNeighbourState,
         node: VvcCodingTreeNode,
         visible_width: u16,
         visible_height: u16,
         max_leaf_size: u16,
-    ) {
+        emit_op: &mut F,
+    ) where
+        F: FnMut(Self),
+    {
         let bottom_left_in_pic =
             node.x < visible_width && node.y + node.height - 1 < visible_height;
         let top_right_in_pic = node.x + node.width - 1 < visible_width && node.y < visible_height;
         let split = Self::luma_split_availability(node, visible_width, visible_height);
         if !bottom_left_in_pic && !top_right_in_pic {
             for child_idx in 0..4 {
-                Self::append_visible_luma_subtree(
-                    ops,
+                Self::visit_visible_luma_subtree(
                     neighbours,
                     node.qt_child(child_idx),
                     visible_width,
                     visible_height,
                     max_leaf_size,
+                    emit_op,
                 );
             }
         } else if !bottom_left_in_pic
             && top_right_in_pic
             && Self::boundary_qt_preferred(node, max_leaf_size)
         {
-            ops.push(Self::QtSplit {
+            emit_op(Self::QtSplit {
                 node,
                 split_ctx: Self::luma_split_ctx(node, split, neighbours),
                 write_split_flag: false,
@@ -1287,19 +1336,19 @@ impl VvcCtuCabacOp {
                 qt_ctx: Self::luma_qt_split_ctx(node, neighbours),
             });
             for child_idx in 0..4 {
-                Self::append_visible_luma_subtree(
-                    ops,
+                Self::visit_visible_luma_subtree(
                     neighbours,
                     node.qt_child(child_idx),
                     visible_width,
                     visible_height,
                     max_leaf_size,
+                    emit_op,
                 );
             }
         } else if !bottom_left_in_pic && split.allow_bt_horizontal {
             let can_hor = split.allow_bt_horizontal || split.allow_tt_horizontal;
             let can_ver = split.allow_bt_vertical || split.allow_tt_vertical;
-            ops.push(Self::BtSplit {
+            emit_op(Self::BtSplit {
                 node,
                 vertical: false,
                 split_ctx: Self::luma_split_ctx(node, split, neighbours),
@@ -1313,8 +1362,7 @@ impl VvcCtuCabacOp {
                 mtt_binary_value: true,
             });
             for child_idx in 0..2 {
-                Self::append_visible_luma_subtree(
-                    ops,
+                Self::visit_visible_luma_subtree(
                     neighbours,
                     node.mtt_child_with_boundary_depth_offset(
                         false,
@@ -1325,12 +1373,13 @@ impl VvcCtuCabacOp {
                     visible_width,
                     visible_height,
                     max_leaf_size,
+                    emit_op,
                 );
             }
         } else if !top_right_in_pic && split.allow_bt_vertical {
             let can_hor = split.allow_bt_horizontal || split.allow_tt_horizontal;
             let can_ver = split.allow_bt_vertical || split.allow_tt_vertical;
-            ops.push(Self::BtSplit {
+            emit_op(Self::BtSplit {
                 node,
                 vertical: true,
                 split_ctx: Self::luma_split_ctx(node, split, neighbours),
@@ -1344,8 +1393,7 @@ impl VvcCtuCabacOp {
                 mtt_binary_value: true,
             });
             for child_idx in 0..2 {
-                Self::append_visible_luma_subtree(
-                    ops,
+                Self::visit_visible_luma_subtree(
                     neighbours,
                     node.mtt_child_with_boundary_depth_offset(
                         true,
@@ -1356,17 +1404,18 @@ impl VvcCtuCabacOp {
                     visible_width,
                     visible_height,
                     max_leaf_size,
+                    emit_op,
                 );
             }
         } else {
             for child_idx in 0..4 {
-                Self::append_visible_luma_subtree(
-                    ops,
+                Self::visit_visible_luma_subtree(
                     neighbours,
                     node.qt_child(child_idx),
                     visible_width,
                     visible_height,
                     max_leaf_size,
+                    emit_op,
                 );
             }
         }

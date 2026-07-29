@@ -284,6 +284,7 @@ fn select_vvc_chroma_bdpcm_prediction(
     reconstructed_residual: &mut Vec<i16>,
 ) -> Option<VvcSelectedChromaBdpcm> {
     if !vvc_chroma_bdpcm_selection_allowed(policy, chroma_width, chroma_height)
+        || !vvc_chroma_lossless_speed_bdpcm_format_allowed(policy, source_frame.format)
         || !vvc_chroma_bdpcm_fast_search_allowed(policy, selected_mode)
     {
         return None;
@@ -587,9 +588,7 @@ fn vvc_chroma_bdpcm_candidate_modes(
     policy: VvcResidualCodingPolicy,
     co_located_luma_mode: VvcIntraPredictionMode,
 ) -> [Option<VvcBdpcmMode>; 2] {
-    if policy.residual_mode() == VvcResidualCodingMode::Lossy
-        && policy.fast_search() == VvcFastSearch::LosslessSpeed
-    {
+    if policy.fast_search() == VvcFastSearch::LosslessSpeed {
         match co_located_luma_mode {
             VvcIntraPredictionMode::Horizontal => [Some(VvcBdpcmMode::Horizontal), None],
             VvcIntraPredictionMode::Vertical => [Some(VvcBdpcmMode::Vertical), None],
@@ -672,7 +671,7 @@ fn vvc_chroma_bdpcm_fast_search_allowed(
     if policy.residual_mode() == VvcResidualCodingMode::Lossless
         && policy.fast_search() == VvcFastSearch::LosslessSpeed
     {
-        return false;
+        return matches!(selected_mode, VvcChromaIntraPredictionMode::Derived);
     }
     match policy.fast_search() {
         VvcFastSearch::Off | VvcFastSearch::Conservative => true,
@@ -685,6 +684,18 @@ fn vvc_chroma_bdpcm_fast_search_allowed(
         }
         VvcFastSearch::Aggressive => vvc_chroma_mode_is_bdpcm_aligned(selected_mode),
     }
+}
+
+fn vvc_chroma_lossless_speed_bdpcm_format_allowed(
+    policy: VvcResidualCodingPolicy,
+    format: VvcPictureFormat,
+) -> bool {
+    if policy.residual_mode() != VvcResidualCodingMode::Lossless
+        || policy.fast_search() != VvcFastSearch::LosslessSpeed
+    {
+        return true;
+    }
+    format.bit_depth.bits() == 8 || format.chroma_sampling != ChromaSampling::Cs420
 }
 
 fn vvc_chroma_mode_is_bdpcm_aligned(mode: VvcChromaIntraPredictionMode) -> bool {

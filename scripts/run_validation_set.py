@@ -70,6 +70,11 @@ def main() -> int:
         action="store_true",
         help="run manifest patterns directly through --filter pattern=... without input files",
     )
+    parser.add_argument(
+        "--cleanup-recon",
+        action="store_true",
+        help="delete successful internal/reference reconstruction artifacts after validation",
+    )
     parser.add_argument("--stop-on-fail", action="store_true")
     args = parser.parse_args()
     if args.qp is not None and args.codec.lower() not in ("av2", "vvc"):
@@ -404,11 +409,12 @@ def run_command(
             if lossless_status is not None
             else reference_status[1]
         )
-    return ValidationResult(
+    reference_recon_result = reference_recon if reference_recon.exists() else None
+    result = ValidationResult(
         vector_name=vector_name,
         output=output,
         recon=recon,
-        reference_recon=reference_recon if reference_recon.exists() else None,
+        reference_recon=reference_recon_result,
         log=log,
         status="PASS",
         reason=reason,
@@ -417,6 +423,8 @@ def run_command(
         recon_sha256=recon_sha,
         reference_sha256=reference_sha,
     )
+    cleanup_recon_artifacts(args, recon, reference_recon_result)
+    return result
 
 
 def validate_lossless_source(
@@ -425,7 +433,17 @@ def validate_lossless_source(
     if source is None:
         return None
     if isinstance(source, Path):
-        source_bytes = source.read_bytes()
+        return validate_lossless_file_prefix(source, recon, source.stat().st_size)
+    if (
+        source.pattern == "source_file"
+        and source.source_path is not None
+        and source.source_path.suffix.lower() != ".y4m"
+    ):
+        source_path = source.source_path
+        if not source_path.is_absolute():
+            source_path = REPO_ROOT / source_path
+        expected_bytes = generate_test_vectors.raw_frame_len(source) * source.frames
+        return validate_lossless_file_prefix(source_path, recon, expected_bytes)
     else:
         source_bytes = generate_test_vectors.generate_yuv(source, {})
     recon_bytes = recon.read_bytes()
@@ -437,6 +455,49 @@ def validate_lossless_source(
             )
         return ("FAIL", "lossless reconstruction differs from source")
     return ("PASS", "lossless reconstruction matches source")
+
+
+def validate_lossless_file_prefix(
+    source: Path,
+    recon: Path,
+    expected_bytes: int,
+) -> tuple[str, str]:
+    source_size = source.stat().st_size
+    if source_size < expected_bytes:
+        return (
+            "FAIL",
+            f"source is too short for lossless comparison ({source_size} < {expected_bytes})",
+        )
+    recon_size = recon.stat().st_size
+    if recon_size != expected_bytes:
+        return (
+            "FAIL",
+            f"lossless reconstruction length differs from source ({recon_size} != {expected_bytes})",
+        )
+    chunk_size = 16 * 1024 * 1024
+    remaining = expected_bytes
+    offset = 0
+    with source.open("rb") as source_file, recon.open("rb") as recon_file:
+        while remaining:
+            read_len = min(chunk_size, remaining)
+            source_chunk = source_file.read(read_len)
+            recon_chunk = recon_file.read(read_len)
+            if source_chunk != recon_chunk:
+                return (
+                    "FAIL",
+                    f"lossless reconstruction differs from source near byte {offset}",
+                )
+            remaining -= read_len
+            offset += read_len
+    return ("PASS", "lossless reconstruction matches source")
+
+
+def cleanup_recon_artifacts(args: argparse.Namespace, *paths: Path | None) -> None:
+    if not args.cleanup_recon:
+        return
+    for path in paths:
+        if path is not None:
+            path.unlink(missing_ok=True)
 
 
 def codec_extension(codec: str) -> str:

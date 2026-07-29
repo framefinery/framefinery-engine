@@ -97,9 +97,10 @@ Bare keys imply `true`, for example `--set lossless`. Shared settings such as
 lossy alternative to `--set lossless`; it currently drives AV2 and VVC
 experimental planar residual quantizers and is rejected for codecs that do not
 consume it.
-Codec-specific setting catalogs carry codec-local controls such as AV2's
-experimental `--set predictive` lossless mode. Unknown options should still
-fail early instead of silently becoming unused metadata.
+Codec-specific setting catalogs carry codec-local controls such as the
+experimental `--set predictive` temporal mode and VVC's `fast-search` mode
+pruning. Unknown options should still fail early instead of silently becoming
+unused metadata.
 
 AV2's QP path maps `--qp` to a nonzero frame `base_qindex` and emits regular
 transform-quantized 4x4 residuals for the current lossy intra path. The current
@@ -112,6 +113,8 @@ qindex adjustments.
 VVC treats `--qp` as a lossy quality request for the current residual path.
 With `fast-search=lossless-speed`, the encoder may apply format-specific
 signaled slice-QP offsets to keep the screen-content bitrate/PSNR tradeoff
-closer across 8-bit 4:4:4 and high-depth inputs. Chroma QP is derived from
-the signaled slice QP through the SPS chroma QP mapping table. Lossless VVC
-coding keeps its QP-independent exact paths.
+closer across 8-bit 4:4:4 and high-depth inputs. These offsets currently spend
+more bits on 4:4:4 and high-depth screen content to avoid the large PSNR loss
+seen with one literal QP across all formats. Chroma QP is derived from the
+signaled slice QP through the SPS chroma QP mapping table. Lossless VVC coding
+keeps its QP-independent exact paths.

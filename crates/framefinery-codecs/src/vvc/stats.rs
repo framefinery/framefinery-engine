@@ -300,7 +300,11 @@ impl VvcCtuBitSink {
         };
         if self.frame_idx != Some(frame_idx) {
             self.frame_idx = Some(frame_idx);
-            self.frame_state = Some(VvcFrameCtuCabacState::new(picture_geometry, slice_config));
+            self.frame_state = Some(VvcFrameCtuCabacState::new(
+                picture_geometry,
+                slice_config,
+                slice_config.inter_enabled && frame_idx > 0,
+            ));
         }
         let frame_state = self
             .frame_state

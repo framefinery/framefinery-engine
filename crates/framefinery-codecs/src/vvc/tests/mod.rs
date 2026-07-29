@@ -88,6 +88,10 @@ fn vvc_lossless_speed_tunes_lossy_slice_qp_by_format() {
         chroma_sampling: ChromaSampling::Cs444,
         bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
     };
+    let yuv422_10 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs422,
+        bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
+    };
     let yuv444_10 = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs444,
         bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
@@ -99,11 +103,15 @@ fn vvc_lossless_speed_tunes_lossy_slice_qp_by_format() {
     );
     assert_eq!(
         vvc_lossy_slice_qp(yuv444_8, Some(19), VvcFastSearch::LosslessSpeed),
-        22
+        18
+    );
+    assert_eq!(
+        vvc_lossy_slice_qp(yuv422_10, Some(19), VvcFastSearch::LosslessSpeed),
+        13
     );
     assert_eq!(
         vvc_lossy_slice_qp(yuv444_10, Some(19), VvcFastSearch::LosslessSpeed),
-        17
+        12
     );
     assert_eq!(
         vvc_lossy_slice_qp(yuv444_8, Some(19), VvcFastSearch::Off),
@@ -577,6 +585,20 @@ fn vvc_multi_ctu_pps_signals_picture_header_placement_flags() {
     assert_vvc_flag(&multi_ctu, "pps_sao_info_in_ph_flag", false);
     assert_vvc_flag(&multi_ctu, "pps_alf_info_in_ph_flag", false);
     assert_vvc_flag(&multi_ctu, "pps_qp_delta_info_in_ph_flag", false);
+
+    let predictive_multi_ctu = vvc_pps_rbsp_with_partitioning_and_config(
+        VvcVideoGeometry {
+            width: 128,
+            height: 64,
+        },
+        VvcPicturePartitioning::OneSlicePerCtu,
+        vvc_test_slice_config()
+            .with_inter_enabled()
+            .with_picture_header_slice_state(),
+    );
+    assert_vvc_flag(&predictive_multi_ctu, "pps_no_pic_partition_flag", false);
+    assert_vvc_flag(&predictive_multi_ctu, "pps_rpl_info_in_ph_flag", true);
+    assert_vvc_flag(&predictive_multi_ctu, "pps_qp_delta_info_in_ph_flag", true);
 }
 
 #[test]
@@ -1656,6 +1678,7 @@ fn vvc_ctu_cabac_generator_uses_one_recursive_luma_base() {
             luma_tu_dc_levels: [0; MAX_VVC_LUMA_TUS],
             luma_tu_ac_levels: [[0; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
             luma_tu_has_ac: [false; MAX_VVC_LUMA_TUS],
+            luma_tu_inter_skip: [false; MAX_VVC_LUMA_TUS],
             luma_tu_transform_skip: [false; MAX_VVC_LUMA_TUS],
             luma_tu_bdpcm_modes: [VvcBdpcmMode::None; MAX_VVC_LUMA_TUS],
             luma_tu_mrl_index: [0; MAX_VVC_LUMA_TUS],
@@ -1669,6 +1692,7 @@ fn vvc_ctu_cabac_generator_uses_one_recursive_luma_base() {
             cr_tu_ac_levels: [[0; VVC_CHROMA_AC_COEFFS_PER_TU]; MAX_VVC_CHROMA_TUS],
             cb_tu_has_ac: [false; MAX_VVC_CHROMA_TUS],
             cr_tu_has_ac: [false; MAX_VVC_CHROMA_TUS],
+            chroma_tu_inter_skip: [false; MAX_VVC_CHROMA_TUS],
             cb_tu_transform_skip: [false; MAX_VVC_CHROMA_TUS],
             cr_tu_transform_skip: [false; MAX_VVC_CHROMA_TUS],
             chroma_tu_bdpcm_modes: [VvcBdpcmMode::None; MAX_VVC_CHROMA_TUS],
@@ -1762,6 +1786,42 @@ fn vvc_lossless_cabac_body_uses_active_chroma_sampling() {
         via_slice_config,
         vvc_ctu_partition_cabac_bits(&legacy_420_params, config)
     );
+}
+
+#[test]
+fn vvc_predictive_frame_skip_payload_cache_matches_uncached_slice() {
+    let geometry = VvcVideoGeometry {
+        width: 128,
+        height: 72,
+    };
+    let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
+    let slice_config = VvcSliceSyntaxConfig::residual_lossless(ChromaSampling::Cs420, bit_depth)
+        .with_inter_enabled()
+        .with_picture_parameter_set_id(VVC_PREDICTIVE_FRAME_SKIP_PPS_ID)
+        .without_picture_header_slice_state();
+    let ctus: Vec<_> = vvc_ctu_regions(geometry)
+        .map(|region| VvcQuantizedCtu {
+            slice_address: region.slice_address,
+            geometry: region.geometry,
+            payload: VvcQuantizedCtuPayload::InterSkip,
+        })
+        .collect();
+
+    let uncached = vvc_predictive_frame_skip_slice_unit(2, geometry, &ctus, slice_config)
+        .expect("uncached frame-skip slice");
+    let mut cache = VvcFrameSkipPayloadCache::default();
+    let inter_skip_payload = cache.payload_for(geometry, slice_config);
+    let cached = vvc_predictive_frame_skip_slice_unit_with_payload(
+        2,
+        geometry,
+        &ctus,
+        slice_config,
+        inter_skip_payload,
+    )
+    .expect("cached frame-skip slice");
+
+    assert_eq!(cached.nal_unit_type, uncached.nal_unit_type);
+    assert_eq!(cached.rbsp_payload, uncached.rbsp_payload);
 }
 
 #[test]
@@ -2376,6 +2436,7 @@ fn vvc_ctu_chroma_tree_uses_luma_coordinate_root() {
             luma_tu_dc_levels: [0; MAX_VVC_LUMA_TUS],
             luma_tu_ac_levels: [[0; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
             luma_tu_has_ac: [false; MAX_VVC_LUMA_TUS],
+            luma_tu_inter_skip: [false; MAX_VVC_LUMA_TUS],
             luma_tu_transform_skip: [false; MAX_VVC_LUMA_TUS],
             luma_tu_bdpcm_modes: [VvcBdpcmMode::None; MAX_VVC_LUMA_TUS],
             luma_tu_mrl_index: [0; MAX_VVC_LUMA_TUS],
@@ -2389,6 +2450,7 @@ fn vvc_ctu_chroma_tree_uses_luma_coordinate_root() {
             cr_tu_ac_levels: [[0; VVC_CHROMA_AC_COEFFS_PER_TU]; MAX_VVC_CHROMA_TUS],
             cb_tu_has_ac: [false; MAX_VVC_CHROMA_TUS],
             cr_tu_has_ac: [false; MAX_VVC_CHROMA_TUS],
+            chroma_tu_inter_skip: [false; MAX_VVC_CHROMA_TUS],
             cb_tu_transform_skip: [false; MAX_VVC_CHROMA_TUS],
             cr_tu_transform_skip: [false; MAX_VVC_CHROMA_TUS],
             chroma_tu_bdpcm_modes: [VvcBdpcmMode::None; MAX_VVC_CHROMA_TUS],
@@ -2762,6 +2824,342 @@ fn vvc_input_path_encodes_each_yuv420_frame_independently() {
         .collect();
     assert_eq!(reconstructed_luma.len(), 3);
     assert!(reconstructed_luma.windows(2).all(|pair| pair[0] != pair[1]));
+}
+
+#[test]
+fn vvc_predictive_repeated_frame_matches_nonpredictive_output() {
+    let geometry = VvcVideoGeometry {
+        width: 64,
+        height: 64,
+    };
+    let input = solid_yuv420p8_geometry(geometry.width, geometry.height, 72, 128, 192, 2);
+    let base = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            lossless: true,
+            predictive: false,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("non-predictive repeated-frame VVC encode should succeed");
+    let predictive = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            lossless: true,
+            predictive: true,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("predictive repeated-frame VVC encode should succeed");
+
+    assert_eq!(predictive.reconstruction, base.reconstruction);
+    assert!(
+        predictive.bitstream.len() < base.bitstream.len(),
+        "predictive repeated-frame bitstream should be smaller than all-intra; predictive={} base={}",
+        predictive.bitstream.len(),
+        base.bitstream.len()
+    );
+    let predictive_nals = parse_annex_b_nal_units(&predictive.bitstream).unwrap();
+    assert!(
+        predictive_nals
+            .iter()
+            .any(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8),
+        "predictive stream should use trailing inter pictures after the first frame"
+    );
+}
+
+#[test]
+fn vvc_predictive_full_repeated_frame_uses_one_trailing_slice() {
+    let geometry = VvcVideoGeometry {
+        width: 128,
+        height: 64,
+    };
+    let input = solid_yuv420p8_geometry(geometry.width, geometry.height, 72, 128, 192, 2);
+    let base = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            lossless: true,
+            predictive: false,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("non-predictive repeated-frame VVC encode should succeed");
+    let predictive = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            lossless: true,
+            predictive: true,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("predictive repeated-frame VVC encode should succeed");
+
+    assert_eq!(predictive.reconstruction, base.reconstruction);
+    let predictive_nals = parse_annex_b_nal_units(&predictive.bitstream).unwrap();
+    assert_eq!(
+        predictive_nals
+            .iter()
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::IdrNLp as u8)
+            .count(),
+        1,
+        "the predictive IDR frame should be encoded as one single-slice picture"
+    );
+    assert_eq!(
+        predictive_nals
+            .iter()
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::Pps as u8)
+            .count(),
+        2,
+        "predictive streams should carry the CTU-sliced PPS and the frame-skip PPS"
+    );
+    assert_eq!(
+        predictive_nals
+            .iter()
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
+            .count(),
+        1,
+        "the repeated predictive frame should be encoded as one all-skip trailing slice"
+    );
+}
+
+#[test]
+fn vvc_predictive_skips_repeated_right_ctu_when_left_ctu_changes() {
+    let geometry = VvcVideoGeometry {
+        width: 128,
+        height: 64,
+    };
+    let input = yuv420p8_two_frame_right_half_repeated(geometry.width, geometry.height);
+    let base = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            lossless: true,
+            predictive: false,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("non-predictive VVC encode should succeed");
+    let predictive = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            lossless: true,
+            predictive: true,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("predictive VVC encode should succeed");
+
+    assert_eq!(predictive.reconstruction, base.reconstruction);
+    assert!(
+        predictive.bitstream.len() < base.bitstream.len(),
+        "predictive stream should skip the repeated right CTU even when the left CTU changed; predictive={} base={}",
+        predictive.bitstream.len(),
+        base.bitstream.len()
+    );
+    let predictive_nals = parse_annex_b_nal_units(&predictive.bitstream).unwrap();
+    assert_eq!(
+        predictive_nals
+            .iter()
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
+            .count(),
+        1,
+        "the mixed lossless predictive frame should be encoded as one trailing slice"
+    );
+    assert!(
+        predictive_nals
+            .iter()
+            .all(|info| info.nal_unit_type != VvcNalUnitType::PictureHeader as u8),
+        "mixed lossless predictive frames should carry picture headers in the single-slice header"
+    );
+}
+
+#[test]
+fn vvc_lossless_speed_predictive_marks_repeated_luma_leaves_in_changed_ctu() {
+    let geometry = VvcVideoGeometry {
+        width: 64,
+        height: 64,
+    };
+    assert!(vvc_lossless_speed_luma_leaf_inter_skip_allowed(
+        VvcPictureFormat {
+            chroma_sampling: ChromaSampling::Cs420,
+            bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+        },
+    ));
+    assert!(vvc_lossless_speed_luma_leaf_inter_skip_allowed(
+        VvcPictureFormat {
+            chroma_sampling: ChromaSampling::Cs420,
+            bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
+        },
+    ));
+    assert!(vvc_lossless_speed_luma_leaf_inter_skip_allowed(
+        VvcPictureFormat {
+            chroma_sampling: ChromaSampling::Cs444,
+            bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
+        },
+    ));
+    let input = yuv420p8_two_frame_one_luma_block_changed(geometry.width, geometry.height);
+    let frame_len = Picture::expected_len(geometry.width, geometry.height, PixelFormat::Yuv420p8);
+    let layout = PlanarYuvFrameLayout::for_validated_shape(
+        geometry.width,
+        geometry.height,
+        ChromaSampling::Cs420,
+        SampleBitDepth::new(8).expect("valid bit depth"),
+    );
+    let region = VvcCtuRegion {
+        slice_address: 0,
+        origin_x: 0,
+        origin_y: 0,
+        geometry,
+    };
+
+    let mask = vvc_predictive_luma_leaf_inter_skip_mask(
+        &input[frame_len..],
+        &input[..frame_len],
+        layout,
+        region,
+        VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+        ChromaSampling::Cs420,
+        true,
+    )
+    .expect("one changed 8x8 leaf should leave exact neighbouring leaves");
+    assert_eq!(mask.iter().filter(|&&skip| skip).count(), 63);
+
+    let predictive = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            lossless: true,
+            predictive: true,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("predictive VVC encode should succeed");
+    assert_eq!(predictive.reconstruction, input);
+}
+
+#[test]
+fn vvc_lossy_predictive_mixed_frame_uses_one_trailing_slice() {
+    let geometry = VvcVideoGeometry {
+        width: 128,
+        height: 64,
+    };
+    let input = yuv420p8_two_frame_right_half_repeated(geometry.width, geometry.height);
+    let base = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            qp: Some(19),
+            predictive: false,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("non-predictive VVC encode should succeed");
+    let predictive = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            qp: Some(19),
+            predictive: true,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("predictive VVC encode should succeed");
+
+    assert_eq!(predictive.reconstruction.len(), base.reconstruction.len());
+    assert!(
+        predictive.bitstream.len() < base.bitstream.len(),
+        "lossy predictive stream should reduce repeated-CTU bitrate; predictive={} base={}",
+        predictive.bitstream.len(),
+        base.bitstream.len()
+    );
+    let predictive_nals = parse_annex_b_nal_units(&predictive.bitstream).unwrap();
+    assert_eq!(
+        predictive_nals
+            .iter()
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
+            .count(),
+        1,
+        "the mixed lossy predictive frame should be encoded as one trailing slice"
+    );
+    assert!(
+        predictive_nals
+            .iter()
+            .all(|info| info.nal_unit_type != VvcNalUnitType::PictureHeader as u8),
+        "mixed lossy predictive frames should carry picture headers in the single-slice header"
+    );
+}
+
+#[test]
+fn vvc_lossy_predictive_near_skip_uses_bounded_sample_delta() {
+    let geometry = VvcVideoGeometry {
+        width: 64,
+        height: 64,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let chroma_len = geometry.width * geometry.height / 4;
+    let mut source = VvcSampledFrame {
+        geometry,
+        format,
+        luma: vec![102; geometry.width * geometry.height],
+        cb: vec![130; chroma_len],
+        cr: vec![126; chroma_len],
+        chroma_len,
+    };
+    let mut previous = VvcReconstructionFrame::new_neutral(geometry, format);
+    previous.luma.fill(100);
+    previous.cb.fill(128);
+    previous.cr.fill(128);
+    let region = VvcCtuRegion {
+        slice_address: 0,
+        origin_x: 0,
+        origin_y: 0,
+        geometry,
+    };
+
+    let max_delta = vvc_lossy_predictive_skip_max_abs_delta(format.bit_depth);
+    assert_eq!(max_delta, 2);
+    assert!(vvc_predictive_lossy_region_within_reconstruction_delta(
+        &source, &previous, region, max_delta,
+    ));
+
+    source.cb[0] = 131;
+    assert!(
+        !vvc_predictive_lossy_region_within_reconstruction_delta(
+            &source, &previous, region, max_delta,
+        ),
+        "chroma deltas must participate in the near-skip gate"
+    );
+
+    assert_eq!(
+        vvc_lossy_predictive_skip_max_abs_delta(SampleBitDepth::new(10).expect("valid bit depth")),
+        8
+    );
 }
 
 #[test]
@@ -3849,6 +4247,64 @@ fn solid_yuv420p8_geometry(
         out.extend(std::iter::repeat_n(v, chroma));
     }
     out
+}
+
+fn yuv420p8_two_frame_right_half_repeated(width: usize, height: usize) -> Vec<u8> {
+    assert_eq!(width, 128);
+    assert_eq!(height, 64);
+    let mut out =
+        Vec::with_capacity(Picture::expected_len(width, height, PixelFormat::Yuv420p8) * 2);
+    append_yuv420p8_split_luma_frame(&mut out, width, height, 72, 72, 128, 192);
+    append_yuv420p8_split_luma_frame(&mut out, width, height, 96, 72, 128, 192);
+    out
+}
+
+fn yuv420p8_two_frame_one_luma_block_changed(width: usize, height: usize) -> Vec<u8> {
+    assert_eq!(width, 64);
+    assert_eq!(height, 64);
+    let mut out =
+        Vec::with_capacity(Picture::expected_len(width, height, PixelFormat::Yuv420p8) * 2);
+    append_yuv420p8_one_luma_block_frame(&mut out, width, height, 72, 72, 128, 192);
+    append_yuv420p8_one_luma_block_frame(&mut out, width, height, 72, 96, 128, 192);
+    out
+}
+
+fn append_yuv420p8_one_luma_block_frame(
+    out: &mut Vec<u8>,
+    width: usize,
+    height: usize,
+    base_y: u8,
+    block_y: u8,
+    u: u8,
+    v: u8,
+) {
+    for y in 0..height {
+        for x in 0..width {
+            out.push(if x < 8 && y < 8 { block_y } else { base_y });
+        }
+    }
+    let chroma = width * height / 4;
+    out.extend(std::iter::repeat_n(u, chroma));
+    out.extend(std::iter::repeat_n(v, chroma));
+}
+
+fn append_yuv420p8_split_luma_frame(
+    out: &mut Vec<u8>,
+    width: usize,
+    height: usize,
+    left_y: u8,
+    right_y: u8,
+    u: u8,
+    v: u8,
+) {
+    let half_width = width / 2;
+    for _ in 0..height {
+        out.extend(std::iter::repeat_n(left_y, half_width));
+        out.extend(std::iter::repeat_n(right_y, width - half_width));
+    }
+    let chroma = width * height / 4;
+    out.extend(std::iter::repeat_n(u, chroma));
+    out.extend(std::iter::repeat_n(v, chroma));
 }
 
 fn solid_yuv444p8_geometry(

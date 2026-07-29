@@ -70,6 +70,12 @@ const AV2_SETTINGS: &[SettingInfo] = &[SettingInfo {
     summary: "enable experimental AV2 multi-picture predictive coding tools",
 }];
 
+const PREDICTIVE_SETTING: SettingInfo = SettingInfo {
+    name: "predictive",
+    value: SettingValue::Boolean,
+    summary: "enable experimental multi-picture predictive coding tools",
+};
+
 const VVC_FAST_SEARCH_VALUES: &[&str] = &[
     "off",
     "conservative",
@@ -78,11 +84,14 @@ const VVC_FAST_SEARCH_VALUES: &[&str] = &[
     "lossless-speed",
 ];
 
-const VVC_SETTINGS: &[SettingInfo] = &[SettingInfo {
-    name: "fast-search",
-    value: SettingValue::Choice(VVC_FAST_SEARCH_VALUES),
-    summary: "enable experimental VVC spatially guided mode-search pruning",
-}];
+const VVC_SETTINGS: &[SettingInfo] = &[
+    PREDICTIVE_SETTING,
+    SettingInfo {
+        name: "fast-search",
+        value: SettingValue::Choice(VVC_FAST_SEARCH_VALUES),
+        summary: "enable experimental VVC spatially guided mode-search pruning",
+    },
+];
 
 pub fn global_setting(name: &str) -> Option<SettingInfo> {
     GLOBAL_SETTINGS
