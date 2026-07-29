@@ -102,6 +102,7 @@ ENCODE_MATRIX_VVC_FAST_SEARCH ?= lossless-speed
 ENCODE_MATRIX_AV2_PREDICTIVE ?= 1
 ENCODE_MATRIX_VVC_PREDICTIVE ?= 1
 ENCODE_MATRIX_DIRECT_SOURCE_FILES ?= 1
+ENCODE_MATRIX_WRITE_RECON ?= 0
 ENCODE_MATRIX_CLEANUP_RECON ?= 0
 VVC_HOTSPOT_SET ?= $(ENCODE_MATRIX_SET)
 VVC_HOTSPOT_RUN ?= latest
@@ -154,6 +155,7 @@ ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG := --vvc-fast-search "$(ENCODE_MATRIX_VVC_FAS
 ENCODE_MATRIX_AV2_PREDICTIVE_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_AV2_PREDICTIVE)),--av2-predictive,--no-av2-predictive)
 ENCODE_MATRIX_VVC_PREDICTIVE_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_VVC_PREDICTIVE)),--vvc-predictive,--no-vvc-predictive)
 ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_DIRECT_SOURCE_FILES)),--direct-source-files,--no-direct-source-files)
+ENCODE_MATRIX_WRITE_RECON_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_WRITE_RECON)),--write-recon,)
 ENCODE_MATRIX_CLEANUP_RECON_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_CLEANUP_RECON)),--cleanup-recon,)
 VVC_HOTSPOT_BASELINE_FLAG := $(if $(strip $(VVC_HOTSPOT_BASELINE)),--baseline-json "$(VVC_HOTSPOT_BASELINE)",)
 VVC_HOTSPOT_LIMIT_FLAG := $(if $(strip $(VVC_HOTSPOT_LIMIT)),--limit "$(VVC_HOTSPOT_LIMIT)",)
@@ -209,6 +211,7 @@ help:
 		'  make benchmark-encode-matrix' \
 		'                         Time AV2/VVC lossy/lossless encodes over ENCODE_MATRIX_SET' \
 		'                         Set ENCODE_MATRIX_FRAMES=1 for first-frame checks' \
+		'                         Set ENCODE_MATRIX_WRITE_RECON=1 to keep raw recon artifacts/checksums' \
 		'  make bench-av2-micro' \
 		'                         Run Criterion microbenchmarks for AV2 palette and TXB kernels' \
 		'  make bench-vvc-micro' \
@@ -281,7 +284,7 @@ compare-compression: build
 	$(REFERENCE_ENV) $(PYTHON) scripts/compare_reference_compression.py --ff "$(abspath $(BUILD_BINARY))" --codec "$(CODEC)" "$(COMPRESSION_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(COMPRESSION_OUT_DIR)" --log-dir "$(COMPRESSION_LOG_DIR)" $(COMPRESSION_LIMIT_FLAG) $(COMPRESSION_REFERENCE_BACKEND_FLAG) $(COMPRESSION_REFERENCE_PRESET_FLAG) $(COMPRESSION_REFERENCE_THREADS_FLAG) $(COMPRESSION_AVM_TILE_COLUMNS_FLAG) $(COMPRESSION_AVM_TILE_ROWS_FLAG) $(COMPRESSION_REFERENCE_ARGS_FLAG) $(COMPRESSION_SETTINGS_FLAG) $(COMPRESSION_QP_FLAG) $(COMPRESSION_REFRESH_REFERENCE_FLAG) $(COMPRESSION_DIRECT_SOURCE_FILES_FLAG)
 
 benchmark-encode-matrix: build
-	$(PYTHON) scripts/benchmark_encode_matrix.py "$(ENCODE_MATRIX_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(ENCODE_MATRIX_OUT_DIR)" --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(ENCODE_MATRIX_RUN_FLAG) $(ENCODE_MATRIX_CODECS_FLAG) $(ENCODE_MATRIX_MODES_FLAG) $(ENCODE_MATRIX_BASELINE_FLAG) $(ENCODE_MATRIX_LIMIT_FLAG) $(ENCODE_MATRIX_FRAMES_FLAG) $(ENCODE_MATRIX_AV2_PREDICTIVE_FLAG) $(ENCODE_MATRIX_VVC_PREDICTIVE_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG)
+	$(PYTHON) scripts/benchmark_encode_matrix.py "$(ENCODE_MATRIX_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(ENCODE_MATRIX_OUT_DIR)" --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(ENCODE_MATRIX_RUN_FLAG) $(ENCODE_MATRIX_CODECS_FLAG) $(ENCODE_MATRIX_MODES_FLAG) $(ENCODE_MATRIX_BASELINE_FLAG) $(ENCODE_MATRIX_LIMIT_FLAG) $(ENCODE_MATRIX_FRAMES_FLAG) $(ENCODE_MATRIX_AV2_PREDICTIVE_FLAG) $(ENCODE_MATRIX_VVC_PREDICTIVE_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG)
 
 bench-av2-micro:
 	$(CARGO) bench -p framefinery-codecs --bench av2_micro --features "bench-internals vvc"
@@ -314,7 +317,7 @@ llvm-vector-remarks:
 
 profile-vvc-hotspots:
 	$(MAKE) build VVC_STATS=1
-	$(PYTHON) scripts/benchmark_encode_matrix.py "$(VVC_HOTSPOT_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(VVC_HOTSPOT_MATRIX_DIR)" --run-name "$(VVC_HOTSPOT_RUN)" --codec vvc --mode lossless --mode lossy --frames 1 --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) --vvc-stats-dir "$(VVC_HOTSPOT_STATS_DIR)" $(VVC_HOTSPOT_BASELINE_FLAG) $(VVC_HOTSPOT_LIMIT_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG)
+	$(PYTHON) scripts/benchmark_encode_matrix.py "$(VVC_HOTSPOT_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(VVC_HOTSPOT_MATRIX_DIR)" --run-name "$(VVC_HOTSPOT_RUN)" --codec vvc --mode lossless --mode lossy --frames 1 --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) --vvc-stats-dir "$(VVC_HOTSPOT_STATS_DIR)" $(VVC_HOTSPOT_BASELINE_FLAG) $(VVC_HOTSPOT_LIMIT_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG)
 	$(PYTHON) scripts/summarize_vvc_hotspots.py "$(VVC_HOTSPOT_RUN_DIR)" --encode-matrix-json "$(VVC_HOTSPOT_MATRIX_DIR)/$(VVC_HOTSPOT_RUN).json"
 
 summarize-vvc-hotspots:

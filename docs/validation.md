@@ -44,6 +44,12 @@ each generated vector through `./ff encode`, writes the encoder's internal
 reconstruction through `--recon`, checks that non-empty bitstream and
 reconstruction outputs were produced, and prints a markdown summary with output
 size, SHA-256 checksums, reason, and log path.
+This validation path intentionally keeps using `--recon` because lossless and
+reference-decoder checks compare reconstruction bytes. Encode-matrix benchmark
+runs use `./ff encode --psnr` by default instead, so PSNR is computed directly
+from the in-memory encoder reconstruction without materializing large raw
+reconstruction streams. Set `ENCODE_MATRIX_WRITE_RECON=1` only when the matrix
+also needs raw reconstruction files and `recon_sha256` entries.
 
 Manifest `format` values use the same raw input names accepted by the CLI.
 Planar YUV and gray bit depths from 8 through 16 are described in

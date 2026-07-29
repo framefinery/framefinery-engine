@@ -1151,6 +1151,7 @@ struct EncodeJob {
     input: EncodeInput,
     output: PathBuf,
     recon: Option<PathBuf>,
+    psnr: bool,
     transform_filters: Vec<TransformFilterSpec>,
     frames: usize,
     fps: Option<String>,
@@ -1205,6 +1206,9 @@ fn print_encode_config(codec_name: &str, args: &EncodeArgs, job: &EncodeJob) {
         settings,
         args.preset.as_deref().unwrap_or("default")
     );
+    if job.psnr {
+        eprintln!("metrics: psnr=enabled");
+    }
 }
 
 fn encode_with_model(codec_name: &str, job: EncodeJob) -> Result<(), String> {
@@ -1264,6 +1268,7 @@ fn encode_job(args: &EncodeArgs) -> Result<EncodeJob, String> {
         input,
         output,
         recon,
+        psnr: args.psnr,
         transform_filters: filter_pipeline.transforms,
         frames,
         fps: resolve_fps_metadata(args, y4m_metadata.as_ref()),
@@ -1600,6 +1605,14 @@ fn encode_av2(job: EncodeJob) -> Result<(), String> {
             metrics.reconstruction,
         );
     };
+    let frame_metrics = if job.psnr {
+        Some(
+            &mut frame_metrics
+                as &mut dyn for<'a> FnMut(framefinery_codecs::av2::Av2EncodeFrameMetrics<'a>),
+        )
+    } else {
+        None
+    };
     if job.source_format != job.format && recon.is_some() {
         let mut recon_converter =
             FrameFormatConvertingWriter::new(recon.as_mut().expect("checked Some"), &job)?;
@@ -1609,7 +1622,7 @@ fn encode_av2(job: EncodeJob) -> Result<(), String> {
             Some(&mut recon_converter as &mut dyn Write),
             request,
             options,
-            Some(&mut frame_metrics),
+            frame_metrics,
         )?;
         recon_converter
             .finish()
@@ -1621,7 +1634,7 @@ fn encode_av2(job: EncodeJob) -> Result<(), String> {
             recon.as_mut().map(|writer| writer as &mut dyn Write),
             request,
             options,
-            Some(&mut frame_metrics),
+            frame_metrics,
         )?;
     }
     if let (Some(path), Some(writer)) = (job.recon.as_deref(), recon.as_mut()) {
@@ -1665,6 +1678,14 @@ fn encode_vvc(job: EncodeJob) -> Result<(), String> {
             metrics.reconstruction,
         );
     };
+    let frame_metrics = if job.psnr {
+        Some(
+            &mut frame_metrics
+                as &mut dyn for<'a> FnMut(framefinery_codecs::vvc::VvcEncodeFrameMetrics<'a>),
+        )
+    } else {
+        None
+    };
     if job.source_format != job.format && recon.is_some() {
         let mut recon_converter =
             FrameFormatConvertingWriter::new(recon.as_mut().expect("checked Some"), &job)?;
@@ -1682,7 +1703,7 @@ fn encode_vvc(job: EncodeJob) -> Result<(), String> {
                 predictive: job.vvc_predictive,
                 fast_search: job.vvc_fast_search,
             },
-            Some(&mut frame_metrics),
+            frame_metrics,
         )?;
         recon_converter
             .finish()
@@ -1702,7 +1723,7 @@ fn encode_vvc(job: EncodeJob) -> Result<(), String> {
                 predictive: job.vvc_predictive,
                 fast_search: job.vvc_fast_search,
             },
-            Some(&mut frame_metrics),
+            frame_metrics,
         )?;
     }
     if let (Some(path), Some(writer)) = (job.recon.as_deref(), recon.as_mut()) {
@@ -2613,6 +2634,7 @@ mod tests {
             input: EncodeInput::Path(path.clone()),
             output: PathBuf::from("out.obu"),
             recon: None,
+            psnr: false,
             transform_filters: Vec::new(),
             frames: 1,
             fps: None,
@@ -2739,6 +2761,7 @@ mod tests {
             }),
             output: PathBuf::from("out.vvc"),
             recon: None,
+            psnr: false,
             transform_filters: Vec::new(),
             frames: 1,
             fps: None,
@@ -2775,6 +2798,7 @@ mod tests {
             }),
             output: PathBuf::from("out.vvc"),
             recon: None,
+            psnr: false,
             transform_filters: Vec::new(),
             frames: 1,
             fps: None,

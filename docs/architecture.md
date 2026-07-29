@@ -97,6 +97,11 @@ Bare keys imply `true`, for example `--set lossless`. Shared settings such as
 lossy alternative to `--set lossless`; it currently drives AV2 and VVC
 experimental planar residual quantizers and is rejected for codecs that do not
 consume it.
+`--recon <path>` remains the explicit raw reconstruction artifact option for
+debugging and reference validation. `--psnr` is the explicit metrics option: it
+computes per-frame PSNR from the encoder's internal reconstruction while the
+frame is still in memory, so long benchmark streams can report quality without
+writing reconstruction files.
 Codec-specific setting catalogs carry codec-local controls such as the
 experimental `--set predictive` temporal mode and VVC's `fast-search` mode
 pruning. Unknown options should still fail early instead of silently becoming

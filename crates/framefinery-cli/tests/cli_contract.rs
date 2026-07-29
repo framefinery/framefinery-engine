@@ -115,6 +115,42 @@ fn identity_filter_runs_after_pattern_source() {
     );
 }
 
+#[cfg(all(feature = "codec-av2", feature = "filter-identity"))]
+#[test]
+fn psnr_option_reports_metrics_without_recon_file() {
+    let dir = temp_dir("psnr_no_recon");
+    let input = dir.join("clip_16x16_30_1f_yuv420p8.yuv");
+    let output = dir.join("out.obu");
+    let frame = vec![0u8; yuv420p8_frame_len(16, 16)];
+    File::create(&input)
+        .expect("create input")
+        .write_all(&frame)
+        .expect("write input");
+
+    let result = Command::new(ff())
+        .args([
+            "encode",
+            input.to_str().expect("input path utf8"),
+            "--encode",
+            &format!("av2:{}", output.display()),
+            "--psnr",
+            "--set",
+            "lossless",
+        ])
+        .output()
+        .expect("run ff encode");
+
+    assert!(
+        result.status.success(),
+        "ff failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(output.metadata().expect("output metadata").len() > 0);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("psnr_all=inf"), "{stderr}");
+    assert!(!dir.join("recon.yuv").exists());
+}
+
 #[cfg(all(
     feature = "codec-av2",
     feature = "filter-crop",

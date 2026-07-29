@@ -75,7 +75,12 @@ def main() -> int:
     parser.add_argument(
         "--cleanup-recon",
         action="store_true",
-        help="delete each reconstruction artifact after PSNR and checksums are collected",
+        help="delete each reconstruction artifact after checksums are collected; only used with --write-recon",
+    )
+    parser.add_argument(
+        "--write-recon",
+        action="store_true",
+        help="write reconstruction artifacts and include recon_sha256 in the JSON report",
     )
     parser.add_argument(
         "--baseline-json",
@@ -157,6 +162,7 @@ def main() -> int:
         "vvc_lossy_qp": args.vvc_lossy_qp,
         "vvc_fast_search": args.vvc_fast_search,
         "cleanup_recon": args.cleanup_recon,
+        "write_recon": args.write_recon,
         "skipped": skipped,
         "results": results,
     }
@@ -176,6 +182,7 @@ def rerender_report(args: argparse.Namespace) -> int:
     report.setdefault("vvc_lossy_qp", args.vvc_lossy_qp)
     report.setdefault("vvc_fast_search", args.vvc_fast_search)
     report.setdefault("cleanup_recon", False)
+    report.setdefault("write_recon", True)
     results = report.get("results", [])
     baseline = load_baseline(args.baseline_json)
     for row in results:
@@ -277,7 +284,9 @@ def run_case(
     ]
     if vector.fps is not None:
         command.extend(["--fps", vector.fps])
-    command.extend(["--encode", f"{codec}:{output}", "--recon", str(recon)])
+    command.extend(["--encode", f"{codec}:{output}", "--psnr"])
+    if args.write_recon:
+        command.extend(["--recon", str(recon)])
     settings: list[str] = []
     if mode == "lossless":
         settings.append("lossless")
@@ -314,7 +323,13 @@ def run_case(
         print(process.stdout, file=sys.stderr, end="")
         raise SystemExit(f"encode failed for {codec} {mode} {vector.filename}; see {relpath(log)}")
     require_non_empty(output, "bitstream", vector.filename, log)
-    require_non_empty(recon, "reconstruction", vector.filename, log)
+    if args.write_recon:
+        require_non_empty(recon, "reconstruction", vector.filename, log)
+    psnr_all_mean = mean_psnr_all(process.stdout)
+    if psnr_all_mean is None:
+        raise SystemExit(
+            f"encoder did not emit PSNR for {codec} {mode} {vector.filename}; see {relpath(log)}"
+        )
 
     fps = vector.frames / elapsed if elapsed > 0.0 else math.inf
     result = {
@@ -330,9 +345,9 @@ def run_case(
         "bytes": output.stat().st_size,
         "seconds": elapsed,
         "fps": fps,
-        "psnr_all_mean": mean_psnr_all(process.stdout),
+        "psnr_all_mean": psnr_all_mean,
         "bitstream_sha256": sha256_file(output),
-        "recon_sha256": sha256_file(recon),
+        "recon_sha256": sha256_file(recon) if args.write_recon else "n/a",
         "log": str(relpath(log)),
     }
     if vvc_stats_path is not None:
@@ -376,7 +391,7 @@ def source_file_path(vector: generate_test_vectors.TestVector) -> Path:
 
 
 def cleanup_recon_artifact(args: argparse.Namespace, recon: Path) -> None:
-    if args.cleanup_recon:
+    if args.write_recon and args.cleanup_recon:
         recon.unlink(missing_ok=True)
 
 
@@ -519,6 +534,7 @@ def markdown_report(report: dict[str, Any], skipped: int) -> str:
         f"- VVC predictive: `{report.get('vvc_predictive', False)}`",
         f"- AV2 lossy QP: `{report['av2_lossy_qp']}`",
         f"- VVC fast search: `{report.get('vvc_fast_search', 'off')}`",
+        f"- Write recon: `{report.get('write_recon', True)}`",
         f"- Cleanup recon: `{report.get('cleanup_recon', False)}`",
         f"- Skipped combinations: `{skipped}`",
         "",

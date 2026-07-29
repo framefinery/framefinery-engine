@@ -146,6 +146,8 @@ ff encode input_640x360_30_1f_yuv444p8.yuv \
   --filter identity --encode av2:output.obu
 ff encode input_640x360_30_1f_yuv444p8.yuv \
   --encode av2:output.obu --recon output_recon.yuv
+ff encode input_640x360_30_1f_yuv444p8.yuv \
+  --encode av2:output.obu --qp 24 --psnr
 ```
 
 The commands validate command-line structure and report stage availability.
@@ -164,9 +166,13 @@ Current option placement and inference rules:
   `ff encode` stops at EOF instead of failing.
 - Source filters require explicit `--frames` because they do not have a file
   EOF.
-- Output/encoder options, such as `--recon output.yuv`, `--set lossless`,
-  `--qp <1..255>`, `--preset`, and repeated `--set key[=value]`, belong after
-  `--encode codec:output`.
+- Output/encoder options, such as `--recon output.yuv`, `--psnr`,
+  `--set lossless`, `--qp <1..255>`, `--preset`, and repeated
+  `--set key[=value]`, belong after `--encode codec:output`.
+- `--recon <path>` writes the encoder's internal reconstructed raw stream for
+  debugging and reference validation. `--psnr` calculates per-frame PSNR from
+  that same internal reconstruction without writing the raw reconstruction
+  stream.
 - Bare `--set` keys imply `true`. `--qp` requests lossy AV2 or VVC
   quantization and is mutually exclusive with `--set lossless`; lower values
   preserve more detail.

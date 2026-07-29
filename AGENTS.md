@@ -184,6 +184,8 @@ Important current CLI behavior:
   `--encode av2:out.obu`.
 - `--recon <path>` writes the encoder's internal reconstructed raw frame
   stream and is used by validation.
+- `--psnr` prints per-frame PSNR from the encoder's internal reconstruction
+  without writing the raw reconstruction stream.
 - Raw YUV dimensions, frame rate, frame count, and pixel format may be inferred
   from filenames such as `clip_640x360_30_10f_yuv444p8.yuv`.
 - If a bare `.yuv` filename has dimensions but no pixel format suffix, the

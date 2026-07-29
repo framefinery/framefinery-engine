@@ -17,6 +17,7 @@ pub struct EncodeArgs {
     pub input: Option<String>,
     pub output: Option<String>,
     pub recon: Option<String>,
+    pub psnr: bool,
     pub codec: Option<String>,
     pub video: Option<VideoSpec>,
     pub frames: Option<u32>,
@@ -64,6 +65,11 @@ pub const OUTPUT_OPTIONS: &[HelpRow] = &[
     HelpRow {
         syntax: "--recon <path>",
         summary: "Write the encoder's internal reconstructed raw frame stream",
+    },
+    HelpRow {
+        syntax: "--psnr",
+        summary:
+            "Print per-frame PSNR from the encoder's internal reconstruction without writing it",
     },
     HelpRow {
         syntax: "--set <key[=value]>",
@@ -214,6 +220,7 @@ fn parse_encode(mut cursor: Cursor) -> Result<Command, String> {
                 }
                 args.recon = Some(cursor.value(arg.as_str())?);
             }
+            "--psnr" => args.psnr = true,
             "--video" => {
                 args.video = Some(parse_video_spec(
                     arg.as_str(),
@@ -661,6 +668,7 @@ mod tests {
         assert_eq!(args.input.as_deref(), Some("in.yuv"));
         assert_eq!(args.output.as_deref(), Some("out.obu"));
         assert_eq!(args.recon.as_deref(), Some("out_recon.yuv"));
+        assert!(!args.psnr);
         assert_eq!(args.codec.as_deref(), Some("av2"));
         assert_eq!(
             args.video,
@@ -672,6 +680,27 @@ mod tests {
         );
         assert_eq!(args.filters, vec!["scale=w=64:h=64"]);
         assert_eq!(args.settings, vec!["lossless=true"]);
+    }
+
+    #[test]
+    fn parses_encode_psnr_option() {
+        let command = parse_words(&[
+            "ff",
+            "encode",
+            "in.yuv",
+            "--video",
+            "64x64:yuv420p",
+            "--encode",
+            "av2:out.obu",
+            "--psnr",
+        ])
+        .unwrap();
+
+        let Command::Encode(args) = command else {
+            panic!("expected encode command");
+        };
+        assert!(args.psnr);
+        assert_eq!(args.recon, None);
     }
 
     #[test]
@@ -1025,6 +1054,7 @@ mod tests {
             "*_<WxH>[_<fps>][_<frames>f][_<pixfmt>].yuv",
             "--encode <codec:path>",
             "--recon <path>",
+            "--psnr",
             "--video <WxH:fmt>",
             "--fps <rate>",
             "-n, --frames <count>",
