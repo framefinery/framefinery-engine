@@ -3,6 +3,7 @@
 /verification/generated/
 /verification/references/
 /verification/test_vector_sets/local/
+/external-drivers/
 /tmp/
 /ff
 /ff-gprof

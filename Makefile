@@ -104,6 +104,20 @@ ENCODE_MATRIX_VVC_PREDICTIVE ?= 1
 ENCODE_MATRIX_DIRECT_SOURCE_FILES ?= 1
 ENCODE_MATRIX_WRITE_RECON ?= 0
 ENCODE_MATRIX_CLEANUP_RECON ?= 0
+EXTERNAL_BENCHMARK_SET ?= local-aomctc-b2-scc-1080p-lossless-50f
+EXTERNAL_BENCHMARK_OUT_DIR ?= verification/generated/market_encoder_compare
+EXTERNAL_BENCHMARK_RUNNER ?= external-drivers/benchmark_external_encoders.py
+EXTERNAL_BENCHMARK_RUN ?=
+EXTERNAL_BENCHMARK_DRIVERS ?=
+EXTERNAL_BENCHMARK_MODE ?= lossy
+EXTERNAL_BENCHMARK_LIMIT ?=
+EXTERNAL_BENCHMARK_FRAMES ?=
+EXTERNAL_BENCHMARK_THREADS ?= 8
+EXTERNAL_BENCHMARK_ALLOW_CONVERSION ?= 0
+EXTERNAL_BENCHMARK_TARGET_PSNR ?=
+EXTERNAL_BENCHMARK_AUTO_TUNE_PSNR ?= 0
+EXTERNAL_BENCHMARK_AUTO_TUNE_MAX_ATTEMPTS ?= 8
+EXTERNAL_BENCHMARK_ARGS ?=
 VVC_HOTSPOT_SET ?= $(ENCODE_MATRIX_SET)
 VVC_HOTSPOT_RUN ?= latest
 VVC_HOTSPOT_OUT_DIR ?= verification/generated/profiling/vvc_hotspots
@@ -157,12 +171,19 @@ ENCODE_MATRIX_VVC_PREDICTIVE_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_VV
 ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_DIRECT_SOURCE_FILES)),--direct-source-files,--no-direct-source-files)
 ENCODE_MATRIX_WRITE_RECON_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_WRITE_RECON)),--write-recon,)
 ENCODE_MATRIX_CLEANUP_RECON_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_CLEANUP_RECON)),--cleanup-recon,)
+EXTERNAL_BENCHMARK_RUN_FLAG := $(if $(strip $(EXTERNAL_BENCHMARK_RUN)),--run-name "$(EXTERNAL_BENCHMARK_RUN)",)
+EXTERNAL_BENCHMARK_DRIVERS_FLAG := $(foreach driver,$(EXTERNAL_BENCHMARK_DRIVERS),--driver "$(driver)")
+EXTERNAL_BENCHMARK_LIMIT_FLAG := $(if $(strip $(EXTERNAL_BENCHMARK_LIMIT)),--limit "$(EXTERNAL_BENCHMARK_LIMIT)",)
+EXTERNAL_BENCHMARK_FRAMES_FLAG := $(if $(strip $(EXTERNAL_BENCHMARK_FRAMES)),--frames "$(EXTERNAL_BENCHMARK_FRAMES)",)
+EXTERNAL_BENCHMARK_ALLOW_CONVERSION_FLAG := $(if $(filter 1 true yes,$(EXTERNAL_BENCHMARK_ALLOW_CONVERSION)),--allow-conversion,)
+EXTERNAL_BENCHMARK_TARGET_PSNR_FLAG := $(if $(strip $(EXTERNAL_BENCHMARK_TARGET_PSNR)),--target-psnr "$(EXTERNAL_BENCHMARK_TARGET_PSNR)",)
+EXTERNAL_BENCHMARK_AUTO_TUNE_PSNR_FLAG := $(if $(filter 1 true yes,$(EXTERNAL_BENCHMARK_AUTO_TUNE_PSNR)),--auto-tune-psnr,)
 VVC_HOTSPOT_BASELINE_FLAG := $(if $(strip $(VVC_HOTSPOT_BASELINE)),--baseline-json "$(VVC_HOTSPOT_BASELINE)",)
 VVC_HOTSPOT_LIMIT_FLAG := $(if $(strip $(VVC_HOTSPOT_LIMIT)),--limit "$(VVC_HOTSPOT_LIMIT)",)
 GEOMETRY_SWEEP_AV2_SETTINGS_FLAG := $(foreach setting,$(GEOMETRY_SWEEP_AV2_SETTINGS),--setting $(setting))
 GPROF_PROFILE_SETTINGS_FLAG := $(foreach setting,$(GPROF_PROFILE_SETTINGS),--set "$(setting)")
 
-.PHONY: help check-tools fmt check clippy-perf test build debug run reference-list reference-setup test-vector-sets test-vectors validate-set compare-compression benchmark-encode-matrix bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-vvc-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check
+.PHONY: help check-tools fmt check clippy-perf test build debug run reference-list reference-setup test-vector-sets test-vectors validate-set compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-vvc-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check
 
 help:
 	@printf '%s\n' \
@@ -212,6 +233,14 @@ help:
 		'                         Time AV2/VVC lossy/lossless encodes over ENCODE_MATRIX_SET' \
 		'                         Set ENCODE_MATRIX_FRAMES=1 for first-frame checks' \
 		'                         Set ENCODE_MATRIX_WRITE_RECON=1 to keep raw recon artifacts/checksums' \
+		'  make benchmark-external-encoders' \
+		'                         Run an ignored local external-driver benchmark bundle' \
+		'                         Set EXTERNAL_BENCHMARK_MODE=lossless for exact-mode checks' \
+		'                         Set EXTERNAL_BENCHMARK_TARGET_PSNR=48:52 EXTERNAL_BENCHMARK_AUTO_TUNE_PSNR=1 for lossy quality alignment' \
+		'                         Filter with EXTERNAL_BENCHMARK_DRIVERS="driver-id ..."' \
+		'                         Pass driver-owned options with EXTERNAL_BENCHMARK_ARGS="..."' \
+		'  make benchmark-external-driver-list' \
+		'                         List drivers from the ignored local external-driver bundle' \
 		'  make bench-av2-micro' \
 		'                         Run Criterion microbenchmarks for AV2 palette and TXB kernels' \
 		'  make bench-vvc-micro' \
@@ -285,6 +314,14 @@ compare-compression: build
 
 benchmark-encode-matrix: build
 	$(PYTHON) scripts/benchmark_encode_matrix.py "$(ENCODE_MATRIX_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(ENCODE_MATRIX_OUT_DIR)" --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(ENCODE_MATRIX_RUN_FLAG) $(ENCODE_MATRIX_CODECS_FLAG) $(ENCODE_MATRIX_MODES_FLAG) $(ENCODE_MATRIX_BASELINE_FLAG) $(ENCODE_MATRIX_LIMIT_FLAG) $(ENCODE_MATRIX_FRAMES_FLAG) $(ENCODE_MATRIX_AV2_PREDICTIVE_FLAG) $(ENCODE_MATRIX_VVC_PREDICTIVE_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG)
+
+benchmark-external-encoders: build
+	@test -f "$(EXTERNAL_BENCHMARK_RUNNER)" || { printf '%s\n' "missing local external-driver runner: $(EXTERNAL_BENCHMARK_RUNNER)" "Place local comparison drivers under external-drivers/; that directory is gitignored."; exit 1; }
+	PYTHONPATH="$(abspath scripts):$${PYTHONPATH}" $(PYTHON) "$(EXTERNAL_BENCHMARK_RUNNER)" "$(EXTERNAL_BENCHMARK_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(EXTERNAL_BENCHMARK_OUT_DIR)" --mode "$(EXTERNAL_BENCHMARK_MODE)" --threads "$(EXTERNAL_BENCHMARK_THREADS)" --auto-tune-max-attempts "$(EXTERNAL_BENCHMARK_AUTO_TUNE_MAX_ATTEMPTS)" $(EXTERNAL_BENCHMARK_RUN_FLAG) $(EXTERNAL_BENCHMARK_DRIVERS_FLAG) $(EXTERNAL_BENCHMARK_LIMIT_FLAG) $(EXTERNAL_BENCHMARK_FRAMES_FLAG) $(EXTERNAL_BENCHMARK_TARGET_PSNR_FLAG) $(EXTERNAL_BENCHMARK_AUTO_TUNE_PSNR_FLAG) $(EXTERNAL_BENCHMARK_ALLOW_CONVERSION_FLAG) $(EXTERNAL_BENCHMARK_ARGS)
+
+benchmark-external-driver-list:
+	@test -f "$(EXTERNAL_BENCHMARK_RUNNER)" || { printf '%s\n' "missing local external-driver runner: $(EXTERNAL_BENCHMARK_RUNNER)" "Place local comparison drivers under external-drivers/; that directory is gitignored."; exit 1; }
+	PYTHONPATH="$(abspath scripts):$${PYTHONPATH}" $(PYTHON) "$(EXTERNAL_BENCHMARK_RUNNER)" --list-drivers
 
 bench-av2-micro:
 	$(CARGO) bench -p framefinery-codecs --bench av2_micro --features "bench-internals vvc"
