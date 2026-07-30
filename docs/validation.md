@@ -85,7 +85,7 @@ make validate-set CODEC=av2 \
 ```
 
 Explicit lossy AV2 and VVC smoke checks can invoke
-`./ff encode ... --qp N` directly. `--qp` is mutually exclusive with
+`./ff encode ... --set qp=N` directly. `--set qp=<1..255>` is mutually exclusive with
 `--set lossless`; lossy checks should compare bitstream size, reconstruction
 PSNR, and reference-decoder agreement with the encoder reconstruction rather
 than source-byte equality.
@@ -185,7 +185,7 @@ include this code unless the feature is enabled.
 make build AV2_SB_BITS=1
 FRAMEFINERY_AV2_SB_BITS=verification/generated/profiling/av2_sb_bits.jsonl \
   ./ff encode input.yuv --video 1920x1080:yuv420p8 --frames 1 \
-  --encode av2:verification/generated/profiling/framefinery_sb_bits.obu --qp 24
+  --encode av2:verification/generated/profiling/framefinery_sb_bits.obu --set qp=24
 ```
 
 For AV2 lossy mode and TXB choice summaries, compile the separate gated
@@ -198,7 +198,7 @@ make build AV2_LOSSY_STATS=1
 FRAMEFINERY_AV2_LOSSY_STATS=1 \
   ./ff encode input.yuv --video 1920x1080:yuv420p8 --frames 1 \
   --encode av2:verification/generated/profiling/framefinery_lossy_stats.obu \
-  --qp 24 2> verification/generated/profiling/framefinery_lossy_stats.log
+  --set qp=24 2> verification/generated/profiling/framefinery_lossy_stats.log
 ```
 
 For comparable direct-libaom superblock deltas, build the patched libaom
@@ -252,7 +252,7 @@ make build VVC_STATS=1
 FRAMEFINERY_VVC_STATS=verification/generated/profiling/vvc_stats.jsonl \
 FRAMEFINERY_VVC_CTU_BITS=verification/generated/profiling/vvc_ctu_bits.jsonl \
   ./ff encode input.yuv --video 1920x1080:yuv420p8 --frames 1 \
-  --encode vvc:verification/generated/profiling/framefinery_vvc.obu --qp 24
+  --encode vvc:verification/generated/profiling/framefinery_vvc.obu --set qp=24
 ```
 
 For the current VVC performance loop, `make profile-vvc-hotspots` builds with
@@ -292,8 +292,8 @@ make compare-compression CODEC=av2 \
   COMPRESSION_DIRECT_SOURCE_FILES=1
 ```
 
-For AV2 lossy QP comparisons, set `COMPRESSION_QP=<1..255>`. This forwards
-the dedicated `./ff encode --qp` option and treats manifest `lossless=true`
+For AV2/VVC lossy QP comparisons, set `COMPRESSION_QP=<1..255>`. This forwards
+`--set qp=<1..255>` to `./ff encode` and treats manifest `lossless=true`
 rows as lossy FrameFinery Engine rows for that comparison run:
 
 ```sh

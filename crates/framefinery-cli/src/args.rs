@@ -5,11 +5,20 @@ use framefinery_core::PixelFormat;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    Help,
+    Help(Option<HelpTopic>),
     Version,
     Codecs,
     Filters,
     Encode(Box<EncodeArgs>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HelpTopic {
+    Codecs,
+    Filters,
+    Pixfmt,
+    Settings,
+    Presets,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -27,7 +36,6 @@ pub struct EncodeArgs {
     pub filters: Vec<String>,
     pub settings: Vec<String>,
     pub preset: Option<String>,
-    pub qp: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,7 +58,7 @@ pub struct HelpRow {
 }
 
 pub const USAGE: &[&str] = &[
-    "ff --help",
+    "ff --help [<codecs|filters|pixfmt|settings|presets>]",
     "ff --version",
     "ff codecs",
     "ff filters",
@@ -76,7 +84,7 @@ pub const OUTPUT_OPTIONS: &[HelpRow] = &[
         summary: "Encode setting; bare keys such as lossless imply true",
     },
     HelpRow {
-        syntax: "--qp <1..255>",
+        syntax: "--set qp=<1..255>",
         summary: "Request lossy quantization; mutually exclusive with --set lossless",
     },
     HelpRow {
@@ -115,12 +123,24 @@ pub const FILTER_OPTIONS: &[HelpRow] = &[HelpRow {
 
 pub const DISCOVERY_COMMANDS: &[HelpRow] = &[
     HelpRow {
-        syntax: "ff codecs",
-        summary: "List known codec stages and build-time features",
+        syntax: "ff --help codecs",
+        summary: "Describe compiled codec stages",
     },
     HelpRow {
-        syntax: "ff filters",
-        summary: "List known filter stages and build-time features",
+        syntax: "ff --help filters",
+        summary: "Describe compiled filter stages",
+    },
+    HelpRow {
+        syntax: "ff --help pixfmt",
+        summary: "List accepted raw pixel-format names and aliases",
+    },
+    HelpRow {
+        syntax: "ff --help settings",
+        summary: "List global and codec-specific --set keys",
+    },
+    HelpRow {
+        syntax: "ff --help presets",
+        summary: "List named encoder presets when available",
     },
 ];
 
@@ -166,14 +186,27 @@ where
 {
     let mut cursor = Cursor::new(args.into_iter().skip(1).collect());
     let Some(command) = cursor.next() else {
-        return Ok(Command::Help);
+        return Ok(Command::Help(None));
     };
 
+    if let Some(topic) = command.strip_prefix("--help=") {
+        let topic = parse_help_topic(topic)?;
+        return match cursor.next() {
+            None => Ok(Command::Help(Some(topic))),
+            Some(extra) => Err(format!("--help accepts at most one topic, got '{extra}'")),
+        };
+    }
+
     match command.as_str() {
-        "-h" | "--help" | "help" => Ok(Command::Help),
+        "-h" | "--help" | "help" => parse_help(cursor),
         "-V" | "--version" | "version" => Ok(Command::Version),
-        "codecs" => parse_no_extra(cursor, Command::Codecs, "codecs"),
-        "filters" => parse_no_extra(cursor, Command::Filters, "filters"),
+        "codecs" => parse_no_extra(cursor, Command::Codecs, "codecs", Some(HelpTopic::Codecs)),
+        "filters" => parse_no_extra(
+            cursor,
+            Command::Filters,
+            "filters",
+            Some(HelpTopic::Filters),
+        ),
         "encode" => parse_encode(cursor),
         other => Err(format!("unknown command '{other}'")),
     }
@@ -193,10 +226,39 @@ where
     parse(converted)
 }
 
-fn parse_no_extra(mut cursor: Cursor, command: Command, name: &str) -> Result<Command, String> {
+fn parse_help(mut cursor: Cursor) -> Result<Command, String> {
+    let topic = match cursor.next() {
+        Some(topic) => Some(parse_help_topic(&topic)?),
+        None => None,
+    };
+    match cursor.next() {
+        None => Ok(Command::Help(topic)),
+        Some(extra) => Err(format!("--help accepts at most one topic, got '{extra}'")),
+    }
+}
+
+fn parse_help_topic(value: &str) -> Result<HelpTopic, String> {
+    match value {
+        "codecs" => Ok(HelpTopic::Codecs),
+        "filters" => Ok(HelpTopic::Filters),
+        "pixfmt" => Ok(HelpTopic::Pixfmt),
+        "settings" => Ok(HelpTopic::Settings),
+        "presets" => Ok(HelpTopic::Presets),
+        other => Err(format!(
+            "unknown help topic '{other}'; expected codecs, filters, pixfmt, settings, or presets"
+        )),
+    }
+}
+
+fn parse_no_extra(
+    mut cursor: Cursor,
+    command: Command,
+    name: &str,
+    help_topic: Option<HelpTopic>,
+) -> Result<Command, String> {
     match cursor.next().as_deref() {
         None => Ok(command),
-        Some("-h") | Some("--help") => Ok(Command::Help),
+        Some("-h") | Some("--help") => Ok(Command::Help(help_topic)),
         Some(extra) => Err(format!("'{name}' does not accept argument '{extra}'")),
     }
 }
@@ -205,7 +267,7 @@ fn parse_encode(mut cursor: Cursor) -> Result<Command, String> {
     let mut args = EncodeArgs::default();
     while let Some(arg) = cursor.next() {
         match arg.as_str() {
-            "-h" | "--help" => return Ok(Command::Help),
+            "-h" | "--help" => return Ok(Command::Help(None)),
             "--encode" => {
                 if args.codec.is_some() || args.output.is_some() {
                     return Err("encode accepts only one --encode endpoint".to_string());
@@ -239,7 +301,6 @@ fn parse_encode(mut cursor: Cursor) -> Result<Command, String> {
             "--set" => args
                 .settings
                 .push(parse_setting(&cursor.value(arg.as_str())?)),
-            "--qp" => args.qp = Some(parse_qp(arg.as_str(), &cursor.value(arg.as_str())?)?),
             "--preset" => args.preset = Some(cursor.value(arg.as_str())?),
             other if other.starts_with('-') => {
                 return Err(format!("unknown encode option '{other}'"))
@@ -271,19 +332,6 @@ fn parse_u32(option: &str, value: &str) -> Result<u32, String> {
         Err(format!("{option} expects a positive integer, got 0"))
     } else {
         Ok(parsed)
-    }
-}
-
-fn parse_qp(option: &str, value: &str) -> Result<u8, String> {
-    let parsed = value
-        .parse::<u16>()
-        .map_err(|_| format!("{option} expects an integer from 1 through 255, got '{value}'"))?;
-    if parsed == 0 || parsed > u16::from(u8::MAX) {
-        Err(format!(
-            "{option} expects an integer from 1 through 255, got '{value}'"
-        ))
-    } else {
-        Ok(parsed as u8)
     }
 }
 
@@ -644,6 +692,54 @@ mod tests {
     }
 
     #[test]
+    fn parses_optional_help_topics() {
+        assert_eq!(parse_words(&["ff", "--help"]).unwrap(), Command::Help(None));
+        assert_eq!(
+            parse_words(&["ff", "--help", "codecs"]).unwrap(),
+            Command::Help(Some(HelpTopic::Codecs))
+        );
+        assert_eq!(
+            parse_words(&["ff", "--help", "filters"]).unwrap(),
+            Command::Help(Some(HelpTopic::Filters))
+        );
+        assert_eq!(
+            parse_words(&["ff", "--help=pixfmt"]).unwrap(),
+            Command::Help(Some(HelpTopic::Pixfmt))
+        );
+        assert_eq!(
+            parse_words(&["ff", "help", "settings"]).unwrap(),
+            Command::Help(Some(HelpTopic::Settings))
+        );
+        assert_eq!(
+            parse_words(&["ff", "--help", "presets"]).unwrap(),
+            Command::Help(Some(HelpTopic::Presets))
+        );
+        assert_eq!(
+            parse_words(&["ff", "codecs", "--help"]).unwrap(),
+            Command::Help(Some(HelpTopic::Codecs))
+        );
+        assert_eq!(
+            parse_words(&["ff", "filters", "--help"]).unwrap(),
+            Command::Help(Some(HelpTopic::Filters))
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_help_topics() {
+        let err = parse_words(&["ff", "--help", "unknown"]).unwrap_err();
+        assert_eq!(
+            err,
+            "unknown help topic 'unknown'; expected codecs, filters, pixfmt, settings, or presets"
+        );
+
+        let err = parse_words(&["ff", "--help", "codecs", "extra"]).unwrap_err();
+        assert_eq!(err, "--help accepts at most one topic, got 'extra'");
+
+        let err = parse_words(&["ff", "--help=pixfmt", "extra"]).unwrap_err();
+        assert_eq!(err, "--help accepts at most one topic, got 'extra'");
+    }
+
+    #[test]
     fn parses_encode_command() {
         let command = parse_words(&[
             "ff",
@@ -704,7 +800,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_encode_qp_option() {
+    fn parses_encode_qp_setting() {
         let command = parse_words(&[
             "ff",
             "encode",
@@ -713,37 +809,15 @@ mod tests {
             "64x64:yuv420p",
             "--encode",
             "av2:out.obu",
-            "--qp",
-            "24",
+            "--set",
+            "qp=24",
         ])
         .unwrap();
 
         let Command::Encode(args) = command else {
             panic!("expected encode command");
         };
-        assert_eq!(args.qp, Some(24));
-    }
-
-    #[test]
-    fn rejects_invalid_encode_qp_option() {
-        for value in ["0", "256", "abc"] {
-            let err = parse_words(&[
-                "ff",
-                "encode",
-                "in.yuv",
-                "--video",
-                "64x64:yuv420p",
-                "--encode",
-                "av2:out.obu",
-                "--qp",
-                value,
-            ])
-            .unwrap_err();
-            assert!(
-                err.contains("--qp expects an integer from 1 through 255"),
-                "{err}"
-            );
-        }
+        assert_eq!(args.settings, vec!["qp=24"]);
     }
 
     #[test]
@@ -1029,6 +1103,7 @@ mod tests {
             "--pixel-format",
             "--width",
             "--height",
+            "--qp",
             "-hgt",
         ] {
             let err = parse_words(&[
@@ -1061,8 +1136,13 @@ mod tests {
             "-f, --filter <spec>",
             "pattern=black",
             "--set <key[=value]>",
-            "--qp <1..255>",
+            "--set qp=<1..255>",
             "--preset <name>",
+            "ff --help codecs",
+            "ff --help filters",
+            "ff --help pixfmt",
+            "ff --help settings",
+            "ff --help presets",
         ] {
             assert!(text.contains(expected), "missing help entry: {expected}");
         }
@@ -1075,11 +1155,24 @@ mod tests {
             "--width",
             "--height",
             "--lossless",
+            "--qp <1..255>",
             "Compatibility options",
             "--input-format",
             "--raw-video",
         ] {
             assert!(!text.contains(removed), "stale help entry: {removed}");
+        }
+        let discovery = text
+            .split("\nStage discovery:\n")
+            .nth(1)
+            .expect("help should have a stage discovery section");
+        for removed_command in ["ff codecs", "ff filters"] {
+            assert!(
+                !discovery
+                    .lines()
+                    .any(|line| line.trim_start().starts_with(removed_command)),
+                "stale help entry: {removed_command}"
+            );
         }
         assert!(!text.contains("ff pipeline"));
         assert!(!text.contains("--decode"));

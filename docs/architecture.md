@@ -38,6 +38,9 @@ enough for reproducible validation.
 
 Initial command families:
 
+- `ff --help [<codecs|filters|pixfmt|settings|presets>]` prints the general CLI
+  help or a focused help topic for codec stages, filter stages, raw pixel
+  formats, encode settings, or preset catalogs.
 - `ff codecs` lists known codec stages and the Cargo feature that compiles each
   one into the binary.
 - `ff filters` lists known filter stages and the Cargo feature that compiles
@@ -93,8 +96,8 @@ reference profiles validate 8-bit and 10-bit streams.
 Prefer adding new stage-specific options behind repeated `--set key[=value]`
 arguments until a setting is common enough to deserve a stable top-level flag.
 Bare keys imply `true`, for example `--set lossless`. Shared settings such as
-`lossless` are global and apply to any codec. `--qp <1..255>` is the top-level
-lossy alternative to `--set lossless`; it currently drives AV2 and VVC
+`lossless` are global and apply to any codec. `--set qp=<1..255>` is the
+codec-specific lossy alternative to `--set lossless`; it currently drives AV2 and VVC
 experimental planar residual quantizers and is rejected for codecs that do not
 consume it.
 `--recon <path>` remains the explicit raw reconstruction artifact option for
@@ -107,15 +110,15 @@ experimental `--set predictive` temporal mode and VVC's `fast-search` mode
 pruning. Unknown options should still fail early instead of silently becoming
 unused metadata.
 
-AV2's QP path maps `--qp` to a nonzero frame `base_qindex` and emits regular
+AV2's QP path maps `--set qp=<1..255>` to a nonzero frame `base_qindex` and emits regular
 transform-quantized 4x4 residuals for the current lossy intra path. The current
-mapping treats `--qp` as an encoder quality knob rather than the literal AV2
-qindex; for example, `--qp 24` signals `base_qindex=80`. Lossless mode remains
+mapping treats `qp` as an encoder quality knob rather than the literal AV2
+qindex; for example, `--set qp=24` signals `base_qindex=80`. Lossless mode remains
 coded-lossless with `base_qindex=0`. Delta-q syntax is wired into the header
 model but remains disabled until the encoder tracks and emits per-superblock
 qindex adjustments.
 
-VVC treats `--qp` as a lossy quality request for the current residual path.
+VVC treats `--set qp=<1..255>` as a lossy quality request for the current residual path.
 With `fast-search=lossless-speed`, the encoder may apply format-specific
 signaled slice-QP offsets to keep the screen-content bitrate/PSNR tradeoff
 closer across 8-bit 4:4:4 and high-depth inputs. These offsets currently spend

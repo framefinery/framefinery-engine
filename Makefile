@@ -156,7 +156,7 @@ COMPRESSION_AVM_TILE_COLUMNS_FLAG := --avm-tile-columns "$(COMPRESSION_AVM_TILE_
 COMPRESSION_AVM_TILE_ROWS_FLAG := --avm-tile-rows "$(COMPRESSION_AVM_TILE_ROWS)"
 COMPRESSION_REFERENCE_ARGS_FLAG := $(if $(strip $(COMPRESSION_REFERENCE_ARGS)),--reference-args "$(COMPRESSION_REFERENCE_ARGS)",)
 COMPRESSION_SETTINGS_FLAG := $(foreach setting,$(COMPRESSION_SETTINGS),--setting "$(setting)")
-COMPRESSION_QP_FLAG := $(if $(strip $(COMPRESSION_QP)),--qp "$(COMPRESSION_QP)",)
+COMPRESSION_QP_FLAG := $(if $(strip $(COMPRESSION_QP)),--setting "qp=$(COMPRESSION_QP)",)
 COMPRESSION_REFRESH_REFERENCE_FLAG := $(if $(filter 1 true yes,$(COMPRESSION_REFRESH_REFERENCE)),--refresh-reference,)
 COMPRESSION_DIRECT_SOURCE_FILES_FLAG := $(if $(filter 1 true yes,$(COMPRESSION_DIRECT_SOURCE_FILES)),--direct-source-files,)
 ENCODE_MATRIX_RUN_FLAG := $(if $(strip $(ENCODE_MATRIX_RUN)),--run-name "$(ENCODE_MATRIX_RUN)",)
@@ -223,7 +223,7 @@ help:
 		'                         Set COMPRESSION_REFERENCE_PRESET=realtime-screen for libaom screen-share settings' \
 		'                         Set COMPRESSION_REFERENCE_PRESET=default for legacy args' \
 		'                         Pass FrameFinery --set values with COMPRESSION_SETTINGS="key ..."' \
-		'                         Set COMPRESSION_QP=24 for AV2 lossy QP comparisons' \
+		'                         Set COMPRESSION_QP=24 for AV2/VVC lossy qp comparisons' \
 		'                         Set COMPRESSION_REFERENCE_BACKEND=libaom for direct aomenc' \
 		'                         Set LIBAOM_SB_BITS=1 for instrumented direct libaom builds' \
 		'                         Set AVM_SB_BITS=1 for instrumented AVM reference builds' \
@@ -368,8 +368,8 @@ validate-geometry-sweep: build
 				settings=""; \
 				if [ "$$codec" = "av2" ]; then settings='$(GEOMETRY_SWEEP_AV2_SETTINGS_FLAG)'; fi; \
 				if [ "$$mode" = "lossy" ]; then extra="--force-lossy"; fi; \
-				if [ "$$codec" = "av2" ] && [ "$$mode" = "lossy" ]; then extra="$$extra --qp $(GEOMETRY_SWEEP_AV2_LOSSY_QP)"; fi; \
-				if [ "$$codec" = "vvc" ] && [ "$$mode" = "lossy" ]; then extra="$$extra --qp $(GEOMETRY_SWEEP_VVC_LOSSY_QP)"; fi; \
+				if [ "$$codec" = "av2" ] && [ "$$mode" = "lossy" ]; then extra="$$extra --setting qp=$(GEOMETRY_SWEEP_AV2_LOSSY_QP)"; fi; \
+				if [ "$$codec" = "vvc" ] && [ "$$mode" = "lossy" ]; then extra="$$extra --setting qp=$(GEOMETRY_SWEEP_VVC_LOSSY_QP)"; fi; \
 				$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec "$$codec" "$$set" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(GEOMETRY_SWEEP_REFERENCE_MODE)" --stop-on-fail $$settings $$extra; \
 			done; \
 		done; \

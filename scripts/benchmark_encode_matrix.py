@@ -299,9 +299,9 @@ def run_case(
     for setting in settings:
         command.extend(["--set", setting])
     if codec == "av2" and mode == "lossy":
-        command.extend(["--qp", str(args.av2_lossy_qp)])
+        command.extend(["--set", f"qp={args.av2_lossy_qp}"])
     if codec == "vvc" and mode == "lossy":
-        command.extend(["--qp", str(args.vvc_lossy_qp)])
+        command.extend(["--set", f"qp={args.vvc_lossy_qp}"])
 
     env = None
     if vvc_stats_path is not None:

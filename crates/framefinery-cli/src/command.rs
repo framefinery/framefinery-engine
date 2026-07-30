@@ -15,7 +15,7 @@ use framefinery_core::{
     VERSION,
 };
 
-use crate::args::{self, Command, EncodeArgs};
+use crate::args::{self, Command, EncodeArgs, HelpTopic};
 use crate::catalog::{
     self, setting_values_label, settings_label, StageInfo, StageKind, CODECS, FILTERS,
     GLOBAL_SETTINGS,
@@ -26,8 +26,8 @@ where
     I: IntoIterator<Item = OsString>,
 {
     match args::parse_os(raw_args) {
-        Ok(Command::Help) => {
-            print_help();
+        Ok(Command::Help(topic)) => {
+            print_help(topic);
             ExitCode::SUCCESS
         }
         Ok(Command::Version) => {
@@ -1171,14 +1171,10 @@ struct EncodeJob {
 }
 
 fn print_encode_config(codec_name: &str, args: &EncodeArgs, job: &EncodeJob) {
-    let mut settings = args.settings.clone();
-    if let Some(qp) = job.qp {
-        settings.push(format!("qp={qp}"));
-    }
-    let settings = if settings.is_empty() {
+    let settings = if args.settings.is_empty() {
         "none".to_string()
     } else {
-        settings.join(",")
+        args.settings.join(",")
     };
     eprintln!(
         "input: {} video={}x{}:{} frames={} fps={}",
@@ -1240,11 +1236,14 @@ fn encode_job(args: &EncodeArgs) -> Result<EncodeJob, String> {
     let frames = resolve_frame_count(args, &input, source_format, width, height)?;
     let codec = args.codec.as_deref().expect("parser requires codec");
     let lossless = boolean_setting_enabled(&args.settings, "lossless")?;
-    if lossless && args.qp.is_some() {
-        return Err("--qp is mutually exclusive with --set lossless".to_string());
+    let qp = qp_setting(&args.settings)?;
+    if lossless && qp.is_some() {
+        return Err("--set qp=<1..255> is mutually exclusive with --set lossless".to_string());
     }
-    if args.qp.is_some() && !matches!(codec, "av2" | "vvc") {
-        return Err("--qp is currently implemented for AV2 and VVC encode only".to_string());
+    if qp.is_some() && !matches!(codec, "av2" | "vvc") {
+        return Err(
+            "--set qp=<1..255> is currently implemented for AV2 and VVC encode only".to_string(),
+        );
     }
     #[cfg(feature = "codec-av2")]
     let av2_predictive = boolean_setting_enabled(&args.settings, "predictive")?;
@@ -1278,7 +1277,7 @@ fn encode_job(args: &EncodeArgs) -> Result<EncodeJob, String> {
         source_format,
         format,
         lossless,
-        qp: args.qp,
+        qp,
         #[cfg(feature = "codec-av2")]
         av2_predictive,
         #[cfg(feature = "codec-vvc")]
@@ -1345,6 +1344,25 @@ fn boolean_setting_enabled(settings: &[String], setting_name: &str) -> Result<bo
         }
     }
     Ok(false)
+}
+
+fn qp_setting(settings: &[String]) -> Result<Option<u8>, String> {
+    for spec in settings {
+        if args::setting_name(spec) != "qp" {
+            continue;
+        }
+        let value = args::setting_value(spec).unwrap_or("true");
+        let parsed = value
+            .parse::<u16>()
+            .map_err(|_| format!("qp expects an integer from 1 through 255, got '{value}'"))?;
+        if parsed == 0 || parsed > u16::from(u8::MAX) {
+            return Err(format!(
+                "qp expects an integer from 1 through 255, got '{value}'"
+            ));
+        }
+        return Ok(Some(parsed as u8));
+    }
+    Ok(None)
 }
 
 #[cfg(feature = "codec-vvc")]
@@ -1761,8 +1779,15 @@ fn flush_writer(path: &Path, writer: &mut BufWriter<File>) -> Result<(), String>
         .map_err(|err| format!("failed to flush output '{}': {err}", path.display()))
 }
 
-fn print_help() {
-    print!("{}", args::help(VERSION));
+fn print_help(topic: Option<HelpTopic>) {
+    match topic {
+        None => print!("{}", args::help(VERSION)),
+        Some(HelpTopic::Codecs) => print_stage_table("Codecs", CODECS),
+        Some(HelpTopic::Filters) => print_stage_table("Filters", FILTERS),
+        Some(HelpTopic::Pixfmt) => print_pixel_format_help(),
+        Some(HelpTopic::Settings) => print_settings_help(),
+        Some(HelpTopic::Presets) => print_presets_help(),
+    }
 }
 
 fn print_stage_table(title: &str, stages: &[StageInfo]) {
@@ -1821,6 +1846,83 @@ fn kind_name(kind: StageKind) -> &'static str {
         StageKind::Codec => "codec",
         StageKind::Filter => "filter",
     }
+}
+
+fn print_pixel_format_help() {
+    println!("Pixel formats:");
+    println!("{:<24} Summary", "Name");
+    println!("{:<24} {}", "yuv420p8", "8-bit planar YUV 4:2:0");
+    println!(
+        "{:<24} {}",
+        "yuv420p9le..16le", "little-endian planar YUV 4:2:0, 9 through 16 bits"
+    );
+    println!("{:<24} {}", "yuv422p8", "8-bit planar YUV 4:2:2");
+    println!(
+        "{:<24} {}",
+        "yuv422p9le..16le", "little-endian planar YUV 4:2:2, 9 through 16 bits"
+    );
+    println!("{:<24} {}", "yuv444p8", "8-bit planar YUV 4:4:4");
+    println!(
+        "{:<24} {}",
+        "yuv444p9le..16le", "little-endian planar YUV 4:4:4, 9 through 16 bits"
+    );
+    println!("{:<24} {}", "gray8", "8-bit monochrome");
+    println!(
+        "{:<24} {}",
+        "gray9le..16le", "little-endian monochrome, 9 through 16 bits"
+    );
+    println!("{:<24} {}", "gbrp8", "8-bit planar GBR identity RGB");
+    println!("{:<24} {}", "rgb24", "8-bit packed RGB");
+    println!();
+    println!("Aliases:");
+    println!("  yuv420p, i420 -> yuv420p8");
+    println!("  yuv422p, i422 -> yuv422p8");
+    println!("  yuv444p, i444 -> yuv444p8");
+    println!("  y8 -> gray8");
+    println!("  gbrp -> gbrp8");
+    println!("  i010, i210, i410 and related i<sampling><depth> aliases are accepted");
+}
+
+fn print_settings_help() {
+    println!("Settings:");
+    if !GLOBAL_SETTINGS.is_empty() {
+        println!();
+        println!("Global settings:");
+        print_setting_rows(GLOBAL_SETTINGS);
+    }
+    if CODECS.iter().any(|stage| !stage.settings.is_empty()) {
+        println!();
+        println!("Codec-specific settings:");
+        for stage in CODECS {
+            if stage.settings.is_empty() {
+                continue;
+            }
+            println!();
+            println!("{}:", stage.name);
+            print_setting_rows(stage.settings);
+        }
+    }
+    println!();
+    println!("Use settings as repeated `--set key[=value]` output options after `--encode`.");
+}
+
+fn print_setting_rows(settings: &[crate::catalog::SettingInfo]) {
+    println!("{:<16} {:<42} Summary", "Name", "Values");
+    for setting in settings {
+        println!(
+            "{:<16} {:<42} {}",
+            setting.name,
+            setting_values_label(*setting),
+            setting.summary
+        );
+    }
+}
+
+fn print_presets_help() {
+    println!("Presets:");
+    println!("  No named encoder presets are currently defined.");
+    println!();
+    println!("The `--preset <name>` option is reserved for future encoder preset catalogs.");
 }
 
 #[cfg(test)]
@@ -2216,17 +2318,44 @@ mod tests {
                 height: 8,
                 pixel_format: Some("yuv420p8".to_string()),
             }),
-            settings: vec!["lossless=true".to_string()],
-            qp: Some(16),
+            settings: vec!["lossless=true".to_string(), "qp=16".to_string()],
             frames: None,
             ..EncodeArgs::default()
         };
 
         let err = encode_job(&args).expect_err("QP and lossless should conflict");
         assert!(
-            err.contains("--qp is mutually exclusive with --set lossless"),
+            err.contains("--set qp=<1..255> is mutually exclusive with --set lossless"),
             "{err}"
         );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn encode_job_accepts_qp_setting() {
+        let path = temp_yuv_path("one_frame_8x8_qp_setting");
+        let mut file = File::create(&path).expect("create temp yuv");
+        file.write_all(&vec![0; 8 * 8 * 3 / 2])
+            .expect("write temp yuv");
+        drop(file);
+
+        let args = EncodeArgs {
+            input: Some(path.to_string_lossy().to_string()),
+            output: Some("out.obu".to_string()),
+            codec: Some("av2".to_string()),
+            video: Some(args::VideoSpec {
+                width: 8,
+                height: 8,
+                pixel_format: Some("yuv420p8".to_string()),
+            }),
+            settings: vec!["qp=24".to_string()],
+            frames: None,
+            ..EncodeArgs::default()
+        };
+
+        let job = encode_job(&args).expect("qp setting should parse");
+        assert!(!job.lossless);
+        assert_eq!(job.qp, Some(24));
         let _ = fs::remove_file(path);
     }
 

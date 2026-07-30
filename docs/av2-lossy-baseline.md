@@ -61,7 +61,7 @@ FrameFinery Engine command shape:
 ```sh
 ./ff encode <input.y4m> --frames 50 \
   --encode av2:<output.obu> \
-  --qp 24
+  --set qp=24
 ```
 
 Reference command shape: ffmpeg/libaom AV1 with the
@@ -167,7 +167,7 @@ realtime-screen target:
 Current 50-frame three-way comparison with the RGB screen-capture slot:
 
 The ffmpeg/libaom row is the realtime-screen predictive baseline. The RGB
-FrameFinery Engine row now uses `--qp 24 --set predictive`; the remaining non-RGB QP24
+FrameFinery Engine row now uses `--set predictive --set qp=24`; the remaining non-RGB QP24
 rows are the previous non-predictive guardrail. For the RGB row, ffmpeg is fed
 raw packed `rgb24`, converted to full-range `gbrp` with GBR matrix metadata,
 and scored against decoded packed RGB output.
@@ -387,7 +387,7 @@ horizontal, or vertical predictor once and reuses it while building the
 source, predictor, and residual arrays.
 
 The comparison target also gained `COMPRESSION_QP`, which forwards the
-dedicated `./ff encode --qp` option and lets the 50-frame lossless manifest be
+`./ff encode --set qp=<1..255>` setting and lets the 50-frame lossless manifest be
 reused for explicit lossy QP runs without also passing `--set lossless`.
 
 Validation:
@@ -1242,7 +1242,7 @@ encoder can later move from coded-lossless-compatible QP syntax to a regular
 nonzero-q transform path.
 
 The new header model carries `base_qindex`, qmatrix enablement, and a disabled
-delta-q configuration. Current `--qp` encodes still deliberately map to
+delta-q configuration. Current `--set qp=<1..255>` encodes still deliberately map to
 `base_qindex=0` because the residual writer still emits pre-quantized residuals
 through the lossless-compatible 4x4 coefficient path. A TODO is left at that
 mapping so the next regular lossy coefficient implementation can switch to
@@ -1267,7 +1267,7 @@ manual SceneComposition_1 first-frame QP24 encode
 
 ### Regular-Q Intra Syntax
 
-This checkpoint switches AV2 `--qp` key-frame syntax from the temporary
+This checkpoint switches AV2 `--set qp=<1..255>` key-frame syntax from the temporary
 coded-lossless-compatible qindex to a nonzero `base_qindex = qp` path. The
 frame header now signals disabled delta-q syntax for regular-q frames, skips
 lossless-only luma/chroma BDPCM mode flags, and constrains chroma to DCT-only
@@ -1596,7 +1596,7 @@ cargo test -p framefinery-codecs --all-features av2_lossy -- --nocapture
 cargo test -p framefinery-codecs --all-features av2_lossless -- --nocapture
 make compare-compression CODEC=av2 COMPRESSION_SET=local-aomctc-b2-scc-1080p-lossless-50f COMPRESSION_REFERENCE_BACKEND=ffmpeg-libaom COMPRESSION_REFERENCE_PRESET=realtime-screen COMPRESSION_SETTINGS=predictive COMPRESSION_QP=24 COMPRESSION_DIRECT_SOURCE_FILES=1
 manual six-row first-frame QP24 predictive encode + ffmpeg PSNR with matched raw reconstruction formats
-./ff encode verification/generated/test_vectors/aomctc_b2_SceneComposition_1_420_1920x1080_15_1f_yuv420p8.yuv --frames 1 --encode av2:verification/generated/instrumentation_tuning/final_shared_margin/SceneComposition_1_420_yuv420p8_qp24_1f.obu --recon verification/generated/instrumentation_tuning/final_shared_margin/SceneComposition_1_420_yuv420p8_qp24_1f.recon --qp 24 --set predictive
+./ff encode verification/generated/test_vectors/aomctc_b2_SceneComposition_1_420_1920x1080_15_1f_yuv420p8.yuv --frames 1 --encode av2:verification/generated/instrumentation_tuning/final_shared_margin/SceneComposition_1_420_yuv420p8_qp24_1f.obu --recon verification/generated/instrumentation_tuning/final_shared_margin/SceneComposition_1_420_yuv420p8_qp24_1f.recon --set qp=24 --set predictive
 verification/references/av2/avm/build/avmdec --rawvideo -o verification/generated/instrumentation_tuning/final_shared_margin/SceneComposition_1_420_yuv420p8_qp24_1f_dec.yuv verification/generated/instrumentation_tuning/final_shared_margin/SceneComposition_1_420_yuv420p8_qp24_1f.obu
 cmp verification/generated/instrumentation_tuning/final_shared_margin/SceneComposition_1_420_yuv420p8_qp24_1f.recon verification/generated/instrumentation_tuning/final_shared_margin/SceneComposition_1_420_yuv420p8_qp24_1f_dec.yuv
 make validate-set CODEC=av2 VALIDATION_SET=local-aomctc-b2-scc-1080p-lossless-50f VALIDATION_LIMIT=1 VALIDATION_REFERENCE_MODE=off VALIDATION_SETTINGS=predictive
@@ -1859,7 +1859,7 @@ cargo check -p framefinery-codecs --features av2
 cargo test -p framefinery-codecs --features av2
 cargo check -p framefinery-codecs --features av2-lossy-stats
 make compare-compression CODEC=av2 COMPRESSION_SET=local-aomctc-b2-scc-1080p-lossless-50f COMPRESSION_REFERENCE_BACKEND=ffmpeg-libaom COMPRESSION_REFERENCE_PRESET=realtime-screen COMPRESSION_SETTINGS=predictive COMPRESSION_QP=24 COMPRESSION_DIRECT_SOURCE_FILES=1
-./ff encode verification/generated/test_vectors/aomctc_b2_scc/MissionControlClip1_1920x1080_60_50f_yuv444p10.y4m --frames 1 --encode av2:verification/generated/instrumentation_loop/double_tail_hbd444_1f/mission444.obu --recon verification/generated/instrumentation_loop/double_tail_hbd444_1f/mission444.recon --qp 24 --set predictive
+./ff encode verification/generated/test_vectors/aomctc_b2_scc/MissionControlClip1_1920x1080_60_50f_yuv444p10.y4m --frames 1 --encode av2:verification/generated/instrumentation_loop/double_tail_hbd444_1f/mission444.obu --recon verification/generated/instrumentation_loop/double_tail_hbd444_1f/mission444.recon --set qp=24 --set predictive
 manual MissionControl 4:4:4 50-frame QP24 predictive encode + ffmpeg psnr filter
 verification/references/av2/avm/build/avmdec --codec=av2 --rawvideo -o verification/generated/instrumentation_loop/double_tail_hbd444_50f/mission444_avm.raw verification/generated/instrumentation_loop/double_tail_hbd444_50f/mission444_recon.obu
 make validate-set CODEC=av2 VALIDATION_SET=local-aomctc-b2-scc-1080p-lossless-50f VALIDATION_REFERENCE_MODE=off VALIDATION_SETTINGS=predictive VALIDATION_LIMIT=1

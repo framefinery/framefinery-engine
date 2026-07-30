@@ -54,11 +54,11 @@ def main() -> int:
         default="auto",
         help="decode and compare with reference tools when available",
     )
-    parser.add_argument("--setting", action="append", default=[], help="extra --set key[=value]")
     parser.add_argument(
-        "--qp",
-        type=parse_qp,
-        help="pass a lossy AV2/VVC --qp value and treat manifest lossless rows as lossy",
+        "--setting",
+        action="append",
+        default=[],
+        help="extra --set key[=value]; qp=<1..255> treats manifest lossless rows as lossy",
     )
     parser.add_argument(
         "--force-lossy",
@@ -77,8 +77,9 @@ def main() -> int:
     )
     parser.add_argument("--stop-on-fail", action="store_true")
     args = parser.parse_args()
-    if args.qp is not None and args.codec.lower() not in ("av2", "vvc"):
-        parser.error("--qp is currently supported for AV2 and VVC validation only")
+    args.qp_setting = qp_setting(args.setting)
+    if args.qp_setting is not None and args.codec.lower() not in ("av2", "vvc"):
+        parser.error("qp is currently supported for AV2 and VVC validation only")
 
     if not args.ff.exists():
         print(f"error: missing CLI binary: {args.ff}; run 'make build' first", file=sys.stderr)
@@ -179,8 +180,6 @@ def run_file_case(
     )
     if effective_lossless(vector, args):
         command.extend(["--set", "lossless"])
-    if args.qp is not None:
-        command.extend(["--qp", str(args.qp)])
     return run_command(
         vector_path.name,
         output,
@@ -217,8 +216,6 @@ def run_source_case(vector: generate_test_vectors.TestVector, args: argparse.Nam
     command.extend(["--encode", f"{args.codec}:{output}", "--recon", str(recon)])
     if effective_lossless(vector, args):
         command.extend(["--set", "lossless"])
-    if args.qp is not None:
-        command.extend(["--qp", str(args.qp)])
     return run_command(
         vector.filename,
         output,
@@ -237,7 +234,7 @@ def run_source_case(vector: generate_test_vectors.TestVector, args: argparse.Nam
 
 
 def effective_lossless(vector: generate_test_vectors.TestVector, args: argparse.Namespace) -> bool:
-    return vector.lossless and not args.force_lossy and args.qp is None
+    return vector.lossless and not args.force_lossy and args.qp_setting is None
 
 
 def append_vector_filters(command: list[str], vector: generate_test_vectors.TestVector) -> None:
@@ -264,6 +261,20 @@ def parse_qp(value: str) -> int:
             f"QP expects an integer from 1 through 255, got '{value}'"
         )
     return qp
+
+
+def qp_setting(settings: list[str]) -> int | None:
+    for spec in settings:
+        name, _, value = spec.partition("=")
+        if name != "qp":
+            continue
+        if not value:
+            raise SystemExit("error: --setting qp expects qp=<1..255>")
+        try:
+            return parse_qp(value)
+        except argparse.ArgumentTypeError as err:
+            raise SystemExit(f"error: {err}") from err
+    return None
 
 
 def case_paths(stem: str, args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:

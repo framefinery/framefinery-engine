@@ -63,7 +63,7 @@ make build AV2_SB_BITS=1
 FRAMEFINERY_AV2_SB_BITS=verification/generated/instrumentation/scene_ff_sb.jsonl \
   ./ff encode /media/gabriel/storage/YUV/aomctc/b2_scc/SceneComposition_1.y4m \
   --frames 1 --encode av2:verification/generated/instrumentation/scene_ff.obu \
-  --set predictive --qp 24
+  --set predictive --set qp=24
 ```
 
 Direct libaom:
@@ -126,7 +126,7 @@ make build AV2_LOSSY_STATS=1
 FRAMEFINERY_AV2_LOSSY_STATS=1 \
   ./ff encode /media/gabriel/storage/YUV/aomctc/b2_scc/SceneComposition_1.y4m \
   --frames 1 --encode av2:verification/generated/instrumentation/scene_stats.obu \
-  --set predictive --qp 24 \
+  --set predictive --set qp=24 \
   2> verification/generated/instrumentation/scene_stats.log
 ```
 

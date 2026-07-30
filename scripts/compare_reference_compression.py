@@ -70,15 +70,9 @@ def main() -> int:
         "--setting",
         action="append",
         default=[],
-        help="extra FrameFinery --set key[=value] setting; repeat for multiple settings",
-    )
-    parser.add_argument(
-        "--qp",
-        type=parse_qp,
-        default=None,
         help=(
-            "FrameFinery AV2 lossy QP; when present, it overrides manifest "
-            "lossless=true rows for the FrameFinery encode"
+            "extra FrameFinery --set key[=value] setting; qp=<1..255> "
+            "overrides manifest lossless=true rows for the FrameFinery encode"
         ),
     )
     parser.add_argument(
@@ -133,6 +127,7 @@ def main() -> int:
     args.reference_threads = parse_auto_int(args.reference_threads, "reference threads", 1)
     args.avm_tile_columns = parse_auto_int(args.avm_tile_columns, "AVM tile columns", 0)
     args.avm_tile_rows = parse_auto_int(args.avm_tile_rows, "AVM tile rows", 0)
+    args.qp = qp_setting(args.setting)
 
     if not args.ff.exists():
         print(f"error: missing CLI binary: {args.ff}; run 'make build' first", file=sys.stderr)
@@ -342,8 +337,6 @@ def run_case(
         framefinery_cmd.extend(["--set", "lossless"])
     for setting in args.setting:
         framefinery_cmd.extend(["--set", setting])
-    if args.qp is not None:
-        framefinery_cmd.extend(["--qp", str(args.qp)])
     reference_cmd = reference_encode_command(
         vector,
         vector_path,
@@ -1250,6 +1243,20 @@ def parse_qp(value: str) -> int:
             f"QP expects an integer from 1 through 255, got '{value}'"
         )
     return qp
+
+
+def qp_setting(settings: list[str]) -> int | None:
+    for spec in settings:
+        name, _, value = spec.partition("=")
+        if name != "qp":
+            continue
+        if not value:
+            raise SystemExit("error: --setting qp expects qp=<1..255>")
+        try:
+            return parse_qp(value)
+        except argparse.ArgumentTypeError as err:
+            raise SystemExit(f"error: {err}") from err
+    return None
 
 
 def result_mode(result: ComparisonResult) -> str:

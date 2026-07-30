@@ -1596,9 +1596,9 @@ Checkpoint: `vvc-intra-feature-default`.
 
 Changes retained:
 
-- VVC now accepts CLI `--qp` and maps it into the emitted slice QP. Chroma QP
+- VVC now accepts CLI `--set qp=<1..255>` and maps it into the emitted slice QP. Chroma QP
   follows the existing VVC lossy chroma offset, preserving the old default when
-  `--qp` is omitted.
+  `qp` is omitted.
 - Packed `rgb24` source handling moved into the common frame conversion layer.
   AV2 and VVC now use the same reversible `rgb24` <-> planar `gbrp8`
   conversion at the CLI boundary, while codec internals continue to consume
@@ -1678,7 +1678,7 @@ FRAMEFINERY_VVC_CTU_BITS=verification/generated/profiling/vvc_ctu_bits_probe.jso
   --frames 1 \
   --encode vvc:verification/generated/profiling/vvc_stats_probe.obu \
   --recon verification/generated/profiling/vvc_stats_probe.recon \
-  --qp 24
+  --set qp=24
 ```
 
 Validation:
@@ -2176,7 +2176,7 @@ FRAMEFINERY_VVC_CTU_BITS=verification/generated/profiling/vvc_intra_candidate_ct
   --frames 1 \
   --encode vvc:verification/generated/profiling/vvc_intra_candidate_probe.vvc \
   --recon verification/generated/profiling/vvc_intra_candidate_probe_recon.yuv \
-  --qp 24
+  --set qp=24
 
 python3 scripts/summarize_encoder_instrumentation.py \
   --vvc-stats scene420/framefinery=verification/generated/profiling/vvc_intra_candidate_stats_probe.jsonl \
@@ -2462,7 +2462,7 @@ FRAMEFINERY_VVC_CTU_BITS=verification/generated/profiling/vvc_residual_coding_ct
   --frames 1 \
   --encode vvc:verification/generated/profiling/vvc_residual_coding_stats_probe.vvc \
   --recon verification/generated/profiling/vvc_residual_coding_stats_probe_recon.yuv \
-  --qp 24
+  --set qp=24
 
 python3 scripts/summarize_encoder_instrumentation.py \
   --vvc-stats probe=verification/generated/profiling/vvc_residual_coding_stats_probe.jsonl \
@@ -2711,7 +2711,7 @@ FRAMEFINERY_VVC_CTU_BITS=verification/generated/profiling/vvc_residual_tail_ctu_
   --frames 1 \
   --encode vvc:verification/generated/profiling/vvc_residual_tail_probe.vvc \
   --recon verification/generated/profiling/vvc_residual_tail_probe_recon.yuv \
-  --qp 24
+  --set qp=24
 
 python3 scripts/summarize_encoder_instrumentation.py \
   --vvc-stats scene420/framefinery=verification/generated/profiling/vvc_residual_tail_stats_probe.jsonl \
@@ -3794,7 +3794,7 @@ FRAMEFINERY_VVC_CTU_BITS=verification/generated/profiling/vvc_mpm_aligned_scene4
   --video 1920x1080:yuv420p8 --frames 1 --fps 15 \
   --encode vvc:verification/generated/profiling/vvc_mpm_aligned_scene420_lossy_1f.vvc \
   --recon verification/generated/profiling/vvc_mpm_aligned_scene420_lossy_1f_recon.yuv \
-  --qp 24
+  --set qp=24
 ```
 
 Probe result: 233,233 encoded bytes, PSNR 26.126 dB, and VVC stats reported

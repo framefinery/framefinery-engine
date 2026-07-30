@@ -18,6 +18,7 @@ pub struct StageInfo {
 pub enum SettingValue {
     Boolean,
     Choice(&'static [&'static str]),
+    IntegerRange { min: u16, max: u16 },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -52,6 +53,9 @@ impl SettingValue {
                 "true" | "false" | "1" | "0" | "yes" | "no" | "on" | "off"
             ),
             SettingValue::Choice(values) => values.contains(&value),
+            SettingValue::IntegerRange { min, max } => value
+                .parse::<u16>()
+                .is_ok_and(|parsed| (min..=max).contains(&parsed)),
         }
     }
 }
@@ -64,11 +68,20 @@ pub const GLOBAL_SETTINGS: &[SettingInfo] = &[SettingInfo {
 
 const NO_SETTINGS: &[SettingInfo] = &[];
 
-const AV2_SETTINGS: &[SettingInfo] = &[SettingInfo {
-    name: "predictive",
-    value: SettingValue::Boolean,
-    summary: "enable experimental AV2 multi-picture predictive coding tools",
-}];
+const QP_SETTING: SettingInfo = SettingInfo {
+    name: "qp",
+    value: SettingValue::IntegerRange { min: 1, max: 255 },
+    summary: "request lossy quantization quality",
+};
+
+const AV2_SETTINGS: &[SettingInfo] = &[
+    QP_SETTING,
+    SettingInfo {
+        name: "predictive",
+        value: SettingValue::Boolean,
+        summary: "enable experimental AV2 multi-picture predictive coding tools",
+    },
+];
 
 const PREDICTIVE_SETTING: SettingInfo = SettingInfo {
     name: "predictive",
@@ -85,6 +98,7 @@ const VVC_FAST_SEARCH_VALUES: &[&str] = &[
 ];
 
 const VVC_SETTINGS: &[SettingInfo] = &[
+    QP_SETTING,
     PREDICTIVE_SETTING,
     SettingInfo {
         name: "fast-search",
@@ -118,6 +132,7 @@ pub fn setting_values_label(setting: SettingInfo) -> String {
     match setting.value {
         SettingValue::Boolean => "true|false".to_string(),
         SettingValue::Choice(values) => values.join("|"),
+        SettingValue::IntegerRange { min, max } => format!("{min}..{max}"),
     }
 }
 

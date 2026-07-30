@@ -70,6 +70,11 @@ The installed command name is intended to be short:
 
 ```sh
 ./ff --help
+./ff --help codecs
+./ff --help filters
+./ff --help pixfmt
+./ff --help settings
+./ff --help presets
 ```
 
 Run the default local quality gate:
@@ -134,12 +139,18 @@ The CLI entry point is `ff`. The initial interface is centered on stage
 discovery and a single encode action:
 
 ```sh
+ff --help
+ff --help codecs
+ff --help filters
+ff --help pixfmt
+ff --help settings
+ff --help presets
 ff codecs
 ff filters
 ff encode input.yuv --video 640x360:yuv444p \
   --encode av2:output.obu --set lossless
 ff encode input.y4m --encode av2:output.obu --set lossless
-ff encode input.y4m --encode av2:output.obu --qp 24
+ff encode input.y4m --encode av2:output.obu --set qp=24
 ff encode --filter pattern=checker --video 64x64:yuv444p \
   --frames 1 --encode av2:pattern.obu
 ff encode input_640x360_30_1f_yuv444p8.yuv \
@@ -147,7 +158,7 @@ ff encode input_640x360_30_1f_yuv444p8.yuv \
 ff encode input_640x360_30_1f_yuv444p8.yuv \
   --encode av2:output.obu --recon output_recon.yuv
 ff encode input_640x360_30_1f_yuv444p8.yuv \
-  --encode av2:output.obu --qp 24 --psnr
+  --encode av2:output.obu --set qp=24 --psnr
 ```
 
 The commands validate command-line structure and report stage availability.
@@ -167,13 +178,13 @@ Current option placement and inference rules:
 - Source filters require explicit `--frames` because they do not have a file
   EOF.
 - Output/encoder options, such as `--recon output.yuv`, `--psnr`,
-  `--set lossless`, `--qp <1..255>`, `--preset`, and repeated
+  `--set lossless`, `--set qp=<1..255>`, `--preset`, and repeated
   `--set key[=value]`, belong after `--encode codec:output`.
 - `--recon <path>` writes the encoder's internal reconstructed raw stream for
   debugging and reference validation. `--psnr` calculates per-frame PSNR from
   that same internal reconstruction without writing the raw reconstruction
   stream.
-- Bare `--set` keys imply `true`. `--qp` requests lossy AV2 or VVC
+- Bare `--set` keys imply `true`. `--set qp=<1..255>` requests lossy AV2 or VVC
   quantization and is mutually exclusive with `--set lossless`; lower values
   preserve more detail.
 

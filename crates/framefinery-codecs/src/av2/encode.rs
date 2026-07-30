@@ -152,7 +152,7 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
         }
         if stream_format.chroma_format == Av2ChromaFormat::Yuv422 && options.qp.is_none() {
             return Err(format!(
-                "AV2 non-lossless encode is not implemented for {}; pass --qp to use the experimental lossy residual path",
+                "AV2 non-lossless encode is not implemented for {}; pass --set qp=<1..255> to use the experimental lossy residual path",
                 request.format
             ));
         }
@@ -259,7 +259,7 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
         }
         if options.predictive {
             return Err(format!(
-                "AV2 predictive non-lossless encode for {} requires --qp to use the lossy residual path",
+                "AV2 predictive non-lossless encode for {} requires --set qp=<1..255> to use the lossy residual path",
                 request.format
             ));
         }

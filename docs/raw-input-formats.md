@@ -131,7 +131,7 @@ Current behavior:
 
 - AV2 accepts `yuv420p8`/`yuv420p10le`, `yuv422p8`/`yuv422p10le`, and
   `yuv444p8`/`yuv444p10le` natively. `--set lossless` uses the stream-exact
-  paths. `--qp <1..255>` uses the experimental lossy planar residual path for
+  paths. `--set qp=<1..255>` uses the experimental lossy planar residual path for
   4:2:0, 4:2:2, and 4:4:4, with per-transform-block decisions that can still
   emit exact residuals when that is cheaper. Higher AV2 depths are scaled to
   the matching 8-bit format before non-lossless encoding until a
@@ -141,7 +141,7 @@ Current behavior:
   `gbrp8` reconstruction bytes. AV2 also accepts legacy packed `rgb24` by
   re-packing it to the same identity planes before encoding and re-packing the
   reconstruction back to `rgb24`. `--set lossless` keeps the RGB byte stream
-  exact; `--qp <1..255>` uses the same identity-plane interpretation with the
+  exact; `--set qp=<1..255>` uses the same identity-plane interpretation with the
   experimental lossy residual path.
 - VVC accepts `yuv420p8` through `yuv420p12le` natively for the current 4:2:0
   residual path. Higher 4:2:0 depths are scaled to `yuv420p8` before encoding.

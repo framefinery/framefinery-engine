@@ -536,7 +536,7 @@ fn av2_lossy_predictive_requires_qp_for_legacy_444_path() {
     .expect_err("predictive non-lossless 4:4:4 should require the QP residual path");
 
     assert!(
-        err.contains("requires --qp"),
+        err.contains("requires --set qp=<1..255>"),
         "unexpected predictive fallback error: {err}"
     );
 }
