@@ -4,11 +4,13 @@ PRODUCT_FEATURES ?= codec-av2 codec-vvc filter-pattern filter-identity filter-cr
 CARGO_FEATURES ?= all
 AV2_SB_BITS ?= 0
 AV2_LOSSY_STATS ?= 0
+AV2_STATS ?= 0
 VVC_STATS ?= 0
 AV2_SB_BITS_FEATURE := $(if $(filter 1 true yes,$(AV2_SB_BITS)),framefinery-codecs/av2-sb-bit-profile,)
 AV2_LOSSY_STATS_FEATURE := $(if $(filter 1 true yes,$(AV2_LOSSY_STATS)),framefinery-codecs/av2-lossy-stats,)
+AV2_STATS_FEATURE := $(if $(filter 1 true yes,$(AV2_STATS)),framefinery-codecs/av2-stats,)
 VVC_STATS_FEATURE := $(if $(filter 1 true yes,$(VVC_STATS)),framefinery-codecs/vvc-stats,)
-AV2_ANALYSIS_FEATURES := $(strip $(AV2_SB_BITS_FEATURE) $(AV2_LOSSY_STATS_FEATURE))
+AV2_ANALYSIS_FEATURES := $(strip $(AV2_SB_BITS_FEATURE) $(AV2_LOSSY_STATS_FEATURE) $(AV2_STATS_FEATURE))
 VVC_ANALYSIS_FEATURES := $(strip $(VVC_STATS_FEATURE))
 CARGO_BASE_FEATURES := $(if $(filter all,$(strip $(CARGO_FEATURES))),$(PRODUCT_FEATURES),$(strip $(CARGO_FEATURES)))
 CARGO_FLAGS := $(if $(strip $(CARGO_BASE_FEATURES)),--features "$(CARGO_BASE_FEATURES)",) $(if $(strip $(AV2_ANALYSIS_FEATURES)),--features "$(AV2_ANALYSIS_FEATURES)",) $(if $(strip $(VVC_ANALYSIS_FEATURES)),--features "$(VVC_ANALYSIS_FEATURES)",)
@@ -49,6 +51,9 @@ BUILD_BINARY := ./ff
 BUILD_ENV :=
 BUILD_CARGO_PROFILE_FLAG := --release
 BUILD_ARTIFACT_PROFILE := release
+CODE_BROWSER_OUT ?= verification/generated/code_browser/framefinery-engine.html
+CODE_BROWSER_TITLE ?= FrameFinery Engine Code Browser
+CODE_BROWSER_PROFILE_JSON ?=
 ifeq ($(strip $(PROFILE)),gprof)
 BUILD_TARGET_DIR := $(GPROF_TARGET_DIR)
 BUILD_BINARY := ./ff-gprof
@@ -126,6 +131,18 @@ VVC_HOTSPOT_MATRIX_DIR ?= $(VVC_HOTSPOT_RUN_DIR)/encode_matrix
 VVC_HOTSPOT_STATS_DIR ?= $(VVC_HOTSPOT_RUN_DIR)/stats
 VVC_HOTSPOT_BASELINE ?=
 VVC_HOTSPOT_LIMIT ?=
+HOTSPOT_SET ?= $(ENCODE_MATRIX_SET)
+HOTSPOT_RUN ?= latest
+HOTSPOT_CODECS ?= vvc
+HOTSPOT_MODES ?= lossless lossy
+HOTSPOT_OUT_DIR ?= verification/generated/profiling/hotspots
+HOTSPOT_RUN_DIR ?= $(HOTSPOT_OUT_DIR)/$(HOTSPOT_RUN)
+HOTSPOT_MATRIX_DIR ?= $(HOTSPOT_RUN_DIR)/encode_matrix
+HOTSPOT_STATS_DIR ?= $(HOTSPOT_RUN_DIR)/stats
+HOTSPOT_BASELINE ?=
+HOTSPOT_LIMIT ?=
+HOTSPOT_VISUALIZE ?= 0
+HOTSPOT_BROWSER_OUT ?= $(HOTSPOT_RUN_DIR)/code_browser.html
 GEOMETRY_SWEEP_SETS ?= screenshot-sweep-444 screenshot-sweep-444-10bit screenshot-sweep-420-10bit-canary
 GEOMETRY_SWEEP_CODECS ?= av2 vvc
 GEOMETRY_SWEEP_MODES ?= lossless lossy
@@ -180,10 +197,19 @@ EXTERNAL_BENCHMARK_TARGET_PSNR_FLAG := $(if $(strip $(EXTERNAL_BENCHMARK_TARGET_
 EXTERNAL_BENCHMARK_AUTO_TUNE_PSNR_FLAG := $(if $(filter 1 true yes,$(EXTERNAL_BENCHMARK_AUTO_TUNE_PSNR)),--auto-tune-psnr,)
 VVC_HOTSPOT_BASELINE_FLAG := $(if $(strip $(VVC_HOTSPOT_BASELINE)),--baseline-json "$(VVC_HOTSPOT_BASELINE)",)
 VVC_HOTSPOT_LIMIT_FLAG := $(if $(strip $(VVC_HOTSPOT_LIMIT)),--limit "$(VVC_HOTSPOT_LIMIT)",)
+HOTSPOT_CODECS_FLAG := $(foreach codec,$(HOTSPOT_CODECS),--codec "$(codec)")
+HOTSPOT_MODES_FLAG := $(foreach mode,$(HOTSPOT_MODES),--mode "$(mode)")
+HOTSPOT_BASELINE_FLAG := $(if $(strip $(HOTSPOT_BASELINE)),--baseline-json "$(HOTSPOT_BASELINE)",)
+HOTSPOT_LIMIT_FLAG := $(if $(strip $(HOTSPOT_LIMIT)),--limit "$(HOTSPOT_LIMIT)",)
+HOTSPOT_AV2_STATS_FLAG := $(if $(filter av2,$(HOTSPOT_CODECS)),--av2-stats-dir "$(HOTSPOT_STATS_DIR)",)
+HOTSPOT_VVC_STATS_FLAG := $(if $(filter vvc,$(HOTSPOT_CODECS)),--vvc-stats-dir "$(HOTSPOT_STATS_DIR)",)
+HOTSPOT_BUILD_AV2_STATS := $(if $(filter av2,$(HOTSPOT_CODECS)),1,0)
+HOTSPOT_BUILD_VVC_STATS := $(if $(filter vvc,$(HOTSPOT_CODECS)),1,0)
+CODE_BROWSER_PROFILE_FLAG := $(if $(strip $(CODE_BROWSER_PROFILE_JSON)),--profile-json "$(CODE_BROWSER_PROFILE_JSON)",)
 GEOMETRY_SWEEP_AV2_SETTINGS_FLAG := $(foreach setting,$(GEOMETRY_SWEEP_AV2_SETTINGS),--setting $(setting))
 GPROF_PROFILE_SETTINGS_FLAG := $(foreach setting,$(GPROF_PROFILE_SETTINGS),--set "$(setting)")
 
-.PHONY: help check-tools fmt check clippy-perf test build debug run reference-list reference-setup test-vector-sets test-vectors validate-set compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-vvc-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check
+.PHONY: help check-tools fmt check clippy-perf test build debug run code-browser reference-list reference-setup test-vector-sets test-vectors validate-set compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check
 
 help:
 	@printf '%s\n' \
@@ -196,7 +222,8 @@ help:
 		'  make build            Build release CLI and copy it to ./ff' \
 		'                         Set AV2_SB_BITS=1 to compile AV2 per-superblock bit JSONL support' \
 		'                         Set AV2_LOSSY_STATS=1 to compile AV2 lossy mode/TXB stats' \
-		'                         Set VVC_STATS=1 to compile VVC stage timing and CTU bit JSONL support' \
+		'                         Set AV2_STATS=1 to compile AV2 wall-time JSONL support' \
+		'                         Set VVC_STATS=1 to compile VVC wall-time and CTU bit JSONL support' \
 		'  make build PROFILE=optimized' \
 		'                         Build ThinLTO/codegen-units=1 experiment to ./ff-optimized' \
 		'  make build PROFILE=gprof' \
@@ -206,6 +233,9 @@ help:
 		'                         Override GPROF_SAMPLE_RUNS, GPROF_PROFILE_INPUT, or GPROF_PROFILE_SETTINGS' \
 		'  make debug            Build the debug workspace artifacts' \
 		'  make run ARGS="..."   Run the ff CLI' \
+		'  make code-browser     Generate a standalone Rust module/code browser' \
+		'                         Override CODE_BROWSER_OUT=verification/generated/code_browser/name.html' \
+		'                         Add CODE_BROWSER_PROFILE_JSON=path/to/hotspots_profile.json for wall-time heatmaps' \
 		'  make reference-list   List declared external reference tools' \
 		'  make reference-setup  Clone/build declared references, REFERENCE_CODEC=all' \
 		'  make test-vector-sets List generated-vector manifests' \
@@ -250,12 +280,12 @@ help:
 		'                         Set PGO_PROFILE=optimized for ThinLTO/codegen-units=1 PGO' \
 		'  make llvm-vector-remarks' \
 		'                         Emit LLVM vectorization remarks for framefinery-codecs' \
-		'  make profile-vvc-hotspots' \
-		'                         Build VVC stats and profile VVC first-frame lossy/lossless hotspots' \
-		'                         Writes under VVC_HOTSPOT_OUT_DIR/VVC_HOTSPOT_RUN' \
-		'                         Set VVC_HOTSPOT_LIMIT=N for a short smoke run' \
-		'  make summarize-vvc-hotspots' \
-		'                         Summarize a previous VVC hotspot run' \
+		'  make profile-hotspots' \
+		'                         Build gated wall-time stats and profile first-frame codec hotspots' \
+		'                         Set HOTSPOT_CODECS="av2 vvc" HOTSPOT_VISUALIZE=1 for heatmap browser output' \
+		'                         Writes under HOTSPOT_OUT_DIR/HOTSPOT_RUN' \
+		'  make summarize-hotspots' \
+		'                         Summarize a previous generic hotspot run' \
 		'  make validate-geometry-sweep' \
 		'                         Run small geometry sweeps for AV2/VVC lossy/lossless modes' \
 		'  make regression       Run smoke validation for AV2 and VVC' \
@@ -293,6 +323,9 @@ debug:
 
 run:
 	$(CARGO) run -p framefinery-cli $(CARGO_FLAGS) -- $(ARGS)
+
+code-browser:
+	$(PYTHON) scripts/generate_rust_code_browser.py --root . --output "$(CODE_BROWSER_OUT)" --title "$(CODE_BROWSER_TITLE)" $(CODE_BROWSER_PROFILE_FLAG)
 
 reference-list:
 	$(PYTHON) scripts/reference_tools.py list --codec "$(REFERENCE_CODEC)"
@@ -352,13 +385,22 @@ llvm-vector-remarks:
 	CARGO_TARGET_DIR="$(LLVM_REMARK_TARGET_DIR)" \
 	$(CARGO) rustc --release -p "$(LLVM_REMARK_CRATE)" --features "$(LLVM_REMARK_FEATURES)" --lib
 
+profile-hotspots:
+	$(MAKE) build AV2_STATS=$(HOTSPOT_BUILD_AV2_STATS) VVC_STATS=$(HOTSPOT_BUILD_VVC_STATS)
+	$(PYTHON) scripts/benchmark_encode_matrix.py "$(HOTSPOT_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(HOTSPOT_MATRIX_DIR)" --run-name "$(HOTSPOT_RUN)" $(HOTSPOT_CODECS_FLAG) $(HOTSPOT_MODES_FLAG) --frames 1 --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(HOTSPOT_AV2_STATS_FLAG) $(HOTSPOT_VVC_STATS_FLAG) $(HOTSPOT_BASELINE_FLAG) $(HOTSPOT_LIMIT_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG)
+	$(PYTHON) scripts/summarize_hotspots.py "$(HOTSPOT_RUN_DIR)" --encode-matrix-json "$(HOTSPOT_MATRIX_DIR)/$(HOTSPOT_RUN).json" $(HOTSPOT_CODECS_FLAG)
+	@if [ "$(HOTSPOT_VISUALIZE)" = "1" ] || [ "$(HOTSPOT_VISUALIZE)" = "true" ] || [ "$(HOTSPOT_VISUALIZE)" = "yes" ]; then \
+		$(PYTHON) scripts/generate_rust_code_browser.py --root . --output "$(HOTSPOT_BROWSER_OUT)" --title "FrameFinery Engine Hotspots: $(HOTSPOT_RUN)" --profile-json "$(HOTSPOT_RUN_DIR)/hotspots_profile.json"; \
+	fi
+
 profile-vvc-hotspots:
-	$(MAKE) build VVC_STATS=1
-	$(PYTHON) scripts/benchmark_encode_matrix.py "$(VVC_HOTSPOT_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(VVC_HOTSPOT_MATRIX_DIR)" --run-name "$(VVC_HOTSPOT_RUN)" --codec vvc --mode lossless --mode lossy --frames 1 --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) --vvc-stats-dir "$(VVC_HOTSPOT_STATS_DIR)" $(VVC_HOTSPOT_BASELINE_FLAG) $(VVC_HOTSPOT_LIMIT_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG)
-	$(PYTHON) scripts/summarize_vvc_hotspots.py "$(VVC_HOTSPOT_RUN_DIR)" --encode-matrix-json "$(VVC_HOTSPOT_MATRIX_DIR)/$(VVC_HOTSPOT_RUN).json"
+	$(MAKE) profile-hotspots HOTSPOT_SET="$(VVC_HOTSPOT_SET)" HOTSPOT_RUN="$(VVC_HOTSPOT_RUN)" HOTSPOT_CODECS=vvc HOTSPOT_OUT_DIR="$(VVC_HOTSPOT_OUT_DIR)" HOTSPOT_BASELINE="$(VVC_HOTSPOT_BASELINE)" HOTSPOT_LIMIT="$(VVC_HOTSPOT_LIMIT)" HOTSPOT_VISUALIZE="$(HOTSPOT_VISUALIZE)"
+
+summarize-hotspots:
+	$(PYTHON) scripts/summarize_hotspots.py "$(HOTSPOT_RUN_DIR)" --encode-matrix-json "$(HOTSPOT_MATRIX_DIR)/$(HOTSPOT_RUN).json" $(HOTSPOT_CODECS_FLAG)
 
 summarize-vvc-hotspots:
-	$(PYTHON) scripts/summarize_vvc_hotspots.py "$(VVC_HOTSPOT_RUN_DIR)" --encode-matrix-json "$(VVC_HOTSPOT_MATRIX_DIR)/$(VVC_HOTSPOT_RUN).json"
+	$(MAKE) summarize-hotspots HOTSPOT_RUN="$(VVC_HOTSPOT_RUN)" HOTSPOT_CODECS=vvc HOTSPOT_OUT_DIR="$(VVC_HOTSPOT_OUT_DIR)"
 
 validate-geometry-sweep: build
 	for codec in $(GEOMETRY_SWEEP_CODECS); do \

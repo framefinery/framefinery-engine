@@ -66,6 +66,23 @@ Run the CLI:
 make run ARGS="--help"
 ```
 
+Generate a standalone Rust module/code browser:
+
+```sh
+make code-browser
+```
+
+The generated HTML is written under `verification/generated/code_browser/`.
+To overlay gated wall-time profiling data on the same browser, run:
+
+```sh
+make profile-hotspots HOTSPOT_CODECS="av2 vvc" HOTSPOT_VISUALIZE=1
+```
+
+That workflow builds only the requested compile-gated stats features and writes
+the matrix, wall-time summary, raw JSONL traces, and heatmap browser under
+`verification/generated/profiling/hotspots/`.
+
 The installed command name is intended to be short:
 
 ```sh
@@ -129,9 +146,10 @@ make build CARGO_FEATURES=
 `filter-pattern` feature enables input-free generated pattern sources for
 fixtures. `filter-identity` enables the no-op transform filter used to exercise
 the executable frame pipeline. Other filter features are discovery placeholders
-for now. Analysis-only features, such as AV2
-superblock bit accounting, are enabled through dedicated Makefile switches like
-`AV2_SB_BITS=1` so the normal product build is not slowed by instrumentation.
+for now. Analysis-only features, such as AV2 superblock bit accounting and codec
+wall-time profiling, are enabled through dedicated Makefile switches like
+`AV2_SB_BITS=1`, `AV2_STATS=1`, and `VVC_STATS=1` so the normal product build is
+not slowed by instrumentation.
 
 ## CLI Shape
 

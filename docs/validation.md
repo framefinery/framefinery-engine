@@ -255,28 +255,30 @@ FRAMEFINERY_VVC_CTU_BITS=verification/generated/profiling/vvc_ctu_bits.jsonl \
   --encode vvc:verification/generated/profiling/framefinery_vvc.obu --set qp=24
 ```
 
-For the current VVC performance loop, `make profile-vvc-hotspots` builds with
-`VVC_STATS=1`, runs VVC lossy and lossless first-frame encodes over the six
-screen-content vectors from `VVC_HOTSPOT_SET`, writes one stats JSONL file per
-case, and emits an encode matrix plus hotspot summary:
+For codec wall-time profiling, `make profile-hotspots` builds only the requested
+gated stats features, runs first-frame encodes over the selected vectors, writes
+one stats JSONL file per case, and emits an encode matrix plus hotspot summary.
+Set `HOTSPOT_VISUALIZE=1` to generate a Rust code-browser heatmap from the same
+wall-time profile:
 
 ```sh
-make profile-vvc-hotspots
-make profile-vvc-hotspots VVC_HOTSPOT_RUN=vvc-rd-audit
-make summarize-vvc-hotspots VVC_HOTSPOT_RUN=vvc-rd-audit
+make profile-hotspots HOTSPOT_CODECS=vvc
+make profile-hotspots HOTSPOT_CODECS="av2 vvc" HOTSPOT_VISUALIZE=1
+make profile-hotspots HOTSPOT_CODECS=vvc HOTSPOT_RUN=vvc-rd-audit
+make summarize-hotspots HOTSPOT_CODECS=vvc HOTSPOT_RUN=vvc-rd-audit
 ```
 
 The default output root is:
 
 ```text
-verification/generated/profiling/vvc_hotspots/latest/
+verification/generated/profiling/hotspots/latest/
 ```
 
-The hotspot summary ranks frame stages, timed counters such as prediction,
-residual build, RD scoring, transform-skip candidate checks, transformed
-quantization, reconstruction fill, and candidate pressure counters. Generated
-profiling outputs stay under `verification/generated/` and should remain
-uncommitted.
+The hotspot summary ranks frame stages and timed counters by accumulated wall
+time only. Candidate and mode-count counters may remain in the gated raw JSONL
+for targeted analysis, but they are not part of the primary wall-time hotspot
+view. Generated profiling outputs stay under `verification/generated/` and
+should remain uncommitted.
 
 For local source-file manifests backed by large Y4M inputs, set
 `COMPRESSION_DIRECT_SOURCE_FILES=1` to feed the source path directly and use

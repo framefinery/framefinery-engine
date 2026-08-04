@@ -26,6 +26,7 @@ mod planar;
 #[cfg(feature = "av2-sb-bit-profile")]
 #[path = "bitstream/sb_bits.rs"]
 mod sb_bits;
+mod stats;
 #[path = "bitstream/syntax.rs"]
 mod syntax;
 mod tile;

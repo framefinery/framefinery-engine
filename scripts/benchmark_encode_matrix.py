@@ -88,6 +88,11 @@ def main() -> int:
         help="optional previous JSON report to include byte/fps deltas",
     )
     parser.add_argument(
+        "--av2-stats-dir",
+        type=Path,
+        help="optional directory for per-case FRAMEFINERY_AV2_STATS JSONL files",
+    )
+    parser.add_argument(
         "--vvc-stats-dir",
         type=Path,
         help="optional directory for per-case FRAMEFINERY_VVC_STATS JSONL files",
@@ -267,9 +272,12 @@ def run_case(
     output = case_dir / f"{stem}.{codec_extension(codec)}"
     recon = case_dir / f"{stem}_recon.{raw_extension(vector)}"
     log = log_dir / f"{codec}_{mode}_{stem}.log"
-    vvc_stats_path = vvc_stats_path_for_case(codec, mode, stem, args)
+    av2_stats_path = codec_stats_path_for_case(codec, mode, stem, args, "av2")
+    vvc_stats_path = codec_stats_path_for_case(codec, mode, stem, args, "vvc")
     output.unlink(missing_ok=True)
     recon.unlink(missing_ok=True)
+    if av2_stats_path is not None:
+        av2_stats_path.unlink(missing_ok=True)
     if vvc_stats_path is not None:
         vvc_stats_path.unlink(missing_ok=True)
 
@@ -304,8 +312,11 @@ def run_case(
         command.extend(["--set", f"qp={args.vvc_lossy_qp}"])
 
     env = None
-    if vvc_stats_path is not None:
+    if av2_stats_path is not None:
         env = os.environ.copy()
+        env["FRAMEFINERY_AV2_STATS"] = str(av2_stats_path)
+    if vvc_stats_path is not None:
+        env = env or os.environ.copy()
         env["FRAMEFINERY_VVC_STATS"] = str(vvc_stats_path)
 
     start = time.perf_counter()
@@ -350,6 +361,9 @@ def run_case(
         "recon_sha256": sha256_file(recon) if args.write_recon else "n/a",
         "log": str(relpath(log)),
     }
+    if av2_stats_path is not None:
+        require_non_empty(av2_stats_path, "AV2 stats", vector.filename, log)
+        result["av2_stats"] = str(relpath(av2_stats_path))
     if vvc_stats_path is not None:
         require_non_empty(vvc_stats_path, "VVC stats", vector.filename, log)
         result["vvc_stats"] = str(relpath(vvc_stats_path))
@@ -357,17 +371,21 @@ def run_case(
     return result
 
 
-def vvc_stats_path_for_case(
+def codec_stats_path_for_case(
     codec: str,
     mode: str,
     stem: str,
     args: argparse.Namespace,
+    stats_codec: str,
 ) -> Path | None:
-    if codec != "vvc" or args.vvc_stats_dir is None:
+    if codec != stats_codec:
         return None
-    stats_dir = args.vvc_stats_dir.resolve()
+    stats_dir = getattr(args, f"{stats_codec}_stats_dir")
+    if stats_dir is None:
+        return None
+    stats_dir = stats_dir.resolve()
     stats_dir.mkdir(parents=True, exist_ok=True)
-    return stats_dir / f"vvc_{mode}_{stem}.jsonl"
+    return stats_dir / f"{stats_codec}_{mode}_{stem}.jsonl"
 
 
 def source_path_for_vector(

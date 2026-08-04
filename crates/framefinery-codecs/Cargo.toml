@@ -15,6 +15,7 @@ criterion = "0.5"
 [features]
 default = []
 av2 = []
+av2-stats = ["av2"]
 av2-lossy-stats = ["av2"]
 av2-sb-bit-profile = ["av2"]
 bench-internals = ["av2", "vvc"]
