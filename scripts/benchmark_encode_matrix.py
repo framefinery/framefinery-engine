@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 from dataclasses import replace
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +77,11 @@ def main() -> int:
         "--cleanup-recon",
         action="store_true",
         help="delete each reconstruction artifact after checksums are collected; only used with --write-recon",
+    )
+    parser.add_argument(
+        "--cleanup-output",
+        action="store_true",
+        help="delete each encoded bitstream after size and checksum are collected",
     )
     parser.add_argument(
         "--write-recon",
@@ -146,8 +152,9 @@ def main() -> int:
         results.append(result)
         delta = delta_label(result)
         print(
-            "  bytes={bytes} fps={fps:.2f} psnr={psnr}{delta}".format(
+            "  bytes={bytes} bitrate_kbps={bitrate} fps={fps:.2f} psnr={psnr}{delta}".format(
                 bytes=result["bytes"],
+                bitrate=format_optional_one_decimal(result.get("bitrate_kbps")),
                 fps=result["fps"],
                 psnr=format_optional_float(result.get("psnr_all_mean")),
                 delta=delta,
@@ -167,6 +174,7 @@ def main() -> int:
         "vvc_lossy_qp": args.vvc_lossy_qp,
         "vvc_fast_search": args.vvc_fast_search,
         "cleanup_recon": args.cleanup_recon,
+        "cleanup_output": args.cleanup_output,
         "write_recon": args.write_recon,
         "skipped": skipped,
         "results": results,
@@ -187,6 +195,7 @@ def rerender_report(args: argparse.Namespace) -> int:
     report.setdefault("vvc_lossy_qp", args.vvc_lossy_qp)
     report.setdefault("vvc_fast_search", args.vvc_fast_search)
     report.setdefault("cleanup_recon", False)
+    report.setdefault("cleanup_output", False)
     report.setdefault("write_recon", True)
     results = report.get("results", [])
     baseline = load_baseline(args.baseline_json)
@@ -343,6 +352,16 @@ def run_case(
         )
 
     fps = vector.frames / elapsed if elapsed > 0.0 else math.inf
+    bitstream_size = output.stat().st_size
+    bitstream_sha256 = sha256_file(output)
+    recon_sha256 = sha256_file(recon) if args.write_recon else "n/a"
+    source_fps = source_fps_value(vector.fps)
+    duration_seconds = vector.frames / source_fps if source_fps is not None else None
+    bitrate_kbps = (
+        (bitstream_size * 8.0 / duration_seconds) / 1000.0
+        if duration_seconds is not None and duration_seconds > 0.0
+        else None
+    )
     result = {
         "codec": codec,
         "mode": mode_label(codec, mode, args),
@@ -353,12 +372,15 @@ def run_case(
         "width": vector.width,
         "height": vector.height,
         "frames": vector.frames,
-        "bytes": output.stat().st_size,
+        "bytes": bitstream_size,
+        "bitrate_kbps": bitrate_kbps,
+        "source_fps": source_fps,
+        "duration_seconds": duration_seconds,
         "seconds": elapsed,
         "fps": fps,
         "psnr_all_mean": psnr_all_mean,
-        "bitstream_sha256": sha256_file(output),
-        "recon_sha256": sha256_file(recon) if args.write_recon else "n/a",
+        "bitstream_sha256": bitstream_sha256,
+        "recon_sha256": recon_sha256,
         "log": str(relpath(log)),
     }
     if av2_stats_path is not None:
@@ -367,7 +389,7 @@ def run_case(
     if vvc_stats_path is not None:
         require_non_empty(vvc_stats_path, "VVC stats", vector.filename, log)
         result["vvc_stats"] = str(relpath(vvc_stats_path))
-    cleanup_recon_artifact(args, recon)
+    cleanup_success_artifacts(args, output, recon)
     return result
 
 
@@ -411,6 +433,12 @@ def source_file_path(vector: generate_test_vectors.TestVector) -> Path:
 def cleanup_recon_artifact(args: argparse.Namespace, recon: Path) -> None:
     if args.write_recon and args.cleanup_recon:
         recon.unlink(missing_ok=True)
+
+
+def cleanup_success_artifacts(args: argparse.Namespace, output: Path, recon: Path) -> None:
+    if args.cleanup_output:
+        output.unlink(missing_ok=True)
+    cleanup_recon_artifact(args, recon)
 
 
 def mean_psnr_all(output: str) -> float | None:
@@ -554,6 +582,7 @@ def markdown_report(report: dict[str, Any], skipped: int) -> str:
         f"- VVC fast search: `{report.get('vvc_fast_search', 'off')}`",
         f"- Write recon: `{report.get('write_recon', True)}`",
         f"- Cleanup recon: `{report.get('cleanup_recon', False)}`",
+        f"- Cleanup output: `{report.get('cleanup_output', False)}`",
         f"- Skipped combinations: `{skipped}`",
         "",
     ]
@@ -562,13 +591,13 @@ def markdown_report(report: dict[str, Any], skipped: int) -> str:
     lines.extend(
         [
             "",
-            "| Codec | Mode | Vector | Format | Frames | Bytes | FPS | PSNR mean | Delta bytes | Delta FPS | Delta PSNR | Tradeoff | AV2 FPS | AV2 bytes | AV2 PSNR | Log |",
-            "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---|",
+            "| Codec | Mode | Vector | Format | Frames | Bytes | Bitrate kb/s | FPS | PSNR mean | Delta bytes | Delta FPS | Delta PSNR | Tradeoff | AV2 FPS | AV2 bytes | AV2 PSNR | Log |",
+            "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---|",
         ]
     )
     for row in report["results"]:
         lines.append(
-            "| {codec} | {mode} | {vector} | {format} | {frames} | {bytes} | {fps:.2f} | "
+            "| {codec} | {mode} | {vector} | {format} | {frames} | {bytes} | {bitrate} | {fps:.2f} | "
             "{psnr} | {delta_bytes} | {delta_fps} | {delta_psnr} | {tradeoff} | "
             "{av2_fps} | {av2_bytes} | {av2_psnr} | {log} |".format(
                 codec=row["codec"],
@@ -577,6 +606,7 @@ def markdown_report(report: dict[str, Any], skipped: int) -> str:
                 format=row["format"],
                 frames=row["frames"],
                 bytes=row["bytes"],
+                bitrate=format_optional_one_decimal(row.get("bitrate_kbps")),
                 fps=row["fps"],
                 psnr=format_optional_float(row.get("psnr_all_mean")),
                 delta_bytes=format_optional_int(row.get("delta_bytes")),
@@ -671,16 +701,35 @@ def total_rows(results: list[dict[str, Any]]) -> list[str]:
     totals: dict[tuple[str, str], dict[str, float]] = {}
     for row in results:
         key = (row["codec"], row["mode"])
-        total = totals.setdefault(key, {"frames": 0.0, "bytes": 0.0, "seconds": 0.0})
+        total = totals.setdefault(
+            key,
+            {"frames": 0.0, "bytes": 0.0, "seconds": 0.0, "duration_seconds": 0.0},
+        )
         total["frames"] += row["frames"]
         total["bytes"] += row["bytes"]
         total["seconds"] += row["seconds"]
+        if row.get("duration_seconds") is not None:
+            total["duration_seconds"] += row["duration_seconds"]
     if not totals:
         return []
-    lines = ["", "## Totals", "", "| Codec | Mode | Frames | Bytes | FPS |", "|---|---|---:|---:|---:|"]
+    lines = [
+        "",
+        "## Totals",
+        "",
+        "| Codec | Mode | Frames | Bytes | Bitrate kb/s | FPS |",
+        "|---|---|---:|---:|---:|---:|",
+    ]
     for (codec, mode), total in sorted(totals.items()):
         fps = total["frames"] / total["seconds"] if total["seconds"] > 0.0 else math.inf
-        lines.append(f"| {codec} | {mode} | {int(total['frames'])} | {int(total['bytes'])} | {fps:.2f} |")
+        bitrate = (
+            (total["bytes"] * 8.0 / total["duration_seconds"]) / 1000.0
+            if total["duration_seconds"] > 0.0
+            else None
+        )
+        lines.append(
+            f"| {codec} | {mode} | {int(total['frames'])} | {int(total['bytes'])} | "
+            f"{format_optional_one_decimal(bitrate)} | {fps:.2f} |"
+        )
     return lines
 
 
@@ -753,6 +802,15 @@ def raw_extension(vector: generate_test_vectors.TestVector) -> str:
     return "rgb" if vector.fmt in {"gbrp8", "rgb24"} else "yuv"
 
 
+def source_fps_value(value: str | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(Fraction(value))
+    except ValueError:
+        return None
+
+
 def require_non_empty(path: Path, label: str, vector_name: str, log: Path) -> None:
     if not path.exists() or path.stat().st_size == 0:
         raise SystemExit(f"{label} missing or empty for {vector_name}; see {relpath(log)}")
@@ -812,6 +870,14 @@ def format_optional_float(value: Any) -> str:
     if isinstance(value, float) and math.isinf(value):
         return "inf"
     return f"{value:.3f}"
+
+
+def format_optional_one_decimal(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    if isinstance(value, float) and math.isinf(value):
+        return "inf"
+    return f"{value:.1f}"
 
 
 def format_optional_delta_float(value: Any) -> str:

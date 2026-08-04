@@ -72,7 +72,17 @@ catalog:
 
 ```sh
 cargo install framefinery
+ff --help
 ```
+
+API documentation is published by docs.rs after crates.io publication:
+
+```text
+https://docs.rs/framefinery
+```
+
+The CLI guide lives in
+[`docs/cli.md`](https://github.com/framefinery/framefinery-engine/blob/main/docs/cli.md).
 
 Generate a standalone Rust module/code browser:
 
@@ -107,6 +117,18 @@ Run the default local quality gate:
 ```sh
 make release-check
 ```
+
+Release candidates should also run the local AOM CTC release manifest and save
+a performance table for version-to-version comparison:
+
+```sh
+make validate-release-aomctc
+make release-performance-table
+```
+
+Those targets read the local A5/B2 Y4M files under
+`/media/gabriel/storage/YUV/aomctc` directly, avoid decompression, and clean
+encoded/reconstruction artifacts after metrics are collected.
 
 Generate and run the current software encode fixtures:
 

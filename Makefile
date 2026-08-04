@@ -76,9 +76,28 @@ VALIDATION_OUT_DIR ?= verification/generated/test_vectors
 VALIDATION_ENCODED_DIR ?= verification/generated/encoded
 VALIDATION_LOG_DIR ?= verification/generated/validation_logs
 VALIDATION_SOURCE_FILTERS ?= 0
+VALIDATION_DIRECT_SOURCE_FILES ?= 0
 VALIDATION_REFERENCE_MODE ?= auto
 VALIDATION_SETTINGS ?=
+VALIDATION_FRAMES ?=
+VALIDATION_FORCE_LOSSY ?= 0
 VALIDATION_CLEANUP_RECON ?= 0
+VALIDATION_CLEANUP_OUTPUT ?= 0
+RELEASE_AOMCTC_SET ?= release-aomctc
+RELEASE_AOMCTC_FRAMES ?= 1
+RELEASE_AOMCTC_REFERENCE_MODE ?= auto
+RELEASE_AOMCTC_AV2_LOSSY_QP ?= 24
+RELEASE_AOMCTC_VVC_LOSSY_QP ?= 19
+RELEASE_AOMCTC_VVC_SETTINGS ?= predictive fast-search=lossless-speed
+RELEASE_PERFORMANCE_SET ?= release-aomctc
+RELEASE_PERFORMANCE_OUT_DIR ?= verification/generated/release_performance
+RELEASE_PERFORMANCE_RUN ?=
+RELEASE_PERFORMANCE_FRAMES ?= 50
+RELEASE_PERFORMANCE_CODECS ?=
+RELEASE_PERFORMANCE_MODES ?=
+RELEASE_PERFORMANCE_LIMIT ?=
+RELEASE_PERFORMANCE_KEEP_BITSTREAMS ?= 0
+RELEASE_PERFORMANCE_FULL_STREAM ?= 0
 COMPRESSION_SET ?= $(VALIDATION_SET)
 COMPRESSION_OUT_DIR ?= verification/generated/compression_compare
 COMPRESSION_LOG_DIR ?= verification/generated/compression_compare_logs
@@ -109,6 +128,7 @@ ENCODE_MATRIX_VVC_PREDICTIVE ?= 1
 ENCODE_MATRIX_DIRECT_SOURCE_FILES ?= 1
 ENCODE_MATRIX_WRITE_RECON ?= 0
 ENCODE_MATRIX_CLEANUP_RECON ?= 0
+ENCODE_MATRIX_CLEANUP_OUTPUT ?= 0
 EXTERNAL_BENCHMARK_SET ?= local-aomctc-b2-scc-1080p-lossless-50f
 EXTERNAL_BENCHMARK_OUT_DIR ?= verification/generated/market_encoder_compare
 EXTERNAL_BENCHMARK_RUNNER ?= external-drivers/benchmark_external_encoders.py
@@ -163,8 +183,12 @@ REFERENCE_CODEC ?= all
 VALIDATION_STOP_FLAG := $(if $(filter 1 true yes,$(VALIDATION_STOP_ON_FAIL)),--stop-on-fail,)
 VALIDATION_LIMIT_FLAG := $(if $(strip $(VALIDATION_LIMIT)),--limit "$(VALIDATION_LIMIT)",)
 VALIDATION_SOURCE_FLAG := $(if $(filter 1 true yes,$(VALIDATION_SOURCE_FILTERS)),--source-filters,)
+VALIDATION_DIRECT_SOURCE_FLAG := $(if $(filter 1 true yes,$(VALIDATION_DIRECT_SOURCE_FILES)),--direct-source-files,)
 VALIDATION_SETTINGS_FLAG := $(foreach setting,$(VALIDATION_SETTINGS),--setting "$(setting)")
+VALIDATION_FRAMES_FLAG := $(if $(strip $(VALIDATION_FRAMES)),--frames "$(VALIDATION_FRAMES)",)
+VALIDATION_FORCE_LOSSY_FLAG := $(if $(filter 1 true yes,$(VALIDATION_FORCE_LOSSY)),--force-lossy,)
 VALIDATION_CLEANUP_RECON_FLAG := $(if $(filter 1 true yes,$(VALIDATION_CLEANUP_RECON)),--cleanup-recon,)
+VALIDATION_CLEANUP_OUTPUT_FLAG := $(if $(filter 1 true yes,$(VALIDATION_CLEANUP_OUTPUT)),--cleanup-output,)
 COMPRESSION_LIMIT_FLAG := $(if $(strip $(COMPRESSION_LIMIT)),--limit "$(COMPRESSION_LIMIT)",)
 COMPRESSION_REFERENCE_BACKEND_FLAG := --reference-backend "$(COMPRESSION_REFERENCE_BACKEND)"
 COMPRESSION_REFERENCE_PRESET_FLAG := --reference-preset "$(COMPRESSION_REFERENCE_PRESET)"
@@ -188,6 +212,13 @@ ENCODE_MATRIX_VVC_PREDICTIVE_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_VV
 ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_DIRECT_SOURCE_FILES)),--direct-source-files,--no-direct-source-files)
 ENCODE_MATRIX_WRITE_RECON_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_WRITE_RECON)),--write-recon,)
 ENCODE_MATRIX_CLEANUP_RECON_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_CLEANUP_RECON)),--cleanup-recon,)
+ENCODE_MATRIX_CLEANUP_OUTPUT_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_CLEANUP_OUTPUT)),--cleanup-output,)
+RELEASE_PERFORMANCE_RUN_FLAG := $(if $(strip $(RELEASE_PERFORMANCE_RUN)),--run-name "$(RELEASE_PERFORMANCE_RUN)",)
+RELEASE_PERFORMANCE_FRAMES_FLAG := $(if $(filter 1 true yes,$(RELEASE_PERFORMANCE_FULL_STREAM)),--full-stream,--frames "$(RELEASE_PERFORMANCE_FRAMES)")
+RELEASE_PERFORMANCE_CODECS_FLAG := $(foreach codec,$(RELEASE_PERFORMANCE_CODECS),--codec "$(codec)")
+RELEASE_PERFORMANCE_MODES_FLAG := $(foreach mode,$(RELEASE_PERFORMANCE_MODES),--mode "$(mode)")
+RELEASE_PERFORMANCE_LIMIT_FLAG := $(if $(strip $(RELEASE_PERFORMANCE_LIMIT)),--limit "$(RELEASE_PERFORMANCE_LIMIT)",)
+RELEASE_PERFORMANCE_KEEP_BITSTREAMS_FLAG := $(if $(filter 1 true yes,$(RELEASE_PERFORMANCE_KEEP_BITSTREAMS)),--keep-bitstreams,)
 EXTERNAL_BENCHMARK_RUN_FLAG := $(if $(strip $(EXTERNAL_BENCHMARK_RUN)),--run-name "$(EXTERNAL_BENCHMARK_RUN)",)
 EXTERNAL_BENCHMARK_DRIVERS_FLAG := $(foreach driver,$(EXTERNAL_BENCHMARK_DRIVERS),--driver "$(driver)")
 EXTERNAL_BENCHMARK_LIMIT_FLAG := $(if $(strip $(EXTERNAL_BENCHMARK_LIMIT)),--limit "$(EXTERNAL_BENCHMARK_LIMIT)",)
@@ -209,16 +240,19 @@ CODE_BROWSER_PROFILE_FLAG := $(if $(strip $(CODE_BROWSER_PROFILE_JSON)),--profil
 GEOMETRY_SWEEP_AV2_SETTINGS_FLAG := $(foreach setting,$(GEOMETRY_SWEEP_AV2_SETTINGS),--setting $(setting))
 GPROF_PROFILE_SETTINGS_FLAG := $(foreach setting,$(GPROF_PROFILE_SETTINGS),--set "$(setting)")
 
-.PHONY: help check-tools fmt check clippy-perf test build debug run code-browser reference-list reference-setup test-vector-sets test-vectors validate-set compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check
+.PHONY: help check-tools fmt fmt-check check clippy-perf test doc package-list build debug run code-browser reference-list reference-setup test-vector-sets test-vectors validate-set validate-release-aomctc release-performance-table compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check
 
 help:
 	@printf '%s\n' \
 		'FrameFinery targets:' \
 		'  make check-tools      Verify required local tools are available' \
 		'  make fmt              Format the Rust workspace' \
+		'  make fmt-check        Check Rust formatting without rewriting files' \
 		'  make check            Type-check the Rust workspace' \
 		'  make clippy-perf      Run Clippy performance lints on product features' \
 		'  make test             Run Rust tests' \
+		'  make doc              Build workspace API docs without dependencies' \
+		'  make package-list     Show files that Cargo would include in each crate' \
 		'  make build            Build release CLI and copy it to ./ff' \
 		'                         Set AV2_SB_BITS=1 to compile AV2 per-superblock bit JSONL support' \
 		'                         Set AV2_LOSSY_STATS=1 to compile AV2 lossy mode/TXB stats' \
@@ -242,8 +276,13 @@ help:
 		'  make test-vectors     Generate TEST_VECTOR_SET=smoke vectors' \
 		'  make validate-set     Encode VALIDATION_SET=smoke with CODEC=av2' \
 		'                         Add VALIDATION_SOURCE_FILTERS=1 to skip input files' \
+		'                         Add VALIDATION_DIRECT_SOURCE_FILES=1 for source_file rows' \
+		'                         Add VALIDATION_CLEANUP_OUTPUT=1 to remove successful bitstreams' \
 		'                         Use VALIDATION_REFERENCE_MODE=auto|required|off' \
 		'                         Pass extra --set values with VALIDATION_SETTINGS="key ..."' \
+		'  make validate-release-aomctc' \
+		'                         Validate AV2/VVC lossy/lossless on AOM CTC A5/B2 Y4M streams' \
+		'                         Uses RELEASE_AOMCTC_FRAMES=1 by default and cleans artifacts' \
 		'  make compare-compression' \
 		'                         Compare FrameFinery and reference encoder sizes' \
 		'                         Uses CODEC=av2 COMPRESSION_SET=$(VALIDATION_SET)' \
@@ -262,7 +301,11 @@ help:
 		'  make benchmark-encode-matrix' \
 		'                         Time AV2/VVC lossy/lossless encodes over ENCODE_MATRIX_SET' \
 		'                         Set ENCODE_MATRIX_FRAMES=1 for first-frame checks' \
+		'                         Set ENCODE_MATRIX_CLEANUP_OUTPUT=1 to remove successful bitstreams' \
 		'                         Set ENCODE_MATRIX_WRITE_RECON=1 to keep raw recon artifacts/checksums' \
+		'  make release-performance-table' \
+		'                         Generate the versioned release fps/bitrate/PSNR table' \
+		'                         Uses RELEASE_PERFORMANCE_FRAMES=50 and cleans bitstreams by default' \
 		'  make benchmark-external-encoders' \
 		'                         Run an ignored local external-driver benchmark bundle' \
 		'                         Set EXTERNAL_BENCHMARK_MODE=lossless for exact-mode checks' \
@@ -304,6 +347,9 @@ check-tools:
 fmt:
 	$(CARGO) fmt --all
 
+fmt-check:
+	$(CARGO) fmt --all -- --check
+
 check:
 	$(CARGO) check --workspace $(CARGO_FLAGS)
 
@@ -312,6 +358,14 @@ clippy-perf:
 
 test:
 	$(CARGO) test --workspace $(CARGO_FLAGS)
+
+doc:
+	$(CARGO) doc --workspace --all-features --no-deps
+
+package-list:
+	$(CARGO) package --allow-dirty --list -p framefinery-core
+	$(CARGO) package --allow-dirty --list -p framefinery-codecs
+	$(CARGO) package --allow-dirty --list -p framefinery
 
 build:
 	$(BUILD_ENV) $(CARGO) build $(BUILD_CARGO_PROFILE_FLAG) -p framefinery $(CARGO_FLAGS)
@@ -340,13 +394,24 @@ test-vectors:
 	$(PYTHON) scripts/generate_test_vectors.py "$(TEST_VECTOR_SET)" --set-dir "$(VALIDATION_SET_DIR)" --out-dir "$(VALIDATION_OUT_DIR)"
 
 validate-set: build
-	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec "$(CODEC)" "$(VALIDATION_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(VALIDATION_REFERENCE_MODE)" $(VALIDATION_SOURCE_FLAG) $(VALIDATION_STOP_FLAG) $(VALIDATION_LIMIT_FLAG) $(VALIDATION_SETTINGS_FLAG) $(VALIDATION_CLEANUP_RECON_FLAG)
+	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec "$(CODEC)" "$(VALIDATION_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(VALIDATION_REFERENCE_MODE)" $(VALIDATION_SOURCE_FLAG) $(VALIDATION_DIRECT_SOURCE_FLAG) $(VALIDATION_STOP_FLAG) $(VALIDATION_LIMIT_FLAG) $(VALIDATION_FRAMES_FLAG) $(VALIDATION_FORCE_LOSSY_FLAG) $(VALIDATION_SETTINGS_FLAG) $(VALIDATION_CLEANUP_RECON_FLAG) $(VALIDATION_CLEANUP_OUTPUT_FLAG)
+
+validate-release-aomctc: build
+	@df -h . /media/gabriel/storage
+	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" --cleanup-recon --cleanup-output --stop-on-fail
+	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" --force-lossy --setting "qp=$(RELEASE_AOMCTC_AV2_LOSSY_QP)" --cleanup-recon --cleanup-output --stop-on-fail
+	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" $(foreach setting,$(RELEASE_AOMCTC_VVC_SETTINGS),--setting "$(setting)") --cleanup-recon --cleanup-output --stop-on-fail
+	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" --force-lossy --setting "qp=$(RELEASE_AOMCTC_VVC_LOSSY_QP)" $(foreach setting,$(RELEASE_AOMCTC_VVC_SETTINGS),--setting "$(setting)") --cleanup-recon --cleanup-output --stop-on-fail
+	@df -h . /media/gabriel/storage
 
 compare-compression: build
 	$(REFERENCE_ENV) $(PYTHON) scripts/compare_reference_compression.py --ff "$(abspath $(BUILD_BINARY))" --codec "$(CODEC)" "$(COMPRESSION_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(COMPRESSION_OUT_DIR)" --log-dir "$(COMPRESSION_LOG_DIR)" $(COMPRESSION_LIMIT_FLAG) $(COMPRESSION_REFERENCE_BACKEND_FLAG) $(COMPRESSION_REFERENCE_PRESET_FLAG) $(COMPRESSION_REFERENCE_THREADS_FLAG) $(COMPRESSION_AVM_TILE_COLUMNS_FLAG) $(COMPRESSION_AVM_TILE_ROWS_FLAG) $(COMPRESSION_REFERENCE_ARGS_FLAG) $(COMPRESSION_SETTINGS_FLAG) $(COMPRESSION_QP_FLAG) $(COMPRESSION_REFRESH_REFERENCE_FLAG) $(COMPRESSION_DIRECT_SOURCE_FILES_FLAG)
 
 benchmark-encode-matrix: build
-	$(PYTHON) scripts/benchmark_encode_matrix.py "$(ENCODE_MATRIX_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(ENCODE_MATRIX_OUT_DIR)" --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(ENCODE_MATRIX_RUN_FLAG) $(ENCODE_MATRIX_CODECS_FLAG) $(ENCODE_MATRIX_MODES_FLAG) $(ENCODE_MATRIX_BASELINE_FLAG) $(ENCODE_MATRIX_LIMIT_FLAG) $(ENCODE_MATRIX_FRAMES_FLAG) $(ENCODE_MATRIX_AV2_PREDICTIVE_FLAG) $(ENCODE_MATRIX_VVC_PREDICTIVE_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG)
+	$(PYTHON) scripts/benchmark_encode_matrix.py "$(ENCODE_MATRIX_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(ENCODE_MATRIX_OUT_DIR)" --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(ENCODE_MATRIX_RUN_FLAG) $(ENCODE_MATRIX_CODECS_FLAG) $(ENCODE_MATRIX_MODES_FLAG) $(ENCODE_MATRIX_BASELINE_FLAG) $(ENCODE_MATRIX_LIMIT_FLAG) $(ENCODE_MATRIX_FRAMES_FLAG) $(ENCODE_MATRIX_AV2_PREDICTIVE_FLAG) $(ENCODE_MATRIX_VVC_PREDICTIVE_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_OUTPUT_FLAG)
+
+release-performance-table: build
+	$(PYTHON) scripts/release_performance_table.py "$(RELEASE_PERFORMANCE_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(RELEASE_PERFORMANCE_OUT_DIR)" $(RELEASE_PERFORMANCE_RUN_FLAG) $(RELEASE_PERFORMANCE_FRAMES_FLAG) $(RELEASE_PERFORMANCE_CODECS_FLAG) $(RELEASE_PERFORMANCE_MODES_FLAG) $(RELEASE_PERFORMANCE_LIMIT_FLAG) $(RELEASE_PERFORMANCE_KEEP_BITSTREAMS_FLAG)
 
 benchmark-external-encoders: build
 	@test -f "$(EXTERNAL_BENCHMARK_RUNNER)" || { printf '%s\n' "missing local external-driver runner: $(EXTERNAL_BENCHMARK_RUNNER)" "Place local comparison drivers under external-drivers/; that directory is gitignored."; exit 1; }
@@ -435,7 +500,7 @@ regression: build
 	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 smoke --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(VALIDATION_REFERENCE_MODE)" --stop-on-fail
 	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc smoke --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(VALIDATION_REFERENCE_MODE)" --stop-on-fail
 
-release-check: check-tools fmt check test build
+release-check: check-tools fmt-check check test doc package-list build
 
 clean:
 	$(CARGO) clean

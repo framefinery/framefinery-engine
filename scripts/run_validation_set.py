@@ -71,13 +71,31 @@ def main() -> int:
         help="run manifest patterns directly through --filter pattern=... without input files",
     )
     parser.add_argument(
+        "--direct-source-files",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="feed source_file rows directly instead of materializing raw clips",
+    )
+    parser.add_argument(
+        "--frames",
+        type=parse_positive_int,
+        default=0,
+        help="override each vector's manifest frame count",
+    )
+    parser.add_argument(
         "--cleanup-recon",
         action="store_true",
         help="delete successful internal/reference reconstruction artifacts after validation",
     )
+    parser.add_argument(
+        "--cleanup-output",
+        action="store_true",
+        help="delete successful encoded bitstreams after validation metrics/checksums are collected",
+    )
     parser.add_argument("--stop-on-fail", action="store_true")
     args = parser.parse_args()
     args.qp_setting = qp_setting(args.setting)
+    args.frames = args.frames or None
     if args.qp_setting is not None and args.codec.lower() not in ("av2", "vvc"):
         parser.error("qp is currently supported for AV2 and VVC validation only")
 
@@ -88,11 +106,9 @@ def main() -> int:
 
     vector_set = load_vector_set(args.set, args.set_dir)
     if args.source_filters:
-        cases = [(vector, None) for vector in vector_set.vectors]
+        cases = [(override_vector_frames(vector, args.frames), None) for vector in vector_set.vectors]
     else:
-        paths = generate_test_vectors.generate_vectors(args.set, args.vector_dir, args.set_dir)
-        vectors_by_filename = {vector.filename: vector for vector in vector_set.vectors}
-        cases = [(vectors_by_filename[path.name], path) for path in paths]
+        cases = file_cases(vector_set, args)
     skipped_by_codec = [
         vector for vector, _ in cases if not vector_enabled_for_codec(vector, args.codec)
     ]
@@ -154,6 +170,61 @@ def vector_enabled_for_codec(vector: generate_test_vectors.TestVector, codec: st
     return vector.codecs is None or codec.lower() in vector.codecs
 
 
+def override_vector_frames(
+    vector: generate_test_vectors.TestVector, frames: int | None
+) -> generate_test_vectors.TestVector:
+    if frames is None or frames == vector.frames:
+        return vector
+    return generate_test_vectors.TestVector(
+        name=vector.name,
+        width=vector.width,
+        height=vector.height,
+        frames=frames,
+        fmt=vector.fmt,
+        pattern=vector.pattern,
+        fps=vector.fps,
+        source_path=vector.source_path,
+        source=vector.source,
+        crop_x=vector.crop_x,
+        crop_y=vector.crop_y,
+        lossless=vector.lossless,
+        codecs=vector.codecs,
+        filters=vector.filters,
+    )
+
+
+def file_cases(
+    vector_set: generate_test_vectors.TestVectorSet,
+    args: argparse.Namespace,
+) -> list[tuple[generate_test_vectors.TestVector, Path]]:
+    cases = []
+    for original in vector_set.vectors:
+        vector = override_vector_frames(original, args.frames)
+        if args.direct_source_files and vector.pattern == "source_file" and vector.source_path:
+            cases.append((vector, source_file_path(vector)))
+        else:
+            cases.append((vector, materialize_vector(vector_set, vector, args.vector_dir)))
+    return cases
+
+
+def source_file_path(vector: generate_test_vectors.TestVector) -> Path:
+    assert vector.source_path is not None
+    if vector.source_path.is_absolute():
+        return vector.source_path
+    return (REPO_ROOT / vector.source_path).resolve(strict=False)
+
+
+def materialize_vector(
+    vector_set: generate_test_vectors.TestVectorSet,
+    vector: generate_test_vectors.TestVector,
+    vector_dir: Path,
+) -> Path:
+    vector_dir.mkdir(parents=True, exist_ok=True)
+    path = vector_dir / vector.filename
+    path.write_bytes(generate_test_vectors.generate_yuv(vector, vector_set.sources))
+    return path
+
+
 def run_file_case(
     vector: generate_test_vectors.TestVector, vector_path: Path, args: argparse.Namespace
 ) -> ValidationResult:
@@ -189,11 +260,7 @@ def run_file_case(
         command,
         args,
         vector,
-        lossless_source=(
-            vector_path
-            if effective_lossless(vector, args) and filters_preserve_source(vector)
-            else None
-        ),
+        lossless_source=lossless_source(vector, vector_path, args),
     )
 
 
@@ -249,6 +316,16 @@ def filters_preserve_source(vector: generate_test_vectors.TestVector) -> bool:
     )
 
 
+def lossless_source(
+    vector: generate_test_vectors.TestVector, vector_path: Path, args: argparse.Namespace
+) -> Path | generate_test_vectors.TestVector | None:
+    if not effective_lossless(vector, args) or not filters_preserve_source(vector):
+        return None
+    if args.direct_source_files and vector.pattern == "source_file" and vector.source_path:
+        return vector
+    return vector_path
+
+
 def parse_qp(value: str) -> int:
     try:
         qp = int(value, 10)
@@ -261,6 +338,16 @@ def parse_qp(value: str) -> int:
             f"QP expects an integer from 1 through 255, got '{value}'"
         )
     return qp
+
+
+def parse_positive_int(value: str) -> int:
+    try:
+        parsed = int(value, 10)
+    except ValueError as err:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got '{value}'") from err
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got '{value}'")
+    return parsed
 
 
 def qp_setting(settings: list[str]) -> int | None:
@@ -434,7 +521,7 @@ def run_command(
         recon_sha256=recon_sha,
         reference_sha256=reference_sha,
     )
-    cleanup_recon_artifacts(args, recon, reference_recon_result)
+    cleanup_success_artifacts(args, output, recon, reference_recon_result)
     return result
 
 
@@ -448,11 +535,10 @@ def validate_lossless_source(
     if (
         source.pattern == "source_file"
         and source.source_path is not None
-        and source.source_path.suffix.lower() != ".y4m"
     ):
-        source_path = source.source_path
-        if not source_path.is_absolute():
-            source_path = REPO_ROOT / source_path
+        if source.source_path.suffix.lower() == ".y4m":
+            return validate_lossless_y4m_file_prefix(source, recon)
+        source_path = source_file_path(source)
         expected_bytes = generate_test_vectors.raw_frame_len(source) * source.frames
         return validate_lossless_file_prefix(source_path, recon, expected_bytes)
     else:
@@ -466,6 +552,60 @@ def validate_lossless_source(
             )
         return ("FAIL", "lossless reconstruction differs from source")
     return ("PASS", "lossless reconstruction matches source")
+
+
+def validate_lossless_y4m_file_prefix(
+    vector: generate_test_vectors.TestVector,
+    recon: Path,
+) -> tuple[str, str]:
+    source = source_file_path(vector)
+    if not source.exists():
+        return ("FAIL", f"Y4M source file does not exist: {source}")
+    frame_len = generate_test_vectors.raw_frame_len(vector)
+    expected_bytes = frame_len * vector.frames
+    recon_size = recon.stat().st_size
+    if recon_size != expected_bytes:
+        return (
+            "FAIL",
+            f"lossless reconstruction length differs from Y4M source ({recon_size} != {expected_bytes})",
+        )
+
+    chunk_size = 16 * 1024 * 1024
+    offset = 0
+    with source.open("rb") as source_file, recon.open("rb") as recon_file:
+        header = source_file.readline()
+        if not header.startswith(b"YUV4MPEG2 "):
+            return ("FAIL", f"source is not a Y4M stream: {source}")
+        for frame_index in range(vector.frames):
+            frame_header = source_file.readline()
+            if not frame_header:
+                return (
+                    "FAIL",
+                    f"Y4M source is too short: missing frame {frame_index + 1}",
+                )
+            if not frame_header.startswith(b"FRAME"):
+                return (
+                    "FAIL",
+                    f"Y4M source has invalid frame marker at frame {frame_index + 1}",
+                )
+            remaining = frame_len
+            while remaining:
+                read_len = min(chunk_size, remaining)
+                source_chunk = source_file.read(read_len)
+                recon_chunk = recon_file.read(read_len)
+                if len(source_chunk) != read_len:
+                    return (
+                        "FAIL",
+                        f"Y4M source is too short near frame {frame_index + 1}",
+                    )
+                if source_chunk != recon_chunk:
+                    return (
+                        "FAIL",
+                        f"lossless reconstruction differs from Y4M source near byte {offset}",
+                    )
+                remaining -= read_len
+                offset += read_len
+    return ("PASS", "lossless reconstruction matches Y4M source")
 
 
 def validate_lossless_file_prefix(
@@ -509,6 +649,17 @@ def cleanup_recon_artifacts(args: argparse.Namespace, *paths: Path | None) -> No
     for path in paths:
         if path is not None:
             path.unlink(missing_ok=True)
+
+
+def cleanup_success_artifacts(
+    args: argparse.Namespace,
+    output: Path,
+    recon: Path,
+    reference_recon: Path | None,
+) -> None:
+    if args.cleanup_output:
+        output.unlink(missing_ok=True)
+    cleanup_recon_artifacts(args, recon, reference_recon)
 
 
 def codec_extension(codec: str) -> str:

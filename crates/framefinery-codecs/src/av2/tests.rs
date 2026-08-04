@@ -419,6 +419,8 @@ fn av2_lossy_predictive_zero_mv_tiles_reuse_previous_reconstruction() {
             second[row + x] = second[row + x].wrapping_add(17);
         }
     }
+    let mut frame_stats =
+        stats::Av2FrameStats::new(0, geometry, format, stream_format, false, Some(24), true);
 
     let (_, first_recon) =
         av2_lossy_subsampled_predictive_key_bitstream_and_reconstruction_for_frame(
@@ -429,6 +431,7 @@ fn av2_lossy_predictive_zero_mv_tiles_reuse_previous_reconstruction() {
             true,
             0,
             false,
+            &mut frame_stats,
         );
     let (_, inter_recon) =
         av2_lossy_subsampled_zero_mv_inter_tiles_bitstream_and_reconstruction_for_frame(

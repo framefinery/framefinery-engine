@@ -182,18 +182,20 @@ def parse_vector(row: dict[str, str], path: Path) -> TestVector:
     name = required_field(row, "name", context)
     pattern = required_field(row, "pattern", context)
     source_path = parse_optional_path(row.get("path", ""))
-    y4m_metadata = None
-    if (
-        pattern == "source_file"
-        and source_path is not None
-        and source_path.suffix.lower() == ".y4m"
-    ):
-        y4m_metadata = read_y4m_metadata(source_path, name)
 
     width = parse_optional_positive_int(row.get("width", ""), "width")
     height = parse_optional_positive_int(row.get("height", ""), "height")
     fmt = optional_field(row.get("format", ""))
     fps = parse_optional_fps(row.get("fps", ""), "fps")
+
+    y4m_metadata = None
+    if (
+        pattern == "source_file"
+        and source_path is not None
+        and source_path.suffix.lower() == ".y4m"
+        and (width is None or height is None or fmt is None or fps is None)
+    ):
+        y4m_metadata = read_y4m_metadata(source_path, name)
 
     if y4m_metadata is not None:
         if width is not None and width != y4m_metadata.width:

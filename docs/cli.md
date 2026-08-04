@@ -1,0 +1,105 @@
+# FrameFinery CLI
+
+The installed command is `ff`.
+
+```sh
+cargo install framefinery
+ff --help
+ff --version
+```
+
+Focused help pages are built into the binary:
+
+```sh
+ff --help codecs
+ff --help filters
+ff --help pixfmt
+ff --help settings
+ff --help presets
+```
+
+## Encode
+
+The primary command shape is:
+
+```sh
+ff encode [<input>] [input-options] [--filter <spec>] \
+  --encode <codec:output> [output-options]
+```
+
+`--encode` combines the codec and output path:
+
+```sh
+ff encode input.y4m --encode av2:output.obu --set qp=24 --psnr
+ff encode input.y4m --encode vvc:output.vvc --set lossless --recon recon.yuv
+```
+
+Raw inputs need dimensions and pixel format unless the filename already carries
+metadata:
+
+```sh
+ff encode input.yuv --video 1920x1080:yuv420p8 --fps 30 --frames 50 \
+  --encode av2:output.obu --set qp=24 --psnr
+```
+
+Supported filename metadata uses:
+
+```text
+*_<WxH>[_<fps>][_<frames>f][_<pixfmt>].yuv
+```
+
+For example:
+
+```sh
+ff encode clip_1920x1080_30_50f_yuv444p8.yuv \
+  --encode av2:output.obu --set lossless
+```
+
+Y4M headers provide width, height, frame rate, and planar YUV format. If
+`--frames` is omitted for a file input, encoding stops at EOF.
+
+## Settings
+
+Encoder settings use repeated `--set key[=value]` arguments. Bare keys imply
+`true`.
+
+Common settings:
+
+```sh
+--set lossless
+--set qp=24
+--set predictive
+--set fast-search=lossless-speed
+```
+
+`--set lossless` and `--set qp=<1..255>` are mutually exclusive.
+
+## Metrics
+
+Use `--psnr` to print per-frame PSNR from the encoder's in-memory
+reconstruction without writing a reconstruction stream:
+
+```sh
+ff encode input.y4m --encode av2:out.obu --set qp=24 --psnr
+```
+
+Use `--recon <path>` only when you need the raw internal reconstruction for
+debugging or reference-decoder validation:
+
+```sh
+ff encode input.y4m --encode vvc:out.vvc --set lossless --recon out_recon.yuv
+```
+
+## Validation
+
+Local release-oriented checks are driven by Makefile targets:
+
+```sh
+make release-check
+make validate-release-aomctc
+make release-performance-table
+```
+
+`validate-release-aomctc` reads the local AOM CTC A5/B2 Y4M files directly
+from `/media/gabriel/storage/YUV/aomctc` when available. It does not decompress
+the optional B1 archive and does not create raw source copies.

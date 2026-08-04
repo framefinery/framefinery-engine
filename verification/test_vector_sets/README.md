@@ -35,6 +35,10 @@ from the Y4M header and strips the Y4M container markers when writing raw
 generated fixtures. Source-file generation supports planar 4:2:0, 4:2:2, and
 4:4:4 rows with the same 8-through-16-bit format spelling accepted by the
 fixture generator, plus `gbrp8` planar RGB rows.
+Committed source-file manifests should declare width, height, format, and fps
+explicitly so `make test-vector-sets` can list manifests on machines where the
+local media corpus is not mounted. Validation and benchmark targets still need
+the referenced source files when a row is executed.
 
 Manifest `format` values follow the CLI raw input contract. Planar YUV and gray
 formats use checked numeric bit depths from 8 through 16, such as
@@ -87,3 +91,11 @@ pattern is supported by the CLI:
 ```sh
 make validate-set CODEC=av2 VALIDATION_SET=smoke VALIDATION_SOURCE_FILTERS=1
 ```
+
+The committed `release-aomctc` manifest points at the local AOM CTC A5/B2 Y4M
+streams under `/media/gabriel/storage/YUV/aomctc`. Use
+`make validate-release-aomctc` for the recurring release crash/regression pass
+and `make release-performance-table` for the version performance table. Both
+release targets read source files directly and avoid raw source copies.
+Rows with dimensions that are not multiples of 8 are VVC-only because AV2
+rejects those geometries; the remaining B2 rows cover both AV2 and VVC.

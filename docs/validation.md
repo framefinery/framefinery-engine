@@ -35,6 +35,8 @@ make validate-set CODEC=vvc VALIDATION_SET=smoke
 make validate-set CODEC=av2 VALIDATION_SET=smoke VALIDATION_SOURCE_FILTERS=1
 make validate-set CODEC=av2 VALIDATION_SET=pipeline-smoke
 make validate-set CODEC=av2 VALIDATION_SET=smoke VALIDATION_SETTINGS=lossless
+make validate-release-aomctc
+make release-performance-table
 make regression
 ```
 
@@ -50,6 +52,12 @@ runs use `./ff encode --psnr` by default instead, so PSNR is computed directly
 from the in-memory encoder reconstruction without materializing large raw
 reconstruction streams. Set `ENCODE_MATRIX_WRITE_RECON=1` only when the matrix
 also needs raw reconstruction files and `recon_sha256` entries.
+For long source-file manifests, set `VALIDATION_DIRECT_SOURCE_FILES=1` or use
+the release AOM CTC targets. This feeds Y4M/raw source rows directly into
+`./ff` instead of writing large raw copies under `verification/generated/`.
+Set `VALIDATION_CLEANUP_RECON=1` and `VALIDATION_CLEANUP_OUTPUT=1` to remove
+successful reconstruction and encoded bitstream artifacts after checksums and
+metrics have been collected. Failure artifacts are left in place for debugging.
 
 Manifest `format` values use the same raw input names accepted by the CLI.
 Planar YUV and gray bit depths from 8 through 16 are described in
@@ -89,6 +97,47 @@ Explicit lossy AV2 and VVC smoke checks can invoke
 `--set lossless`; lossy checks should compare bitstream size, reconstruction
 PSNR, and reference-decoder agreement with the encoder reconstruction rather
 than source-byte equality.
+
+## Release AOM CTC Set
+
+The committed `release-aomctc` manifest covers the existing AOM CTC A5 270p
+and B2 screen-content Y4M streams under:
+
+```text
+/media/gabriel/storage/YUV/aomctc
+```
+
+It intentionally ignores `b1_syn.zip`; release validation does not decompress
+anything. Each row points at an existing Y4M file and declares the local
+metadata up front so repository discovery does not require the media directory.
+Rows with dimensions that are not multiples of 8 are currently enabled for VVC
+only because AV2 rejects those geometries; the remaining B2 rows are enabled
+for both AV2 and VVC.
+
+Run the release crash/regression pass with:
+
+```sh
+make validate-release-aomctc
+```
+
+The default release pass uses `RELEASE_AOMCTC_FRAMES=1` so every A5/B2 stream
+is touched quickly for AV2 and VVC, lossy and lossless. It reads source files
+directly, writes reconstruction only long enough to validate it, removes
+successful bitstreams and reconstructions, and prints filesystem usage before
+and after the run. Override `RELEASE_AOMCTC_FRAMES=50` or set it to `130` for a
+longer local release candidate pass.
+
+For version-to-version performance tracking, run:
+
+```sh
+make release-performance-table
+```
+
+This wraps `scripts/release_performance_table.py`, which uses the same
+`release-aomctc` manifest, reports FPS, bytes, bitrate-compatible bitstream
+size, and PSNR through the encode matrix markdown/JSON output, and removes
+successful encoded bitstreams by default. It defaults to 50 frames per stream
+to exercise inter prediction without materializing raw reconstructions.
 
 `scripts/generate_predictive_sweep.py` creates that local ignored manifest and
 384 local Y4M crops: six AOM CTC B2 screen-content variants, 64 geometries from
