@@ -66,6 +66,14 @@ Run the CLI:
 make run ARGS="--help"
 ```
 
+The crates.io package is intended to be `framefinery`. By default it includes
+the public library facade, the `ff` CLI binary, AV2, VVC, and the current filter
+catalog:
+
+```sh
+cargo install framefinery
+```
+
 Generate a standalone Rust module/code browser:
 
 ```sh
@@ -128,21 +136,23 @@ external decoding.
 
 ## Build-Time Composition
 
-Codec and filter availability is selected at build time. By default,
-`make build` enables the normal product feature set so the copied `./ff` binary
-includes every codec and filter stage currently intended for the developer CLI
-without compiling analysis-only instrumentation.
+Codec and filter availability is selected at build time. The published
+`framefinery` package enables the normal product feature set by default, so
+`cargo install framefinery` and `make build` include every codec and filter stage
+currently intended for the developer CLI without compiling analysis-only
+instrumentation.
 
 Override `CARGO_FEATURES` to build a smaller or more specialized binary:
 
 ```sh
 make build CARGO_FEATURES=all
-make build CARGO_FEATURES="codec-av2 filter-pattern filter-identity"
+make build CARGO_FEATURES="av2 filter-pattern filter-identity"
 make build CARGO_FEATURES=
 ```
 
-`CARGO_FEATURES=all` means all normal product features. The `codec-av2` and
-`codec-vvc` features enable the imported experimental software models. The
+`CARGO_FEATURES=all` means all normal product features. The user-facing `av2`
+and `vvc` features, plus the compatibility `codec-av2` and `codec-vvc`
+features, enable the imported experimental software models. The
 `filter-pattern` feature enables input-free generated pattern sources for
 fixtures. `filter-identity` enables the no-op transform filter used to exercise
 the executable frame pipeline. Other filter features are discovery placeholders
@@ -180,8 +190,8 @@ ff encode input_640x360_30_1f_yuv444p8.yuv \
 ```
 
 The commands validate command-line structure and report stage availability.
-When built with `codec-av2` or `codec-vvc`, `ff encode` can encode raw YUV
-inputs and Y4M inputs through the imported software model for that codec. Y4M
+When built with `av2`/`codec-av2` or `vvc`/`codec-vvc`, `ff encode` can encode
+raw YUV inputs and Y4M inputs through the imported software model for that codec. Y4M
 files are demuxed by the shared input reader before frames reach AV2 or VVC.
 
 Current option placement and inference rules:
@@ -251,9 +261,9 @@ The raw input CLI/API contract is documented in
 
 ```text
 crates/
+  framefinery-cli/   Published as package `framefinery`; library facade plus `ff`.
   framefinery-core/  Shared frame, packet, error, and pipeline primitives.
   framefinery-codecs/  Imported experimental AV2/VVC software models.
-  framefinery-cli/   Command-line entry point and CLI integration tests.
 docs/                     Architecture and validation notes.
 tests/                    Future shared integration tests and fixtures.
 tools/                    Future development and validation helper scripts.

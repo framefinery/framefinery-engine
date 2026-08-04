@@ -1,6 +1,6 @@
 CARGO ?= cargo
 PYTHON ?= python3
-PRODUCT_FEATURES ?= codec-av2 codec-vvc filter-pattern filter-identity filter-crop filter-scale
+PRODUCT_FEATURES ?= all-codecs all-filters
 CARGO_FEATURES ?= all
 AV2_SB_BITS ?= 0
 AV2_LOSSY_STATS ?= 0
@@ -294,7 +294,7 @@ help:
 		'' \
 		'Optional build-time selection:' \
 		'  make build CARGO_FEATURES=all    Build all normal product stages' \
-		'  make build CARGO_FEATURES="codec-av2 filter-scale"' \
+		'  make build CARGO_FEATURES="av2 filter-scale"' \
 		'  make build CARGO_FEATURES=        Build without optional stages'
 
 check-tools:
@@ -314,7 +314,7 @@ test:
 	$(CARGO) test --workspace $(CARGO_FLAGS)
 
 build:
-	$(BUILD_ENV) $(CARGO) build $(BUILD_CARGO_PROFILE_FLAG) -p framefinery-cli $(CARGO_FLAGS)
+	$(BUILD_ENV) $(CARGO) build $(BUILD_CARGO_PROFILE_FLAG) -p framefinery $(CARGO_FLAGS)
 	cp $(BUILD_TARGET_DIR)/$(BUILD_ARTIFACT_PROFILE)/ff $(BUILD_BINARY)
 	chmod 755 $(BUILD_BINARY)
 
@@ -322,7 +322,7 @@ debug:
 	$(CARGO) build --workspace $(CARGO_FLAGS)
 
 run:
-	$(CARGO) run -p framefinery-cli $(CARGO_FLAGS) -- $(ARGS)
+	$(CARGO) run -p framefinery $(CARGO_FLAGS) -- $(ARGS)
 
 code-browser:
 	$(PYTHON) scripts/generate_rust_code_browser.py --root . --output "$(CODE_BROWSER_OUT)" --title "$(CODE_BROWSER_TITLE)" $(CODE_BROWSER_PROFILE_FLAG)

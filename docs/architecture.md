@@ -22,6 +22,9 @@ or block-tree abstraction early.
 Imported experimental AV2/VVC software models live in `framefinery-codecs`.
 Those modules are allowed to keep codec-specific internal structures while they
 are adapted from the hardware workspace model into a software-facing API.
+The user-facing package is `framefinery`; it provides the public facade crate
+and the `ff` binary. Its default feature set enables AV2, VVC, and the current
+filter catalog so `cargo install framefinery` produces the normal CLI build.
 
 Optional codecs and filters should be selected at build time using Cargo
 features or separate crates. The Makefile default enables the normal product

@@ -7,7 +7,7 @@ repository.workspace = true
 description = "Experimental codec models for FrameFinery."
 
 [dependencies]
-framefinery-core = { path = "../framefinery-core" }
+framefinery-core = { path = "../framefinery-core", version = "0.1.0" }
 
 [dev-dependencies]
 criterion = "0.5"

@@ -26,7 +26,7 @@ cd "$ROOT"
 
 CARGO="${CARGO:-cargo}"
 PYTHON="${PYTHON:-python3}"
-PRODUCT_FEATURES="${PRODUCT_FEATURES:-codec-av2 codec-vvc filter-pattern filter-identity filter-crop filter-scale}"
+PRODUCT_FEATURES="${PRODUCT_FEATURES:-all-codecs all-filters}"
 PGO_SET="${PGO_SET:-smoke}"
 PGO_FRAMES="${PGO_FRAMES:-1}"
 PGO_DIR="${PGO_DIR:-verification/generated/profiling/pgo}"
@@ -116,7 +116,7 @@ esac
 
 RUSTFLAGS="${RUSTFLAGS:-} -Cprofile-generate=$raw_dir_abs" \
     CARGO_TARGET_DIR="$PGO_TARGET_DIR" \
-    "$CARGO" build "${cargo_profile_flags[@]}" --target "$HOST_TARGET" -p framefinery-cli \
+    "$CARGO" build "${cargo_profile_flags[@]}" --target "$HOST_TARGET" -p framefinery \
     --features "$PRODUCT_FEATURES"
 
 training_ff="$ROOT/$PGO_TARGET_DIR/$HOST_TARGET/$artifact_profile/ff"
@@ -142,7 +142,7 @@ fi
 
 RUSTFLAGS="${RUSTFLAGS:-} -Cprofile-use=$merged_profile_abs -Cllvm-args=-pgo-warn-missing-function" \
     CARGO_TARGET_DIR="$PGO_TARGET_DIR" \
-    "$CARGO" build "${cargo_profile_flags[@]}" --target "$HOST_TARGET" -p framefinery-cli \
+    "$CARGO" build "${cargo_profile_flags[@]}" --target "$HOST_TARGET" -p framefinery \
     --features "$PRODUCT_FEATURES"
 
 cp "$training_ff" ./ff-pgo

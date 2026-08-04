@@ -219,7 +219,7 @@ and missed optimizations.
 Start with rustc optimization remarks:
 
 ```sh
-RUSTFLAGS="-Cremark=all" cargo build --release -p framefinery-cli \
+RUSTFLAGS="-Cremark=all" cargo build --release -p framefinery \
   --features "codec-av2 codec-vvc filter-pattern filter-identity filter-crop filter-scale"
 ```
 
@@ -1689,7 +1689,7 @@ cargo check --workspace \
 cargo check --workspace \
   --features "codec-av2 codec-vvc filter-pattern filter-identity filter-crop filter-scale framefinery-codecs/vvc-stats"
 cargo test -p framefinery-core --features ""
-cargo test -p framefinery-cli encode_job \
+cargo test -p framefinery encode_job \
   --features "codec-av2 codec-vvc filter-pattern filter-identity filter-crop filter-scale"
 cargo test -p framefinery-codecs vvc --features "vvc"
 cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"

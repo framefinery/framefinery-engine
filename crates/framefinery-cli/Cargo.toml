@@ -1,21 +1,29 @@
 [package]
-name = "framefinery-cli"
+name = "framefinery"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Command-line tools for FrameFinery."
+description = "Safe Rust media pipeline toolkit and FrameFinery command-line encoder."
+
+[lib]
+name = "framefinery"
+path = "src/lib.rs"
 
 [[bin]]
 name = "ff"
 path = "src/main.rs"
 
 [dependencies]
-framefinery-core = { path = "../framefinery-core" }
-framefinery-codecs = { path = "../framefinery-codecs", optional = true }
+framefinery-core = { path = "../framefinery-core", version = "0.1.0" }
+framefinery-codecs = { path = "../framefinery-codecs", version = "0.1.0", optional = true, default-features = false }
 
 [features]
-default = []
+default = ["all-codecs", "all-filters"]
+all-codecs = ["av2", "vvc"]
+all-filters = ["filter-pattern", "filter-identity", "filter-crop", "filter-scale"]
+av2 = ["codec-av2"]
+vvc = ["codec-vvc"]
 codec-av2 = ["dep:framefinery-codecs", "framefinery-codecs/av2"]
 codec-vvc = ["dep:framefinery-codecs", "framefinery-codecs/vvc"]
 filter-pattern = []

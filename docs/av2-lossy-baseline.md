@@ -1034,7 +1034,7 @@ Selected and rejected first-frame probes:
 Validation:
 
 ```text
-cargo build --release -p framefinery-cli --all-features
+cargo build --release -p framefinery --all-features
 cargo test -p framefinery-codecs --all-features
 make validate-set CODEC=av2 VALIDATION_SET=local-aomctc-b2-scc-1080p-lossless-50f VALIDATION_LIMIT=1 VALIDATION_REFERENCE_MODE=off VALIDATION_SETTINGS=predictive
 manual Wayland RGB first-frame QP24 encode + ffmpeg PSNR
@@ -1163,7 +1163,7 @@ Validation:
 ```text
 cargo fmt
 cargo check -p framefinery-codecs --all-features
-cargo build --release -p framefinery-cli --all-features
+cargo build --release -p framefinery --all-features
 cargo test -p framefinery-codecs --all-features
 make validate-set CODEC=av2 VALIDATION_SET=local-aomctc-b2-scc-1080p-lossless-50f VALIDATION_LIMIT=1 VALIDATION_REFERENCE_MODE=off VALIDATION_SETTINGS=predictive
 manual Wayland RGB first-frame QP24 encode + ffmpeg PSNR
@@ -1227,7 +1227,7 @@ Validation:
 
 ```text
 cargo fmt
-cargo check -p framefinery-cli --all-features
+cargo check -p framefinery --all-features
 make build AV2_SB_BITS=1
 manual SceneComposition_1 first-frame QP24 encode with lossy stats
 manual Wayland RGB first-frame QP24 predictive encode with direct RGB PSNR

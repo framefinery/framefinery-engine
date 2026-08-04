@@ -21,7 +21,7 @@ fn temp_dir(name: &str) -> PathBuf {
         .and_then(|path| path.parent())
         .expect("workspace root");
     let dir = workspace_root
-        .join("target/framefinery-cli-contract")
+        .join("target/framefinery-contract")
         .join(format!("{name}_{unique}"));
     fs::create_dir_all(&dir).expect("create test directory");
     dir
