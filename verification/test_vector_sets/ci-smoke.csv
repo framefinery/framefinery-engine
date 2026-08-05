@@ -1,0 +1,7 @@
+# description=Tiny source-filter vectors for CI encode sanity checks.
+name,width,height,frames,format,pattern,fps
+black_420_16x16,16,16,1,yuv420p8,black,30
+checker_420_16x24,16,24,1,yuv420p8,checker,30
+checker_420_32x16,32,16,1,yuv420p8,checker,30
+blocks_444_32x32,32,32,1,yuv444p8,color_blocks,30
+blocks_444_64x32,64,32,1,yuv444p8,color_blocks,30

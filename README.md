@@ -115,8 +115,15 @@ The installed command name is intended to be short:
 Run the default local quality gate:
 
 ```sh
+make ci
 make release-check
 ```
+
+`make ci` is the same gate used by GitHub Actions. It runs the release check
+and a tiny AV2/VVC encode smoke using generated black, checker, and color-block
+`pattern` source filters across a few small geometries, so it does not depend
+on local media files. `make release-check` is kept as the explicit
+release-oriented target name.
 
 Release candidates should also run the local AOM CTC release manifest and save
 a performance table for version-to-version comparison:

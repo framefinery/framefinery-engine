@@ -83,6 +83,7 @@ VALIDATION_FRAMES ?=
 VALIDATION_FORCE_LOSSY ?= 0
 VALIDATION_CLEANUP_RECON ?= 0
 VALIDATION_CLEANUP_OUTPUT ?= 0
+CI_ENCODE_SET ?= ci-smoke
 RELEASE_AOMCTC_SET ?= release-aomctc
 RELEASE_AOMCTC_FRAMES ?= 1
 RELEASE_AOMCTC_REFERENCE_MODE ?= auto
@@ -240,7 +241,7 @@ CODE_BROWSER_PROFILE_FLAG := $(if $(strip $(CODE_BROWSER_PROFILE_JSON)),--profil
 GEOMETRY_SWEEP_AV2_SETTINGS_FLAG := $(foreach setting,$(GEOMETRY_SWEEP_AV2_SETTINGS),--setting $(setting))
 GPROF_PROFILE_SETTINGS_FLAG := $(foreach setting,$(GPROF_PROFILE_SETTINGS),--set "$(setting)")
 
-.PHONY: help check-tools fmt fmt-check check clippy-perf test doc package-list build debug run code-browser reference-list reference-setup test-vector-sets test-vectors validate-set validate-release-aomctc release-performance-table compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check
+.PHONY: help check-tools fmt fmt-check check clippy-perf test doc package-list build debug run code-browser reference-list reference-setup test-vector-sets test-vectors validate-set validate-release-aomctc release-performance-table compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check ci ci-encode-smoke
 
 help:
 	@printf '%s\n' \
@@ -333,6 +334,8 @@ help:
 		'                         Run small geometry sweeps for AV2/VVC lossy/lossless modes' \
 		'  make regression       Run smoke validation for AV2 and VVC' \
 		'  make release-check    Run the default local quality gate' \
+		'  make ci-encode-smoke  Encode generated pattern-source smoke vectors' \
+		'  make ci               Run the same quality gate used by GitHub Actions' \
 		'  make clean            Remove Cargo build outputs' \
 		'' \
 		'Optional build-time selection:' \
@@ -501,6 +504,12 @@ regression: build
 	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc smoke --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(VALIDATION_REFERENCE_MODE)" --stop-on-fail
 
 release-check: check-tools fmt-check check test doc package-list build
+
+ci-encode-smoke: build
+	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(CI_ENCODE_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode off --source-filters --cleanup-recon --cleanup-output --stop-on-fail
+	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc "$(CI_ENCODE_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode off --source-filters --cleanup-recon --cleanup-output --stop-on-fail
+
+ci: release-check ci-encode-smoke
 
 clean:
 	$(CARGO) clean
