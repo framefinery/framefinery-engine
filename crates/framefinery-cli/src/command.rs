@@ -707,20 +707,23 @@ fn print_frame_metrics(
     codec: &str,
     job: &EncodeJob,
     frame_idx: usize,
-    frame_count: usize,
+    frame_count: Option<usize>,
     bitstream_bytes: usize,
     source: &[u8],
     reconstruction: &[u8],
 ) {
     let bits = bitstream_bytes * 8;
+    let frame_position = match frame_count {
+        Some(frame_count) => format!("{}/{}", frame_idx + 1, frame_count),
+        None => (frame_idx + 1).to_string(),
+    };
     match frame_psnr_for_job(job, source, reconstruction) {
         Some(psnr) => {
             if job.format.is_rgb() {
                 eprintln!(
-                    "frame: codec={} index={}/{} bits={} bytes={} psnr_r={} psnr_g={} psnr_b={} psnr_all={}",
+                    "frame: codec={} index={} bits={} bytes={} psnr_r={} psnr_g={} psnr_b={} psnr_all={}",
                     codec,
-                    frame_idx + 1,
-                    frame_count,
+                    frame_position,
                     bits,
                     bitstream_bytes,
                     format_psnr(psnr.plane0),
@@ -730,10 +733,9 @@ fn print_frame_metrics(
                 );
             } else {
                 eprintln!(
-                    "frame: codec={} index={}/{} bits={} bytes={} psnr_y={} psnr_u={} psnr_v={} psnr_all={}",
+                    "frame: codec={} index={} bits={} bytes={} psnr_y={} psnr_u={} psnr_v={} psnr_all={}",
                     codec,
-                    frame_idx + 1,
-                    frame_count,
+                    frame_position,
                     bits,
                     bitstream_bytes,
                     format_psnr(psnr.plane0),
@@ -744,12 +746,8 @@ fn print_frame_metrics(
             }
         }
         None => eprintln!(
-            "frame: codec={} index={}/{} bits={} bytes={} psnr=n/a",
-            codec,
-            frame_idx + 1,
-            frame_count,
-            bits,
-            bitstream_bytes,
+            "frame: codec={} index={} bits={} bytes={} psnr=n/a",
+            codec, frame_position, bits, bitstream_bytes,
         ),
     }
 }

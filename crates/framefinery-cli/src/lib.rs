@@ -11,7 +11,7 @@
 //!
 //! # fn main() -> framefinery::Result<()> {
 //! let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
-//! let config = VideoEncoderConfig::new(CodecId::new("av2")?, info).with_frame_limit(1);
+//! let config = VideoEncoderConfig::new(CodecId::new("av2")?, info);
 //! let pixels = vec![0; info.expected_len()];
 //! let mut source = RawVideoFrameReadSource::new(std::io::Cursor::new(pixels));
 //! let mut bitstream = Vec::new();

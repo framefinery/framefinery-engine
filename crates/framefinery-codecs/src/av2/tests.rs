@@ -293,7 +293,7 @@ fn av2_zero_frames_streams_complete_frames_until_eof() {
 
     assert!(!output.is_empty());
     assert_eq!(recon, input);
-    assert_eq!(metrics_frame_count, vec![0, 0]);
+    assert_eq!(metrics_frame_count, vec![None, None]);
 }
 
 #[test]

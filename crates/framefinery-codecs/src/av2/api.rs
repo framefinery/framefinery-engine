@@ -20,7 +20,7 @@ pub struct Av2EncodeOptions {
 
 pub struct Av2EncodeFrameMetrics<'a> {
     pub frame_idx: usize,
-    pub frame_count: usize,
+    pub frame_count: Option<usize>,
     pub bitstream_bytes: usize,
     pub source: &'a [u8],
     pub reconstruction: &'a [u8],

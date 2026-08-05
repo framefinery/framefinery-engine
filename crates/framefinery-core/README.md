@@ -116,8 +116,10 @@ direction, but it can still change before `0.1.0`.
 
 Long-stream adapters should prefer `RawVideoFrameSource`: the caller fills one
 frame buffer on demand and the encoder consumes frames without requiring the
-whole raw stream to be resident in memory. `Frame` remains the owned post-filter
-and reconstruction type; `FrameRef` is the borrowed validated view.
+whole raw stream to be resident in memory or requiring a total frame count up
+front. `VideoEncoderConfig::frame_limit` is an optional caller/source bound,
+not an encoder requirement. `Frame` remains the owned post-filter and
+reconstruction type; `FrameRef` is the borrowed validated view.
 
 ## Errors
 

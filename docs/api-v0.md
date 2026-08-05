@@ -104,7 +104,7 @@ Current shared concepts:
 - `codec`: selected `CodecId`;
 - `input`: validated `FrameInfo`;
 - `frame_rate`: optional rational frame rate;
-- `frame_limit`: optional bounded frame count;
+- `frame_limit`: optional caller/source frame limit or progress hint;
 - `rate_control`: codec default, lossless, or constant quantizer;
 - `reconstruction`: none, metrics only, or reconstructed frames;
 - `settings`: codec extension settings as typed name/value pairs.
@@ -134,23 +134,27 @@ use framefinery::{
     CodecId, FrameInfo, PixelFormat, RawVideoFrameSource, Result, VideoEncoderConfig,
 };
 
-fn fill_black(frame: &mut [u8]) -> Result<bool> {
-    frame.fill(0);
-    Ok(true)
-}
-
 let input = FrameInfo::new(640, 360, PixelFormat::Yuv420p8)?;
-let config = VideoEncoderConfig::new(CodecId::new("av2")?, input).with_frame_limit(1);
-let mut source = fill_black as fn(&mut [u8]) -> Result<bool>;
+let config = VideoEncoderConfig::new(CodecId::new("av2")?, input);
+let mut emitted = false;
+let mut source = |frame: &mut [u8]| -> Result<bool> {
+    if emitted {
+        return Ok(false);
+    }
+    frame.fill(0);
+    emitted = true;
+    Ok(true)
+};
 # let _ = (&config, &mut source as &mut dyn RawVideoFrameSource);
 # Ok::<(), framefinery::MediaError>(())
 ```
 
 `RawVideoFrameSource::read_frame` fills exactly one caller-provided frame buffer
-and returns `Ok(false)` only at EOF. The current AV2/VVC source encoders require
-`VideoEncoderConfig::frame_limit` because their bitstream headers still need the
-frame count up front. File, Y4M, WebCodecs, screen-capture, and test-vector code
-should be adapters that implement this callback shape.
+and returns `Ok(false)` only at clean EOF before a frame. The encoder does not
+need a total frame count: `VideoEncoderConfig::frame_limit` is an optional
+upper bound for callers that want bounded file/test encodes or known progress.
+File, Y4M, WebCodecs, screen-capture, and test-vector code should be adapters
+that implement this callback shape.
 
 ## Encoder Sessions
 

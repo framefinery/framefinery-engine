@@ -79,7 +79,7 @@ fn encode_av2_with_manifest(
     let options = av2_options_from_settings(request.lossless, request.settings)?;
     let request = Av2EncodeRequest {
         params: Av2EncodeParams {
-            frames: request.frames,
+            frames: request.frame_limit.unwrap_or(0),
         },
         geometry: Av2VideoGeometry {
             width: request.width,
@@ -135,6 +135,9 @@ fn av2_options_from_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use framefinery_core::{
+        CodecId, FrameInfo, MediaError, ReconstructionMode, VideoEncoderConfig, VideoRateControl,
+    };
 
     #[test]
     fn parses_qp_and_predictive_settings() {
@@ -153,5 +156,35 @@ mod tests {
             err.contains("--set qp=<1..255> is mutually exclusive with --set lossless"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn source_encode_can_read_until_eof_without_frame_limit() {
+        let info = FrameInfo::new(8, 8, PixelFormat::Yuv420p8).unwrap();
+        let config = VideoEncoderConfig::new(CodecId::new("av2").unwrap(), info)
+            .with_rate_control(VideoRateControl::Lossless)
+            .with_reconstruction(ReconstructionMode::MetricsOnly);
+        let source_frame = vec![0u8; info.expected_len()];
+        let mut emitted = false;
+        let mut source = |frame: &mut [u8]| -> Result<bool, MediaError> {
+            if emitted {
+                return Ok(false);
+            }
+            frame.copy_from_slice(&source_frame);
+            emitted = true;
+            Ok(true)
+        };
+        let mut output = Vec::new();
+        let mut frame_counts = Vec::new();
+        let mut metrics = |metrics: VideoEncodeFrameMetrics<'_>| {
+            frame_counts.push(metrics.frame_count);
+        };
+
+        AV2_CODEC
+            .encode_source(&mut source, &mut output, None, &config, Some(&mut metrics))
+            .expect("AV2 source encode without frame limit");
+
+        assert!(!output.is_empty());
+        assert_eq!(frame_counts, vec![None]);
     }
 }

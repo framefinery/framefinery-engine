@@ -24,7 +24,7 @@ pub(crate) struct StreamEncoderManifest {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct VideoEncodeStreamRequest<'a> {
-    pub frames: usize,
+    pub frame_limit: Option<usize>,
     pub width: usize,
     pub height: usize,
     pub format: framefinery_core::PixelFormat,
@@ -118,7 +118,7 @@ impl VideoEncoderSession for BufferedStreamEncoderSession {
         let mut recon = Vec::new();
         let settings = self.config.setting_specs();
         let request = VideoEncodeStreamRequest {
-            frames: frame_count,
+            frame_limit: Some(frame_count),
             width: self.config.input.width,
             height: self.config.input.height,
             format: self.config.input.format,
@@ -129,7 +129,7 @@ impl VideoEncoderSession for BufferedStreamEncoderSession {
         let mut metrics_callback = |frame: VideoEncodeFrameMetrics<'_>| {
             metrics.push(FrameEncodeMetrics {
                 frame_index: frame.frame_idx,
-                frame_count: Some(frame.frame_count),
+                frame_count: frame.frame_count,
                 encoded_bytes: frame.bitstream_bytes,
                 psnr: frame_psnr(self.config.input, frame.source, frame.reconstruction)
                     .map(|psnr| psnr.all),
@@ -186,21 +186,16 @@ pub(crate) fn encode_stream_from_source(
 ) -> Result<()> {
     let config = request.config;
     manifest.public.validate_config(config)?;
-    let frame_count = config.frame_limit.ok_or_else(|| {
-        MediaError::Message(
-            "source-driven encoding requires VideoEncoderConfig::frame_limit".to_string(),
-        )
-    })?;
     let settings = config.setting_specs();
     let request = VideoEncodeStreamRequest {
-        frames: frame_count,
+        frame_limit: config.frame_limit,
         width: config.input.width,
         height: config.input.height,
         format: config.input.format,
         lossless: matches!(config.rate_control, VideoRateControl::Lossless),
         settings: &settings,
     };
-    let mut input = SourceFrameReader::new(source, config.input.expected_len(), frame_count);
+    let mut input = SourceFrameReader::new(source, config.input.expected_len(), config.frame_limit);
     (manifest.encode_stream)(&mut input, output, recon, request, frame_metrics)
         .map_err(MediaError::Message)
 }
@@ -210,11 +205,15 @@ struct SourceFrameReader<'a> {
     frame: Vec<u8>,
     frame_offset: usize,
     frames_read: usize,
-    frame_limit: usize,
+    frame_limit: Option<usize>,
 }
 
 impl<'a> SourceFrameReader<'a> {
-    fn new(source: &'a mut dyn RawVideoFrameSource, frame_len: usize, frame_limit: usize) -> Self {
+    fn new(
+        source: &'a mut dyn RawVideoFrameSource,
+        frame_len: usize,
+        frame_limit: Option<usize>,
+    ) -> Self {
         Self {
             source,
             frame: vec![0; frame_len],
@@ -225,7 +224,10 @@ impl<'a> SourceFrameReader<'a> {
     }
 
     fn load_frame(&mut self) -> io::Result<bool> {
-        if self.frames_read >= self.frame_limit {
+        if self
+            .frame_limit
+            .is_some_and(|limit| self.frames_read >= limit)
+        {
             return Ok(false);
         }
         let has_frame = self
@@ -283,6 +285,7 @@ fn split_reconstructions(config: &VideoEncoderConfig, recon: Vec<u8>) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::picture::{read_input_frame, FrameLimit};
     use framefinery_core::{FrameInfo, PixelFormat, VideoEncoderSetting};
 
     const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest {
@@ -337,11 +340,13 @@ mod tests {
             .format
             .frame_len(request.width, request.height)
             .ok_or_else(|| "frame length overflow".to_string())?;
+        let frame_limit = FrameLimit::from_frame_limit(request.frame_limit);
         let mut frame = vec![0; frame_len];
-        for frame_idx in 0..request.frames {
-            input
-                .read_exact(&mut frame)
-                .map_err(|err| format!("read frame: {err}"))?;
+        let mut frame_idx = 0usize;
+        while frame_limit.should_read(frame_idx) {
+            if !read_input_frame(input, &mut frame, frame_idx, frame_limit, "test input")? {
+                break;
+            }
             output.write_all(&frame).map_err(|err| err.to_string())?;
             if let Some(writer) = recon.as_mut() {
                 writer.write_all(&frame).map_err(|err| err.to_string())?;
@@ -349,12 +354,13 @@ mod tests {
             if let Some(callback) = frame_metrics.as_mut() {
                 callback(VideoEncodeFrameMetrics {
                     frame_idx,
-                    frame_count: request.frames,
+                    frame_count: frame_limit.metric_count(),
                     bitstream_bytes: frame_len,
                     source: &frame,
                     reconstruction: &frame,
                 });
             }
+            frame_idx += 1;
         }
         Ok(())
     }
@@ -432,16 +438,33 @@ mod tests {
     }
 
     #[test]
-    fn source_encode_requires_frame_limit() {
+    fn source_encode_reads_until_eof_without_frame_limit() {
         let info = FrameInfo::new(2, 2, PixelFormat::Rgb24).unwrap();
         let config = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info);
-        let mut source = |_frame: &mut [u8]| Ok(false);
+        let frames = [
+            vec![1u8; info.expected_len()],
+            vec![2u8; info.expected_len()],
+        ];
+        let mut index = 0usize;
+        let mut source = |frame: &mut [u8]| {
+            let Some(next) = frames.get(index) else {
+                return Ok(false);
+            };
+            frame.copy_from_slice(next);
+            index += 1;
+            Ok(true)
+        };
         let mut output = Vec::new();
 
-        let err = TEST_CODEC
+        TEST_CODEC
             .encode_source(&mut source, &mut output, None, &config, None)
-            .unwrap_err();
-        assert!(err.to_string().contains("frame_limit"));
+            .expect("source bridge encode");
+
+        assert_eq!(index, 2);
+        assert_eq!(
+            output,
+            [frames[0].as_slice(), frames[1].as_slice()].concat()
+        );
     }
 
     #[test]

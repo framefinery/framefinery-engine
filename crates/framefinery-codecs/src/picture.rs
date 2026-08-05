@@ -44,6 +44,10 @@ impl FrameLimit {
         }
     }
 
+    pub(crate) fn from_frame_limit(frame_limit: Option<usize>) -> Self {
+        frame_limit.map_or(Self::UntilEof, Self::Exact)
+    }
+
     pub(crate) fn should_read(self, frame_index: usize) -> bool {
         match self {
             Self::UntilEof => true,
@@ -51,10 +55,10 @@ impl FrameLimit {
         }
     }
 
-    pub(crate) fn metric_count(self) -> usize {
+    pub(crate) fn metric_count(self) -> Option<usize> {
         match self {
-            Self::UntilEof => 0,
-            Self::Exact(frames) => frames,
+            Self::UntilEof => None,
+            Self::Exact(frames) => Some(frames),
         }
     }
 }
