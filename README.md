@@ -24,7 +24,7 @@ models from the FrameFinery Engine hardware workspace.
 - Keep codec implementations modular and independently selectable at build time.
 - Validate generated bitstreams and reconstructions with strict, reproducible
   tests.
-- Support commercial and non-commercial use under a permissive license.
+- Support open-source use and separately licensed commercial/private use.
 - Grow from codec and validation foundations into a broader media toolkit
   without forcing premature abstractions.
 
@@ -334,11 +334,17 @@ and SHA-256 checksums under `verification/generated/`.
 
 ## License
 
-FrameFinery Engine is licensed under the Apache License, Version 2.0.
+FrameFinery Engine is offered under a dual-license model:
 
-The project is open for commercial and non-commercial use. Companies and
-individuals may build public or proprietary extensions, products, and services
-on top of it under the terms of the Apache-2.0 license.
+- Open-source distribution under the GNU Affero General Public License version
+  3 or later (`AGPL-3.0-or-later`). See `LICENSE`.
+- Commercial licensing under separate written agreement from the applicable
+  copyright holder(s). See `COMMERCIAL-LICENSE.md`.
+
+Unless a file states otherwise, the repository source code, documentation,
+tests, fixtures, and validation scripts are covered by `AGPL-3.0-or-later`.
+Third-party dependencies, external reference tools, generated artifacts, and
+local vendor tooling remain under their own licenses.
 
 Codec patent rights are separate from source-code copyright licensing. Users are
 responsible for evaluating any codec patent or deployment obligations that apply

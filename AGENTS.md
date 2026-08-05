@@ -42,16 +42,23 @@ validation practices, not as a repo to merge wholesale.
 
 ## Licensing Intent
 
-The intended license model is permissive open source. The current preference is
-Apache-2.0.
+The intended license model is dual licensing:
+
+- open-source distribution under the GNU Affero General Public License version
+  3 or later (`AGPL-3.0-or-later`);
+- commercial/private licensing under separate written agreement from the
+  applicable copyright holder(s).
 
 Project intent:
 
-- commercial and non-commercial use should be allowed;
-- companies and individuals may build public or proprietary extensions;
+- open-source users may use, study, modify, and share the project under the
+  open license;
+- companies and individuals that need proprietary integration, private-source
+  derivative distribution, hosted service deployment, or other terms different
+  from AGPL-3.0-or-later should use a separate commercial license;
 - paid support, custom development, integration, and optimization work should
-  be allowed for the maintainer and for third parties;
-- the license should not create copyleft obligations for downstream products.
+  be allowed for the maintainer and for third parties under the applicable
+  license terms.
 
 Codec patent obligations are separate from source-code copyright licensing.
 Documentation should make clear that users are responsible for evaluating codec
