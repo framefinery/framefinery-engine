@@ -5,11 +5,18 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-readme.workspace = true
+readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
 description = "Core media primitives for FrameFinery."
 documentation = "https://docs.rs/framefinery-core"
+
+[features]
+default = ["filter-pattern", "filter-identity", "filter-crop", "filter-scale"]
+filter-pattern = []
+filter-identity = []
+filter-crop = []
+filter-scale = []
 
 [lib]
 name = "framefinery_core"

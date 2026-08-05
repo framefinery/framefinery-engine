@@ -13,8 +13,10 @@ Focused help pages are built into the binary:
 ```sh
 ff --help codecs
 ff --help filters
+ff --help filters pattern
 ff --help pixfmt
 ff --help settings
+ff --help settings qp
 ff --help presets
 ```
 
@@ -73,6 +75,8 @@ Common settings:
 ```
 
 `--set lossless` and `--set qp=<1..255>` are mutually exclusive.
+Run `ff --help settings` or `ff --help settings <name>` for the accepted
+settings and their full spec contracts.
 
 ## Metrics
 

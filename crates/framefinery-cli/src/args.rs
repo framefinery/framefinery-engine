@@ -12,12 +12,12 @@ pub enum Command {
     Encode(Box<EncodeArgs>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HelpTopic {
     Codecs,
-    Filters,
+    Filters(Option<String>),
     Pixfmt,
-    Settings,
+    Settings(Option<String>),
     Presets,
 }
 
@@ -58,7 +58,7 @@ pub struct HelpRow {
 }
 
 pub const USAGE: &[&str] = &[
-    "ff --help [<codecs|filters|pixfmt|settings|presets>]",
+    "ff --help [<codecs|filters [filter]|pixfmt|settings [setting]|presets>]",
     "ff --version",
     "ff codecs",
     "ff filters",
@@ -81,11 +81,7 @@ pub const OUTPUT_OPTIONS: &[HelpRow] = &[
     },
     HelpRow {
         syntax: "--set <key[=value]>",
-        summary: "Encode setting; bare keys such as lossless imply true",
-    },
-    HelpRow {
-        syntax: "--set qp=<1..255>",
-        summary: "Request lossy quantization; mutually exclusive with --set lossless",
+        summary: "Encode setting; run ff --help settings for accepted keys",
     },
     HelpRow {
         syntax: "--preset <name>",
@@ -127,16 +123,16 @@ pub const DISCOVERY_COMMANDS: &[HelpRow] = &[
         summary: "Describe compiled codec stages",
     },
     HelpRow {
-        syntax: "ff --help filters",
-        summary: "Describe compiled filter stages",
+        syntax: "ff --help filters [filter]",
+        summary: "Describe compiled filter stages or one filter spec",
     },
     HelpRow {
         syntax: "ff --help pixfmt",
         summary: "List accepted raw pixel-format names and aliases",
     },
     HelpRow {
-        syntax: "ff --help settings",
-        summary: "List global and codec-specific --set keys",
+        syntax: "ff --help settings [setting]",
+        summary: "List --set keys or describe one setting",
     },
     HelpRow {
         syntax: "ff --help presets",
@@ -190,11 +186,7 @@ where
     };
 
     if let Some(topic) = command.strip_prefix("--help=") {
-        let topic = parse_help_topic(topic)?;
-        return match cursor.next() {
-            None => Ok(Command::Help(Some(topic))),
-            Some(extra) => Err(format!("--help accepts at most one topic, got '{extra}'")),
-        };
+        return parse_help_from_topic(topic, cursor);
     }
 
     match command.as_str() {
@@ -205,7 +197,7 @@ where
             cursor,
             Command::Filters,
             "filters",
-            Some(HelpTopic::Filters),
+            Some(HelpTopic::Filters(None)),
         ),
         "encode" => parse_encode(cursor),
         other => Err(format!("unknown command '{other}'")),
@@ -227,25 +219,55 @@ where
 }
 
 fn parse_help(mut cursor: Cursor) -> Result<Command, String> {
-    let topic = match cursor.next() {
-        Some(topic) => Some(parse_help_topic(&topic)?),
-        None => None,
+    let Some(topic) = cursor.next() else {
+        return Ok(Command::Help(None));
     };
-    match cursor.next() {
-        None => Ok(Command::Help(topic)),
-        Some(extra) => Err(format!("--help accepts at most one topic, got '{extra}'")),
-    }
+    parse_help_from_topic(&topic, cursor)
+}
+
+fn parse_help_from_topic(topic: &str, cursor: Cursor) -> Result<Command, String> {
+    let topic = parse_help_topic(topic)?;
+    parse_help_topic_args(topic, cursor)
 }
 
 fn parse_help_topic(value: &str) -> Result<HelpTopic, String> {
     match value {
         "codecs" => Ok(HelpTopic::Codecs),
-        "filters" => Ok(HelpTopic::Filters),
+        "filters" => Ok(HelpTopic::Filters(None)),
         "pixfmt" => Ok(HelpTopic::Pixfmt),
-        "settings" => Ok(HelpTopic::Settings),
+        "settings" => Ok(HelpTopic::Settings(None)),
         "presets" => Ok(HelpTopic::Presets),
         other => Err(format!(
             "unknown help topic '{other}'; expected codecs, filters, pixfmt, settings, or presets"
+        )),
+    }
+}
+
+fn parse_help_topic_args(topic: HelpTopic, mut cursor: Cursor) -> Result<Command, String> {
+    match topic {
+        HelpTopic::Filters(None) => {
+            parse_named_help_detail(&mut cursor, "filters", |name| HelpTopic::Filters(name))
+        }
+        HelpTopic::Settings(None) => {
+            parse_named_help_detail(&mut cursor, "settings", |name| HelpTopic::Settings(name))
+        }
+        other => match cursor.next() {
+            None => Ok(Command::Help(Some(other))),
+            Some(extra) => Err(format!("--help accepts at most one topic, got '{extra}'")),
+        },
+    }
+}
+
+fn parse_named_help_detail(
+    cursor: &mut Cursor,
+    topic_name: &str,
+    topic: impl FnOnce(Option<String>) -> HelpTopic,
+) -> Result<Command, String> {
+    let detail = cursor.next();
+    match cursor.next() {
+        None => Ok(Command::Help(Some(topic(detail)))),
+        Some(extra) => Err(format!(
+            "--help {topic_name} accepts at most one name, got '{extra}'"
         )),
     }
 }
@@ -407,14 +429,6 @@ fn parse_setting(value: &str) -> String {
     } else {
         format!("{value}=true")
     }
-}
-
-pub fn setting_name(spec: &str) -> &str {
-    spec.split_once('=').map_or(spec, |(name, _)| name)
-}
-
-pub fn setting_value(spec: &str) -> Option<&str> {
-    spec.split_once('=').map(|(_, value)| value)
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -700,7 +714,15 @@ mod tests {
         );
         assert_eq!(
             parse_words(&["ff", "--help", "filters"]).unwrap(),
-            Command::Help(Some(HelpTopic::Filters))
+            Command::Help(Some(HelpTopic::Filters(None)))
+        );
+        assert_eq!(
+            parse_words(&["ff", "--help", "filters", "pattern"]).unwrap(),
+            Command::Help(Some(HelpTopic::Filters(Some("pattern".to_string()))))
+        );
+        assert_eq!(
+            parse_words(&["ff", "--help=filters", "identity"]).unwrap(),
+            Command::Help(Some(HelpTopic::Filters(Some("identity".to_string()))))
         );
         assert_eq!(
             parse_words(&["ff", "--help=pixfmt"]).unwrap(),
@@ -708,7 +730,15 @@ mod tests {
         );
         assert_eq!(
             parse_words(&["ff", "help", "settings"]).unwrap(),
-            Command::Help(Some(HelpTopic::Settings))
+            Command::Help(Some(HelpTopic::Settings(None)))
+        );
+        assert_eq!(
+            parse_words(&["ff", "--help", "settings", "qp"]).unwrap(),
+            Command::Help(Some(HelpTopic::Settings(Some("qp".to_string()))))
+        );
+        assert_eq!(
+            parse_words(&["ff", "--help=settings", "lossless"]).unwrap(),
+            Command::Help(Some(HelpTopic::Settings(Some("lossless".to_string()))))
         );
         assert_eq!(
             parse_words(&["ff", "--help", "presets"]).unwrap(),
@@ -720,7 +750,7 @@ mod tests {
         );
         assert_eq!(
             parse_words(&["ff", "filters", "--help"]).unwrap(),
-            Command::Help(Some(HelpTopic::Filters))
+            Command::Help(Some(HelpTopic::Filters(None)))
         );
     }
 
@@ -737,6 +767,12 @@ mod tests {
 
         let err = parse_words(&["ff", "--help=pixfmt", "extra"]).unwrap_err();
         assert_eq!(err, "--help accepts at most one topic, got 'extra'");
+
+        let err = parse_words(&["ff", "--help", "filters", "pattern", "extra"]).unwrap_err();
+        assert_eq!(err, "--help filters accepts at most one name, got 'extra'");
+
+        let err = parse_words(&["ff", "--help", "settings", "qp", "extra"]).unwrap_err();
+        assert_eq!(err, "--help settings accepts at most one name, got 'extra'");
     }
 
     #[test]
@@ -1136,7 +1172,6 @@ mod tests {
             "-f, --filter <spec>",
             "pattern=black",
             "--set <key[=value]>",
-            "--set qp=<1..255>",
             "--preset <name>",
             "ff --help codecs",
             "ff --help filters",
@@ -1155,6 +1190,7 @@ mod tests {
             "--width",
             "--height",
             "--lossless",
+            "--set qp=<1..255>",
             "--qp <1..255>",
             "Compatibility options",
             "--input-format",

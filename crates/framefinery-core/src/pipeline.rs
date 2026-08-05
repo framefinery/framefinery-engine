@@ -1,6 +1,9 @@
 use crate::error::Result;
 use crate::{Frame, Packet};
 
+#[cfg(feature = "filter-identity")]
+pub use crate::filters::IdentityFilter;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FilterPipelineStats {
     pub input_frames: usize,
@@ -49,15 +52,6 @@ pub trait Encoder {
 
     fn finish(&mut self) -> Result<Vec<Packet>> {
         Ok(Vec::new())
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct IdentityFilter;
-
-impl Filter for IdentityFilter {
-    fn process(&mut self, frame: Frame) -> Result<Vec<Frame>> {
-        Ok(vec![frame])
     }
 }
 
@@ -218,6 +212,14 @@ mod tests {
         }
     }
 
+    struct PassthroughFilter;
+
+    impl Filter for PassthroughFilter {
+        fn process(&mut self, frame: Frame) -> Result<Vec<Frame>> {
+            Ok(vec![frame])
+        }
+    }
+
     struct FlushingFilter {
         info: FrameInfo,
     }
@@ -285,8 +287,8 @@ mod tests {
     #[test]
     fn encode_pipeline_pushes_encoder_packets_and_finish_packet() {
         let mut source = VecFrameSource::new(vec![test_frame(1), test_frame(2)]);
-        let mut identity = IdentityFilter;
-        let mut filters: Vec<&mut dyn Filter> = vec![&mut identity];
+        let mut passthrough = PassthroughFilter;
+        let mut filters: Vec<&mut dyn Filter> = vec![&mut passthrough];
         let mut encoder = PacketizingEncoder { next_pts: 0 };
         let mut sink = VecPacketSink::default();
 
@@ -309,9 +311,9 @@ mod tests {
     }
 
     #[test]
-    fn identity_filter_preserves_frame() {
+    fn passthrough_filter_preserves_frame() {
         let frame = test_frame(9);
-        let mut filter = IdentityFilter;
+        let mut filter = PassthroughFilter;
         let out = filter.process(frame.clone()).unwrap();
         assert_eq!(out, vec![frame]);
     }

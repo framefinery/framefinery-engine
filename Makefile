@@ -2,6 +2,7 @@ CARGO ?= cargo
 PYTHON ?= python3
 PRODUCT_FEATURES ?= all-codecs all-filters
 CARGO_FEATURES ?= all
+CARGO_DEFAULT_FEATURES ?= 1
 AV2_SB_BITS ?= 0
 AV2_LOSSY_STATS ?= 0
 AV2_STATS ?= 0
@@ -13,7 +14,8 @@ VVC_STATS_FEATURE := $(if $(filter 1 true yes,$(VVC_STATS)),framefinery-codecs/v
 AV2_ANALYSIS_FEATURES := $(strip $(AV2_SB_BITS_FEATURE) $(AV2_LOSSY_STATS_FEATURE) $(AV2_STATS_FEATURE))
 VVC_ANALYSIS_FEATURES := $(strip $(VVC_STATS_FEATURE))
 CARGO_BASE_FEATURES := $(if $(filter all,$(strip $(CARGO_FEATURES))),$(PRODUCT_FEATURES),$(strip $(CARGO_FEATURES)))
-CARGO_FLAGS := $(if $(strip $(CARGO_BASE_FEATURES)),--features "$(CARGO_BASE_FEATURES)",) $(if $(strip $(AV2_ANALYSIS_FEATURES)),--features "$(AV2_ANALYSIS_FEATURES)",) $(if $(strip $(VVC_ANALYSIS_FEATURES)),--features "$(VVC_ANALYSIS_FEATURES)",)
+CARGO_NO_DEFAULT_FEATURES_FLAG := $(if $(filter 0 false no off,$(CARGO_DEFAULT_FEATURES)),--no-default-features,)
+CARGO_FLAGS := $(CARGO_NO_DEFAULT_FEATURES_FLAG) $(if $(strip $(CARGO_BASE_FEATURES)),--features "$(CARGO_BASE_FEATURES)",) $(if $(strip $(AV2_ANALYSIS_FEATURES)),--features "$(AV2_ANALYSIS_FEATURES)",) $(if $(strip $(VVC_ANALYSIS_FEATURES)),--features "$(VVC_ANALYSIS_FEATURES)",)
 PROFILE ?=
 GPROF_RUSTFLAGS ?= -C debuginfo=2 -C force-frame-pointers=yes -C symbol-mangling-version=v0 -C codegen-units=1 -C lto=no -C link-arg=-pg
 GPROF_TARGET_DIR ?= target/gprof
@@ -255,6 +257,7 @@ help:
 		'  make doc              Build workspace API docs without dependencies' \
 		'  make package-list     Show files that Cargo would include in each crate' \
 		'  make build            Build release CLI and copy it to ./ff' \
+		'                         Set CARGO_DEFAULT_FEATURES=0 to build only CARGO_FEATURES' \
 		'                         Set AV2_SB_BITS=1 to compile AV2 per-superblock bit JSONL support' \
 		'                         Set AV2_LOSSY_STATS=1 to compile AV2 lossy mode/TXB stats' \
 		'                         Set AV2_STATS=1 to compile AV2 wall-time JSONL support' \

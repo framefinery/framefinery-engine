@@ -29,6 +29,7 @@ mod cabac;
 mod header;
 #[path = "inter/ibc.rs"]
 mod ibc;
+mod interface;
 #[path = "bitstream/nal.rs"]
 mod nal;
 mod palette;
@@ -109,6 +110,8 @@ include!("stats.rs");
 include!("encode.rs");
 #[cfg(test)]
 include!("test_support.rs");
+
+pub use interface::{VVC_CODEC, VVC_FAST_SEARCH_SETTING, VVC_FAST_SEARCH_SETTING_SPEC};
 
 #[cfg(test)]
 mod tests;

@@ -15,8 +15,8 @@ to optimize for software APIs, usability, codec quality, and safe Rust
 performance.
 
 This repository is in bootstrap state. It currently provides project structure,
-shared media primitives, a CLI, and imported experimental AV2/VVC software
-models from the FrameFinery Engine hardware workspace.
+shared media primitives, a CLI, and local experimental AV2/VVC software
+encoders.
 
 ## Goals
 
@@ -107,8 +107,10 @@ The installed command name is intended to be short:
 ./ff --help
 ./ff --help codecs
 ./ff --help filters
+./ff --help filters pattern
 ./ff --help pixfmt
 ./ff --help settings
+./ff --help settings qp
 ./ff --help presets
 ```
 
@@ -181,13 +183,13 @@ make build CARGO_FEATURES=
 
 `CARGO_FEATURES=all` means all normal product features. The user-facing `av2`
 and `vvc` features, plus the compatibility `codec-av2` and `codec-vvc`
-features, enable the imported experimental software models. The
-`filter-pattern` feature enables input-free generated pattern sources for
-fixtures. `filter-identity` enables the no-op transform filter used to exercise
-the executable frame pipeline. Other filter features are discovery placeholders
-for now. Analysis-only features, such as AV2 superblock bit accounting and codec
-wall-time profiling, are enabled through dedicated Makefile switches like
-`AV2_SB_BITS=1`, `AV2_STATS=1`, and `VVC_STATS=1` so the normal product build is
+features, enable the local experimental software encoders. The `filter-*`
+features map to reusable filter manifests and implementations in
+`framefinery-core`; all filters are enabled by default, and custom builds can
+disable default features and re-enable only the filters they want. Analysis-only
+features, such as AV2 superblock bit accounting and codec wall-time profiling,
+are enabled through dedicated Makefile switches like `AV2_SB_BITS=1`,
+`AV2_STATS=1`, and `VVC_STATS=1` so the normal product build is
 not slowed by instrumentation.
 
 ## CLI Shape
@@ -199,8 +201,10 @@ discovery and a single encode action:
 ff --help
 ff --help codecs
 ff --help filters
+ff --help filters pattern
 ff --help pixfmt
 ff --help settings
+ff --help settings qp
 ff --help presets
 ff codecs
 ff filters
@@ -235,15 +239,15 @@ Current option placement and inference rules:
 - Source filters require explicit `--frames` because they do not have a file
   EOF.
 - Output/encoder options, such as `--recon output.yuv`, `--psnr`,
-  `--set lossless`, `--set qp=<1..255>`, `--preset`, and repeated
-  `--set key[=value]`, belong after `--encode codec:output`.
+  `--preset`, and repeated `--set key[=value]`, belong after
+  `--encode codec:output`.
 - `--recon <path>` writes the encoder's internal reconstructed raw stream for
   debugging and reference validation. `--psnr` calculates per-frame PSNR from
   that same internal reconstruction without writing the raw reconstruction
   stream.
-- Bare `--set` keys imply `true`. `--set qp=<1..255>` requests lossy AV2 or VVC
-  quantization and is mutually exclusive with `--set lossless`; lower values
-  preserve more detail.
+- Bare `--set` keys imply `true`. Accepted settings and setting-specific
+  contracts are listed by `ff --help settings` and
+  `ff --help settings <name>`.
 
 Global accepted settings are listed by `ff codecs`; codec-specific settings are
 listed with the codec that owns them. The current codec-specific
@@ -260,6 +264,11 @@ because there is no filename to infer dimensions or pixel format from. The
 `identity` transform filter is executable for file inputs and source-filter
 inputs; `crop` and `scale` remain listed as future stage scaffolds and are
 rejected until their frame transforms are implemented.
+The reusable filter catalog and implementations live in `framefinery-core`; the
+`ff` CLI reads that manifest and maps command-line strings onto the core
+pipeline API. Each filter manifest also points at a typed spec manifest, so
+`ff --help filters <name>` can print the accepted forms, parameters, examples,
+and notes without duplicating filter-specific prose in the CLI.
 
 Current filter capability:
 
@@ -291,8 +300,8 @@ The raw input CLI/API contract is documented in
 ```text
 crates/
   framefinery-cli/   Published as package `framefinery`; library facade plus `ff`.
-  framefinery-core/  Shared frame, packet, error, and pipeline primitives.
-  framefinery-codecs/  Imported experimental AV2/VVC software models.
+  framefinery-core/  Shared frame, packet, pipeline, source, and filter APIs.
+  framefinery-codecs/  Local experimental AV2/VVC software encoders.
 docs/                     Architecture and validation notes.
 tests/                    Future shared integration tests and fixtures.
 tools/                    Future development and validation helper scripts.
@@ -302,7 +311,7 @@ tools/                    Future development and validation helper scripts.
 
 - Compressed input decode is not implemented yet; `ff encode` accepts raw YUV
   and Y4M inputs.
-- AV2 and VVC encoders are experimental software models, not production codec
+- AV2 and VVC encoders are experimental software implementations, not production codec
   implementations.
 - `identity` is the only executable transform filter. `crop` and `scale` are
   feature-gated discovery scaffolds.

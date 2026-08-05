@@ -1,4 +1,4 @@
-/target/
+target/
 /generated/
 /verification/generated/
 /verification/references/
@@ -9,6 +9,7 @@
 /ff-gprof
 /ff-optimized
 /ff-pgo
+/ff-smoke-*
 /gmon.out
 /gprof.txt
 **/__pycache__/

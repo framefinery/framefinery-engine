@@ -12,7 +12,7 @@ description = "Experimental codec models for FrameFinery."
 documentation = "https://docs.rs/framefinery-codecs"
 
 [dependencies]
-framefinery-core = { path = "../framefinery-core", version = "0.0.1" }
+framefinery-core = { path = "../framefinery-core", version = "0.0.2", default-features = false }
 
 [dev-dependencies]
 criterion = "0.5"

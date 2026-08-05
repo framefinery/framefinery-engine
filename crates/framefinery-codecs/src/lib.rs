@@ -10,8 +10,23 @@ pub mod bitstream;
 pub mod instrumentation;
 #[cfg(any(feature = "av2", feature = "vvc"))]
 mod picture;
+#[cfg(any(feature = "av2", feature = "vvc"))]
+mod settings;
 pub mod trace;
 #[cfg(feature = "vvc")]
 pub mod vvc;
 
+use framefinery_core::CodecManifest;
+
 pub use framefinery_core::{ChromaSampling, PixelFormat, SampleBitDepth};
+
+pub const CODECS: &[CodecManifest] = &[
+    #[cfg(feature = "av2")]
+    av2::AV2_CODEC,
+    #[cfg(feature = "vvc")]
+    vvc::VVC_CODEC,
+];
+
+pub fn codec(name: &str) -> Option<CodecManifest> {
+    CODECS.iter().copied().find(|codec| codec.name == name)
+}

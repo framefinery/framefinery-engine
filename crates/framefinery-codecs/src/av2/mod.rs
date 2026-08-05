@@ -16,6 +16,7 @@ mod decision;
 pub mod entropy;
 #[path = "inter/ibc.rs"]
 mod ibc;
+mod interface;
 #[path = "prediction/intra_prediction.rs"]
 mod intra_prediction;
 #[path = "inter/motion.rs"]
@@ -66,6 +67,8 @@ include!("trace.rs");
 include!("reconstruction.rs");
 include!("headers.rs");
 include!("obu.rs");
+
+pub use interface::AV2_CODEC;
 
 #[cfg(test)]
 mod tests;

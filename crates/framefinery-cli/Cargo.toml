@@ -21,8 +21,8 @@ name = "ff"
 path = "src/main.rs"
 
 [dependencies]
-framefinery-core = { path = "../framefinery-core", version = "0.0.1" }
-framefinery-codecs = { path = "../framefinery-codecs", version = "0.0.1", optional = true, default-features = false }
+framefinery-core = { path = "../framefinery-core", version = "0.0.2", default-features = false }
+framefinery-codecs = { path = "../framefinery-codecs", version = "0.0.2", optional = true, default-features = false }
 
 [features]
 default = ["all-codecs", "all-filters"]
@@ -30,12 +30,13 @@ all-codecs = ["av2", "vvc"]
 all-filters = ["filter-pattern", "filter-identity", "filter-crop", "filter-scale"]
 av2 = ["codec-av2"]
 vvc = ["codec-vvc"]
-codec-av2 = ["dep:framefinery-codecs", "framefinery-codecs/av2"]
-codec-vvc = ["dep:framefinery-codecs", "framefinery-codecs/vvc"]
-filter-pattern = []
-filter-identity = []
-filter-crop = []
-filter-scale = []
+video-encoders = ["dep:framefinery-codecs"]
+codec-av2 = ["video-encoders", "framefinery-codecs/av2"]
+codec-vvc = ["video-encoders", "framefinery-codecs/vvc"]
+filter-pattern = ["framefinery-core/filter-pattern"]
+filter-identity = ["framefinery-core/filter-identity"]
+filter-crop = ["framefinery-core/filter-crop"]
+filter-scale = ["framefinery-core/filter-scale"]
 
 [lints]
 workspace = true

@@ -181,7 +181,10 @@ pub fn vvc_yuv_encode_stream_with_limits_and_frame_metrics<R: Read, W: Write>(
     )
 }
 
-pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<R: Read, W: Write>(
+pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
+    R: Read + ?Sized,
+    W: Write + ?Sized,
+>(
     input: &mut R,
     bitstream: &mut W,
     reconstruction: Option<&mut dyn Write>,
@@ -206,7 +209,10 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<R: Read, 
     )
 }
 
-fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<R: Read, W: Write>(
+fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<
+    R: Read + ?Sized,
+    W: Write + ?Sized,
+>(
     input: &mut R,
     bitstream: &mut W,
     mut reconstruction: Option<&mut dyn Write>,
@@ -802,7 +808,7 @@ fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<R: Read, W: 
     }
 }
 
-fn write_annex_b_to<W: Write>(output: &mut W, units: &[VvcNalUnit]) -> Result<(), String> {
+fn write_annex_b_to<W: Write + ?Sized>(output: &mut W, units: &[VvcNalUnit]) -> Result<(), String> {
     let bytes = write_annex_b(units)?;
     output
         .write_all(&bytes)

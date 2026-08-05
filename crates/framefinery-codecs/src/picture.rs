@@ -235,10 +235,12 @@ impl PlanarYuvFrameLayout {
         self.geometry.frame_len
     }
 
+    #[cfg_attr(not(feature = "vvc"), allow(dead_code))]
     pub(crate) fn luma_samples(self) -> usize {
         self.geometry.luma_samples
     }
 
+    #[cfg_attr(not(feature = "vvc"), allow(dead_code))]
     pub(crate) fn chroma_samples(self) -> usize {
         self.geometry.chroma_samples
     }
@@ -395,6 +397,7 @@ impl PlanarYuvFrameLayout {
         true
     }
 
+    #[cfg_attr(not(feature = "vvc"), allow(dead_code))]
     pub(crate) fn luma_regions_equal_between(
         self,
         current: &[u8],
@@ -432,6 +435,7 @@ impl PlanarYuvFrameLayout {
         )
     }
 
+    #[cfg_attr(not(feature = "vvc"), allow(dead_code))]
     pub(crate) fn chroma_regions_equal_between(
         self,
         current: &[u8],
@@ -606,6 +610,7 @@ pub(crate) fn write_planar_sample(
     buffer[offset + 1] = bytes[1];
 }
 
+#[cfg_attr(not(feature = "vvc"), allow(dead_code))]
 pub(crate) fn unpack_planar_samples(input: &[u8], output: &mut [u16], bit_depth: SampleBitDepth) {
     debug_assert_eq!(input.len(), output.len() * bit_depth.bytes_per_sample());
     if bit_depth.bits() <= 8 {
@@ -620,6 +625,7 @@ pub(crate) fn unpack_planar_samples(input: &[u8], output: &mut [u16], bit_depth:
     }
 }
 
+#[cfg_attr(not(feature = "vvc"), allow(dead_code))]
 pub(crate) fn pack_planar_samples(samples: &[u16], output: &mut [u8], bit_depth: SampleBitDepth) {
     debug_assert_eq!(output.len(), samples.len() * bit_depth.bytes_per_sample());
     if bit_depth.bits() <= 8 {

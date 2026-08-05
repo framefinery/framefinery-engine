@@ -12,27 +12,30 @@ infrastructure:
 - frame metadata and owned frame buffers;
 - packet metadata and owned packet buffers;
 - shared error types;
-- source, decoder, filter, encoder, and sink traits.
+- source, decoder, filter, encoder, and sink traits;
+- reusable source/filter implementations and their public filter manifest.
 
 Codec internals should remain independent until common APIs are proven by real
 implementations. AV2 and VVC may share frame buffers, metrics, validation
 adapters, and byte/bitstream helpers, but should not be forced into one entropy
 or block-tree abstraction early.
 
-Imported experimental AV2/VVC software models live in `framefinery-codecs`.
+Local experimental AV2/VVC software encoders live in `framefinery-codecs`.
 Those modules are allowed to keep codec-specific internal structures while they
-are adapted from the hardware workspace model into a software-facing API.
+evolve behind the software-facing API.
 The user-facing package is `framefinery`; it provides the public facade crate
 and the `ff` binary. Its default feature set enables AV2, VVC, and the current
-filter catalog so `cargo install framefinery` produces the normal CLI build.
+core filter catalog so `cargo install framefinery` produces the normal CLI
+build.
 
 Optional codecs and filters should be selected at build time using Cargo
 features or separate crates. The Makefile default enables the normal product
 feature set so `./ff` is usable after `make build` without compiling
 analysis-only instrumentation; override `CARGO_FEATURES` for narrower binaries.
-Runtime pipeline construction can still choose which compiled stages to
-connect. Instrumentation features should stay behind explicit Makefile switches
-such as `AV2_SB_BITS=1` or `AV2_LOSSY_STATS=1`.
+Runtime pipeline construction can still choose which compiled stages to connect.
+Filter features are individually toggleable and enabled by default for the
+normal product build. Instrumentation features should stay behind explicit
+Makefile switches such as `AV2_SB_BITS=1` or `AV2_LOSSY_STATS=1`.
 
 ## CLI Contract
 
@@ -41,13 +44,13 @@ enough for reproducible validation.
 
 Initial command families:
 
-- `ff --help [<codecs|filters|pixfmt|settings|presets>]` prints the general CLI
-  help or a focused help topic for codec stages, filter stages, raw pixel
-  formats, encode settings, or preset catalogs.
+- `ff --help [<codecs|filters [filter]|pixfmt|settings [setting]|presets>]`
+  prints the general CLI help, a focused help topic, or one filter/setting spec
+  contract.
 - `ff codecs` lists known codec stages and the Cargo feature that compiles each
   one into the binary.
-- `ff filters` lists known filter stages and the Cargo feature that compiles
-  each one into the binary.
+- `ff filters` lists known filter stages, their primary spec form, and the
+  Cargo feature that compiles each one into the binary.
 - `ff encode` is the path for one raw or Y4M input, optional input metadata,
   zero or more filters, one encoder, and one output:
   `ff encode input.yuv --video 1920x1080:yuv444p --filter identity --encode av2:output.obu --set lossless`.
