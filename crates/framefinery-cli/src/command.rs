@@ -7,12 +7,13 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use framefinery_core::{
-    boolean_setting_enabled, build_filter_transform, convert_frame_format,
-    generate_source_filter_stream, parse_filter_pipeline_specs, planar_sample_sse,
-    run_frame_filter_pipeline, setting_name, setting_value, Filter, FilterStageSpec, Frame,
-    FrameInfo, MediaError, PixelFormat, SampleBitDepth, SettingManifest, Sink, Source,
-    VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeStreamRequest,
-    VideoEncoderManifest, VERSION,
+    boolean_setting_enabled, build_filter_transform, convert_frame_format, frame_psnr,
+    generate_source_filter_stream, parse_filter_pipeline_specs, run_frame_filter_pipeline,
+    setting_name, setting_value, Filter, FilterStageSpec, Frame, FrameInfo, FramePsnr, FrameRate,
+    MediaError, PixelFormat, RawVideoFrameReadSource, ReconstructionMode, SampleBitDepth,
+    SettingManifest, SettingValue, Sink, Source, VideoEncodeFrameMetrics,
+    VideoEncodeFrameMetricsCallback, VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSetting,
+    VideoRateControl, VERSION,
 };
 
 use crate::args::{self, Command, EncodeArgs, HelpTopic};
@@ -702,14 +703,6 @@ fn input_label(input: &EncodeInput) -> String {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct FramePsnr {
-    y: f64,
-    u: f64,
-    v: f64,
-    all: f64,
-}
-
 fn print_frame_metrics(
     codec: &str,
     job: &EncodeJob,
@@ -720,7 +713,7 @@ fn print_frame_metrics(
     reconstruction: &[u8],
 ) {
     let bits = bitstream_bytes * 8;
-    match frame_psnr(job, source, reconstruction) {
+    match frame_psnr_for_job(job, source, reconstruction) {
         Some(psnr) => {
             if job.format.is_rgb() {
                 eprintln!(
@@ -730,9 +723,9 @@ fn print_frame_metrics(
                     frame_count,
                     bits,
                     bitstream_bytes,
-                    format_psnr(psnr.y),
-                    format_psnr(psnr.u),
-                    format_psnr(psnr.v),
+                    format_psnr(psnr.plane0),
+                    format_psnr(psnr.plane1),
+                    format_psnr(psnr.plane2),
                     format_psnr(psnr.all),
                 );
             } else {
@@ -743,9 +736,9 @@ fn print_frame_metrics(
                     frame_count,
                     bits,
                     bitstream_bytes,
-                    format_psnr(psnr.y),
-                    format_psnr(psnr.u),
-                    format_psnr(psnr.v),
+                    format_psnr(psnr.plane0),
+                    format_psnr(psnr.plane1),
+                    format_psnr(psnr.plane2),
                     format_psnr(psnr.all),
                 );
             }
@@ -761,130 +754,9 @@ fn print_frame_metrics(
     }
 }
 
-fn frame_psnr(job: &EncodeJob, source: &[u8], reconstruction: &[u8]) -> Option<FramePsnr> {
-    let y_samples = job.width.checked_mul(job.height)?;
-    if job.format == PixelFormat::Rgb24 {
-        return rgb24_frame_psnr(y_samples, source, reconstruction);
-    }
-    if job.format == PixelFormat::Gbrp8 {
-        return gbrp8_frame_psnr(y_samples, source, reconstruction);
-    }
-    let chroma_sampling = job.format.chroma_sampling()?;
-    let chroma_width = job.width.checked_div(chroma_sampling.subsample_x())?;
-    let chroma_height = job.height.checked_div(chroma_sampling.subsample_y())?;
-    let chroma_samples = chroma_width.checked_mul(chroma_height)?;
-    let bytes_per_sample = job.format.bit_depth().bytes_per_sample();
-    let y_len = y_samples.checked_mul(bytes_per_sample)?;
-    let chroma_len = chroma_samples.checked_mul(bytes_per_sample)?;
-    let frame_len = y_len.checked_add(chroma_len.checked_mul(2)?)?;
-    if source.len() != frame_len || reconstruction.len() != frame_len {
-        return None;
-    }
-    if source == reconstruction {
-        return Some(FramePsnr {
-            y: f64::INFINITY,
-            u: f64::INFINITY,
-            v: f64::INFINITY,
-            all: f64::INFINITY,
-        });
-    }
-
-    let y_src = &source[..y_len];
-    let y_rec = &reconstruction[..y_len];
-    let u_start = y_len;
-    let v_start = y_len + chroma_len;
-    let u_src = &source[u_start..v_start];
-    let u_rec = &reconstruction[u_start..v_start];
-    let v_src = &source[v_start..frame_len];
-    let v_rec = &reconstruction[v_start..frame_len];
-
-    let bit_depth = job.format.bit_depth();
-    let y_sse = planar_sample_sse(y_src, y_rec, bit_depth)?;
-    let u_sse = planar_sample_sse(u_src, u_rec, bit_depth)?;
-    let v_sse = planar_sample_sse(v_src, v_rec, bit_depth)?;
-    let max_sample = f64::from(bit_depth.max_sample());
-    Some(FramePsnr {
-        y: psnr_from_sse(y_sse, y_samples, max_sample),
-        u: psnr_from_sse(u_sse, chroma_samples, max_sample),
-        v: psnr_from_sse(v_sse, chroma_samples, max_sample),
-        all: psnr_from_sse(
-            y_sse + u_sse + v_sse,
-            y_samples + chroma_samples * 2,
-            max_sample,
-        ),
-    })
-}
-
-fn gbrp8_frame_psnr(pixels: usize, source: &[u8], reconstruction: &[u8]) -> Option<FramePsnr> {
-    let plane_len = pixels;
-    let frame_len = plane_len.checked_mul(3)?;
-    if source.len() != frame_len || reconstruction.len() != frame_len {
-        return None;
-    }
-    if source == reconstruction {
-        return Some(FramePsnr {
-            y: f64::INFINITY,
-            u: f64::INFINITY,
-            v: f64::INFINITY,
-            all: f64::INFINITY,
-        });
-    }
-
-    let (source_g, source_chroma) = source.split_at(plane_len);
-    let (source_b, source_r) = source_chroma.split_at(plane_len);
-    let (recon_g, recon_chroma) = reconstruction.split_at(plane_len);
-    let (recon_b, recon_r) = recon_chroma.split_at(plane_len);
-    let r_sse = planar_sample_sse(source_r, recon_r, SampleBitDepth::new(8).unwrap())?;
-    let g_sse = planar_sample_sse(source_g, recon_g, SampleBitDepth::new(8).unwrap())?;
-    let b_sse = planar_sample_sse(source_b, recon_b, SampleBitDepth::new(8).unwrap())?;
-    Some(FramePsnr {
-        y: psnr_from_sse(r_sse, pixels, 255.0),
-        u: psnr_from_sse(g_sse, pixels, 255.0),
-        v: psnr_from_sse(b_sse, pixels, 255.0),
-        all: psnr_from_sse(r_sse + g_sse + b_sse, frame_len, 255.0),
-    })
-}
-
-fn rgb24_frame_psnr(pixels: usize, source: &[u8], reconstruction: &[u8]) -> Option<FramePsnr> {
-    let frame_len = pixels.checked_mul(3)?;
-    if source.len() != frame_len || reconstruction.len() != frame_len {
-        return None;
-    }
-    if source == reconstruction {
-        return Some(FramePsnr {
-            y: f64::INFINITY,
-            u: f64::INFINITY,
-            v: f64::INFINITY,
-            all: f64::INFINITY,
-        });
-    }
-
-    let mut r_sse = 0u64;
-    let mut g_sse = 0u64;
-    let mut b_sse = 0u64;
-    for (src, rec) in source.chunks_exact(3).zip(reconstruction.chunks_exact(3)) {
-        let r_diff = src[0] as i32 - rec[0] as i32;
-        let g_diff = src[1] as i32 - rec[1] as i32;
-        let b_diff = src[2] as i32 - rec[2] as i32;
-        r_sse += (r_diff * r_diff) as u64;
-        g_sse += (g_diff * g_diff) as u64;
-        b_sse += (b_diff * b_diff) as u64;
-    }
-
-    Some(FramePsnr {
-        y: psnr_from_sse(r_sse, pixels, 255.0),
-        u: psnr_from_sse(g_sse, pixels, 255.0),
-        v: psnr_from_sse(b_sse, pixels, 255.0),
-        all: psnr_from_sse(r_sse + g_sse + b_sse, frame_len, 255.0),
-    })
-}
-
-fn psnr_from_sse(sse: u64, samples: usize, max_sample: f64) -> f64 {
-    if sse == 0 {
-        f64::INFINITY
-    } else {
-        10.0 * ((max_sample * max_sample * samples as f64) / sse as f64).log10()
-    }
+fn frame_psnr_for_job(job: &EncodeJob, source: &[u8], reconstruction: &[u8]) -> Option<FramePsnr> {
+    let info = FrameInfo::new(job.width, job.height, job.format).ok()?;
+    frame_psnr(info, source, reconstruction)
 }
 
 fn format_psnr(value: f64) -> String {
@@ -1208,22 +1080,154 @@ fn infer_file_frame_count_from_eof(path: &Path, frame_len: usize) -> Result<usiz
     Ok(complete_frames)
 }
 
+fn video_config_for_job(
+    codec: VideoEncoderManifest,
+    args: &EncodeArgs,
+    job: &EncodeJob,
+) -> Result<VideoEncoderConfig, String> {
+    let codec_id = codec.codec_id().map_err(|err| err.to_string())?;
+    let info = FrameInfo::new(job.width, job.height, job.format).map_err(|err| err.to_string())?;
+    let mut config = VideoEncoderConfig::new(codec_id, info).with_frame_limit(job.frames);
+    if let Some(fps) = job.fps.as_deref() {
+        config = config.with_frame_rate(frame_rate_from_cli(fps)?);
+    }
+    config = config.with_rate_control(rate_control_from_cli_settings(
+        job.lossless,
+        &args.settings,
+    )?);
+    if job.recon.is_some() {
+        config = config.with_reconstruction(ReconstructionMode::Frames);
+    } else if job.psnr {
+        config = config.with_reconstruction(ReconstructionMode::MetricsOnly);
+    }
+    for spec in &args.settings {
+        if let Some(setting) = encoder_setting_from_cli(codec, spec)? {
+            config = config.with_setting(setting);
+        }
+    }
+    codec
+        .validate_config(&config)
+        .map_err(|err| err.to_string())?;
+    Ok(config)
+}
+
+fn frame_rate_from_cli(value: &str) -> Result<FrameRate, String> {
+    if let Some((numerator, denominator)) = value.split_once('/') {
+        let numerator = numerator
+            .parse::<u32>()
+            .map_err(|_| format!("fps expects N:D or a positive number, got '{value}'"))?;
+        let denominator = denominator
+            .parse::<u32>()
+            .map_err(|_| format!("fps expects N:D or a positive number, got '{value}'"))?;
+        return FrameRate::new(numerator, denominator).map_err(|err| err.to_string());
+    }
+    if let Some((whole, fractional_text)) = value.split_once('.') {
+        let whole = whole
+            .parse::<u32>()
+            .map_err(|_| format!("fps expects N:D or a positive number, got '{value}'"))?;
+        let fractional = fractional_text
+            .parse::<u32>()
+            .map_err(|_| format!("fps expects N:D or a positive number, got '{value}'"))?;
+        let denominator = 10u32
+            .checked_pow(fractional_digits(fractional_text.len())?)
+            .ok_or_else(|| format!("fps denominator overflow for '{value}'"))?;
+        let numerator = whole
+            .checked_mul(denominator)
+            .and_then(|base| base.checked_add(fractional))
+            .ok_or_else(|| format!("fps numerator overflow for '{value}'"))?;
+        return FrameRate::new(numerator, denominator).map_err(|err| err.to_string());
+    }
+    let numerator = value
+        .parse::<u32>()
+        .map_err(|_| format!("fps expects N:D or a positive number, got '{value}'"))?;
+    FrameRate::new(numerator, 1).map_err(|err| err.to_string())
+}
+
+fn fractional_digits(original_len: usize) -> Result<u32, String> {
+    u32::try_from(original_len).map_err(|_| "fps fractional part is too long".to_string())
+}
+
+fn rate_control_from_cli_settings(
+    lossless: bool,
+    settings: &[String],
+) -> Result<VideoRateControl, String> {
+    let qp = setting_u8(settings, "qp")?;
+    match (lossless, qp) {
+        (true, Some(_)) => {
+            Err("--set qp=<1..255> is mutually exclusive with --set lossless".to_string())
+        }
+        (true, None) => Ok(VideoRateControl::Lossless),
+        (false, Some(qp)) => {
+            VideoRateControl::constant_quantizer(qp).map_err(|err| err.to_string())
+        }
+        (false, None) => Ok(VideoRateControl::CodecDefault),
+    }
+}
+
+fn setting_u8(settings: &[String], name: &str) -> Result<Option<u8>, String> {
+    for spec in settings {
+        if setting_name(spec) != name {
+            continue;
+        }
+        let value = setting_value(spec).unwrap_or("true");
+        let parsed = value
+            .parse::<u16>()
+            .map_err(|_| format!("{name} expects an integer from 1 through 255, got '{value}'"))?;
+        if parsed == 0 || parsed > u16::from(u8::MAX) {
+            return Err(format!(
+                "{name} expects an integer from 1 through 255, got '{value}'"
+            ));
+        }
+        return Ok(Some(parsed as u8));
+    }
+    Ok(None)
+}
+
+fn encoder_setting_from_cli(
+    codec: VideoEncoderManifest,
+    spec: &str,
+) -> Result<Option<VideoEncoderSetting>, String> {
+    let name = setting_name(spec);
+    if catalog::global_setting(name).is_some() || name == "qp" {
+        return Ok(None);
+    }
+    let Some(manifest) = codec.setting(name) else {
+        return Err(format!("unknown encode setting '{name}'"));
+    };
+    let value = setting_value(spec).unwrap_or("true");
+    let setting = match manifest.value {
+        SettingValue::Boolean => {
+            VideoEncoderSetting::boolean(name, parse_bool_setting(name, value)?)
+        }
+        SettingValue::Choice(_) => VideoEncoderSetting::text(name, value),
+        SettingValue::IntegerRange { .. } => {
+            let value = value
+                .parse::<i64>()
+                .map_err(|_| format!("{name} expects an integer, got '{value}'"))?;
+            VideoEncoderSetting::integer(name, value)
+        }
+    };
+    setting.map(Some).map_err(|err| err.to_string())
+}
+
+fn parse_bool_setting(name: &str, value: &str) -> Result<bool, String> {
+    match value {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(format!("{name} expects true or false, got '{value}'")),
+    }
+}
+
 fn encode_with_model(
     codec: VideoEncoderManifest,
     args: &EncodeArgs,
     job: EncodeJob,
 ) -> Result<(), String> {
+    let config = video_config_for_job(codec, args, &job)?;
     let mut input = open_job_reader(&job)?;
+    let mut source = RawVideoFrameReadSource::new(&mut input);
     let mut output = create_writer(&job.output)?;
     let mut recon = create_optional_writer(job.recon.as_deref())?;
-    let request = VideoEncodeStreamRequest {
-        frames: job.frames,
-        width: job.width,
-        height: job.height,
-        format: job.format,
-        lossless: job.lossless,
-        settings: &args.settings,
-    };
     let mut frame_metrics = |metrics: VideoEncodeFrameMetrics<'_>| {
         print_frame_metrics(
             codec.name,
@@ -1243,24 +1247,28 @@ fn encode_with_model(
     if job.source_format != job.format && recon.is_some() {
         let mut recon_converter =
             FrameFormatConvertingWriter::new(recon.as_mut().expect("checked Some"), &job)?;
-        (codec.encode)(
-            &mut input,
-            &mut output,
-            Some(&mut recon_converter as &mut dyn Write),
-            request,
-            frame_metrics,
-        )?;
+        codec
+            .encode_source(
+                &mut source,
+                &mut output,
+                Some(&mut recon_converter as &mut dyn Write),
+                &config,
+                frame_metrics,
+            )
+            .map_err(|err| err.to_string())?;
         recon_converter
             .finish()
             .map_err(|err| format!("failed to finish reconstruction conversion: {err}"))?;
     } else {
-        (codec.encode)(
-            &mut input,
-            &mut output,
-            recon.as_mut().map(|writer| writer as &mut dyn Write),
-            request,
-            frame_metrics,
-        )?;
+        codec
+            .encode_source(
+                &mut source,
+                &mut output,
+                recon.as_mut().map(|writer| writer as &mut dyn Write),
+                &config,
+                frame_metrics,
+            )
+            .map_err(|err| err.to_string())?;
     }
     if let (Some(path), Some(writer)) = (job.recon.as_deref(), recon.as_mut()) {
         flush_writer(path, writer)?;
@@ -1614,8 +1622,8 @@ mod tests {
         settings: TEST_CODEC_SETTINGS,
         accepts_format: test_codec_accepts_format,
         supports_lossless_format: test_codec_accepts_format,
-        create_session: None,
-        encode: test_codec_encode,
+        create_session: test_create_session,
+        encode_source: test_encode_source,
     };
 
     const TEST_GBRP_CODEC: VideoEncoderManifest = VideoEncoderManifest {
@@ -1625,9 +1633,30 @@ mod tests {
         settings: TEST_CODEC_SETTINGS,
         accepts_format: test_gbrp_codec_accepts_format,
         supports_lossless_format: test_gbrp_codec_accepts_format,
-        create_session: None,
-        encode: test_codec_encode,
+        create_session: test_create_session,
+        encode_source: test_encode_source,
     };
+
+    struct TestSession {
+        config: VideoEncoderConfig,
+    }
+
+    impl framefinery_core::VideoEncoderSession for TestSession {
+        fn codec(&self) -> &framefinery_core::CodecId {
+            &self.config.codec
+        }
+
+        fn config(&self) -> &VideoEncoderConfig {
+            &self.config
+        }
+
+        fn encode_frame(
+            &mut self,
+            _frame: Frame,
+        ) -> framefinery_core::Result<framefinery_core::VideoEncodeOutput> {
+            Ok(framefinery_core::VideoEncodeOutput::default())
+        }
+    }
 
     fn test_codec_accepts_format(format: PixelFormat) -> bool {
         matches!(format, PixelFormat::Rgb24 | PixelFormat::Gbrp8)
@@ -1639,13 +1668,19 @@ mod tests {
             || (format.is_yuv() && matches!(format.bit_depth().bits(), 8..=12))
     }
 
-    fn test_codec_encode(
-        _input: &mut dyn Read,
+    fn test_create_session(
+        config: VideoEncoderConfig,
+    ) -> framefinery_core::Result<Box<dyn framefinery_core::VideoEncoderSession>> {
+        Ok(Box::new(TestSession { config }))
+    }
+
+    fn test_encode_source(
+        _source: &mut dyn framefinery_core::RawVideoFrameSource,
         _output: &mut dyn Write,
         _recon: Option<&mut dyn Write>,
-        _request: VideoEncodeStreamRequest<'_>,
+        _request: framefinery_core::VideoEncodeSourceRequest<'_>,
         _frame_metrics: Option<VideoEncodeFrameMetricsCallback<'_>>,
-    ) -> Result<(), String> {
+    ) -> framefinery_core::Result<()> {
         Ok(())
     }
 
@@ -2576,10 +2611,10 @@ mod tests {
         let source = vec![0; 8];
         let reconstruction = vec![1; 8];
 
-        let psnr = frame_psnr(&job, &source, &reconstruction).expect("4:2:2 PSNR");
-        assert!(psnr.y.is_finite());
-        assert!(psnr.u.is_finite());
-        assert!(psnr.v.is_finite());
+        let psnr = frame_psnr_for_job(&job, &source, &reconstruction).expect("4:2:2 PSNR");
+        assert!(psnr.plane0.is_finite());
+        assert!(psnr.plane1.is_finite());
+        assert!(psnr.plane2.is_finite());
         assert!(psnr.all.is_finite());
     }
 
@@ -2607,7 +2642,7 @@ mod tests {
             sample.copy_from_slice(&1u16.to_le_bytes());
         }
 
-        let psnr = frame_psnr(&job, &source, &reconstruction).expect("10-bit PSNR");
+        let psnr = frame_psnr_for_job(&job, &source, &reconstruction).expect("10-bit PSNR");
         assert!(psnr.all > 60.0, "10-bit peak sample should be used");
     }
 

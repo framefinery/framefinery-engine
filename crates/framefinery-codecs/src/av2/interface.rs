@@ -2,15 +2,18 @@ use std::io::{Read, Write};
 
 use framefinery_core::{
     boolean_setting_enabled, setting_name, u8_setting, ChromaSampling, PixelFormat,
-    SettingManifest, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback,
-    VideoEncodeStreamRequest, VideoEncoderManifest,
+    RawVideoFrameSource, SettingManifest, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback,
+    VideoEncodeSourceRequest, VideoEncoderManifest,
 };
 
 use super::{
     av2_encode_fixed_black_444_with_options_and_frame_metrics, Av2EncodeFrameMetrics,
     Av2EncodeOptions, Av2EncodeParams, Av2EncodeRequest, Av2VideoGeometry,
 };
-use crate::session::buffered_stream_session;
+use crate::session::{
+    buffered_stream_session, encode_stream_from_source, StreamEncoderManifest,
+    VideoEncodeStreamRequest,
+};
 use crate::settings::{PREDICTIVE_SETTING, QP_SETTING};
 
 const AV2_SETTINGS: &[SettingManifest] = &[QP_SETTING, PREDICTIVE_SETTING];
@@ -22,14 +25,36 @@ pub const AV2_CODEC: VideoEncoderManifest = VideoEncoderManifest {
     settings: AV2_SETTINGS,
     accepts_format: av2_accepts_format,
     supports_lossless_format: av2_supports_lossless_format,
-    create_session: Some(create_av2_session),
-    encode: encode_av2_with_manifest,
+    create_session: create_av2_session,
+    encode_source: encode_av2_source,
+};
+
+pub(crate) const AV2_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManifest {
+    public: AV2_CODEC,
+    encode_stream: encode_av2_with_manifest,
 };
 
 fn create_av2_session(
     config: framefinery_core::VideoEncoderConfig,
 ) -> framefinery_core::Result<Box<dyn framefinery_core::VideoEncoderSession>> {
-    buffered_stream_session(AV2_CODEC, config)
+    buffered_stream_session(AV2_STREAM_ENCODER, config)
+}
+
+fn encode_av2_source(
+    source: &mut dyn RawVideoFrameSource,
+    output: &mut dyn Write,
+    recon: Option<&mut dyn Write>,
+    request: VideoEncodeSourceRequest<'_>,
+    frame_metrics: Option<VideoEncodeFrameMetricsCallback<'_>>,
+) -> framefinery_core::Result<()> {
+    encode_stream_from_source(
+        AV2_STREAM_ENCODER,
+        source,
+        output,
+        recon,
+        request,
+        frame_metrics,
+    )
 }
 
 fn av2_accepts_format(format: PixelFormat) -> bool {

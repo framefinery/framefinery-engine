@@ -2,7 +2,9 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::str::FromStr;
 
-use crate::{Frame, FrameInfo, MediaError, PixelFormat, Result, SettingManifest, Timestamp};
+use crate::{
+    Frame, FrameInfo, MediaError, PixelFormat, Result, SettingManifest, SettingValue, Timestamp,
+};
 
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CodecId(String);
@@ -103,6 +105,56 @@ pub trait VideoEncoderSession {
 pub type VideoEncoderSessionFactory =
     fn(VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>>;
 
+pub trait RawVideoFrameSource {
+    fn read_frame(&mut self, frame: &mut [u8]) -> Result<bool>;
+}
+
+impl<F> RawVideoFrameSource for F
+where
+    F: FnMut(&mut [u8]) -> Result<bool>,
+{
+    fn read_frame(&mut self, frame: &mut [u8]) -> Result<bool> {
+        self(frame)
+    }
+}
+
+pub struct RawVideoFrameReadSource<R> {
+    inner: R,
+}
+
+impl<R: Read> RawVideoFrameReadSource<R> {
+    pub fn new(inner: R) -> Self {
+        Self { inner }
+    }
+
+    pub fn into_inner(self) -> R {
+        self.inner
+    }
+}
+
+impl<R: Read> RawVideoFrameSource for RawVideoFrameReadSource<R> {
+    fn read_frame(&mut self, frame: &mut [u8]) -> Result<bool> {
+        let mut offset = 0usize;
+        while offset < frame.len() {
+            let count = self
+                .inner
+                .read(&mut frame[offset..])
+                .map_err(|err| MediaError::Message(format!("failed to read input frame: {err}")))?;
+            if count == 0 {
+                if offset == 0 {
+                    return Ok(false);
+                }
+                return Err(MediaError::BufferLength {
+                    expected: frame.len(),
+                    actual: offset,
+                });
+            }
+            offset += count;
+        }
+        Ok(true)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct VideoEncoderManifest {
     pub name: &'static str,
@@ -111,18 +163,13 @@ pub struct VideoEncoderManifest {
     pub settings: &'static [SettingManifest],
     pub accepts_format: fn(PixelFormat) -> bool,
     pub supports_lossless_format: fn(PixelFormat) -> bool,
-    pub create_session: Option<VideoEncoderSessionFactory>,
-    pub encode: VideoEncodeStreamFn,
+    pub create_session: VideoEncoderSessionFactory,
+    pub encode_source: VideoEncodeSourceFn,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct VideoEncodeStreamRequest<'a> {
-    pub frames: usize,
-    pub width: usize,
-    pub height: usize,
-    pub format: PixelFormat,
-    pub lossless: bool,
-    pub settings: &'a [String],
+pub struct VideoEncodeSourceRequest<'a> {
+    pub config: &'a VideoEncoderConfig,
 }
 
 pub struct VideoEncodeFrameMetrics<'a> {
@@ -136,13 +183,13 @@ pub struct VideoEncodeFrameMetrics<'a> {
 pub type VideoEncodeFrameMetricsCallback<'a> =
     &'a mut dyn for<'frame> FnMut(VideoEncodeFrameMetrics<'frame>);
 
-pub type VideoEncodeStreamFn = for<'request> fn(
-    &mut dyn Read,
+pub type VideoEncodeSourceFn = for<'request> fn(
+    &mut dyn RawVideoFrameSource,
     &mut dyn Write,
     Option<&mut dyn Write>,
-    VideoEncodeStreamRequest<'request>,
+    VideoEncodeSourceRequest<'request>,
     Option<VideoEncodeFrameMetricsCallback<'request>>,
-) -> std::result::Result<(), String>;
+) -> Result<()>;
 
 impl CodecId {
     pub fn new(value: impl Into<String>) -> Result<Self> {
@@ -338,23 +385,112 @@ impl VideoEncoderManifest {
         (self.supports_lossless_format)(input.format)
     }
 
-    pub fn create_encoder(
-        self,
-        config: VideoEncoderConfig,
-    ) -> Result<Box<dyn VideoEncoderSession>> {
+    pub fn validate_config(self, config: &VideoEncoderConfig) -> Result<()> {
         if config.codec.as_str() != self.name {
             return Err(MediaError::Unsupported {
                 feature: format!("codec '{}'", config.codec),
                 reason: format!("manifest '{}' cannot create it", self.name),
             });
         }
-        let Some(create_session) = self.create_session else {
+        if !self.accepts_frame_info(config.input) {
             return Err(MediaError::Unsupported {
                 feature: format!("codec '{}'", self.name),
-                reason: "frame-session encoder API is not wired for this codec yet".to_string(),
+                reason: format!("does not accept {} input", config.input.format),
             });
-        };
-        create_session(config)
+        }
+        if matches!(config.rate_control, VideoRateControl::Lossless)
+            && !self.supports_lossless_frame_info(config.input)
+        {
+            return Err(MediaError::Unsupported {
+                feature: format!("codec '{}'", self.name),
+                reason: format!("does not support lossless {} input", config.input.format),
+            });
+        }
+
+        let mut seen = Vec::new();
+        for setting in &config.settings {
+            if setting.name == "lossless" {
+                return Err(MediaError::Message(
+                    "use VideoRateControl::Lossless instead of a lossless extension setting"
+                        .to_string(),
+                ));
+            }
+            if matches!(config.rate_control, VideoRateControl::ConstantQuantizer(_))
+                && setting.name == "qp"
+            {
+                return Err(MediaError::Message(
+                    "use VideoRateControl::ConstantQuantizer instead of a duplicate qp setting"
+                        .to_string(),
+                ));
+            }
+            if matches!(config.rate_control, VideoRateControl::Lossless) && setting.name == "qp" {
+                return Err(MediaError::Message(
+                    "lossless rate control is mutually exclusive with qp".to_string(),
+                ));
+            }
+            if seen.contains(&setting.name.as_str()) {
+                return Err(MediaError::Message(format!(
+                    "duplicate encoder setting '{}'",
+                    setting.name
+                )));
+            }
+            seen.push(setting.name.as_str());
+            let Some(manifest) = self.setting(&setting.name) else {
+                return Err(MediaError::Unsupported {
+                    feature: format!("codec '{}'", self.name),
+                    reason: format!("unknown setting '{}'", setting.name),
+                });
+            };
+            if !setting_value_matches_manifest(setting, manifest.value) {
+                return Err(MediaError::Message(format!(
+                    "codec '{}' setting '{}' expects {}, got '{}'",
+                    self.name,
+                    manifest.name,
+                    crate::setting_values_label(manifest),
+                    setting.value.as_cli_value()
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn create_encoder(
+        self,
+        config: VideoEncoderConfig,
+    ) -> Result<Box<dyn VideoEncoderSession>> {
+        self.validate_config(&config)?;
+        (self.create_session)(config)
+    }
+
+    pub fn encode_source<'a>(
+        self,
+        source: &mut dyn RawVideoFrameSource,
+        output: &mut dyn Write,
+        recon: Option<&mut dyn Write>,
+        config: &'a VideoEncoderConfig,
+        frame_metrics: Option<VideoEncodeFrameMetricsCallback<'a>>,
+    ) -> Result<()> {
+        self.validate_config(config)?;
+        (self.encode_source)(
+            source,
+            output,
+            recon,
+            VideoEncodeSourceRequest { config },
+            frame_metrics,
+        )
+    }
+}
+
+fn setting_value_matches_manifest(setting: &VideoEncoderSetting, manifest: SettingValue) -> bool {
+    match (manifest, &setting.value) {
+        (SettingValue::Boolean, VideoSettingValue::Boolean(_)) => true,
+        (SettingValue::Choice(values), VideoSettingValue::Text(value)) => {
+            values.contains(&value.as_str())
+        }
+        (SettingValue::IntegerRange { min, max }, VideoSettingValue::Integer(value)) => {
+            (i64::from(min)..=i64::from(max)).contains(value)
+        }
+        _ => false,
     }
 }
 
@@ -393,7 +529,75 @@ fn validate_setting_name(value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PixelFormat;
+    use crate::{PixelFormat, SettingManifest, SettingSpecForm, SettingSpecManifest, SettingValue};
+
+    const PREDICTIVE_FORMS: &[SettingSpecForm] = &[SettingSpecForm {
+        syntax: "predictive=<bool>",
+        summary: "toggle prediction",
+    }];
+    const PREDICTIVE_SPEC: SettingSpecManifest = SettingSpecManifest {
+        forms: PREDICTIVE_FORMS,
+        examples: &[],
+        notes: &[],
+    };
+    const PREDICTIVE_SETTING: SettingManifest = SettingManifest {
+        name: "predictive",
+        value: SettingValue::Boolean,
+        spec: &PREDICTIVE_SPEC,
+        summary: "toggle prediction",
+    };
+    const TEST_SETTINGS: &[SettingManifest] = &[PREDICTIVE_SETTING];
+
+    const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest {
+        name: "test",
+        feature: "test-codec",
+        summary: "test codec",
+        settings: TEST_SETTINGS,
+        accepts_format: test_accepts_format,
+        supports_lossless_format: test_supports_lossless_format,
+        create_session: test_create_session,
+        encode_source: test_encode_source,
+    };
+
+    struct TestSession {
+        config: VideoEncoderConfig,
+    }
+
+    impl VideoEncoderSession for TestSession {
+        fn codec(&self) -> &CodecId {
+            &self.config.codec
+        }
+
+        fn config(&self) -> &VideoEncoderConfig {
+            &self.config
+        }
+
+        fn encode_frame(&mut self, _frame: Frame) -> Result<VideoEncodeOutput> {
+            Ok(VideoEncodeOutput::default())
+        }
+    }
+
+    fn test_accepts_format(format: PixelFormat) -> bool {
+        format == PixelFormat::Yuv420p8
+    }
+
+    fn test_supports_lossless_format(format: PixelFormat) -> bool {
+        test_accepts_format(format)
+    }
+
+    fn test_create_session(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>> {
+        Ok(Box::new(TestSession { config }))
+    }
+
+    fn test_encode_source(
+        _source: &mut dyn RawVideoFrameSource,
+        _output: &mut dyn Write,
+        _recon: Option<&mut dyn Write>,
+        _request: VideoEncodeSourceRequest<'_>,
+        _frame_metrics: Option<VideoEncodeFrameMetricsCallback<'_>>,
+    ) -> Result<()> {
+        Ok(())
+    }
 
     #[test]
     fn codec_id_accepts_stable_lowercase_names() {
@@ -433,5 +637,37 @@ mod tests {
             .with_rate_control(VideoRateControl::Lossless);
 
         assert_eq!(config.setting_specs(), vec!["lossless=true".to_string()]);
+    }
+
+    #[test]
+    fn manifest_validates_codec_format_and_settings() {
+        let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8).unwrap();
+        let config = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info)
+            .with_setting(VideoEncoderSetting::boolean("predictive", true).unwrap());
+
+        TEST_CODEC
+            .validate_config(&config)
+            .expect("valid manifest config");
+    }
+
+    #[test]
+    fn manifest_rejects_unknown_and_duplicate_settings() {
+        let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8).unwrap();
+        let unknown = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info)
+            .with_setting(VideoEncoderSetting::boolean("missing", true).unwrap());
+        let duplicate = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info)
+            .with_setting(VideoEncoderSetting::boolean("predictive", true).unwrap())
+            .with_setting(VideoEncoderSetting::boolean("predictive", false).unwrap());
+
+        assert!(TEST_CODEC
+            .validate_config(&unknown)
+            .unwrap_err()
+            .to_string()
+            .contains("unknown setting"));
+        assert!(TEST_CODEC
+            .validate_config(&duplicate)
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate encoder setting"));
     }
 }

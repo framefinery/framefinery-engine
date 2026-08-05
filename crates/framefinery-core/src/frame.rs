@@ -609,6 +609,20 @@ pub struct Frame {
     data: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameRef<'a> {
+    info: FrameInfo,
+    data: &'a [u8],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FramePsnr {
+    pub plane0: f64,
+    pub plane1: f64,
+    pub plane2: f64,
+    pub all: f64,
+}
+
 impl Frame {
     pub fn new(info: FrameInfo, data: Vec<u8>) -> Result<Self> {
         let expected = info.expected_len();
@@ -635,8 +649,164 @@ impl Frame {
         &self.data
     }
 
+    pub fn as_frame_ref(&self) -> FrameRef<'_> {
+        FrameRef {
+            info: self.info,
+            data: &self.data,
+        }
+    }
+
     pub fn into_data(self) -> Vec<u8> {
         self.data
+    }
+}
+
+impl<'a> FrameRef<'a> {
+    pub fn new(info: FrameInfo, data: &'a [u8]) -> Result<Self> {
+        let expected = info.expected_len();
+        let actual = data.len();
+        if actual != expected {
+            return Err(MediaError::BufferLength { expected, actual });
+        }
+
+        Ok(Self { info, data })
+    }
+
+    pub fn info(self) -> FrameInfo {
+        self.info
+    }
+
+    pub fn data(self) -> &'a [u8] {
+        self.data
+    }
+
+    pub fn to_owned_frame(self) -> Frame {
+        Frame {
+            info: self.info,
+            data: self.data.to_vec(),
+        }
+    }
+}
+
+pub fn frame_psnr(info: FrameInfo, source: &[u8], reconstruction: &[u8]) -> Option<FramePsnr> {
+    let luma_samples = info.width.checked_mul(info.height)?;
+    if info.format == PixelFormat::Rgb24 {
+        return rgb24_frame_psnr(luma_samples, source, reconstruction);
+    }
+    if info.format == PixelFormat::Gbrp8 {
+        return gbrp8_frame_psnr(luma_samples, source, reconstruction);
+    }
+    let chroma_sampling = info.format.chroma_sampling()?;
+    let chroma_width = info.width.checked_div(chroma_sampling.subsample_x())?;
+    let chroma_height = info.height.checked_div(chroma_sampling.subsample_y())?;
+    let chroma_samples = chroma_width.checked_mul(chroma_height)?;
+    let bytes_per_sample = info.format.bit_depth().bytes_per_sample();
+    let luma_len = luma_samples.checked_mul(bytes_per_sample)?;
+    let chroma_len = chroma_samples.checked_mul(bytes_per_sample)?;
+    let frame_len = luma_len.checked_add(chroma_len.checked_mul(2)?)?;
+    if source.len() != frame_len || reconstruction.len() != frame_len {
+        return None;
+    }
+    if source == reconstruction {
+        return Some(FramePsnr::infinite());
+    }
+
+    let y_src = &source[..luma_len];
+    let y_rec = &reconstruction[..luma_len];
+    let u_start = luma_len;
+    let v_start = luma_len + chroma_len;
+    let u_src = &source[u_start..v_start];
+    let u_rec = &reconstruction[u_start..v_start];
+    let v_src = &source[v_start..frame_len];
+    let v_rec = &reconstruction[v_start..frame_len];
+
+    let bit_depth = info.format.bit_depth();
+    let y_sse = planar_sample_sse(y_src, y_rec, bit_depth)?;
+    let u_sse = planar_sample_sse(u_src, u_rec, bit_depth)?;
+    let v_sse = planar_sample_sse(v_src, v_rec, bit_depth)?;
+    let max_sample = f64::from(bit_depth.max_sample());
+    Some(FramePsnr {
+        plane0: psnr_from_sse(y_sse, luma_samples, max_sample),
+        plane1: psnr_from_sse(u_sse, chroma_samples, max_sample),
+        plane2: psnr_from_sse(v_sse, chroma_samples, max_sample),
+        all: psnr_from_sse(
+            y_sse + u_sse + v_sse,
+            luma_samples + chroma_samples * 2,
+            max_sample,
+        ),
+    })
+}
+
+impl FramePsnr {
+    fn infinite() -> Self {
+        Self {
+            plane0: f64::INFINITY,
+            plane1: f64::INFINITY,
+            plane2: f64::INFINITY,
+            all: f64::INFINITY,
+        }
+    }
+}
+
+fn gbrp8_frame_psnr(pixels: usize, source: &[u8], reconstruction: &[u8]) -> Option<FramePsnr> {
+    let plane_len = pixels;
+    let frame_len = plane_len.checked_mul(3)?;
+    if source.len() != frame_len || reconstruction.len() != frame_len {
+        return None;
+    }
+    if source == reconstruction {
+        return Some(FramePsnr::infinite());
+    }
+
+    let (source_g, source_chroma) = source.split_at(plane_len);
+    let (source_b, source_r) = source_chroma.split_at(plane_len);
+    let (recon_g, recon_chroma) = reconstruction.split_at(plane_len);
+    let (recon_b, recon_r) = recon_chroma.split_at(plane_len);
+    let r_sse = planar_sample_sse(source_r, recon_r, SampleBitDepth::new_unchecked(8))?;
+    let g_sse = planar_sample_sse(source_g, recon_g, SampleBitDepth::new_unchecked(8))?;
+    let b_sse = planar_sample_sse(source_b, recon_b, SampleBitDepth::new_unchecked(8))?;
+    Some(FramePsnr {
+        plane0: psnr_from_sse(r_sse, pixels, 255.0),
+        plane1: psnr_from_sse(g_sse, pixels, 255.0),
+        plane2: psnr_from_sse(b_sse, pixels, 255.0),
+        all: psnr_from_sse(r_sse + g_sse + b_sse, frame_len, 255.0),
+    })
+}
+
+fn rgb24_frame_psnr(pixels: usize, source: &[u8], reconstruction: &[u8]) -> Option<FramePsnr> {
+    let frame_len = pixels.checked_mul(3)?;
+    if source.len() != frame_len || reconstruction.len() != frame_len {
+        return None;
+    }
+    if source == reconstruction {
+        return Some(FramePsnr::infinite());
+    }
+
+    let mut r_sse = 0u64;
+    let mut g_sse = 0u64;
+    let mut b_sse = 0u64;
+    for (src, rec) in source.chunks_exact(3).zip(reconstruction.chunks_exact(3)) {
+        let r_diff = src[0] as i32 - rec[0] as i32;
+        let g_diff = src[1] as i32 - rec[1] as i32;
+        let b_diff = src[2] as i32 - rec[2] as i32;
+        r_sse += (r_diff * r_diff) as u64;
+        g_sse += (g_diff * g_diff) as u64;
+        b_sse += (b_diff * b_diff) as u64;
+    }
+
+    Some(FramePsnr {
+        plane0: psnr_from_sse(r_sse, pixels, 255.0),
+        plane1: psnr_from_sse(g_sse, pixels, 255.0),
+        plane2: psnr_from_sse(b_sse, pixels, 255.0),
+        all: psnr_from_sse(r_sse + g_sse + b_sse, frame_len, 255.0),
+    })
+}
+
+fn psnr_from_sse(sse: u64, samples: usize, max_sample: f64) -> f64 {
+    if sse == 0 {
+        f64::INFINITY
+    } else {
+        10.0 * ((max_sample * max_sample * samples as f64) / sse as f64).log10()
     }
 }
 
@@ -728,6 +898,45 @@ mod tests {
                 actual: 191,
             }
         );
+    }
+
+    #[test]
+    fn frame_ref_validates_borrowed_frame_length() {
+        let info = FrameInfo::new(4, 4, PixelFormat::Rgb24).unwrap();
+        let data = vec![7; info.expected_len()];
+        let view = FrameRef::new(info, &data).expect("valid borrowed frame");
+
+        assert_eq!(view.info(), info);
+        assert_eq!(view.data(), data.as_slice());
+        assert_eq!(view.to_owned_frame(), Frame::new(info, data).unwrap());
+    }
+
+    #[test]
+    fn frame_psnr_reports_yuv422p8() {
+        let info = FrameInfo::new(4, 2, PixelFormat::Yuv422p8).unwrap();
+        let source = vec![0u8; info.expected_len()];
+        let mut reconstruction = source.clone();
+        reconstruction[0] = 16;
+        reconstruction[8] = 8;
+        reconstruction[12] = 4;
+
+        let psnr = frame_psnr(info, &source, &reconstruction).expect("4:2:2 PSNR");
+        assert!(psnr.plane0.is_finite());
+        assert!(psnr.plane1.is_finite());
+        assert!(psnr.plane2.is_finite());
+        assert!(psnr.all.is_finite());
+    }
+
+    #[test]
+    fn frame_psnr_uses_high_bit_depth_peak_sample() {
+        let info = FrameInfo::new(4, 2, PixelFormat::yuv420(10).unwrap()).unwrap();
+        let mut source = vec![0u8; info.expected_len()];
+        let mut reconstruction = source.clone();
+        source[0..2].copy_from_slice(&1023u16.to_le_bytes());
+        reconstruction[0..2].copy_from_slice(&1022u16.to_le_bytes());
+
+        let psnr = frame_psnr(info, &source, &reconstruction).expect("10-bit PSNR");
+        assert!(psnr.all > 70.0, "10-bit peak sample should be used");
     }
 
     #[test]

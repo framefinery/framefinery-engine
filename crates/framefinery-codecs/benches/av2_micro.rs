@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use framefinery_codecs::av2::{bench, Av2VideoGeometry};
+use framefinery_codecs::bench::av2::{bench, Av2VideoGeometry};
 use framefinery_codecs::SampleBitDepth;
 
 fn av2_palette_selection(c: &mut Criterion) {

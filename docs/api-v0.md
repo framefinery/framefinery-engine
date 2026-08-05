@@ -32,12 +32,15 @@ codec must share a given helper implementation.
 
 - `FrameInfo`
 - `Frame`
+- `FrameRef`
 - `PixelFormat`
 - `CodecId`
 - `VideoEncoderConfig`
+- `RawVideoFrameSource`
 - `VideoEncoderSession`
 - `EncodedVideoChunk`
 - `FrameEncodeMetrics`
+- `DecodedPictureBuffer`
 - `FilterStageSpec`
 - `FilterPipelineSpec`
 - filter and encoder manifests
@@ -51,6 +54,8 @@ registry:
 - `create_encoder(config)`
 
 Codec-specific modules remain implementation territory while the API cools.
+Benchmark-only internals may be exposed under hidden feature-gated paths, but
+normal applications should treat the registry as the codec boundary.
 
 `framefinery` is the user-facing package and CLI facade. Its root Rust API
 should prefer generic concepts from `framefinery-core` plus the generic encoder
@@ -105,7 +110,47 @@ Current shared concepts:
 - `settings`: codec extension settings as typed name/value pairs.
 
 The CLI can still accept `--set key[=value]`, but it should translate toward
-this config shape before invoking codecs.
+this config shape before invoking codecs. Codec manifests validate the selected
+codec ID, input format, lossless support, extension setting names, duplicate
+settings, and setting value types before implementation-specific parsing runs.
+
+## Frames
+
+`Frame` owns one complete raw frame. `FrameRef` borrows one complete raw frame.
+Both are paired with `FrameInfo`, and both validate that the byte buffer length
+matches the declared pixel format and geometry.
+
+The owned form is useful for post-filter flows, tests, and reconstruction
+returns. The borrowed form lets adapters and future WASM bindings expose frame
+data without immediately copying it into another owned buffer.
+
+## Source-Driven Encoding
+
+Long streams should not be preloaded into memory. The streaming contract is a
+raw-frame source callback:
+
+```rust
+use framefinery::{
+    CodecId, FrameInfo, PixelFormat, RawVideoFrameSource, Result, VideoEncoderConfig,
+};
+
+fn fill_black(frame: &mut [u8]) -> Result<bool> {
+    frame.fill(0);
+    Ok(true)
+}
+
+let input = FrameInfo::new(640, 360, PixelFormat::Yuv420p8)?;
+let config = VideoEncoderConfig::new(CodecId::new("av2")?, input).with_frame_limit(1);
+let mut source = fill_black as fn(&mut [u8]) -> Result<bool>;
+# let _ = (&config, &mut source as &mut dyn RawVideoFrameSource);
+# Ok::<(), framefinery::MediaError>(())
+```
+
+`RawVideoFrameSource::read_frame` fills exactly one caller-provided frame buffer
+and returns `Ok(false)` only at EOF. The current AV2/VVC source encoders require
+`VideoEncoderConfig::frame_limit` because their bitstream headers still need the
+frame count up front. File, Y4M, WebCodecs, screen-capture, and test-vector code
+should be adapters that implement this callback shape.
 
 ## Encoder Sessions
 
@@ -134,9 +179,12 @@ fn drive_encoder(
 }
 ```
 
-The current AV2/VVC implementation is still stream-oriented internally. The v0
-contract allows that compatibility path to remain while the session API becomes
-the center.
+The session path is the natural API for post-filter frame ownership and future
+incremental encoders. The current AV2/VVC session implementation is a
+compatibility bridge over whole-stream codec internals, so long CLI streams use
+source-driven encoding instead of accumulating all frames in a session buffer.
+Session semantics are still defined: frames must match `config.input`, `flush`
+is idempotent, and encoding after `flush` is an error.
 
 ## Encoded Chunks
 
@@ -182,6 +230,17 @@ Current modes:
 Native CLI builds can map these to `--psnr` and `--recon`. WASM builds should
 return metrics or frames to JavaScript instead of writing files.
 
+## Reference Frames
+
+Shared reference-frame storage is represented by `DecodedPictureBuffer`.
+It stores `DpbEntry` values with a `PictureId`, display/order value, frame,
+reference flag, and keyframe flag.
+
+The helper intentionally does not define AV2, VVC, or future-codec reference
+list policy. It provides validated storage, lookup, reference marking, and
+simple oldest/non-reference eviction tools so codecs do not duplicate basic
+buffer management.
+
 ## Filters
 
 Filters are selected by generic stage specs:
@@ -217,9 +276,25 @@ sinks, and browser callbacks consume chunks.
 - `VideoEncoderConfig`, `VideoEncoderSession`, `EncodedVideoChunk`: v0 molten
   contract; expected to evolve before `0.1.0`.
 - Codec manifests and settings: v0 molten, but should stay codec-neutral.
+- `RawVideoFrameSource`, `FrameRef`, and `DecodedPictureBuffer`: early shared
+  infrastructure; useful now, still allowed to change before `0.1.0`.
 - Codec internals, entropy writers, prediction helpers, residual helpers, and
   trace helpers: private/experimental and not stable API.
 - CLI command names and help pages: stabilizing toward `0.1.0`.
+
+## Build Matrix
+
+The default product build includes all codecs and filters. The project does not
+currently prioritize a no-codec product build, but it does check codec-specific
+builds so public CLI/API code does not accidentally depend on both codecs being
+present:
+
+```sh
+make feature-matrix
+```
+
+Normal CI runs `make ci`. `make dead-code-audit` remains an explicit stale-helper
+audit because hiding codec internals makes many experimental helpers private.
 
 ## Non-Goals For v0
 

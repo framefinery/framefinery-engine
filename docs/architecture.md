@@ -35,6 +35,14 @@ Codec-specific helpers may be shared opportunistically inside
 `framefinery-codecs`, but those helpers are not public API and do not define
 what future codecs must use.
 
+Long-running encodes should enter codecs through the source-driven API:
+`RawVideoFrameSource` fills one raw frame buffer per pull, and the selected
+codec consumes those frames without forcing the CLI or future WASM adapters to
+preload a full stream. `VideoEncoderSession` remains useful for owned `Frame`
+flows after filters and for future incremental implementations. Until AV2/VVC
+are rewritten as truly incremental sessions, their session path is a
+compatibility bridge and should not be the default for large files.
+
 Optional codecs and filters should be selected at build time using Cargo
 features or separate crates. The Makefile default enables the normal product
 feature set so `./ff` is usable after `make build` without compiling

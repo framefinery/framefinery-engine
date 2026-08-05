@@ -15,10 +15,14 @@ Source -> Filter -> Encoder -> Sink
 
 Important public types:
 
-- `FrameInfo`, `Frame`, `PixelFormat`, `SampleBitDepth`, and
+- `FrameInfo`, `Frame`, `FrameRef`, `PixelFormat`, `SampleBitDepth`, and
   `ChromaSampling` describe raw frames and validated buffer sizes.
-- `CodecId`, `VideoEncoderConfig`, `VideoEncoderSession`, and
-  `EncodedVideoChunk` define the molten v0 video encoder API contract.
+- `CodecId`, `VideoEncoderConfig`, `RawVideoFrameSource`,
+  `VideoEncoderSession`, and `EncodedVideoChunk` define the molten v0 video
+  encoder API contract.
+- `DecodedPictureBuffer`, `DpbEntry`, and `PictureId` provide codec-neutral
+  reference-picture storage helpers without imposing codec reference-list
+  policy.
 - `Source`, `Filter`, `Encoder`, and `Sink` are small traits for pipeline
   stages.
 - `run_frame_filter_pipeline` and `run_frame_encode_pipeline` connect stages
@@ -109,6 +113,11 @@ The first encoder API contract is documented in
 [`../../docs/api-v0.md`](../../docs/api-v0.md). It is intentionally molten: the
 contract is useful enough for the CLI, Rust API, and future WASM work to share a
 direction, but it can still change before `0.1.0`.
+
+Long-stream adapters should prefer `RawVideoFrameSource`: the caller fills one
+frame buffer on demand and the encoder consumes frames without requiring the
+whole raw stream to be resident in memory. `Frame` remains the owned post-filter
+and reconstruction type; `FrameRef` is the borrowed validated view.
 
 ## Errors
 

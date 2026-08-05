@@ -2,16 +2,19 @@ use std::io::{Read, Write};
 
 use framefinery_core::{
     boolean_setting_enabled, setting_name, u8_setting, ChromaSampling, PixelFormat,
-    SettingManifest, SettingSpecExample, SettingSpecForm, SettingSpecManifest, SettingValue,
-    VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeStreamRequest,
-    VideoEncoderManifest,
+    RawVideoFrameSource, SettingManifest, SettingSpecExample, SettingSpecForm, SettingSpecManifest,
+    SettingValue, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback,
+    VideoEncodeSourceRequest, VideoEncoderManifest,
 };
 
 use super::{
     vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics, VvcEncodeFrameMetrics,
     VvcEncodeOptions, VvcEncodeParams, VvcFastSearch, VvcVideoGeometry, VvcVideoLimits,
 };
-use crate::session::buffered_stream_session;
+use crate::session::{
+    buffered_stream_session, encode_stream_from_source, StreamEncoderManifest,
+    VideoEncodeStreamRequest,
+};
 use crate::settings::{PREDICTIVE_SETTING, QP_SETTING};
 
 const VVC_FAST_SEARCH_SPEC_FORMS: &[SettingSpecForm] = &[SettingSpecForm {
@@ -55,14 +58,36 @@ pub const VVC_CODEC: VideoEncoderManifest = VideoEncoderManifest {
     settings: VVC_SETTINGS,
     accepts_format: vvc_accepts_format,
     supports_lossless_format: vvc_supports_lossless_format,
-    create_session: Some(create_vvc_session),
-    encode: encode_vvc_with_manifest,
+    create_session: create_vvc_session,
+    encode_source: encode_vvc_source,
+};
+
+pub(crate) const VVC_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManifest {
+    public: VVC_CODEC,
+    encode_stream: encode_vvc_with_manifest,
 };
 
 fn create_vvc_session(
     config: framefinery_core::VideoEncoderConfig,
 ) -> framefinery_core::Result<Box<dyn framefinery_core::VideoEncoderSession>> {
-    buffered_stream_session(VVC_CODEC, config)
+    buffered_stream_session(VVC_STREAM_ENCODER, config)
+}
+
+fn encode_vvc_source(
+    source: &mut dyn RawVideoFrameSource,
+    output: &mut dyn Write,
+    recon: Option<&mut dyn Write>,
+    request: VideoEncodeSourceRequest<'_>,
+    frame_metrics: Option<VideoEncodeFrameMetricsCallback<'_>>,
+) -> framefinery_core::Result<()> {
+    encode_stream_from_source(
+        VVC_STREAM_ENCODER,
+        source,
+        output,
+        recon,
+        request,
+        frame_metrics,
+    )
 }
 
 fn vvc_accepts_format(format: PixelFormat) -> bool {

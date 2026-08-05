@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use framefinery_codecs::vvc::{bench, VvcVideoGeometry};
+use framefinery_codecs::bench::vvc::{bench, VvcVideoGeometry};
 use framefinery_codecs::{ChromaSampling, PixelFormat, SampleBitDepth};
 
 struct VvcBenchCase {

@@ -1,25 +1,39 @@
 //! Experimental video encoders for FrameFinery.
+#![cfg_attr(not(feature = "dead-code-audit"), allow(dead_code, unused_imports))]
 //!
-//! The public API is the generic encoder registry exposed as [`ENCODERS`] and
-//! [`encoder`]. Codec-specific modules remain available for internal
-//! experiments, but applications should prefer the generic v0 video API while
-//! it settles.
+//! The public API is the generic encoder registry exposed as [`ENCODERS`],
+//! [`encoder`], and [`create_encoder`]. Codec-specific modules are internal
+//! implementation territory while the generic v0 video API settles.
 
 #[cfg(feature = "av2")]
 #[doc(hidden)]
-pub mod av2;
-pub mod bitstream;
-pub mod instrumentation;
+mod av2;
+mod bitstream;
+mod instrumentation;
 #[cfg(any(feature = "av2", feature = "vvc"))]
 mod picture;
 #[cfg(any(feature = "av2", feature = "vvc"))]
 mod session;
 #[cfg(any(feature = "av2", feature = "vvc"))]
 mod settings;
-pub mod trace;
+mod trace;
 #[cfg(feature = "vvc")]
 #[doc(hidden)]
-pub mod vvc;
+mod vvc;
+
+#[cfg(feature = "bench-internals")]
+#[doc(hidden)]
+pub mod bench {
+    #[cfg(feature = "av2")]
+    pub mod av2 {
+        pub use crate::av2::{bench, Av2VideoGeometry};
+    }
+
+    #[cfg(feature = "vvc")]
+    pub mod vvc {
+        pub use crate::vvc::{bench, VvcVideoGeometry};
+    }
+}
 
 use framefinery_core::{
     MediaError, Result, VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession,

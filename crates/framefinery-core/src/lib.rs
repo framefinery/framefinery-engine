@@ -3,7 +3,17 @@
 //! This crate is intentionally small at project bootstrap. It holds the stable
 //! concepts that codec crates and tools can share without forcing AV2, VVC, or
 //! future codecs into one internal design.
+//!
+//! ```
+//! use framefinery_core::{Frame, FrameInfo, PixelFormat};
+//!
+//! let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
+//! let frame = Frame::blank(info);
+//! assert_eq!(frame.as_frame_ref().data().len(), info.expected_len());
+//! # Ok::<(), framefinery_core::MediaError>(())
+//! ```
 
+pub mod dpb;
 pub mod error;
 pub mod filters;
 pub mod frame;
@@ -12,6 +22,7 @@ pub mod pipeline;
 pub mod settings;
 pub mod video;
 
+pub use dpb::{DecodedPictureBuffer, DpbEntry, PictureId};
 pub use error::{MediaError, Result};
 #[cfg(feature = "filter-identity")]
 pub use filters::IdentityFilter;
@@ -25,9 +36,9 @@ pub use filters::{filter_manifest, FilterManifest, FilterStageKind, FilterStatus
 #[cfg(feature = "filter-pattern")]
 pub use filters::{generate_pattern_stream, pattern_frame_data, PatternKind, PatternSource};
 pub use frame::{
-    convert_frame_format, convert_planar_frame_bit_depth, planar_sample_sse, read_planar_sample,
-    scale_sample_bit_depth, write_planar_sample, ChromaSampling, Frame, FrameInfo, PixelFormat,
-    SampleBitDepth,
+    convert_frame_format, convert_planar_frame_bit_depth, frame_psnr, planar_sample_sse,
+    read_planar_sample, scale_sample_bit_depth, write_planar_sample, ChromaSampling, Frame,
+    FrameInfo, FramePsnr, FrameRef, PixelFormat, SampleBitDepth,
 };
 pub use packet::{Packet, StreamId, Timestamp};
 pub use pipeline::{
@@ -40,11 +51,11 @@ pub use settings::{
     GLOBAL_SETTINGS, LOSSLESS_SETTING, LOSSLESS_SETTING_SPEC,
 };
 pub use video::{
-    CodecId, EncodedVideoChunk, FrameEncodeMetrics, FrameRate, ReconstructionMode, VideoChunkKind,
-    VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeOutput,
-    VideoEncodeStreamFn, VideoEncodeStreamRequest, VideoEncoderConfig, VideoEncoderManifest,
-    VideoEncoderSession, VideoEncoderSessionFactory, VideoEncoderSetting, VideoRateControl,
-    VideoSettingValue,
+    CodecId, EncodedVideoChunk, FrameEncodeMetrics, FrameRate, RawVideoFrameReadSource,
+    RawVideoFrameSource, ReconstructionMode, VideoChunkKind, VideoEncodeFrameMetrics,
+    VideoEncodeFrameMetricsCallback, VideoEncodeOutput, VideoEncodeSourceFn,
+    VideoEncodeSourceRequest, VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession,
+    VideoEncoderSessionFactory, VideoEncoderSetting, VideoRateControl, VideoSettingValue,
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
