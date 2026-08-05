@@ -24,6 +24,7 @@ av2-stats = ["av2"]
 av2-lossy-stats = ["av2"]
 av2-sb-bit-profile = ["av2"]
 bench-internals = ["av2", "vvc"]
+dead-code-audit = []
 vvc = []
 vvc-stats = ["vvc"]
 

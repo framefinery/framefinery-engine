@@ -6,8 +6,8 @@ mod writer;
 pub(super) use context::{VvcCabacContext, VvcCabacContexts, VvcLastSigCoeffPrefixCtxInput};
 pub(super) use ctu_body::VvcFrameCtuCabacState;
 pub(super) use ctu_body::{
-    encode_ctu_partition_body, encode_inter_skip_ctu_body, vvc_chroma_intra_mode_syntax_bin_count,
-    vvc_luma_intra_mode_is_mpm, vvc_luma_intra_mode_syntax_bin_count,
+    encode_ctu_partition_body, vvc_chroma_intra_mode_syntax_bin_count, vvc_luma_intra_mode_is_mpm,
+    vvc_luma_intra_mode_syntax_bin_count,
 };
 #[cfg(test)]
 pub(super) use ctu_body::{

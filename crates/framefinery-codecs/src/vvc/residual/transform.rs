@@ -690,7 +690,7 @@ fn inverse_transform_vvc_dct2_dequantized_levels_into(
 }
 
 #[cfg(test)]
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
 pub(in crate::vvc) fn quantize_vvc_chroma_residual_dc(
     residuals: &[i16],
     width: u16,
@@ -995,7 +995,7 @@ fn quantize_vvc_chroma_residual_dc_by_exhaustive_search(
 }
 
 #[cfg(test)]
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
 pub(in crate::vvc) fn quantize_vvc_chroma_residual_greedy(
     residuals: &[i16],
     width: u16,

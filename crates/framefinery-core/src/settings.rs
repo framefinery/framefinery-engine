@@ -1,7 +1,3 @@
-use std::io::{Read, Write};
-
-use crate::PixelFormat;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingValue {
     Boolean,
@@ -34,55 +30,6 @@ pub struct SettingManifest {
     pub value: SettingValue,
     pub spec: &'static SettingSpecManifest,
     pub summary: &'static str,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct CodecManifest {
-    pub name: &'static str,
-    pub feature: &'static str,
-    pub summary: &'static str,
-    pub settings: &'static [SettingManifest],
-    pub accepts_format: fn(PixelFormat) -> bool,
-    pub supports_lossless_format: fn(PixelFormat) -> bool,
-    pub encode: CodecEncodeFn,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct CodecEncodeRequest<'a> {
-    pub frames: usize,
-    pub width: usize,
-    pub height: usize,
-    pub format: PixelFormat,
-    pub lossless: bool,
-    pub settings: &'a [String],
-}
-
-pub struct CodecEncodeFrameMetrics<'a> {
-    pub frame_idx: usize,
-    pub frame_count: usize,
-    pub bitstream_bytes: usize,
-    pub source: &'a [u8],
-    pub reconstruction: &'a [u8],
-}
-
-pub type CodecEncodeFrameMetricsCallback<'a> =
-    &'a mut dyn for<'frame> FnMut(CodecEncodeFrameMetrics<'frame>);
-
-pub type CodecEncodeFn = for<'request> fn(
-    &mut dyn Read,
-    &mut dyn Write,
-    Option<&mut dyn Write>,
-    CodecEncodeRequest<'request>,
-    Option<CodecEncodeFrameMetricsCallback<'request>>,
-) -> std::result::Result<(), String>;
-
-impl CodecManifest {
-    pub fn setting(self, name: &str) -> Option<SettingManifest> {
-        self.settings
-            .iter()
-            .copied()
-            .find(|setting| setting.name == name)
-    }
 }
 
 impl SettingValue {

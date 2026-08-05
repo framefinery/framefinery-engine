@@ -17,6 +17,8 @@ Important public types:
 
 - `FrameInfo`, `Frame`, `PixelFormat`, `SampleBitDepth`, and
   `ChromaSampling` describe raw frames and validated buffer sizes.
+- `CodecId`, `VideoEncoderConfig`, `VideoEncoderSession`, and
+  `EncodedVideoChunk` define the molten v0 video encoder API contract.
 - `Source`, `Filter`, `Encoder`, and `Sink` are small traits for pipeline
   stages.
 - `run_frame_filter_pipeline` and `run_frame_encode_pipeline` connect stages
@@ -26,13 +28,17 @@ Important public types:
   frames.
 - `FILTERS` and `filter_manifest` expose the reusable filter catalog used by
   the `ff` CLI.
+- `FilterStageSpec`, `FilterPipelineSpec`, `parse_filter_pipeline_specs`,
+  `generate_source_filter_stream`, and `build_filter_transform` let frontends
+  pass filter specs through the core registry without knowing concrete filter
+  implementation types.
 - `FilterSpecManifest` describes each filter's accepted spec forms,
   parameters, examples, and notes.
 
 ## Filters
 
 Filter manifests live in this crate so library users and the CLI discover the
-same stages:
+same compiled stages:
 
 ```rust
 use framefinery_core::{filter_manifest, FilterStageKind};
@@ -93,10 +99,16 @@ framefinery-core = {
 }
 ```
 
-The filter manifest is always present so tools can report unavailable stages.
-The concrete implementation types and helpers, such as `IdentityFilter` and
-`PatternSource`, are compiled only when their matching `filter-*` feature is
-enabled.
+Disabled filters are not listed in `FILTERS`. Concrete implementation types and
+helpers, such as `IdentityFilter` and `PatternSource`, are compiled only when
+their matching `filter-*` feature is enabled.
+
+## v0 Video API
+
+The first encoder API contract is documented in
+[`../../docs/api-v0.md`](../../docs/api-v0.md). It is intentionally molten: the
+contract is useful enough for the CLI, Rust API, and future WASM work to share a
+direction, but it can still change before `0.1.0`.
 
 ## Errors
 

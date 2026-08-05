@@ -1,28 +1,36 @@
 use std::io::{Read, Write};
 
 use framefinery_core::{
-    boolean_setting_enabled, setting_name, u8_setting, ChromaSampling, CodecEncodeFrameMetrics,
-    CodecEncodeFrameMetricsCallback, CodecEncodeRequest, CodecManifest, PixelFormat,
-    SettingManifest,
+    boolean_setting_enabled, setting_name, u8_setting, ChromaSampling, PixelFormat,
+    SettingManifest, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback,
+    VideoEncodeStreamRequest, VideoEncoderManifest,
 };
 
 use super::{
     av2_encode_fixed_black_444_with_options_and_frame_metrics, Av2EncodeFrameMetrics,
     Av2EncodeOptions, Av2EncodeParams, Av2EncodeRequest, Av2VideoGeometry,
 };
+use crate::session::buffered_stream_session;
 use crate::settings::{PREDICTIVE_SETTING, QP_SETTING};
 
 const AV2_SETTINGS: &[SettingManifest] = &[QP_SETTING, PREDICTIVE_SETTING];
 
-pub const AV2_CODEC: CodecManifest = CodecManifest {
+pub const AV2_CODEC: VideoEncoderManifest = VideoEncoderManifest {
     name: "av2",
     feature: "codec-av2",
     summary: "local experimental FrameFinery AV2 encoder",
     settings: AV2_SETTINGS,
     accepts_format: av2_accepts_format,
     supports_lossless_format: av2_supports_lossless_format,
+    create_session: Some(create_av2_session),
     encode: encode_av2_with_manifest,
 };
+
+fn create_av2_session(
+    config: framefinery_core::VideoEncoderConfig,
+) -> framefinery_core::Result<Box<dyn framefinery_core::VideoEncoderSession>> {
+    buffered_stream_session(AV2_CODEC, config)
+}
 
 fn av2_accepts_format(format: PixelFormat) -> bool {
     matches!(format, PixelFormat::Gbrp8 | PixelFormat::Rgb24)
@@ -40,8 +48,8 @@ fn encode_av2_with_manifest(
     input: &mut dyn Read,
     output: &mut dyn Write,
     recon: Option<&mut dyn Write>,
-    request: CodecEncodeRequest<'_>,
-    frame_metrics: Option<CodecEncodeFrameMetricsCallback<'_>>,
+    request: VideoEncodeStreamRequest<'_>,
+    frame_metrics: Option<VideoEncodeFrameMetricsCallback<'_>>,
 ) -> Result<(), String> {
     let options = av2_options_from_settings(request.lossless, request.settings)?;
     let request = Av2EncodeRequest {
@@ -58,7 +66,7 @@ fn encode_av2_with_manifest(
     let mut frame_metrics = frame_metrics;
     let mut callback = |metrics: Av2EncodeFrameMetrics<'_>| {
         if let Some(callback) = frame_metrics.as_mut() {
-            callback(CodecEncodeFrameMetrics {
+            callback(VideoEncodeFrameMetrics {
                 frame_idx: metrics.frame_idx,
                 frame_count: metrics.frame_count,
                 bitstream_bytes: metrics.bitstream_bytes,

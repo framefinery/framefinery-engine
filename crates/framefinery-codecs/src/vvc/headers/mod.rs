@@ -3,10 +3,10 @@ use crate::picture::{ChromaSampling, SampleBitDepth};
 #[cfg(test)]
 use super::vvc_cabac_bits_with_luma_max_leaf_size;
 use super::{
-    vvc_ctu_cabac_payload, vvc_frame_cabac_payload, vvc_frame_inter_skip_cabac_payload,
-    vvc_inter_skip_ctu_cabac_payload, VvcCabacPayload, VvcCodingTreeConfig, VvcNalUnit,
-    VvcNalUnitType, VvcQuantizedCtu, VvcQuantizedCtuPayload, VvcSliceSyntaxConfig, VvcSyntaxRbsp,
-    VvcSyntaxWriter, VvcVideoGeometry, VvcVuiSignal, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
+    vvc_frame_cabac_payload, vvc_frame_inter_skip_cabac_payload, VvcCabacPayload,
+    VvcCodingTreeConfig, VvcNalUnit, VvcNalUnitType, VvcQuantizedCtu, VvcQuantizedCtuPayload,
+    VvcSliceSyntaxConfig, VvcSyntaxRbsp, VvcSyntaxWriter, VvcVideoGeometry, VvcVuiSignal,
+    VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
 };
 #[cfg(test)]
 use super::{VvcQuantizedColor, VVC_CURRENT_MAX_LUMA_LEAF_SIZE};
@@ -275,98 +275,6 @@ impl VvcFrameSkipPayloadCache {
             .last()
             .expect("just pushed frame-skip payload")
             .2
-    }
-}
-
-#[allow(dead_code)]
-pub(in crate::vvc) fn vvc_picture_header_unit(
-    frame_idx: usize,
-    predictive: bool,
-    slice_config: VvcSliceSyntaxConfig,
-) -> VvcNalUnit {
-    let picture_kind = vvc_picture_kind_for_frame_idx(frame_idx, predictive);
-    let poc_lsb = vvc_poc_lsb_for_frame_idx(frame_idx);
-    let mut writer = VvcSyntaxWriter::without_fields();
-    write_vvc_picture_header(&mut writer, picture_kind, poc_lsb, slice_config);
-    writer.rbsp_trailing_bits();
-    VvcNalUnit {
-        nal_unit_type: VvcNalUnitType::PictureHeader,
-        layer_id: 0,
-        temporal_id: 0,
-        rbsp_payload: writer.into_bytes(),
-    }
-}
-
-#[allow(dead_code)]
-pub(in crate::vvc) fn vvc_ctu_slice_units(
-    frame_idx: usize,
-    picture_geometry: VvcVideoGeometry,
-    ctus: &[VvcQuantizedCtu],
-    slice_config: VvcSliceSyntaxConfig,
-) -> Result<Vec<VvcNalUnit>, String> {
-    let picture_kind = vvc_picture_kind_for_frame_idx(frame_idx, true);
-    let poc_lsb = vvc_poc_lsb_for_frame_idx(frame_idx);
-    let expected_ctus = vvc_picture_ctu_count(picture_geometry);
-    if ctus.len() != expected_ctus {
-        return Err(format!(
-            "VVC CTU-slice picture expected {expected_ctus} CTU payload(s), got {}",
-            ctus.len()
-        ));
-    }
-
-    let mut units = Vec::with_capacity(ctus.len() + 1);
-    let mut inter_skip_payloads = VvcInterSkipPayloadCache::default();
-    units.push(vvc_picture_header_unit(frame_idx, true, slice_config));
-    for ctu in ctus {
-        let inter_skip_payload = match ctu.payload {
-            VvcQuantizedCtuPayload::InterSkip => {
-                Some(inter_skip_payloads.payload_for(ctu.geometry, slice_config))
-            }
-            VvcQuantizedCtuPayload::Intra(_) => None,
-        };
-        units.push(VvcNalUnit {
-            nal_unit_type: picture_kind.nal_unit_type(),
-            layer_id: 0,
-            temporal_id: 0,
-            rbsp_payload: vvc_ctu_slice_rbsp_with_poc(
-                picture_kind,
-                poc_lsb,
-                picture_geometry,
-                ctu,
-                slice_config,
-                inter_skip_payload,
-            )
-            .bytes,
-        });
-    }
-    Ok(units)
-}
-
-#[allow(dead_code)]
-#[derive(Default)]
-struct VvcInterSkipPayloadCache {
-    entries: Vec<(VvcVideoGeometry, VvcCabacPayload)>,
-}
-
-#[allow(dead_code)]
-impl VvcInterSkipPayloadCache {
-    fn payload_for(
-        &mut self,
-        ctu_geometry: VvcVideoGeometry,
-        slice_config: VvcSliceSyntaxConfig,
-    ) -> &VvcCabacPayload {
-        if let Some(index) = self
-            .entries
-            .iter()
-            .position(|(geometry, _)| *geometry == ctu_geometry)
-        {
-            return &self.entries[index].1;
-        }
-        self.entries.push((
-            ctu_geometry,
-            vvc_inter_skip_ctu_cabac_payload(ctu_geometry, slice_config),
-        ));
-        &self.entries.last().expect("just pushed skip payload").1
     }
 }
 
@@ -1092,61 +1000,6 @@ fn write_vvc_frame_slice_header(
     write_vvc_slice_header_byte_alignment(writer);
 }
 
-#[allow(dead_code)]
-fn vvc_ctu_slice_rbsp_with_poc(
-    picture_kind: VvcPictureKind,
-    _poc_lsb: u32,
-    picture_geometry: VvcVideoGeometry,
-    ctu: &VvcQuantizedCtu,
-    slice_config: VvcSliceSyntaxConfig,
-    inter_skip_payload: Option<&VvcCabacPayload>,
-) -> VvcSyntaxRbsp {
-    let mut writer = VvcSyntaxWriter::without_fields();
-    let tool_flags = slice_config.tools;
-    let slice_count = vvc_picture_ctu_count(picture_geometry);
-    writer.write_flag("sh_picture_header_in_slice_header_flag", false);
-    if slice_count > 1 {
-        writer.write_u(
-            "sh_slice_address",
-            ctu.slice_address as u64,
-            vvc_slice_address_bits(picture_geometry),
-        );
-    }
-    if slice_config.inter_enabled && !picture_kind.is_irap() {
-        writer.write_ue(
-            "sh_slice_type",
-            match ctu.payload {
-                VvcQuantizedCtuPayload::InterSkip => 1,
-                VvcQuantizedCtuPayload::Intra(_) => 2,
-            },
-        );
-    }
-    if picture_kind.is_irap() {
-        writer.write_flag("sh_no_output_of_prior_pics_flag", false);
-    }
-    if !vvc_picture_header_carries_slice_state(slice_config) {
-        write_vvc_slice_header_ref_pic_lists(&mut writer, picture_kind);
-        writer.write_se("sh_qp_delta", slice_config.slice_qp - VVC_PPS_INIT_QP);
-    }
-    if tool_flags.dependent_quantization_enabled {
-        writer.write_flag("sh_dep_quant_used_flag", true);
-    }
-    if tool_flags.sign_data_hiding_enabled && !tool_flags.dependent_quantization_enabled {
-        writer.write_flag("sh_sign_data_hiding_used_flag", true);
-    }
-    if tool_flags.transform_skip_enabled
-        && !tool_flags.dependent_quantization_enabled
-        && !tool_flags.sign_data_hiding_enabled
-    {
-        writer.write_flag("sh_ts_residual_coding_disabled_flag", true);
-    }
-    write_vvc_slice_header_byte_alignment(&mut writer);
-    write_vvc_ctu_coding_tree_entropy(&mut writer, ctu, slice_config, inter_skip_payload);
-    writer.rbsp_trailing_bits();
-    debug_assert!(writer.is_byte_aligned());
-    writer.finish()
-}
-
 #[cfg(test)]
 pub(in crate::vvc) fn vvc_slice_rbsp_with_poc(
     picture_kind: VvcPictureKind,
@@ -1251,27 +1104,6 @@ fn write_vvc_frame_coding_tree_entropy(
     );
 }
 
-#[allow(dead_code)]
-fn write_vvc_ctu_coding_tree_entropy(
-    writer: &mut VvcSyntaxWriter,
-    ctu: &VvcQuantizedCtu,
-    slice_config: VvcSliceSyntaxConfig,
-    inter_skip_payload: Option<&VvcCabacPayload>,
-) {
-    let generated_payload;
-    let payload = if let Some(inter_skip_payload) = inter_skip_payload {
-        inter_skip_payload
-    } else {
-        generated_payload = vvc_ctu_cabac_payload(ctu, slice_config);
-        &generated_payload
-    };
-    writer.write_packed_cabac_bits(
-        "cabac_vvc_ctu_quantized_or_skip_bits",
-        &payload.bytes,
-        payload.bit_len,
-    );
-}
-
 pub(in crate::vvc) fn vvc_picture_ctu_cols(geometry: VvcVideoGeometry) -> usize {
     geometry.coded_width().div_ceil(crate::vvc::VVC_CTU_SIZE)
 }
@@ -1284,10 +1116,12 @@ pub(in crate::vvc) fn vvc_picture_ctu_count(geometry: VvcVideoGeometry) -> usize
     vvc_picture_ctu_cols(geometry) * vvc_picture_ctu_rows(geometry)
 }
 
+#[cfg(test)]
 pub(in crate::vvc) fn vvc_slice_address_bits(geometry: VvcVideoGeometry) -> u8 {
     ceil_log2_usize(vvc_picture_ctu_count(geometry).max(1))
 }
 
+#[cfg(test)]
 fn ceil_log2_usize(value: usize) -> u8 {
     if value <= 1 {
         0

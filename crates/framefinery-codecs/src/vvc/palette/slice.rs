@@ -1,3 +1,4 @@
+#[cfg(test)]
 pub(super) fn vvc_palette_444_ctu_slice_unit(
     frame_idx: usize,
     picture_geometry: VvcVideoGeometry,
@@ -29,6 +30,7 @@ pub(super) fn vvc_palette_444_ctu_slice_unit(
     })
 }
 
+#[cfg(test)]
 fn vvc_palette_444_slice_payload(
     picture_kind: VvcPictureKind,
     poc_lsb: u32,
@@ -84,6 +86,7 @@ fn vvc_palette_444_slice_payload(
     writer.into_bytes()
 }
 
+#[cfg(test)]
 fn write_vvc_palette_444_entropy(
     writer: &mut VvcSyntaxWriter,
     frame: &VvcSampledFrame,
@@ -95,6 +98,7 @@ fn write_vvc_palette_444_entropy(
     );
 }
 
+#[cfg(test)]
 fn vvc_palette_444_cabac_bits(
     frame: &VvcSampledFrame,
     slice_config: VvcSliceSyntaxConfig,
@@ -102,6 +106,7 @@ fn vvc_palette_444_cabac_bits(
     vvc_palette_444_cabac_encoder(frame, slice_config).finish()
 }
 
+#[cfg(test)]
 fn vvc_palette_444_cabac_encoder(
     frame: &VvcSampledFrame,
     slice_config: VvcSliceSyntaxConfig,

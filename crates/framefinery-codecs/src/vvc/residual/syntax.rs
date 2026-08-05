@@ -968,7 +968,7 @@ impl VvcResidualCabacSymbolStream {
     }
 
     #[cfg(test)]
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
     pub(in crate::vvc) fn luma_bdpcm_transform_skip_coefficients(
         log2_tb_width: u8,
         log2_tb_height: u8,
@@ -985,7 +985,7 @@ impl VvcResidualCabacSymbolStream {
     }
 
     #[cfg(test)]
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
     pub(in crate::vvc) fn chroma_coefficients(
         component: VvcResidualComponent,
         log2_tb_width: u8,
@@ -1000,7 +1000,7 @@ impl VvcResidualCabacSymbolStream {
     }
 
     #[cfg(test)]
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
     pub(in crate::vvc) fn chroma_transform_skip_coefficients(
         component: VvcResidualComponent,
         log2_tb_width: u8,
@@ -1021,7 +1021,7 @@ impl VvcResidualCabacSymbolStream {
     }
 
     #[cfg(test)]
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
     pub(in crate::vvc) fn chroma_bdpcm_transform_skip_coefficients(
         component: VvcResidualComponent,
         log2_tb_width: u8,

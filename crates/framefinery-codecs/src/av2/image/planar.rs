@@ -47,7 +47,7 @@ impl Av2PlanarYuvLayout {
         self.layout.luma_byte_len()
     }
 
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
     pub(crate) fn validate_frame_len(self, frame: &[u8], label: &str) -> Result<(), String> {
         if frame.len() != self.layout.frame_len() {
             return Err(format!(
@@ -103,7 +103,7 @@ impl Av2PlanarYuvLayout {
             .copy_region_between(dst, x0, y0, src, ref_x0, ref_y0, width, height)
     }
 
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
     pub(crate) fn hash_region(
         self,
         frame: &[u8],
@@ -280,7 +280,7 @@ pub(crate) fn chroma_subsample_y(chroma_format: Av2ChromaFormat) -> usize {
     planar_chroma_subsample_y(chroma_format.chroma_sampling())
 }
 
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
 fn hash_plane_region(
     plane_data: &[u8],
     mut hash: u64,

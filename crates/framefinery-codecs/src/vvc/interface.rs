@@ -1,15 +1,17 @@
 use std::io::{Read, Write};
 
 use framefinery_core::{
-    boolean_setting_enabled, setting_name, u8_setting, ChromaSampling, CodecEncodeFrameMetrics,
-    CodecEncodeFrameMetricsCallback, CodecEncodeRequest, CodecManifest, PixelFormat,
+    boolean_setting_enabled, setting_name, u8_setting, ChromaSampling, PixelFormat,
     SettingManifest, SettingSpecExample, SettingSpecForm, SettingSpecManifest, SettingValue,
+    VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeStreamRequest,
+    VideoEncoderManifest,
 };
 
 use super::{
     vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics, VvcEncodeFrameMetrics,
     VvcEncodeOptions, VvcEncodeParams, VvcFastSearch, VvcVideoGeometry, VvcVideoLimits,
 };
+use crate::session::buffered_stream_session;
 use crate::settings::{PREDICTIVE_SETTING, QP_SETTING};
 
 const VVC_FAST_SEARCH_SPEC_FORMS: &[SettingSpecForm] = &[SettingSpecForm {
@@ -46,15 +48,22 @@ pub const VVC_FAST_SEARCH_SETTING: SettingManifest = SettingManifest {
 
 const VVC_SETTINGS: &[SettingManifest] = &[QP_SETTING, PREDICTIVE_SETTING, VVC_FAST_SEARCH_SETTING];
 
-pub const VVC_CODEC: CodecManifest = CodecManifest {
+pub const VVC_CODEC: VideoEncoderManifest = VideoEncoderManifest {
     name: "vvc",
     feature: "codec-vvc",
     summary: "local experimental FrameFinery VVC/H.266 encoder",
     settings: VVC_SETTINGS,
     accepts_format: vvc_accepts_format,
     supports_lossless_format: vvc_supports_lossless_format,
+    create_session: Some(create_vvc_session),
     encode: encode_vvc_with_manifest,
 };
+
+fn create_vvc_session(
+    config: framefinery_core::VideoEncoderConfig,
+) -> framefinery_core::Result<Box<dyn framefinery_core::VideoEncoderSession>> {
+    buffered_stream_session(VVC_CODEC, config)
+}
 
 fn vvc_accepts_format(format: PixelFormat) -> bool {
     format == PixelFormat::Gbrp8
@@ -78,8 +87,8 @@ fn encode_vvc_with_manifest(
     input: &mut dyn Read,
     output: &mut dyn Write,
     recon: Option<&mut dyn Write>,
-    request: CodecEncodeRequest<'_>,
-    frame_metrics: Option<CodecEncodeFrameMetricsCallback<'_>>,
+    request: VideoEncodeStreamRequest<'_>,
+    frame_metrics: Option<VideoEncodeFrameMetricsCallback<'_>>,
 ) -> Result<(), String> {
     if !request.format.is_yuv() && request.format != PixelFormat::Gbrp8 {
         return Err(format!(
@@ -102,7 +111,7 @@ fn encode_vvc_with_manifest(
     let mut frame_metrics = frame_metrics;
     let mut callback = |metrics: VvcEncodeFrameMetrics<'_>| {
         if let Some(callback) = frame_metrics.as_mut() {
-            callback(CodecEncodeFrameMetrics {
+            callback(VideoEncodeFrameMetrics {
                 frame_idx: metrics.frame_idx,
                 frame_count: metrics.frame_count,
                 bitstream_bytes: metrics.bitstream_bytes,

@@ -294,6 +294,8 @@ as `--encode av2:output.obu`.
 
 The raw input CLI/API contract is documented in
 [`docs/raw-input-formats.md`](docs/raw-input-formats.md).
+The initial molten Rust/API contract is documented in
+[`docs/api-v0.md`](docs/api-v0.md).
 
 ## Repository Layout
 

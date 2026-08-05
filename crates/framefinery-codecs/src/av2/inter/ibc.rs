@@ -87,7 +87,7 @@ pub(crate) enum Av2LocalIbcCopy {
     DirectDrl {
         drl_idx: u8,
     },
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
     ExplicitDv(Av2IntrabcExplicitDv),
 }
 

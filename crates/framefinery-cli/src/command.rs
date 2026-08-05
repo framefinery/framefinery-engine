@@ -6,20 +6,18 @@ use std::io::{self, BufRead, BufReader, BufWriter, Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-#[cfg(feature = "filter-identity")]
-use framefinery_core::IdentityFilter;
 use framefinery_core::{
-    boolean_setting_enabled, convert_frame_format, planar_sample_sse, run_frame_filter_pipeline,
-    setting_name, setting_value, CodecEncodeFrameMetrics, CodecEncodeFrameMetricsCallback,
-    CodecEncodeRequest, CodecManifest, Filter, Frame, FrameInfo, MediaError, PixelFormat,
-    SampleBitDepth, SettingManifest, Sink, Source, VERSION,
+    boolean_setting_enabled, build_filter_transform, convert_frame_format,
+    generate_source_filter_stream, parse_filter_pipeline_specs, planar_sample_sse,
+    run_frame_filter_pipeline, setting_name, setting_value, Filter, FilterStageSpec, Frame,
+    FrameInfo, MediaError, PixelFormat, SampleBitDepth, SettingManifest, Sink, Source,
+    VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeStreamRequest,
+    VideoEncoderManifest, VERSION,
 };
-#[cfg(feature = "filter-pattern")]
-use framefinery_core::{generate_pattern_stream, PatternKind};
 
 use crate::args::{self, Command, EncodeArgs, HelpTopic};
 use crate::catalog::{
-    self, setting_values_label, settings_label, FilterManifest, CODECS, FILTERS, GLOBAL_SETTINGS,
+    self, setting_values_label, settings_label, FilterManifest, ENCODERS, FILTERS, GLOBAL_SETTINGS,
 };
 
 pub fn run<I>(raw_args: I) -> ExitCode
@@ -33,7 +31,7 @@ where
             ExitCode::SUCCESS
         }
         Ok(Command::Codecs) => {
-            print_codec_table("Codecs", CODECS);
+            print_codec_table("Codecs", ENCODERS);
             ExitCode::SUCCESS
         }
         Ok(Command::Filters) => {
@@ -51,7 +49,7 @@ where
 
 fn run_encode(args: EncodeArgs) -> ExitCode {
     let codec_name = args.codec.as_deref().expect("encode parser requires codec");
-    let Some(codec) = catalog::codec(codec_name) else {
+    let Some(codec) = catalog::encoder(codec_name) else {
         eprintln!("error: unknown codec '{codec_name}'");
         eprintln!("run 'ff codecs' to list known codec stages");
         return ExitCode::from(2);
@@ -84,7 +82,7 @@ fn run_encode(args: EncodeArgs) -> ExitCode {
     }
 }
 
-fn validate_codec_settings(codec: CodecManifest, settings: &[String]) -> Option<ExitCode> {
+fn validate_codec_settings(codec: VideoEncoderManifest, settings: &[String]) -> Option<ExitCode> {
     for spec in settings {
         let name = setting_name(spec);
         let Some(setting) = catalog::global_setting(name).or_else(|| codec.setting(name)) else {
@@ -111,18 +109,10 @@ fn validate_codec_settings(codec: CodecManifest, settings: &[String]) -> Option<
 }
 
 fn validate_filters(args: &EncodeArgs) -> Option<ExitCode> {
-    let filters = &args.filters;
-    for filter_name in args::filter_names(filters) {
-        if catalog::filter(filter_name).is_none() {
-            eprintln!("error: unknown filter '{filter_name}'");
-            eprintln!("run 'ff filters' to list known filter stages");
-            return Some(ExitCode::from(2));
-        };
-    }
-    match parse_filter_pipeline(args) {
+    match parse_filter_pipeline_specs(&args.filters, args.input.is_some()) {
         Ok(_) => None,
-        Err(message) => {
-            eprintln!("error: {message}");
+        Err(err) => {
+            eprintln!("error: {err}");
             Some(ExitCode::from(4))
         }
     }
@@ -131,120 +121,7 @@ fn validate_filters(args: &EncodeArgs) -> Option<ExitCode> {
 #[derive(Debug, Clone)]
 enum EncodeInput {
     Path(PathBuf),
-    Pattern(PatternSourceSpec),
-}
-
-#[derive(Debug, Clone)]
-struct PatternSourceSpec {
-    pattern: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TransformFilterSpec {
-    Identity,
-}
-
-#[derive(Debug, Clone)]
-struct FilterPipelineSpec {
-    source: Option<PatternSourceSpec>,
-    transforms: Vec<TransformFilterSpec>,
-}
-
-impl PatternSourceSpec {
-    fn from_filter(spec: &str) -> Result<Self, String> {
-        if args::filter_names(&[spec.to_string()]).next() != Some("pattern") {
-            return Err("source filter must be pattern=<name>".to_string());
-        }
-        let Some((_, value)) = spec.split_once('=').or_else(|| spec.split_once(':')) else {
-            return Err("pattern source expects --filter pattern=<name>".to_string());
-        };
-        let pattern = parse_pattern_source_name(value)?;
-        Ok(Self { pattern })
-    }
-}
-
-fn parse_pattern_source_name(value: &str) -> Result<String, String> {
-    #[cfg(feature = "filter-pattern")]
-    {
-        let pattern = PatternKind::parse(value).map_err(|err| err.to_string())?;
-        Ok(pattern.name().to_string())
-    }
-    #[cfg(not(feature = "filter-pattern"))]
-    {
-        let _ = value;
-        Err("unknown filter 'pattern'".to_string())
-    }
-}
-
-fn parse_filter_pipeline(args: &EncodeArgs) -> Result<FilterPipelineSpec, String> {
-    let mut source = None;
-    let mut transforms = Vec::new();
-    for (index, spec) in args.filters.iter().enumerate() {
-        let name = args::filter_names(std::slice::from_ref(spec))
-            .next()
-            .unwrap_or(spec.as_str());
-        match name {
-            "pattern" => {
-                if catalog::filter("pattern").is_none() {
-                    return Err("unknown filter 'pattern'".to_string());
-                }
-                if args.input.is_some() {
-                    return Err(
-                        "source filter 'pattern' cannot be used after an input path".to_string()
-                    );
-                }
-                if index != 0 {
-                    return Err("source filter 'pattern' must be the first filter".to_string());
-                }
-                if source.is_some() {
-                    return Err("encode accepts only one source filter".to_string());
-                }
-                source = Some(PatternSourceSpec::from_filter(spec)?);
-            }
-            "identity" => {
-                if catalog::filter("identity").is_none() {
-                    return Err("unknown filter 'identity'".to_string());
-                }
-                if spec.contains('=') || spec.contains(':') {
-                    return Err("identity filter does not accept options".to_string());
-                }
-                transforms.push(TransformFilterSpec::Identity);
-            }
-            "crop" | "scale" => {
-                if catalog::filter(name).is_none() {
-                    return Err(format!("unknown filter '{name}'"));
-                }
-                return Err(format!(
-                    "filter '{name}' is available as a discovery scaffold but execution is not implemented yet"
-                ));
-            }
-            other => {
-                return Err(format!("filter '{other}' has no execution model wired yet"));
-            }
-        }
-    }
-    if args.input.is_none() && source.is_none() {
-        return Err(
-            "encode without an input requires a source filter such as --filter pattern=black"
-                .to_string(),
-        );
-    }
-    Ok(FilterPipelineSpec { source, transforms })
-}
-
-fn generated_pattern_input(job: &EncodeJob, source: &PatternSourceSpec) -> Result<Vec<u8>, String> {
-    #[cfg(feature = "filter-pattern")]
-    {
-        let pattern = PatternKind::parse(&source.pattern).map_err(|err| err.to_string())?;
-        let info =
-            FrameInfo::new(job.width, job.height, job.format).map_err(|err| err.to_string())?;
-        return generate_pattern_stream(info, pattern, job.frames).map_err(|err| err.to_string());
-    }
-    #[cfg(not(feature = "filter-pattern"))]
-    {
-        let _ = (job, source);
-        Err("unknown filter 'pattern'".to_string())
-    }
+    SourceFilter(FilterStageSpec),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -539,8 +416,12 @@ fn open_unfiltered_job_reader(job: &EncodeJob) -> Result<Box<dyn Read>, String> 
                 Ok(Box::new(FrameFormatConvertingReader::new(reader, job)?))
             }
         }
-        EncodeInput::Pattern(source) => {
-            Ok(Box::new(Cursor::new(generated_pattern_input(job, source)?)))
+        EncodeInput::SourceFilter(source) => {
+            let info =
+                FrameInfo::new(job.width, job.height, job.format).map_err(|err| err.to_string())?;
+            let input = generate_source_filter_stream(source, info, job.frames)
+                .map_err(|err| err.to_string())?;
+            Ok(Box::new(Cursor::new(input)))
         }
     }
 }
@@ -555,8 +436,7 @@ fn apply_transform_filters_to_reader(
     let mut filters = job
         .transform_filters
         .iter()
-        .copied()
-        .map(build_transform_filter)
+        .map(build_filter_transform)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())?;
     let mut filter_refs = filters
@@ -572,22 +452,6 @@ fn apply_transform_filters_to_reader(
         ));
     }
     Ok(Box::new(Cursor::new(sink.into_bytes())))
-}
-
-fn build_transform_filter(spec: TransformFilterSpec) -> framefinery_core::Result<Box<dyn Filter>> {
-    match spec {
-        TransformFilterSpec::Identity => build_identity_filter(),
-    }
-}
-
-#[cfg(feature = "filter-identity")]
-fn build_identity_filter() -> framefinery_core::Result<Box<dyn Filter>> {
-    Ok(Box::new(IdentityFilter))
-}
-
-#[cfg(not(feature = "filter-identity"))]
-fn build_identity_filter() -> framefinery_core::Result<Box<dyn Filter>> {
-    Err(MediaError::Message("unknown filter 'identity'".to_string()))
 }
 
 struct RawFrameReaderSource<R> {
@@ -834,7 +698,7 @@ impl<W: Write + ?Sized> Write for FrameFormatConvertingWriter<'_, W> {
 fn input_label(input: &EncodeInput) -> String {
     match input {
         EncodeInput::Path(path) => format!("path={}", path.display()),
-        EncodeInput::Pattern(source) => format!("source=pattern:{}", source.pattern),
+        EncodeInput::SourceFilter(source) => format!("source={}", source.spec),
     }
 }
 
@@ -1038,7 +902,7 @@ struct EncodeJob {
     output: PathBuf,
     recon: Option<PathBuf>,
     psnr: bool,
-    transform_filters: Vec<TransformFilterSpec>,
+    transform_filters: Vec<FilterStageSpec>,
     frames: usize,
     fps: Option<String>,
     validate_y4m_metadata: bool,
@@ -1086,11 +950,15 @@ fn print_encode_config(codec_name: &str, args: &EncodeArgs, job: &EncodeJob) {
     }
 }
 
-fn encode_job_for_codec(codec: CodecManifest, args: &EncodeArgs) -> Result<EncodeJob, String> {
-    let filter_pipeline = parse_filter_pipeline(args)?;
+fn encode_job_for_codec(
+    codec: VideoEncoderManifest,
+    args: &EncodeArgs,
+) -> Result<EncodeJob, String> {
+    let filter_pipeline = parse_filter_pipeline_specs(&args.filters, args.input.is_some())
+        .map_err(|err| err.to_string())?;
     let input = match args.input.as_deref() {
         Some(path) => EncodeInput::Path(PathBuf::from(path)),
-        None => EncodeInput::Pattern(
+        None => EncodeInput::SourceFilter(
             filter_pipeline
                 .source
                 .clone()
@@ -1101,7 +969,7 @@ fn encode_job_for_codec(codec: CodecManifest, args: &EncodeArgs) -> Result<Encod
     let recon = args.recon.as_deref().map(PathBuf::from);
     let y4m_metadata = match &input {
         EncodeInput::Path(path) => read_y4m_file_metadata(path)?,
-        EncodeInput::Pattern(_) => None,
+        EncodeInput::SourceFilter(_) => None,
     };
     let (width, height, source_format) = resolve_video_metadata(args, y4m_metadata.as_ref())?;
     let frames = resolve_frame_count(args, &input, source_format, width, height)?;
@@ -1174,7 +1042,7 @@ fn resolve_fps_metadata(args: &EncodeArgs, y4m_metadata: Option<&Y4mMetadata>) -
         .or_else(|| args.fps.clone())
 }
 
-fn codec_input_format(codec: CodecManifest, source_format: PixelFormat) -> PixelFormat {
+fn codec_input_format(codec: VideoEncoderManifest, source_format: PixelFormat) -> PixelFormat {
     if (codec.accepts_format)(source_format) {
         return source_format;
     }
@@ -1214,7 +1082,7 @@ fn resolve_frame_count(
                     Ok((frames as usize).min(available))
                 }
             }
-            EncodeInput::Pattern(_) => Ok(frames as usize),
+            EncodeInput::SourceFilter(_) => Ok(frames as usize),
         };
     }
 
@@ -1226,7 +1094,7 @@ fn resolve_frame_count(
                 infer_file_frame_count_from_eof(path, frame_len)
             }
         }
-        EncodeInput::Pattern(_) => {
+        EncodeInput::SourceFilter(_) => {
             Err("source filters require --frames because there is no input EOF".to_string())
         }
     }
@@ -1341,14 +1209,14 @@ fn infer_file_frame_count_from_eof(path: &Path, frame_len: usize) -> Result<usiz
 }
 
 fn encode_with_model(
-    codec: CodecManifest,
+    codec: VideoEncoderManifest,
     args: &EncodeArgs,
     job: EncodeJob,
 ) -> Result<(), String> {
     let mut input = open_job_reader(&job)?;
     let mut output = create_writer(&job.output)?;
     let mut recon = create_optional_writer(job.recon.as_deref())?;
-    let request = CodecEncodeRequest {
+    let request = VideoEncodeStreamRequest {
         frames: job.frames,
         width: job.width,
         height: job.height,
@@ -1356,7 +1224,7 @@ fn encode_with_model(
         lossless: job.lossless,
         settings: &args.settings,
     };
-    let mut frame_metrics = |metrics: CodecEncodeFrameMetrics<'_>| {
+    let mut frame_metrics = |metrics: VideoEncodeFrameMetrics<'_>| {
         print_frame_metrics(
             codec.name,
             &job,
@@ -1368,7 +1236,7 @@ fn encode_with_model(
         );
     };
     let frame_metrics = if job.psnr {
-        Some(&mut frame_metrics as CodecEncodeFrameMetricsCallback<'_>)
+        Some(&mut frame_metrics as VideoEncodeFrameMetricsCallback<'_>)
     } else {
         None
     };
@@ -1421,7 +1289,7 @@ fn flush_writer(path: &Path, writer: &mut BufWriter<File>) -> Result<(), String>
 fn print_help(topic: Option<HelpTopic>) -> ExitCode {
     match topic {
         None => print!("{}", args::help(VERSION)),
-        Some(HelpTopic::Codecs) => print_codec_table("Codecs", CODECS),
+        Some(HelpTopic::Codecs) => print_codec_table("Codecs", ENCODERS),
         Some(HelpTopic::Filters(None)) => print_filter_table("Filters", FILTERS),
         Some(HelpTopic::Filters(Some(filter))) => return print_filter_detail(&filter),
         Some(HelpTopic::Pixfmt) => print_pixel_format_help(),
@@ -1432,7 +1300,7 @@ fn print_help(topic: Option<HelpTopic>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn print_codec_table(title: &str, codecs: &[CodecManifest]) {
+fn print_codec_table(title: &str, codecs: &[VideoEncoderManifest]) {
     println!("{title}:");
     if codecs.is_empty() {
         println!("  No video encoders are compiled into this binary.");
@@ -1635,7 +1503,7 @@ fn setting_rows() -> Vec<SettingHelpRow> {
             applies_to: "global".to_string(),
         });
     }
-    for codec in CODECS {
+    for codec in ENCODERS {
         for setting in codec.settings {
             if let Some(row) = rows.iter_mut().find(|row| row.setting.name == setting.name) {
                 if row.applies_to == "global" {
@@ -1739,23 +1607,25 @@ mod tests {
 
     const TEST_CODEC_SETTINGS: &[SettingManifest] = &[];
 
-    const TEST_CODEC: CodecManifest = CodecManifest {
+    const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest {
         name: "test",
         feature: "test-codec",
         summary: "test codec manifest",
         settings: TEST_CODEC_SETTINGS,
         accepts_format: test_codec_accepts_format,
         supports_lossless_format: test_codec_accepts_format,
+        create_session: None,
         encode: test_codec_encode,
     };
 
-    const TEST_GBRP_CODEC: CodecManifest = CodecManifest {
+    const TEST_GBRP_CODEC: VideoEncoderManifest = VideoEncoderManifest {
         name: "test-gbrp",
         feature: "test-codec-gbrp",
         summary: "test codec manifest with gbrp8 support",
         settings: TEST_CODEC_SETTINGS,
         accepts_format: test_gbrp_codec_accepts_format,
         supports_lossless_format: test_gbrp_codec_accepts_format,
+        create_session: None,
         encode: test_codec_encode,
     };
 
@@ -1773,8 +1643,8 @@ mod tests {
         _input: &mut dyn Read,
         _output: &mut dyn Write,
         _recon: Option<&mut dyn Write>,
-        _request: CodecEncodeRequest<'_>,
-        _frame_metrics: Option<CodecEncodeFrameMetricsCallback<'_>>,
+        _request: VideoEncodeStreamRequest<'_>,
+        _frame_metrics: Option<VideoEncodeFrameMetricsCallback<'_>>,
     ) -> Result<(), String> {
         Ok(())
     }
@@ -2611,7 +2481,9 @@ mod tests {
         };
 
         let job = encode_job(&args).expect("identity filter should be accepted");
-        assert_eq!(job.transform_filters, vec![TransformFilterSpec::Identity]);
+        assert_eq!(job.transform_filters.len(), 1);
+        assert_eq!(job.transform_filters[0].name, "identity");
+        assert_eq!(job.transform_filters[0].spec, "identity");
         let mut reader = open_job_reader(&job).expect("open filtered reader");
         let mut filtered = Vec::new();
         reader
@@ -2639,7 +2511,9 @@ mod tests {
         };
 
         let job = encode_job(&args).expect("pattern plus identity should be accepted");
-        assert_eq!(job.transform_filters, vec![TransformFilterSpec::Identity]);
+        assert_eq!(job.transform_filters.len(), 1);
+        assert_eq!(job.transform_filters[0].name, "identity");
+        assert_eq!(job.transform_filters[0].spec, "identity");
         let mut reader = open_job_reader(&job).expect("open filtered pattern reader");
         let mut filtered = Vec::new();
         reader
@@ -2685,9 +2559,7 @@ mod tests {
     #[test]
     fn frame_psnr_reports_yuv422p8() {
         let job = EncodeJob {
-            input: EncodeInput::Pattern(PatternSourceSpec {
-                pattern: "black".to_string(),
-            }),
+            input: EncodeInput::SourceFilter(FilterStageSpec::new("pattern=black").unwrap()),
             output: PathBuf::from("out.vvc"),
             recon: None,
             psnr: false,
@@ -2715,9 +2587,7 @@ mod tests {
     fn frame_psnr_uses_high_bit_depth_peak_sample() {
         let format = PixelFormat::yuv420(10).unwrap();
         let job = EncodeJob {
-            input: EncodeInput::Pattern(PatternSourceSpec {
-                pattern: "black".to_string(),
-            }),
+            input: EncodeInput::SourceFilter(FilterStageSpec::new("pattern=black").unwrap()),
             output: PathBuf::from("out.vvc"),
             recon: None,
             psnr: false,

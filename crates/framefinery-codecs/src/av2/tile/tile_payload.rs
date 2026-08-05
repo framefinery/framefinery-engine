@@ -1281,6 +1281,7 @@ impl Av2Black444TilePlan {
                 Av2PartitionPolicy::Fixed8x8Leaves => {
                     choose_partition(row_mi, col_mi, block_size, visible_rows_mi, visible_cols_mi)
                 }
+                #[cfg(test)]
                 Av2PartitionPolicy::LargestLosslessLeaves => choose_largest_lossless_partition(
                     row_mi,
                     col_mi,
@@ -1288,16 +1289,6 @@ impl Av2Black444TilePlan {
                     visible_rows_mi,
                     visible_cols_mi,
                 ),
-                Av2PartitionPolicy::LosslessLeafLimit { max_size } => {
-                    choose_lossless_leaf_limit_partition(
-                        row_mi,
-                        col_mi,
-                        block_size,
-                        visible_rows_mi,
-                        visible_cols_mi,
-                        max_size,
-                    )
-                }
                 Av2PartitionPolicy::AdaptiveScreenContent => choose_adaptive_screen_content_partition(
                     row_mi,
                     col_mi,

@@ -28,6 +28,13 @@ and the `ff` binary. Its default feature set enables AV2, VVC, and the current
 core filter catalog so `cargo install framefinery` produces the normal CLI
 build.
 
+The first public video API contract is documented in [`api-v0.md`](api-v0.md).
+That contract is deliberately codec-neutral: callers select encoders by codec
+ID through a registry instead of constructing codec-named public encoder types.
+Codec-specific helpers may be shared opportunistically inside
+`framefinery-codecs`, but those helpers are not public API and do not define
+what future codecs must use.
+
 Optional codecs and filters should be selected at build time using Cargo
 features or separate crates. The Makefile default enables the normal product
 feature set so `./ff` is usable after `make build` without compiling

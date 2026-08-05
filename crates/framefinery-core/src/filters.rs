@@ -1,18 +1,16 @@
 #[cfg(feature = "filter-pattern")]
 use std::str::FromStr;
 
-#[cfg(feature = "filter-pattern")]
 use crate::error::MediaError;
-#[cfg(any(feature = "filter-identity", feature = "filter-pattern"))]
 use crate::error::Result;
-#[cfg(feature = "filter-identity")]
 use crate::pipeline::Filter;
 #[cfg(feature = "filter-pattern")]
 use crate::pipeline::Source;
-#[cfg(any(feature = "filter-identity", feature = "filter-pattern"))]
+#[cfg(feature = "filter-identity")]
 use crate::Frame;
+use crate::FrameInfo;
 #[cfg(feature = "filter-pattern")]
-use crate::{FrameInfo, PixelFormat};
+use crate::PixelFormat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterStageKind {
@@ -275,6 +273,189 @@ pub fn filter_manifest(name: &str) -> Option<FilterManifest> {
 
 pub fn filter_spec_manifest(name: &str) -> Option<&'static FilterSpecManifest> {
     filter_manifest(name).map(|filter| filter.spec)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilterStageSpec {
+    pub name: String,
+    pub spec: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilterPipelineSpec {
+    pub source: Option<FilterStageSpec>,
+    pub transforms: Vec<FilterStageSpec>,
+}
+
+impl FilterStageSpec {
+    pub fn new(spec: impl Into<String>) -> Result<Self> {
+        let spec = spec.into();
+        let name = filter_spec_name(&spec).to_string();
+        if name.is_empty() {
+            return Err(MediaError::Message(
+                "filter spec cannot be empty".to_string(),
+            ));
+        }
+        Ok(Self { name, spec })
+    }
+}
+
+pub fn filter_spec_name(spec: &str) -> &str {
+    spec.split_once('=')
+        .or_else(|| spec.split_once(':'))
+        .map_or(spec, |(name, _)| name)
+}
+
+pub fn parse_filter_pipeline_specs(
+    specs: &[String],
+    input_present: bool,
+) -> Result<FilterPipelineSpec> {
+    let mut source = None;
+    let mut transforms = Vec::new();
+    for (index, spec) in specs.iter().enumerate() {
+        let stage = FilterStageSpec::new(spec.clone())?;
+        let Some(manifest) = filter_manifest(&stage.name) else {
+            return Err(MediaError::Message(format!(
+                "unknown filter '{}'",
+                stage.name
+            )));
+        };
+
+        match manifest.stage {
+            FilterStageKind::Source => {
+                if input_present {
+                    return Err(MediaError::Message(format!(
+                        "source filter '{}' cannot be used after an input path",
+                        stage.name
+                    )));
+                }
+                if index != 0 {
+                    return Err(MediaError::Message(format!(
+                        "source filter '{}' must be the first filter",
+                        stage.name
+                    )));
+                }
+                if source.is_some() {
+                    return Err(MediaError::Message(
+                        "encode accepts only one source filter".to_string(),
+                    ));
+                }
+                validate_executable_filter_spec(manifest, &stage)?;
+                source = Some(stage);
+            }
+            FilterStageKind::Transform => {
+                validate_executable_filter_spec(manifest, &stage)?;
+                transforms.push(stage);
+            }
+        }
+    }
+    if !input_present && source.is_none() {
+        return Err(MediaError::Message(
+            "encode without an input requires a source filter such as --filter pattern=black"
+                .to_string(),
+        ));
+    }
+    Ok(FilterPipelineSpec { source, transforms })
+}
+
+pub fn generate_source_filter_stream(
+    stage: &FilterStageSpec,
+    info: FrameInfo,
+    frames: usize,
+) -> Result<Vec<u8>> {
+    match stage.name.as_str() {
+        "pattern" => generate_pattern_filter_stream(&stage.spec, info, frames),
+        other => Err(MediaError::Message(format!(
+            "filter '{other}' is not an executable source filter"
+        ))),
+    }
+}
+
+pub fn build_filter_transform(stage: &FilterStageSpec) -> Result<Box<dyn Filter>> {
+    match stage.name.as_str() {
+        "identity" => build_identity_filter(),
+        other => Err(MediaError::Message(format!(
+            "filter '{other}' is not an executable transform filter"
+        ))),
+    }
+}
+
+fn validate_executable_filter_spec(
+    manifest: FilterManifest,
+    stage: &FilterStageSpec,
+) -> Result<()> {
+    if manifest.status != FilterStatus::Implemented {
+        return Err(MediaError::Message(format!(
+            "filter '{}' is available as a discovery scaffold but execution is not implemented yet",
+            stage.name
+        )));
+    }
+
+    match stage.name.as_str() {
+        "pattern" => validate_pattern_filter_spec(&stage.spec),
+        "identity" => validate_identity_filter_spec(&stage.spec),
+        other => Err(MediaError::Message(format!(
+            "filter '{other}' has no execution model wired yet"
+        ))),
+    }
+}
+
+fn validate_identity_filter_spec(spec: &str) -> Result<()> {
+    if spec.contains('=') || spec.contains(':') {
+        return Err(MediaError::Message(
+            "identity filter does not accept options".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "filter-identity")]
+fn build_identity_filter() -> Result<Box<dyn Filter>> {
+    Ok(Box::new(IdentityFilter))
+}
+
+#[cfg(not(feature = "filter-identity"))]
+fn build_identity_filter() -> Result<Box<dyn Filter>> {
+    Err(MediaError::Message("unknown filter 'identity'".to_string()))
+}
+
+#[cfg(feature = "filter-pattern")]
+fn validate_pattern_filter_spec(spec: &str) -> Result<()> {
+    parse_pattern_stage_kind(spec).map(|_| ())
+}
+
+#[cfg(not(feature = "filter-pattern"))]
+fn validate_pattern_filter_spec(_spec: &str) -> Result<()> {
+    Err(MediaError::Message("unknown filter 'pattern'".to_string()))
+}
+
+#[cfg(feature = "filter-pattern")]
+fn generate_pattern_filter_stream(spec: &str, info: FrameInfo, frames: usize) -> Result<Vec<u8>> {
+    generate_pattern_stream(info, parse_pattern_stage_kind(spec)?, frames)
+}
+
+#[cfg(not(feature = "filter-pattern"))]
+fn generate_pattern_filter_stream(
+    _spec: &str,
+    _info: FrameInfo,
+    _frames: usize,
+) -> Result<Vec<u8>> {
+    Err(MediaError::Message("unknown filter 'pattern'".to_string()))
+}
+
+#[cfg(feature = "filter-pattern")]
+fn parse_pattern_stage_kind(spec: &str) -> Result<PatternKind> {
+    if filter_spec_name(spec) != "pattern" {
+        return Err(MediaError::Message(
+            "source filter must be pattern=<name>".to_string(),
+        ));
+    }
+    let Some((_, value)) = spec.split_once('=').or_else(|| spec.split_once(':')) else {
+        return Err(MediaError::Message(
+            "pattern source expects --filter pattern=<name>".to_string(),
+        ));
+    };
+    PatternKind::parse(value)
 }
 
 #[derive(Debug, Clone, Copy, Default)]

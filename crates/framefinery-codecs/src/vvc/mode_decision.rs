@@ -98,7 +98,7 @@ pub(in crate::vvc) enum VvcIntraPredictionMode {
     Dc,
     Horizontal,
     Vertical,
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
     Angular(u8),
 }
 

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use super::planar::Av2PlanarYuvLayout;
 use super::{Av2ChromaFormat, Av2VideoGeometry};
 use crate::picture::SampleBitDepth;
@@ -16,6 +14,7 @@ pub(crate) struct Av2MotionVector {
 }
 
 impl Av2MotionVector {
+    #[cfg(test)]
     fn zero() -> Self {
         Self {
             row_px: 0,
@@ -85,6 +84,7 @@ pub(crate) struct Av2LosslessMotionStats {
 }
 
 impl Av2LosslessMotionStats {
+    #[cfg(test)]
     pub(crate) fn selected_inter_blocks(self) -> usize {
         self.selected_zero_mv_blocks
             + self.selected_neighbor_mv_blocks
@@ -111,6 +111,7 @@ impl Av2LosslessMotionMap {
         self.blocks[block_y * self.blocks_wide + block_x]
     }
 
+    #[cfg(test)]
     pub(crate) fn stats(&self) -> Av2LosslessMotionStats {
         self.stats
     }
@@ -149,6 +150,7 @@ impl Av2ReferenceHashIndex {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn build_lossless_motion_map(
     current: &[u8],
     reference: &[u8],

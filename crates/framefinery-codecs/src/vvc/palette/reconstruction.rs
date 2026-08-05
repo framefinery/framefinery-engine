@@ -3,6 +3,7 @@ pub(super) fn vvc_palette_444_reconstruction_yuv(frame: &VvcSampledFrame) -> Vec
     vvc_palette_444_reconstruction_yuv_with_config(frame, VvcSliceSyntaxConfig::palette_444())
 }
 
+#[cfg(test)]
 pub(super) fn vvc_palette_444_reconstruction_yuv_with_config(
     frame: &VvcSampledFrame,
     slice_config: VvcSliceSyntaxConfig,
@@ -118,6 +119,7 @@ pub(super) fn vvc_palette_444_reconstruction_yuv_with_config(
     [luma, cb, cr].concat()
 }
 
+#[cfg(test)]
 fn copy_vvc_ibc_444_8x8_reconstruction(
     luma: &mut [VvcSample],
     cb: &mut [VvcSample],
@@ -134,6 +136,7 @@ fn copy_vvc_ibc_444_8x8_reconstruction(
     }
 }
 
+#[cfg(test)]
 fn add_vvc_transform_skip_residual_444_8x8_reconstruction(
     luma: &mut [VvcSample],
     cb: &mut [VvcSample],
@@ -237,6 +240,7 @@ fn vvc_transform_skip_residual_444_left_8x8(
     })
 }
 
+#[cfg(test)]
 fn add_vvc_bdpcm_horizontal_444_8x8_reconstruction(
     luma: &mut [VvcSample],
     cb: &mut [VvcSample],
@@ -375,6 +379,7 @@ fn vvc_palette_escape_level_color(
     }
 }
 
+#[cfg(test)]
 fn vvc_palette_reconstruct_escape_color(
     color: VvcSampledColor,
     bit_depth: SampleBitDepth,
@@ -400,6 +405,7 @@ fn vvc_palette_escape_level(
     ((u32::from(sample) + rounding) >> shift) as VvcSample
 }
 
+#[cfg(test)]
 fn vvc_palette_reconstruct_escape_level(
     level: VvcSample,
     bit_depth: SampleBitDepth,
@@ -483,6 +489,7 @@ pub(super) fn vvc_palette_transform_skip_coded_coeff_with_config_for_test(
     vvc_palette_transform_skip_coded_coeff(coeff, bit_depth, slice_config.slice_qp)
 }
 
+#[cfg(test)]
 fn add_i16_to_sample(sample: VvcSample, delta: i16, bit_depth: SampleBitDepth) -> VvcSample {
     let value = i32::from(sample) + i32::from(delta);
     value.clamp(0, i32::from(bit_depth.max_sample())) as VvcSample

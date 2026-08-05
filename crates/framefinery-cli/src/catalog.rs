@@ -4,16 +4,16 @@ pub use framefinery_core::{
 };
 
 #[cfg(feature = "video-encoders")]
-pub use framefinery_codecs::{codec, CODECS};
+pub use framefinery_codecs::{encoder, ENCODERS};
 
 #[cfg(not(feature = "video-encoders"))]
-use framefinery_core::CodecManifest;
+use framefinery_core::VideoEncoderManifest;
 
 #[cfg(not(feature = "video-encoders"))]
-pub const CODECS: &[CodecManifest] = &[];
+pub const ENCODERS: &[VideoEncoderManifest] = &[];
 
 #[cfg(not(feature = "video-encoders"))]
-pub fn codec(_name: &str) -> Option<CodecManifest> {
+pub fn encoder(_name: &str) -> Option<VideoEncoderManifest> {
     None
 }
 

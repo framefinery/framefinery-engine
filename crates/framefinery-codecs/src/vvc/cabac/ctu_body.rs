@@ -34,17 +34,6 @@ pub(in crate::vvc) fn encode_ctu_partition_body(
     encode_ctu_partition_body_with_contexts(cabac, &mut contexts, params, slice_config);
 }
 
-#[allow(dead_code)]
-pub(in crate::vvc) fn encode_inter_skip_ctu_body(
-    cabac: &mut VvcCabacEncoder,
-    ctu_geometry: VvcVideoGeometry,
-    slice_config: VvcSliceSyntaxConfig,
-) {
-    debug_assert!(slice_config.inter_enabled);
-    let mut contexts = initial_vvc_cabac_contexts(slice_config);
-    encode_inter_skip_ctu_body_with_contexts(cabac, &mut contexts, ctu_geometry, slice_config, 0);
-}
-
 fn encode_inter_skip_ctu_body_with_contexts(
     cabac: &mut VvcCabacEncoder,
     contexts: &mut VvcCabacContexts,

@@ -656,16 +656,6 @@ fn normalize_pixel_format(value: &str) -> Result<String, String> {
     Ok(pixel_format.parse::<PixelFormat>()?.name())
 }
 
-fn stage_name(spec: &str) -> &str {
-    spec.split_once('=')
-        .or_else(|| spec.split_once(':'))
-        .map_or(spec, |(name, _)| name)
-}
-
-pub fn filter_names(filters: &[String]) -> impl Iterator<Item = &str> {
-    filters.iter().map(|filter| stage_name(filter))
-}
-
 #[derive(Debug, Clone)]
 struct Cursor {
     args: Vec<String>,

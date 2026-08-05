@@ -8,6 +8,7 @@ fn choose_partition(
     choose_8x8_leaf_partition(row_mi, col_mi, block_size, visible_rows_mi, visible_cols_mi)
 }
 
+#[cfg(test)]
 fn choose_largest_lossless_partition(
     row_mi: usize,
     col_mi: usize,
@@ -37,70 +38,6 @@ fn choose_largest_lossless_partition(
     choose_8x8_leaf_partition(row_mi, col_mi, block_size, visible_rows_mi, visible_cols_mi)
 }
 
-fn choose_lossless_leaf_limit_partition(
-    row_mi: usize,
-    col_mi: usize,
-    block_size: Av2MvpBlockSize,
-    visible_rows_mi: usize,
-    visible_cols_mi: usize,
-    max_size: usize,
-) -> Av2MvpPartition {
-    assert!(
-        matches!(max_size, 8 | 16 | 32),
-        "AV2 lossless leaf limits are expected to be 8, 16, or 32"
-    );
-    if !block_size.is_partition_point() {
-        return Av2MvpPartition::None;
-    }
-
-    let allowed = allowed_partitions(row_mi, col_mi, block_size, visible_rows_mi, visible_cols_mi);
-    if let Some(forced) =
-        forced_boundary_partition(row_mi, col_mi, block_size, visible_rows_mi, visible_cols_mi)
-    {
-        if allowed.contains(forced) {
-            return forced;
-        }
-    }
-    if let Some(only_allowed) = allowed.only() {
-        return only_allowed;
-    }
-    if block_size.width <= max_size && block_size.height <= max_size && allowed.none {
-        return Av2MvpPartition::None;
-    }
-
-    if block_size.width == block_size.height {
-        if block_size.height > max_size && allowed.horz {
-            return Av2MvpPartition::Horz;
-        }
-        if block_size.width > max_size && allowed.vert {
-            return Av2MvpPartition::Vert;
-        }
-    } else if block_size.width > block_size.height {
-        if block_size.width > max_size && allowed.vert {
-            return Av2MvpPartition::Vert;
-        }
-        if block_size.height > max_size && allowed.horz {
-            return Av2MvpPartition::Horz;
-        }
-    } else {
-        if block_size.height > max_size && allowed.horz {
-            return Av2MvpPartition::Horz;
-        }
-        if block_size.width > max_size && allowed.vert {
-            return Av2MvpPartition::Vert;
-        }
-    }
-
-    if allowed.none {
-        Av2MvpPartition::None
-    } else if allowed.horz {
-        Av2MvpPartition::Horz
-    } else if allowed.vert {
-        Av2MvpPartition::Vert
-    } else {
-        Av2MvpPartition::None
-    }
-}
 fn choose_luma_palette_partition(
     row_mi: usize,
     col_mi: usize,
@@ -142,10 +79,8 @@ fn luma_palette_partition_policy_allows_leaf(
         Av2PartitionPolicy::Fixed8x8Leaves => {
             block_size.width == MVP_LEAF_BLOCK_SIZE && block_size.height == MVP_LEAF_BLOCK_SIZE
         }
+        #[cfg(test)]
         Av2PartitionPolicy::LargestLosslessLeaves => true,
-        Av2PartitionPolicy::LosslessLeafLimit { max_size } => {
-            block_size.width <= max_size && block_size.height <= max_size
-        }
         Av2PartitionPolicy::AdaptiveScreenContent | Av2PartitionPolicy::LosslessInterModes => false,
     }
 }

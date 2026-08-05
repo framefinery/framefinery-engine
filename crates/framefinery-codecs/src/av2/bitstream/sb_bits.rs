@@ -20,7 +20,7 @@ struct Av2SbBitReport {
 }
 
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
 pub(crate) enum Av2SbBitCategory {
     Partition,
     LumaMode,
