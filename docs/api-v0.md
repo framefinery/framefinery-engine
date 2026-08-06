@@ -198,6 +198,31 @@ this config shape before invoking codecs. Codec manifests validate the selected
 codec ID, input format, lossless support, extension setting names, duplicate
 settings, and setting value types before implementation-specific parsing runs.
 
+Use codec manifests, or the facade convenience wrappers, when an API caller
+wants the same setting strings accepted by the CLI:
+
+```rust
+use framefinery::{
+    apply_encoder_settings, effective_encoder_settings, CodecId, FrameInfo,
+    PixelFormat, VideoEncoderConfig,
+};
+
+let input = FrameInfo::new(1280, 720, PixelFormat::Yuv420p8)?;
+let config = VideoEncoderConfig::new(CodecId::new("av2")?, input);
+let config = apply_encoder_settings(config, ["qp=24", "gop=-1"])?;
+
+assert_eq!(config.setting_specs(), vec!["qp=24", "gop=-1"]);
+assert_eq!(
+    effective_encoder_settings(&config)?,
+    vec!["lossless=false", "qp=24", "gop=-1"]
+);
+# Ok::<(), framefinery::MediaError>(())
+```
+
+`setting_specs()` returns explicit caller-supplied settings represented by the
+config. `effective_encoder_settings()` renders the same defaults shown by the
+CLI startup summary and `ff --help settings`.
+
 ## Frames
 
 `Frame` owns one complete raw frame. `FrameRef` borrows one complete raw frame.

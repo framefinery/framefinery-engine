@@ -9,11 +9,11 @@ use std::time::{Duration, Instant};
 
 use framefinery_core::{
     boolean_setting_enabled, build_filter_transform, build_raw_video_source_filter,
-    convert_frame_format, frame_psnr, setting_name, setting_value, FilterPipelineBuilder,
-    FilterStageSpec, FilteredRawVideoFrameSource, FrameInfo, FramePsnr, FrameRate, PixelFormat,
+    convert_frame_format, frame_psnr, FilterPipelineBuilder, FilterStageSpec,
+    FilteredRawVideoFrameSource, FrameInfo, FramePsnr, FrameRate, PixelFormat,
     RawVideoFrameReadSource, RawVideoFrameSource, ReconstructionMode, SampleBitDepth,
-    SettingManifest, SettingValue, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback,
-    VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSetting, VideoRateControl, VERSION,
+    SettingManifest, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncoderConfig,
+    VideoEncoderManifest, VERSION,
 };
 
 use crate::args::{self, Command, EncodeArgs, HelpTopic};
@@ -61,10 +61,6 @@ fn run_encode(args: EncodeArgs) -> ExitCode {
         return ExitCode::from(2);
     };
 
-    if let Some(exit) = validate_codec_settings(codec, &args.settings) {
-        return exit;
-    }
-
     if let Some(exit) = validate_filters(&args) {
         return exit;
     }
@@ -77,41 +73,23 @@ fn run_encode(args: EncodeArgs) -> ExitCode {
         }
     };
 
-    print_encode_config(codec, &args, &job);
+    let config = match video_config_for_job(codec, &args, &job) {
+        Ok(config) => config,
+        Err(message) => {
+            eprintln!("error: {message}");
+            return ExitCode::from(2);
+        }
+    };
 
-    match encode_with_model(codec, &args, job) {
+    print_encode_config(codec, &args, &job, &config);
+
+    match encode_with_model(codec, &args, job, config) {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
             eprintln!("error: {message}");
             ExitCode::from(1)
         }
     }
-}
-
-fn validate_codec_settings(codec: VideoEncoderManifest, settings: &[String]) -> Option<ExitCode> {
-    for spec in settings {
-        let name = setting_name(spec);
-        let Some(setting) = catalog::global_setting(name).or_else(|| codec.setting(name)) else {
-            eprintln!("error: unknown encode setting '{name}'");
-            eprintln!(
-                "accepted settings: {}",
-                settings_label(GLOBAL_SETTINGS, codec.settings)
-            );
-            return Some(ExitCode::from(2));
-        };
-        let value = setting_value(spec).unwrap_or("true");
-        if !setting.value.accepts(value) {
-            eprintln!(
-                "error: codec '{}' setting '{}' expects one of {}, got '{}'",
-                codec.name,
-                setting.name,
-                setting_values_label(setting),
-                value
-            );
-            return Some(ExitCode::from(2));
-        }
-    }
-    None
 }
 
 fn validate_filters(args: &EncodeArgs) -> Option<ExitCode> {
@@ -773,11 +751,17 @@ struct EncodeJob {
     height: usize,
     source_format: PixelFormat,
     format: PixelFormat,
+    #[cfg(test)]
     lossless: bool,
 }
 
-fn print_encode_config(codec: VideoEncoderManifest, args: &EncodeArgs, job: &EncodeJob) {
-    let settings = effective_settings_label(codec, args);
+fn print_encode_config(
+    codec: VideoEncoderManifest,
+    args: &EncodeArgs,
+    job: &EncodeJob,
+    config: &VideoEncoderConfig,
+) {
+    let settings = effective_settings_label(codec, config);
     eprintln!(
         "input: {} video={}x{}:{} frames={} fps={}",
         input_label(&job.input),
@@ -815,46 +799,12 @@ fn print_encode_config(codec: VideoEncoderManifest, args: &EncodeArgs, job: &Enc
     }
 }
 
-fn effective_settings_label(codec: VideoEncoderManifest, args: &EncodeArgs) -> String {
-    let mut settings = Vec::new();
-    push_effective_setting_specs(&mut settings, GLOBAL_SETTINGS, args);
-    push_effective_setting_specs(&mut settings, codec.settings, args);
-    if settings.is_empty() {
-        "none".to_string()
-    } else {
-        settings.join(",")
+fn effective_settings_label(codec: VideoEncoderManifest, config: &VideoEncoderConfig) -> String {
+    match codec.effective_setting_specs(config) {
+        Ok(settings) if !settings.is_empty() => settings.join(","),
+        Ok(_) => "none".to_string(),
+        Err(err) => format!("invalid:{err}"),
     }
-}
-
-fn push_effective_setting_specs(
-    rendered: &mut Vec<String>,
-    manifests: &[SettingManifest],
-    args: &EncodeArgs,
-) {
-    for manifest in manifests {
-        if let Some(value) = effective_setting_value(*manifest, args) {
-            rendered.push(format!("{}={}", manifest.name, value));
-        }
-    }
-}
-
-fn effective_setting_value(manifest: SettingManifest, args: &EncodeArgs) -> Option<String> {
-    if manifest.name == "lossless" {
-        return boolean_setting_enabled(&args.settings, "lossless")
-            .ok()
-            .map(|enabled| enabled.to_string());
-    }
-    if manifest.name == "qp" {
-        return setting_u8(&args.settings, "qp")
-            .ok()
-            .and_then(|qp| qp.map(|value| value.to_string()))
-            .or_else(|| manifest.default_value.map(str::to_string));
-    }
-    args.settings
-        .iter()
-        .find(|spec| setting_name(spec) == manifest.name)
-        .map(|spec| setting_value(spec).unwrap_or("true").to_string())
-        .or_else(|| manifest.default_value.map(str::to_string))
 }
 
 fn encode_job_for_codec(
@@ -916,6 +866,7 @@ fn encode_job_for_codec(
         height: output_info.height,
         source_format,
         format: output_info.format,
+        #[cfg(test)]
         lossless,
     })
 }
@@ -1138,22 +1089,13 @@ fn video_config_for_job(
     if let Some(fps) = job.fps.as_deref() {
         config = config.with_frame_rate(frame_rate_from_cli(fps)?);
     }
-    config = config.with_rate_control(rate_control_from_cli_settings(
-        job.lossless,
-        &args.settings,
-    )?);
     if job.recon.is_some() {
         config = config.with_reconstruction(ReconstructionMode::Frames);
     } else if job.psnr {
         config = config.with_reconstruction(ReconstructionMode::MetricsOnly);
     }
-    for spec in &args.settings {
-        if let Some(setting) = encoder_setting_from_cli(codec, spec)? {
-            config = config.with_setting(setting);
-        }
-    }
-    codec
-        .validate_config(&config)
+    config = codec
+        .apply_setting_specs(config, args.settings.iter())
         .map_err(|err| err.to_string())?;
     Ok(config)
 }
@@ -1194,83 +1136,12 @@ fn fractional_digits(original_len: usize) -> Result<u32, String> {
     u32::try_from(original_len).map_err(|_| "fps fractional part is too long".to_string())
 }
 
-fn rate_control_from_cli_settings(
-    lossless: bool,
-    settings: &[String],
-) -> Result<VideoRateControl, String> {
-    let qp = setting_u8(settings, "qp")?;
-    match (lossless, qp) {
-        (true, Some(_)) => {
-            Err("--set qp=<1..255> is mutually exclusive with --set lossless".to_string())
-        }
-        (true, None) => Ok(VideoRateControl::Lossless),
-        (false, Some(qp)) => {
-            VideoRateControl::constant_quantizer(qp).map_err(|err| err.to_string())
-        }
-        (false, None) => Ok(VideoRateControl::CodecDefault),
-    }
-}
-
-fn setting_u8(settings: &[String], name: &str) -> Result<Option<u8>, String> {
-    for spec in settings {
-        if setting_name(spec) != name {
-            continue;
-        }
-        let value = setting_value(spec).unwrap_or("true");
-        let parsed = value
-            .parse::<u16>()
-            .map_err(|_| format!("{name} expects an integer from 1 through 255, got '{value}'"))?;
-        if parsed == 0 || parsed > u16::from(u8::MAX) {
-            return Err(format!(
-                "{name} expects an integer from 1 through 255, got '{value}'"
-            ));
-        }
-        return Ok(Some(parsed as u8));
-    }
-    Ok(None)
-}
-
-fn encoder_setting_from_cli(
-    codec: VideoEncoderManifest,
-    spec: &str,
-) -> Result<Option<VideoEncoderSetting>, String> {
-    let name = setting_name(spec);
-    if catalog::global_setting(name).is_some() || name == "qp" {
-        return Ok(None);
-    }
-    let Some(manifest) = codec.setting(name) else {
-        return Err(format!("unknown encode setting '{name}'"));
-    };
-    let value = setting_value(spec).unwrap_or("true");
-    let setting = match manifest.value {
-        SettingValue::Boolean => {
-            VideoEncoderSetting::boolean(name, parse_bool_setting(name, value)?)
-        }
-        SettingValue::Choice(_) => VideoEncoderSetting::text(name, value),
-        SettingValue::IntegerRange { .. } | SettingValue::SignedIntegerRange { .. } => {
-            let value = value
-                .parse::<i64>()
-                .map_err(|_| format!("{name} expects an integer, got '{value}'"))?;
-            VideoEncoderSetting::integer(name, value)
-        }
-    };
-    setting.map(Some).map_err(|err| err.to_string())
-}
-
-fn parse_bool_setting(name: &str, value: &str) -> Result<bool, String> {
-    match value {
-        "true" | "1" | "yes" | "on" => Ok(true),
-        "false" | "0" | "no" | "off" => Ok(false),
-        _ => Err(format!("{name} expects true or false, got '{value}'")),
-    }
-}
-
 fn encode_with_model(
     codec: VideoEncoderManifest,
     args: &EncodeArgs,
     job: EncodeJob,
+    config: VideoEncoderConfig,
 ) -> Result<(), String> {
-    let config = video_config_for_job(codec, args, &job)?;
     let mut source = open_job_source(&job)?;
     let mut output = create_writer(&job.output)?;
     let mut recon = create_optional_writer(job.recon.as_deref())?;
@@ -1579,17 +1450,18 @@ fn setting_help(name: &str) -> Option<SettingHelpRow> {
 
 fn print_setting_rows(settings: &[SettingHelpRow]) {
     println!(
-        "{:<16} {:<28} {:<30} {:<62} Summary",
-        "Name", "Applies to", "Spec", "Values"
+        "{:<16} {:<28} {:<30} {:<16} {:<62} Summary",
+        "Name", "Applies to", "Spec", "Default", "Values"
     );
     for row in settings {
         let setting = row.setting;
         let spec = setting.spec.forms.first().map_or("-", |form| form.syntax);
         println!(
-            "{:<16} {:<28} {:<30} {:<62} {}",
+            "{:<16} {:<28} {:<30} {:<16} {:<62} {}",
             setting.name,
             row.applies_to,
             spec,
+            setting.default_value.unwrap_or("-"),
             setting_values_label(setting),
             setting.summary
         );
@@ -1606,6 +1478,7 @@ fn print_setting_detail(name: &str) -> ExitCode {
     println!("Setting: {}", setting.name);
     println!("Applies to: {}", row.applies_to);
     println!("Values: {}", setting_values_label(setting));
+    println!("Default: {}", setting.default_value.unwrap_or("-"));
     println!("Summary: {}", setting.summary);
 
     if !setting.spec.forms.is_empty() {

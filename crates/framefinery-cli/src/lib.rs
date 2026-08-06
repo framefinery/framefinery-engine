@@ -31,8 +31,9 @@ use std::process::ExitCode;
 
 #[cfg(feature = "video-encoders")]
 pub use framefinery_codecs::{
-    create_encoder, encode_frame, encode_source, encoder, find_encoder_manifest,
-    VideoEncoderBuilder, ENCODERS,
+    apply_encoder_settings, create_encoder, effective_encoder_settings, encode_frame,
+    encode_source, encoder, fetch_encoder_manifest, find_encoder_manifest, VideoEncoderBuilder,
+    ENCODERS,
 };
 pub use framefinery_core as core;
 pub use framefinery_core::{

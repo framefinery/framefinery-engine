@@ -586,7 +586,11 @@ impl VideoEncoderConfig {
         self
     }
 
-    /// Return codec extension setting specs represented by this config.
+    /// Return explicit CLI-compatible setting specs represented by this config.
+    ///
+    /// This does not include manifest defaults. Use
+    /// [`VideoEncoderManifest::effective_setting_specs`] when a frontend needs
+    /// the full effective setting list that will be reported to users.
     pub fn setting_specs(&self) -> Vec<String> {
         let mut specs = Vec::new();
         match self.rate_control {
@@ -672,6 +676,123 @@ impl VideoEncoderManifest {
             .find(|setting| setting.name == name)
     }
 
+    /// Find a global or codec-specific setting manifest by name.
+    pub fn declared_setting(self, name: &str) -> Option<SettingManifest> {
+        crate::GLOBAL_SETTINGS
+            .iter()
+            .copied()
+            .find(|setting| setting.name == name)
+            .or_else(|| self.setting(name))
+    }
+
+    /// Apply CLI-compatible `name[=value]` setting specs to `config`.
+    ///
+    /// Global rate-control settings such as `lossless` and `qp` are folded into
+    /// [`VideoEncoderConfig::rate_control`]. Codec extension settings are stored
+    /// in [`VideoEncoderConfig::settings`]. Re-applying an extension setting
+    /// replaces the previous value in `config`, while duplicate names in the
+    /// provided `specs` are rejected.
+    pub fn apply_setting_specs<I, S>(
+        self,
+        mut config: VideoEncoderConfig,
+        specs: I,
+    ) -> Result<VideoEncoderConfig>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        if config.codec.as_str() != self.name {
+            return Err(MediaError::UnsupportedCodec {
+                codec: config.codec.to_string(),
+                reason: format!("manifest '{}' cannot configure it", self.name),
+            });
+        }
+
+        let mut seen = Vec::new();
+        for spec in specs {
+            let spec = spec.as_ref();
+            let name = crate::setting_name(spec);
+            validate_setting_name(name)?;
+            if seen.iter().any(|seen_name| seen_name == name) {
+                return Err(MediaError::DuplicateSetting {
+                    setting: name.to_string(),
+                });
+            }
+            seen.push(name.to_string());
+
+            let Some(manifest) = self.declared_setting(name) else {
+                return Err(MediaError::UnknownSetting {
+                    codec: self.name.to_string(),
+                    setting: name.to_string(),
+                });
+            };
+            let value = crate::setting_value(spec).unwrap_or("true");
+            if !manifest.value.accepts(value) {
+                return Err(MediaError::InvalidSettingValue {
+                    codec: self.name.to_string(),
+                    setting: manifest.name.to_string(),
+                    expected: crate::setting_values_label(manifest),
+                    actual: value.to_string(),
+                });
+            }
+
+            if name == "lossless" {
+                let lossless = parse_manifest_bool(self.name, manifest, value)?;
+                if lossless {
+                    if matches!(config.rate_control, VideoRateControl::ConstantQuantizer(_)) {
+                        return Err(MediaError::ConflictingSettings {
+                            setting: name.to_string(),
+                            conflict: "VideoRateControl::ConstantQuantizer".to_string(),
+                        });
+                    }
+                    config.rate_control = VideoRateControl::Lossless;
+                } else if matches!(config.rate_control, VideoRateControl::Lossless) {
+                    config.rate_control = VideoRateControl::CodecDefault;
+                }
+                continue;
+            }
+
+            if name == "qp" {
+                if matches!(config.rate_control, VideoRateControl::Lossless) {
+                    return Err(MediaError::ConflictingSettings {
+                        setting: name.to_string(),
+                        conflict: "VideoRateControl::Lossless".to_string(),
+                    });
+                }
+                let qp = value
+                    .parse::<u8>()
+                    .map_err(|_| MediaError::InvalidSettingValue {
+                        codec: self.name.to_string(),
+                        setting: manifest.name.to_string(),
+                        expected: crate::setting_values_label(manifest),
+                        actual: value.to_string(),
+                    })?;
+                config.rate_control = VideoRateControl::constant_quantizer(qp)?;
+                continue;
+            }
+
+            let setting = video_setting_from_manifest(self.name, manifest, value)?;
+            config.settings.retain(|setting| setting.name != name);
+            config.settings.push(setting);
+        }
+
+        self.validate_config(&config)?;
+        Ok(config)
+    }
+
+    /// Return all effective setting specs after manifest defaults are applied.
+    ///
+    /// The returned strings use the same `name=value` shape accepted by
+    /// [`VideoEncoderManifest::apply_setting_specs`] and are ordered with
+    /// global settings first, followed by codec-specific settings.
+    pub fn effective_setting_specs(self, config: &VideoEncoderConfig) -> Result<Vec<String>> {
+        self.validate_config(config)?;
+        let mut specs = Vec::new();
+        push_effective_setting_specs(config, crate::GLOBAL_SETTINGS, &mut specs);
+        push_effective_setting_specs(config, self.settings, &mut specs);
+        Ok(specs)
+    }
+
     /// Return whether this encoder accepts the frame format in `input`.
     pub fn accepts_frame_info(self, input: FrameInfo) -> bool {
         (self.accepts_format)(input.format)
@@ -750,6 +871,83 @@ impl VideoEncoderManifest {
         }
         Ok(())
     }
+}
+
+fn parse_manifest_bool(
+    codec: &'static str,
+    manifest: SettingManifest,
+    value: &str,
+) -> Result<bool> {
+    match value {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(MediaError::InvalidSettingValue {
+            codec: codec.to_string(),
+            setting: manifest.name.to_string(),
+            expected: crate::setting_values_label(manifest),
+            actual: value.to_string(),
+        }),
+    }
+}
+
+fn video_setting_from_manifest(
+    codec: &'static str,
+    manifest: SettingManifest,
+    value: &str,
+) -> Result<VideoEncoderSetting> {
+    match manifest.value {
+        SettingValue::Boolean => VideoEncoderSetting::boolean(
+            manifest.name,
+            parse_manifest_bool(codec, manifest, value)?,
+        ),
+        SettingValue::Choice(_) => VideoEncoderSetting::text(manifest.name, value),
+        SettingValue::IntegerRange { .. } | SettingValue::SignedIntegerRange { .. } => {
+            let value = value
+                .parse::<i64>()
+                .map_err(|_| MediaError::InvalidSettingValue {
+                    codec: codec.to_string(),
+                    setting: manifest.name.to_string(),
+                    expected: crate::setting_values_label(manifest),
+                    actual: value.to_string(),
+                })?;
+            VideoEncoderSetting::integer(manifest.name, value)
+        }
+    }
+}
+
+fn push_effective_setting_specs(
+    config: &VideoEncoderConfig,
+    manifests: &[SettingManifest],
+    specs: &mut Vec<String>,
+) {
+    for manifest in manifests {
+        if let Some(value) = effective_setting_value(config, *manifest) {
+            specs.push(format!("{}={value}", manifest.name));
+        }
+    }
+}
+
+fn effective_setting_value(
+    config: &VideoEncoderConfig,
+    manifest: SettingManifest,
+) -> Option<String> {
+    if manifest.name == "lossless" {
+        return Some(matches!(config.rate_control, VideoRateControl::Lossless).to_string());
+    }
+    if manifest.name == "qp" {
+        return match config.rate_control {
+            VideoRateControl::ConstantQuantizer(qp) => Some(qp.to_string()),
+            VideoRateControl::CodecDefault | VideoRateControl::Lossless => {
+                manifest.default_value.map(str::to_string)
+            }
+        };
+    }
+    config
+        .settings
+        .iter()
+        .find(|setting| setting.name == manifest.name)
+        .map(|setting| setting.value.as_cli_value())
+        .or_else(|| manifest.default_value.map(str::to_string))
 }
 
 fn setting_value_matches_manifest(setting: &VideoEncoderSetting, manifest: SettingValue) -> bool {
@@ -928,6 +1126,46 @@ mod tests {
         TEST_CODEC
             .validate_config(&config)
             .expect("valid manifest config");
+    }
+
+    #[test]
+    fn manifest_applies_cli_style_setting_specs_to_config() {
+        let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8).unwrap();
+        let config = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info);
+        let config = TEST_CODEC
+            .apply_setting_specs(config, ["lossless", "gop=30"])
+            .expect("settings should apply");
+
+        assert!(matches!(config.rate_control, VideoRateControl::Lossless));
+        assert_eq!(config.setting_specs(), vec!["lossless=true", "gop=30"]);
+        assert_eq!(
+            TEST_CODEC.effective_setting_specs(&config).unwrap(),
+            vec!["lossless=true", "gop=30"]
+        );
+    }
+
+    #[test]
+    fn manifest_renders_effective_setting_defaults() {
+        let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8).unwrap();
+        let config = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info);
+
+        assert_eq!(
+            TEST_CODEC.effective_setting_specs(&config).unwrap(),
+            vec!["lossless=false", "gop=-1"]
+        );
+    }
+
+    #[test]
+    fn manifest_setting_specs_reject_duplicate_names() {
+        let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8).unwrap();
+        let config = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info);
+
+        assert!(matches!(
+            TEST_CODEC
+                .apply_setting_specs(config, ["gop=0", "gop=30"])
+                .unwrap_err(),
+            MediaError::DuplicateSetting { setting } if setting == "gop"
+        ));
     }
 
     #[test]

@@ -310,7 +310,7 @@ Current option placement and inference rules:
   that same internal reconstruction without writing the raw reconstruction
   stream.
 - Bare `--set` keys imply `true`. Accepted settings and setting-specific
-  contracts are listed by `ff --help settings` and
+  defaults/contracts are listed by `ff --help settings` and
   `ff --help settings <name>`.
 
 Global accepted settings are listed by `ff --help settings`; codec-specific

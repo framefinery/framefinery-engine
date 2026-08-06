@@ -37,13 +37,6 @@ pub fn encode_source<'callback>(
     })
 }
 
-pub fn global_setting(name: &str) -> Option<SettingManifest> {
-    GLOBAL_SETTINGS
-        .iter()
-        .copied()
-        .find(|setting| setting.name == name)
-}
-
 pub fn settings_label(global: &[SettingManifest], codec: &[SettingManifest]) -> String {
     let mut names = Vec::new();
     for setting in global.iter().chain(codec.iter()) {

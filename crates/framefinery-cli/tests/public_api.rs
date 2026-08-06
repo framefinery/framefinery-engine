@@ -3,10 +3,11 @@
 use std::io::{Cursor, Read};
 
 use framefinery::{
-    cli_options_for_scope, create_encoder, encode_frame, encode_source, encoder,
-    find_encoder_manifest, CliOptionScope, CodecId, Frame, FrameInfo, MediaError, PixelFormat,
-    RawVideoFrameReadSource, RawVideoFrameSource, ReconstructionMode, Result,
-    VideoEncodeFrameMetrics, VideoEncoderConfig, VideoEncoderSetting, VideoRateControl,
+    apply_encoder_settings, cli_options_for_scope, create_encoder, effective_encoder_settings,
+    encode_frame, encode_source, encoder, fetch_encoder_manifest, find_encoder_manifest,
+    CliOptionScope, CodecId, Frame, FrameInfo, MediaError, PixelFormat, RawVideoFrameReadSource,
+    RawVideoFrameSource, ReconstructionMode, Result, VideoEncodeFrameMetrics, VideoEncoderConfig,
+    VideoEncoderSetting, VideoRateControl,
 };
 
 #[test]
@@ -152,6 +153,30 @@ fn facade_exposes_fluent_encoder_builder() -> Result<()> {
         other => panic!("expected UnsupportedCodec, got {other}"),
     }
 
+    Ok(())
+}
+
+#[test]
+fn facade_round_trips_cli_style_encoder_settings() -> Result<()> {
+    let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
+    let config = VideoEncoderConfig::new(CodecId::new("av2")?, info);
+    let config = apply_encoder_settings(config, ["qp=24", "gop=0"])?;
+
+    assert!(matches!(
+        config.rate_control,
+        VideoRateControl::ConstantQuantizer(24)
+    ));
+    assert_eq!(config.setting_specs(), vec!["qp=24", "gop=0"]);
+    assert_eq!(
+        effective_encoder_settings(&config)?,
+        vec!["lossless=false", "qp=24", "gop=0"]
+    );
+
+    let manifest = fetch_encoder_manifest("av2")?;
+    assert_eq!(
+        manifest.effective_setting_specs(&config)?,
+        vec!["lossless=false", "qp=24", "gop=0"]
+    );
     Ok(())
 }
 

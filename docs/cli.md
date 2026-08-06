@@ -99,7 +99,7 @@ Temporal prediction defaults to `gop=-1`, meaning one intra frame followed by
 unbounded predictive frames. Use `--set gop=0` for intra-only coding, or a
 positive value such as `--set gop=30` to insert an intra frame every 30 frames.
 Run `ff --help settings` or `ff --help settings <name>` for the accepted
-settings and their full spec contracts.
+settings, defaults, and full spec contracts.
 
 ## Metrics
 

@@ -64,11 +64,39 @@ pub fn find_encoder_manifest(name: &str) -> Option<VideoEncoderManifest> {
         .find(|encoder| encoder.name == name)
 }
 
+/// Fetch a compiled video encoder manifest or return a structured error.
+pub fn fetch_encoder_manifest(name: impl AsRef<str>) -> Result<VideoEncoderManifest> {
+    let name = name.as_ref();
+    find_encoder_manifest(name).ok_or_else(|| unsupported_codec(name))
+}
+
+/// Apply CLI-compatible encoder setting specs through the selected manifest.
+///
+/// This is a convenience wrapper around
+/// [`VideoEncoderManifest::apply_setting_specs`] for callers that already have a
+/// [`VideoEncoderConfig`] with its codec id set.
+pub fn apply_encoder_settings<I, S>(
+    config: VideoEncoderConfig,
+    specs: I,
+) -> Result<VideoEncoderConfig>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    fetch_encoder_manifest(config.codec.as_str())?.apply_setting_specs(config, specs)
+}
+
+/// Render effective encoder setting specs through the selected manifest.
+///
+/// This includes manifest defaults and uses the same ordering as the CLI
+/// startup summary.
+pub fn effective_encoder_settings(config: &VideoEncoderConfig) -> Result<Vec<String>> {
+    fetch_encoder_manifest(config.codec.as_str())?.effective_setting_specs(config)
+}
+
 /// Create a buffered encoder session from a codec-neutral config.
 pub fn create_encoder(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>> {
-    let Some(manifest) = find_encoder_manifest(config.codec.as_str()) else {
-        return Err(unsupported_codec(config.codec.as_str()));
-    };
+    let manifest = fetch_encoder_manifest(config.codec.as_str())?;
     manifest.validate_config(&config)?;
     (manifest.session_factory())(config)
 }
@@ -86,9 +114,7 @@ pub fn encode_source<'callback>(
     recon: Option<&mut dyn Write>,
     frame_metrics: Option<VideoEncodeFrameMetricsCallback<'callback>>,
 ) -> Result<()> {
-    let Some(manifest) = find_encoder_manifest(config.codec.as_str()) else {
-        return Err(unsupported_codec(config.codec.as_str()));
-    };
+    let manifest = fetch_encoder_manifest(config.codec.as_str())?;
     manifest.validate_config(config)?;
     (manifest.source_encode_hook())(
         source,
