@@ -3,9 +3,10 @@
 use std::io::Cursor;
 
 use framefinery::{
-    create_encoder, encode_frame, encode_source, find_encoder_manifest, CodecId, Frame, FrameInfo,
-    MediaError, PixelFormat, RawVideoFrameReadSource, RawVideoFrameSource, ReconstructionMode,
-    Result, VideoEncodeFrameMetrics, VideoEncoderConfig, VideoEncoderSetting, VideoRateControl,
+    create_encoder, encode_frame, encode_source, encoder, find_encoder_manifest, CodecId, Frame,
+    FrameInfo, MediaError, PixelFormat, RawVideoFrameReadSource, RawVideoFrameSource,
+    ReconstructionMode, Result, VideoEncodeFrameMetrics, VideoEncoderConfig, VideoEncoderSetting,
+    VideoRateControl,
 };
 
 #[test]
@@ -58,6 +59,50 @@ fn facade_drives_source_and_buffered_encoders() -> Result<()> {
     assert_eq!(output.chunks.len(), 1);
     assert!(!output.chunks[0].data.is_empty());
     assert_eq!(output.reconstructions, vec![Frame::blank(info)]);
+    Ok(())
+}
+
+#[test]
+fn facade_exposes_fluent_encoder_builder() -> Result<()> {
+    let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
+    let config = encoder("av2")?
+        .input(info)
+        .fps(30, 1)?
+        .lossless()
+        .reconstruction_frames()
+        .setting("predictive", true)?
+        .into_config()?;
+
+    assert_eq!(config.codec.as_str(), "av2");
+    assert_eq!(config.input, info);
+    assert_eq!(config.frame_rate.expect("fps should be set").numerator, 30);
+    assert!(matches!(config.rate_control, VideoRateControl::Lossless));
+    assert_eq!(config.reconstruction, ReconstructionMode::Frames);
+    assert_eq!(config.settings[0].as_cli_spec(), "predictive=true");
+
+    let output = encoder("av2")?
+        .input(info)
+        .lossless()
+        .reconstruction_frames()
+        .encode_frame(Frame::blank(info))?;
+    assert_eq!(output.reconstructions, vec![Frame::blank(info)]);
+    assert!(!output.chunks[0].data.is_empty());
+
+    let missing_input = match encoder("av2")?.build() {
+        Ok(_) => panic!("builder should require input metadata"),
+        Err(err) => err,
+    };
+    match missing_input {
+        MediaError::MissingRequiredField { field } => assert_eq!(field, "input"),
+        other => panic!("expected MissingRequiredField, got {other}"),
+    }
+
+    let unavailable = encoder("not-compiled").expect_err("unknown codec should fail early");
+    match unavailable {
+        MediaError::UnsupportedCodec { codec, .. } => assert_eq!(codec, "not-compiled"),
+        other => panic!("expected UnsupportedCodec, got {other}"),
+    }
+
     Ok(())
 }
 

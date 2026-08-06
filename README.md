@@ -112,28 +112,26 @@ The CLI guide lives in
 
 ## Library API Sketch
 
-The public Rust facade is codec-neutral. Select the codec once in
+The public Rust facade is codec-neutral. Select the codec once through the
+fluent `encoder("...")` builder or through a lower-level
 `VideoEncoderConfig`; callers should not fetch a codec manifest and then pass a
 separate config for a different codec. Manifest lookup is for discovery,
 catalogs, help text, and capability checks:
 
 ```rust
-use framefinery::{
-    encode_frame, find_encoder_manifest, CodecId, Frame, FrameInfo, PixelFormat,
-    ReconstructionMode, Result, VideoEncoderConfig, VideoRateControl,
-};
+use framefinery::{encoder, find_encoder_manifest, Frame, FrameInfo, PixelFormat, Result};
 
 fn encode_one_black_frame() -> Result<Vec<u8>> {
     let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
-    let config = VideoEncoderConfig::new(CodecId::new("av2")?, info)
-        .with_rate_control(VideoRateControl::Lossless)
-        .with_reconstruction(ReconstructionMode::Frames);
 
-    let manifest = find_encoder_manifest(config.codec.as_str())
-        .expect("av2 is enabled in the default build");
-    assert!(manifest.accepts_frame_info(config.input));
+    let manifest = find_encoder_manifest("av2").expect("av2 is enabled in the default build");
+    assert!(manifest.accepts_frame_info(info));
 
-    let output = encode_frame(config, Frame::blank(info))?;
+    let output = encoder("av2")?
+        .input(info)
+        .lossless()
+        .reconstruction_frames()
+        .encode_frame(Frame::blank(info))?;
     Ok(output
         .chunks
         .into_iter()
@@ -142,10 +140,10 @@ fn encode_one_black_frame() -> Result<Vec<u8>> {
 }
 ```
 
-For longer raw streams, use `encode_source(&config, source, output, recon,
-metrics)`. The source callback fills one frame buffer at a time and returns
-`Ok(false)` at clean EOF, so file and capture adapters do not need to preload a
-whole video in memory.
+For longer raw streams, call `.into_config()?` on the builder and pass that to
+`encode_source(&config, source, output, recon, metrics)`. The source callback
+fills one frame buffer at a time and returns `Ok(false)` at clean EOF, so file
+and capture adapters do not need to preload a whole video in memory.
 
 Generate a standalone Rust module/code browser:
 

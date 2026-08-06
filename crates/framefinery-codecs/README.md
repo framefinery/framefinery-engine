@@ -11,6 +11,8 @@ by `framefinery` or this crate:
 
 - `ENCODERS` lists compiled encoder manifests.
 - `find_encoder_manifest(name)` returns discovery metadata.
+- `encoder(name)` starts a fluent builder for a checked encoder config or
+  session.
 - `create_encoder(config)` creates a frame-session encoder for
   `config.codec`.
 - `encode_frame(config, frame)` encodes one owned frame.

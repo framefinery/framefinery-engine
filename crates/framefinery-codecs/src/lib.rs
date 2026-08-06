@@ -2,14 +2,15 @@
 #![cfg_attr(not(feature = "dead-code-audit"), allow(dead_code, unused_imports))]
 //!
 //! The public API is the generic encoder registry exposed as [`ENCODERS`],
-//! [`find_encoder_manifest`], [`create_encoder`], [`encode_frame`], and
-//! [`encode_source`]. Codec-specific modules are internal implementation
-//! territory while the generic v0 video API settles.
+//! [`find_encoder_manifest`], [`encoder`], [`create_encoder`],
+//! [`encode_frame`], and [`encode_source`]. Codec-specific modules are
+//! internal implementation territory while the generic v0 video API settles.
 
 #[cfg(feature = "av2")]
 #[doc(hidden)]
 mod av2;
 mod bitstream;
+mod builder;
 mod instrumentation;
 #[cfg(any(feature = "av2", feature = "vvc"))]
 mod picture;
@@ -44,6 +45,7 @@ use framefinery_core::{
     VideoEncoderSession,
 };
 
+pub use builder::{encoder, VideoEncoderBuilder};
 pub use framefinery_core::{ChromaSampling, PixelFormat, SampleBitDepth};
 
 /// Video encoder manifests compiled into this build.
@@ -76,12 +78,12 @@ pub fn create_encoder(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoder
 /// This path avoids buffering whole streams in memory and is intended for file,
 /// capture, and validation adapters. `frame_metrics`, when present, is called
 /// while source and reconstruction samples are still available internally.
-pub fn encode_source<'a>(
-    config: &'a VideoEncoderConfig,
+pub fn encode_source<'callback>(
+    config: &VideoEncoderConfig,
     source: &mut dyn RawVideoFrameSource,
     output: &mut dyn Write,
     recon: Option<&mut dyn Write>,
-    frame_metrics: Option<VideoEncodeFrameMetricsCallback<'a>>,
+    frame_metrics: Option<VideoEncodeFrameMetricsCallback<'callback>>,
 ) -> Result<()> {
     let Some(manifest) = find_encoder_manifest(config.codec.as_str()) else {
         return Err(unsupported_codec(config.codec.as_str()));
@@ -110,7 +112,7 @@ pub fn encode_frame(config: VideoEncoderConfig, frame: Frame) -> Result<VideoEnc
     Ok(output)
 }
 
-fn unsupported_codec(codec: &str) -> MediaError {
+pub(crate) fn unsupported_codec(codec: &str) -> MediaError {
     MediaError::UnsupportedCodec {
         codec: codec.to_string(),
         reason: "no encoder with this codec id is compiled into this build".to_string(),

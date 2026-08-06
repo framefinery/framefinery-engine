@@ -273,12 +273,12 @@ pub type VideoEncodeFrameMetricsCallback<'a> =
     &'a mut dyn for<'frame> FnMut(VideoEncodeFrameMetrics<'frame>);
 
 #[doc(hidden)]
-pub type VideoEncodeSourceFn = for<'request> fn(
+pub type VideoEncodeSourceFn = for<'request, 'callback> fn(
     &mut dyn RawVideoFrameSource,
     &mut dyn Write,
     Option<&mut dyn Write>,
     VideoEncodeSourceRequest<'request>,
-    Option<VideoEncodeFrameMetricsCallback<'request>>,
+    Option<VideoEncodeFrameMetricsCallback<'callback>>,
 ) -> Result<()>;
 
 #[doc(hidden)]
@@ -371,6 +371,42 @@ impl VideoSettingValue {
             Self::Integer(value) => value.to_string(),
             Self::Text(value) => value.clone(),
         }
+    }
+}
+
+impl From<bool> for VideoSettingValue {
+    fn from(value: bool) -> Self {
+        Self::Boolean(value)
+    }
+}
+
+impl From<i64> for VideoSettingValue {
+    fn from(value: i64) -> Self {
+        Self::Integer(value)
+    }
+}
+
+impl From<i32> for VideoSettingValue {
+    fn from(value: i32) -> Self {
+        Self::Integer(i64::from(value))
+    }
+}
+
+impl From<u8> for VideoSettingValue {
+    fn from(value: u8) -> Self {
+        Self::Integer(i64::from(value))
+    }
+}
+
+impl From<String> for VideoSettingValue {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl From<&str> for VideoSettingValue {
+    fn from(value: &str) -> Self {
+        Self::Text(value.to_string())
     }
 }
 

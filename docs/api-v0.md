@@ -53,6 +53,7 @@ codec must share a given helper implementation.
 - `VideoEncoderConfig`
 - `RawVideoFrameSource`
 - `VideoEncoderSession`
+- `VideoEncoderBuilder`
 - `EncodedVideoChunk`
 - `FrameEncodeMetrics`
 - `DecodedPictureBuffer`
@@ -69,6 +70,8 @@ registry:
 - `ENCODERS`
 - `find_encoder_manifest("av2")`
 - `find_encoder_manifest("vvc")`
+- `encoder("av2")`
+- `encoder("vvc")`
 - `create_encoder(config)`
 - `encode_frame(config, frame)`
 - `encode_source(&config, source, output, recon, metrics)`
@@ -93,6 +96,8 @@ The registry helpers enforce that boundary:
 
 - `find_encoder_manifest(name)` returns discovery metadata for catalogs, help
   pages, capability checks, and setting validation UI.
+- `encoder(name)` starts a fluent builder for a checked encoder session using
+  one compiled codec.
 - `create_encoder(config)` creates a frame-session encoder for the codec named
   by `config.codec`.
 - `encode_frame(config, frame)` is the one-frame convenience path for callers
@@ -103,6 +108,33 @@ The registry helpers enforce that boundary:
 `VideoEncoderManifest` is not the public object used to encode media. It
 describes a compiled encoder and validates codec-neutral configuration, while
 codec registration hooks remain implementation detail.
+
+## Encoder Builder
+
+Applications should prefer the fluent builder when they want a checked encoder
+session without manually constructing every config field:
+
+```rust
+use framefinery::{encoder, FrameInfo, PixelFormat};
+
+let input = FrameInfo::new(1280, 720, PixelFormat::Yuv420p8)?;
+let mut encoder = encoder("vvc")?
+    .input(input)
+    .fps(30, 1)?
+    .qp(24)?
+    .metrics_only()
+    .setting("predictive", true)?
+    .setting("fast-search", "moderate")?
+    .build()?;
+# Ok::<(), framefinery::MediaError>(())
+```
+
+The builder is still codec-neutral: the codec is a string id, not a public
+codec-specific encoder type. It validates the selected codec, input format,
+rate-control mode, and extension settings before returning a session. The
+lower-level `VideoEncoderConfig` remains available for adapters that need to
+store, serialize, or mutate configuration before choosing how to drive an
+encoder.
 
 ## Codec Identity
 
@@ -122,7 +154,9 @@ tokens.
 
 ## Video Encoder Config
 
-`VideoEncoderConfig` is the standard config object:
+`VideoEncoderConfig` is the standard config object produced by the builder and
+accepted by lower-level helpers. Manual construction is useful when callers
+need to keep configs as data before creating an encoder:
 
 ```rust
 use framefinery::{
@@ -170,12 +204,11 @@ raw-frame source callback:
 
 ```rust
 use framefinery::{
-    encode_source, CodecId, FrameInfo, PixelFormat, RawVideoFrameSource, Result,
-    VideoEncoderConfig,
+    encode_source, encoder, FrameInfo, PixelFormat, RawVideoFrameSource, Result,
 };
 
 let input = FrameInfo::new(640, 360, PixelFormat::Yuv420p8)?;
-let config = VideoEncoderConfig::new(CodecId::new("av2")?, input);
+let config = encoder("av2")?.input(input).into_config()?;
 let mut emitted = false;
 let mut source = |frame: &mut [u8]| -> Result<bool> {
     if emitted {

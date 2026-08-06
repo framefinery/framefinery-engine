@@ -5,19 +5,17 @@
 //! `framefinery-core` or `framefinery-codecs` for narrower APIs.
 //!
 //! ```no_run
-//! use framefinery::{
-//!     encode_frame, CodecId, Frame, FrameInfo, PixelFormat, ReconstructionMode,
-//!     VideoEncoderConfig, VideoRateControl,
-//! };
+//! use framefinery::{encoder, Frame, FrameInfo, PixelFormat};
 //!
 //! # fn main() -> framefinery::Result<()> {
 //! let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
-//! let config = VideoEncoderConfig::new(CodecId::new("av2")?, info)
-//!     .with_rate_control(VideoRateControl::Lossless)
-//!     .with_reconstruction(ReconstructionMode::Frames);
 //! let frame = Frame::blank(info);
 //!
-//! let output = encode_frame(config, frame)?;
+//! let output = encoder("av2")?
+//!     .input(info)
+//!     .lossless()
+//!     .reconstruction_frames()
+//!     .encode_frame(frame)?;
 //! assert_eq!(output.reconstructions.len(), 1);
 //! # Ok(())
 //! # }
@@ -32,7 +30,8 @@ use std::process::ExitCode;
 
 #[cfg(feature = "video-encoders")]
 pub use framefinery_codecs::{
-    create_encoder, encode_frame, encode_source, find_encoder_manifest, ENCODERS,
+    create_encoder, encode_frame, encode_source, encoder, find_encoder_manifest,
+    VideoEncoderBuilder, ENCODERS,
 };
 pub use framefinery_core as core;
 pub use framefinery_core::{

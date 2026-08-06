@@ -63,6 +63,11 @@ pub enum MediaError {
         /// Number of bytes read before EOF.
         actual: usize,
     },
+    /// A required builder or configuration field was not provided.
+    MissingRequiredField {
+        /// Missing field name.
+        field: String,
+    },
     /// A codec setting name is not declared by the selected codec manifest.
     UnknownSetting {
         /// Codec id whose setting table was checked.
@@ -134,6 +139,9 @@ impl fmt::Display for MediaError {
                     f,
                     "short frame read: expected {expected} byte(s), got {actual}"
                 )
+            }
+            Self::MissingRequiredField { field } => {
+                write!(f, "missing required field '{field}'")
             }
             Self::UnknownSetting { codec, setting } => {
                 write!(f, "unknown setting '{setting}' for codec '{codec}'")
