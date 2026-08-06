@@ -1,10 +1,11 @@
-use std::io::{self, Cursor, Read, Write};
+use std::io::{Cursor, Read, Write};
 
 use framefinery_core::{
     frame_psnr, CodecId, EncodedVideoChunk, Frame, FrameEncodeMetrics, MediaError,
-    RawVideoFrameSource, ReconstructionMode, Result, VideoChunkKind, VideoEncodeFrameMetrics,
-    VideoEncodeFrameMetricsCallback, VideoEncodeOutput, VideoEncodeSourceRequest,
-    VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession, VideoRateControl,
+    RawVideoFrameSource, RawVideoFrameSourceReadAdapter, ReconstructionMode, Result,
+    VideoChunkKind, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeOutput,
+    VideoEncodeSourceRequest, VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession,
+    VideoRateControl,
 };
 
 pub(crate) type VideoEncodeStreamFn =
@@ -192,74 +193,13 @@ pub(crate) fn encode_stream_from_source(
         lossless: matches!(config.rate_control, VideoRateControl::Lossless),
         settings: &settings,
     };
-    let mut input = SourceFrameReader::new(source, config.input.expected_len(), config.frame_limit);
+    let mut source = |frame: &mut [u8]| source.read_frame(frame);
+    let mut input = RawVideoFrameSourceReadAdapter::new(&mut source, config.input);
+    if let Some(frame_limit) = config.frame_limit {
+        input = input.with_frame_limit(frame_limit);
+    }
     (manifest.encode_stream)(&mut input, output, recon, request, frame_metrics)
         .map_err(MediaError::Message)
-}
-
-struct SourceFrameReader<'a> {
-    source: &'a mut dyn RawVideoFrameSource,
-    frame: Vec<u8>,
-    frame_offset: usize,
-    frames_read: usize,
-    frame_limit: Option<usize>,
-}
-
-impl<'a> SourceFrameReader<'a> {
-    fn new(
-        source: &'a mut dyn RawVideoFrameSource,
-        frame_len: usize,
-        frame_limit: Option<usize>,
-    ) -> Self {
-        Self {
-            source,
-            frame: vec![0; frame_len],
-            frame_offset: frame_len,
-            frames_read: 0,
-            frame_limit,
-        }
-    }
-
-    fn load_frame(&mut self) -> io::Result<bool> {
-        if self
-            .frame_limit
-            .is_some_and(|limit| self.frames_read >= limit)
-        {
-            return Ok(false);
-        }
-        let has_frame = self
-            .source
-            .read_frame(&mut self.frame)
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
-        if !has_frame {
-            return Ok(false);
-        }
-        self.frames_read += 1;
-        self.frame_offset = 0;
-        Ok(true)
-    }
-}
-
-impl Read for SourceFrameReader<'_> {
-    fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
-        if output.is_empty() {
-            return Ok(0);
-        }
-
-        let mut written = 0usize;
-        while written < output.len() {
-            if self.frame_offset == self.frame.len() && !self.load_frame()? {
-                break;
-            }
-            let remaining_frame = self.frame.len() - self.frame_offset;
-            let count = remaining_frame.min(output.len() - written);
-            output[written..written + count]
-                .copy_from_slice(&self.frame[self.frame_offset..self.frame_offset + count]);
-            self.frame_offset += count;
-            written += count;
-        }
-        Ok(written)
-    }
 }
 
 fn split_reconstructions(config: &VideoEncoderConfig, recon: Vec<u8>) -> Result<Vec<Frame>> {

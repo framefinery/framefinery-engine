@@ -3,24 +3,12 @@ use std::str::FromStr;
 
 use crate::error::MediaError;
 use crate::error::Result;
-use crate::pipeline::Filter;
-#[cfg(feature = "filter-pattern")]
-use crate::pipeline::Source;
-#[cfg(any(
-    feature = "filter-identity",
-    feature = "filter-crop",
-    feature = "filter-scale"
-))]
+use crate::pipeline::{Filter, FrameSourceRawVideoAdapter, Source};
 use crate::Frame;
 use crate::FrameInfo;
-#[cfg(any(
-    feature = "filter-pattern",
-    feature = "filter-crop",
-    feature = "filter-scale"
-))]
 use crate::PixelFormat;
-#[cfg(any(feature = "filter-crop", feature = "filter-scale"))]
-use crate::{ChromaSampling, SampleBitDepth};
+use crate::{scale_sample_bit_depth, write_planar_sample};
+use crate::{ChromaSampling, RawVideoFrameSource, SampleBitDepth};
 
 /// Pipeline position served by a filter manifest entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,7 +148,7 @@ const PATTERN_SPEC_EXAMPLES: &[FilterSpecExample] = &[
 const PATTERN_SPEC_NOTES: &[&str] = &[
     "source filters must be first and cannot be combined with an input path",
     "source filters require --video metadata and --frames",
-    "currently generates yuv420p8 and yuv444p8 raw frames",
+    "currently generates planar YUV/gray frames across supported bit depths, gbrp8, and rgb24",
     "blocks is accepted as a short alias for color_blocks",
 ];
 
@@ -352,6 +340,18 @@ pub struct FilterPipelineSpec {
     pub transforms: Vec<FilterStageSpec>,
 }
 
+/// Builder for a parsed filter pipeline specification.
+///
+/// This is a small API wrapper around the same filter manifest validation used
+/// by the CLI. It intentionally stores textual filter specs because filter
+/// syntax is still the stable interchange form between command-line arguments,
+/// manifests, validation files, and future frontends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilterPipelineBuilder {
+    input_present: bool,
+    specs: Vec<String>,
+}
+
 impl FilterStageSpec {
     /// Parse one raw filter spec into a stage spec.
     pub fn new(spec: impl Into<String>) -> Result<Self> {
@@ -363,6 +363,103 @@ impl FilterStageSpec {
             ));
         }
         Ok(Self { name, spec })
+    }
+}
+
+impl FilterPipelineSpec {
+    /// Start building a pipeline that consumes an external input frame stream.
+    pub fn from_input() -> FilterPipelineBuilder {
+        FilterPipelineBuilder::from_input()
+    }
+
+    /// Start building a pipeline that must begin with a source filter.
+    pub fn from_source_filter() -> FilterPipelineBuilder {
+        FilterPipelineBuilder::from_source_filter()
+    }
+
+    /// Return the frame metadata produced by this pipeline's transform stages.
+    pub fn output_info(&self, input: FrameInfo) -> Result<FrameInfo> {
+        filter_pipeline_output_info(input, &self.transforms)
+    }
+
+    /// Build executable transform filters for this pipeline.
+    pub fn build_transforms(&self) -> Result<Vec<Box<dyn Filter>>> {
+        self.transforms
+            .iter()
+            .map(build_filter_transform)
+            .collect::<Result<Vec<_>>>()
+    }
+
+    /// Build the executable source filter, when this pipeline has one.
+    pub fn build_source(
+        &self,
+        info: FrameInfo,
+        frames: usize,
+    ) -> Result<Option<Box<dyn Source<Output = Frame>>>> {
+        self.source
+            .as_ref()
+            .map(|source| build_source_filter(source, info, frames))
+            .transpose()
+    }
+
+    /// Build the executable source filter as a raw-frame callback, when present.
+    pub fn build_raw_video_source(
+        &self,
+        info: FrameInfo,
+        frames: usize,
+    ) -> Result<Option<Box<dyn RawVideoFrameSource>>> {
+        self.source
+            .as_ref()
+            .map(|source| build_raw_video_source_filter(source, info, frames))
+            .transpose()
+    }
+}
+
+impl FilterPipelineBuilder {
+    /// Start building a pipeline that consumes an external input frame stream.
+    pub fn from_input() -> Self {
+        Self {
+            input_present: true,
+            specs: Vec::new(),
+        }
+    }
+
+    /// Start building a pipeline that must begin with a source filter.
+    pub fn from_source_filter() -> Self {
+        Self {
+            input_present: false,
+            specs: Vec::new(),
+        }
+    }
+
+    /// Set whether this pipeline consumes an external input frame stream.
+    pub fn with_input_present(mut self, input_present: bool) -> Self {
+        self.input_present = input_present;
+        self
+    }
+
+    /// Append one textual filter spec.
+    pub fn filter(mut self, spec: impl Into<String>) -> Result<Self> {
+        let stage = FilterStageSpec::new(spec)?;
+        self.specs.push(stage.spec);
+        Ok(self)
+    }
+
+    /// Append several textual filter specs.
+    pub fn filters<I, S>(mut self, specs: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        for spec in specs {
+            self = self.filter(spec)?;
+        }
+        Ok(self)
+    }
+
+    /// Parse and validate this builder into a pipeline specification.
+    pub fn build(self) -> Result<FilterPipelineSpec> {
+        parse_filter_pipeline_specs(&self.specs, self.input_present)
     }
 }
 
@@ -452,16 +549,53 @@ pub fn filter_pipeline_output_info(
 }
 
 /// Generate raw video bytes from an executable source filter.
+///
+/// This helper materializes the requested frames into one `Vec<u8>` and is
+/// intended for short fixtures and tests. Long streams should use
+/// [`build_raw_video_source_filter`] or [`FilterPipelineSpec::build_raw_video_source`].
 pub fn generate_source_filter_stream(
     stage: &FilterStageSpec,
     info: FrameInfo,
     frames: usize,
 ) -> Result<Vec<u8>> {
+    let total_len = info
+        .expected_len()
+        .checked_mul(frames)
+        .ok_or(MediaError::LengthOverflow)?;
+    let mut output = Vec::with_capacity(total_len);
+    let mut source = build_source_filter(stage, info, frames)?;
+    while let Some(frame) = source.pull()? {
+        output.extend_from_slice(frame.data());
+    }
+    Ok(output)
+}
+
+/// Build an executable source filter from a parsed stage spec.
+pub fn build_source_filter(
+    stage: &FilterStageSpec,
+    info: FrameInfo,
+    frames: usize,
+) -> Result<Box<dyn Source<Output = Frame>>> {
     match stage.name.as_str() {
-        "pattern" => generate_pattern_filter_stream(&stage.spec, info, frames),
+        "pattern" => build_pattern_filter_source(&stage.spec, info, frames),
         other => Err(MediaError::Message(format!(
             "filter '{other}' is not an executable source filter"
         ))),
+    }
+}
+
+/// Build an executable source filter as a raw-frame callback.
+pub fn build_raw_video_source_filter(
+    stage: &FilterStageSpec,
+    info: FrameInfo,
+    frames: usize,
+) -> Result<Box<dyn RawVideoFrameSource>> {
+    match stage.name.as_str() {
+        "pattern" => build_pattern_raw_video_source(&stage.spec, info, frames),
+        _ => {
+            let source = build_source_filter(stage, info, frames)?;
+            Ok(Box::new(FrameSourceRawVideoAdapter::new(source, info)))
+        }
     }
 }
 
@@ -600,16 +734,46 @@ fn validate_pattern_filter_spec(_spec: &str) -> Result<()> {
 }
 
 #[cfg(feature = "filter-pattern")]
-fn generate_pattern_filter_stream(spec: &str, info: FrameInfo, frames: usize) -> Result<Vec<u8>> {
-    generate_pattern_stream(info, parse_pattern_stage_kind(spec)?, frames)
+fn build_pattern_filter_source(
+    spec: &str,
+    info: FrameInfo,
+    frames: usize,
+) -> Result<Box<dyn Source<Output = Frame>>> {
+    Ok(Box::new(PatternSource::new(
+        info,
+        parse_pattern_stage_kind(spec)?,
+        frames,
+    )?))
 }
 
 #[cfg(not(feature = "filter-pattern"))]
-fn generate_pattern_filter_stream(
+fn build_pattern_filter_source(
     _spec: &str,
     _info: FrameInfo,
     _frames: usize,
-) -> Result<Vec<u8>> {
+) -> Result<Box<dyn Source<Output = Frame>>> {
+    Err(MediaError::Message("unknown filter 'pattern'".to_string()))
+}
+
+#[cfg(feature = "filter-pattern")]
+fn build_pattern_raw_video_source(
+    spec: &str,
+    info: FrameInfo,
+    frames: usize,
+) -> Result<Box<dyn RawVideoFrameSource>> {
+    Ok(Box::new(PatternSource::new(
+        info,
+        parse_pattern_stage_kind(spec)?,
+        frames,
+    )?))
+}
+
+#[cfg(not(feature = "filter-pattern"))]
+fn build_pattern_raw_video_source(
+    _spec: &str,
+    _info: FrameInfo,
+    _frames: usize,
+) -> Result<Box<dyn RawVideoFrameSource>> {
     Err(MediaError::Message("unknown filter 'pattern'".to_string()))
 }
 
@@ -1374,6 +1538,19 @@ impl PatternSource {
     pub const fn frames_remaining(&self) -> usize {
         self.frames_remaining
     }
+
+    /// Fill `output` with the next generated frame.
+    ///
+    /// Returns `Ok(false)` when the finite pattern source is exhausted.
+    pub fn fill_frame(&mut self, output: &mut [u8]) -> Result<bool> {
+        if self.frames_remaining == 0 {
+            return Ok(false);
+        }
+        fill_pattern_frame(self.info, self.pattern, self.frame_index, output)?;
+        self.frames_remaining -= 1;
+        self.frame_index += 1;
+        Ok(true)
+    }
 }
 
 #[cfg(feature = "filter-pattern")]
@@ -1381,13 +1558,18 @@ impl Source for PatternSource {
     type Output = Frame;
 
     fn pull(&mut self) -> Result<Option<Self::Output>> {
-        if self.frames_remaining == 0 {
+        let mut data = vec![0; self.info.expected_len()];
+        if !self.fill_frame(&mut data)? {
             return Ok(None);
         }
-        let data = pattern_frame_data(self.info, self.pattern, self.frame_index)?;
-        self.frames_remaining -= 1;
-        self.frame_index += 1;
         Frame::new(self.info, data).map(Some)
+    }
+}
+
+#[cfg(feature = "filter-pattern")]
+impl RawVideoFrameSource for PatternSource {
+    fn read_frame(&mut self, frame: &mut [u8]) -> Result<bool> {
+        self.fill_frame(frame)
     }
 }
 
@@ -1414,93 +1596,180 @@ pub fn generate_pattern_stream(
 /// Generate one deterministic raw frame for a pattern.
 pub fn pattern_frame_data(info: FrameInfo, pattern: PatternKind, frame: usize) -> Result<Vec<u8>> {
     validate_pattern_format(info.format)?;
-    match info.format {
-        PixelFormat::Yuv420p8 => Ok(generate_yuv420p8(info.width, info.height, frame, pattern)),
-        PixelFormat::Yuv444p8 => Ok(generate_yuv444p8(info.width, info.height, frame, pattern)),
-        other => Err(MediaError::Unsupported {
-            feature: "pattern source".to_string(),
-            reason: format!("currently supports yuv420p8 and yuv444p8; got {other}"),
-        }),
-    }
+    let mut output = vec![0; info.expected_len()];
+    fill_pattern_frame(info, pattern, frame, &mut output)?;
+    Ok(output)
 }
 
 #[cfg(feature = "filter-pattern")]
 fn validate_pattern_format(format: PixelFormat) -> Result<()> {
     match format {
-        PixelFormat::Yuv420p8 | PixelFormat::Yuv444p8 => Ok(()),
-        other => Err(MediaError::Unsupported {
-            feature: "pattern source".to_string(),
-            reason: format!("currently supports yuv420p8 and yuv444p8; got {other}"),
-        }),
+        PixelFormat::PlanarYuv { .. }
+        | PixelFormat::Gray { .. }
+        | PixelFormat::Gbrp8
+        | PixelFormat::Rgb24 => Ok(()),
     }
 }
 
 #[cfg(feature = "filter-pattern")]
-fn generate_yuv420p8(width: usize, height: usize, frame: usize, pattern: PatternKind) -> Vec<u8> {
-    let (y_plane, u444, v444) = render_pattern_frame(width, height, frame, pattern);
-    let mut out = Vec::with_capacity(width * height * 3 / 2);
-    let mut u_plane = Vec::with_capacity(width * height / 4);
-    let mut v_plane = Vec::with_capacity(width * height / 4);
-    for y in (0..height).step_by(2) {
-        for x in (0..width).step_by(2) {
-            let indices = (
-                y * width + x,
-                y * width + x + 1,
-                (y + 1) * width + x,
-                (y + 1) * width + x + 1,
-            );
-            u_plane.push(
-                ((u444[indices.0] as u16
-                    + u444[indices.1] as u16
-                    + u444[indices.2] as u16
-                    + u444[indices.3] as u16)
-                    / 4) as u8,
-            );
-            v_plane.push(
-                ((v444[indices.0] as u16
-                    + v444[indices.1] as u16
-                    + v444[indices.2] as u16
-                    + v444[indices.3] as u16)
-                    / 4) as u8,
-            );
+fn fill_pattern_frame(
+    info: FrameInfo,
+    pattern: PatternKind,
+    frame: usize,
+    output: &mut [u8],
+) -> Result<()> {
+    let expected = info.expected_len();
+    if output.len() != expected {
+        return Err(MediaError::BufferLength {
+            expected,
+            actual: output.len(),
+        });
+    }
+    validate_pattern_format(info.format)?;
+    match info.format {
+        PixelFormat::Rgb24 => fill_pattern_rgb24(info.width, info.height, pattern, frame, output),
+        PixelFormat::Gbrp8 => fill_pattern_gbrp8(info.width, info.height, pattern, frame, output),
+        PixelFormat::Gray { bit_depth } => {
+            fill_pattern_gray(info.width, info.height, bit_depth, pattern, frame, output)
         }
+        PixelFormat::PlanarYuv {
+            chroma_sampling,
+            bit_depth,
+        } => fill_pattern_planar_yuv(
+            info.width,
+            info.height,
+            chroma_sampling,
+            bit_depth,
+            pattern,
+            frame,
+            output,
+        ),
     }
-    out.extend(y_plane);
-    out.extend(u_plane);
-    out.extend(v_plane);
-    out
+    Ok(())
 }
 
 #[cfg(feature = "filter-pattern")]
-fn generate_yuv444p8(width: usize, height: usize, frame: usize, pattern: PatternKind) -> Vec<u8> {
-    let (y_plane, u_plane, v_plane) = render_pattern_frame(width, height, frame, pattern);
-    let mut out = Vec::with_capacity(width * height * 3);
-    out.extend(y_plane);
-    out.extend(u_plane);
-    out.extend(v_plane);
-    out
-}
-
-#[cfg(feature = "filter-pattern")]
-fn render_pattern_frame(
+fn fill_pattern_rgb24(
     width: usize,
     height: usize,
-    frame: usize,
     pattern: PatternKind,
-) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
-    let mut y_plane = vec![0; width * height];
-    let mut u_plane = vec![0; width * height];
-    let mut v_plane = vec![0; width * height];
+    frame: usize,
+    output: &mut [u8],
+) {
     for y in 0..height {
         for x in 0..width {
-            let (yy, uu, vv) = pattern_sample(pattern, x, y, frame);
-            let idx = y * width + x;
-            y_plane[idx] = yy;
-            u_plane[idx] = uu;
-            v_plane[idx] = vv;
+            let (r, g, b) = pattern_sample(pattern, x, y, frame);
+            let offset = (y * width + x) * 3;
+            output[offset] = r;
+            output[offset + 1] = g;
+            output[offset + 2] = b;
         }
     }
-    (y_plane, u_plane, v_plane)
+}
+
+#[cfg(feature = "filter-pattern")]
+fn fill_pattern_gbrp8(
+    width: usize,
+    height: usize,
+    pattern: PatternKind,
+    frame: usize,
+    output: &mut [u8],
+) {
+    let pixels = width * height;
+    for y in 0..height {
+        for x in 0..width {
+            let idx = y * width + x;
+            let (r, g, b) = pattern_sample(pattern, x, y, frame);
+            output[idx] = g;
+            output[pixels + idx] = b;
+            output[2 * pixels + idx] = r;
+        }
+    }
+}
+
+#[cfg(feature = "filter-pattern")]
+fn fill_pattern_gray(
+    width: usize,
+    height: usize,
+    bit_depth: SampleBitDepth,
+    pattern: PatternKind,
+    frame: usize,
+    output: &mut [u8],
+) {
+    for y in 0..height {
+        for x in 0..width {
+            let (sample, _, _) = pattern_sample(pattern, x, y, frame);
+            write_pattern_sample(output, y * width + x, sample, bit_depth);
+        }
+    }
+}
+
+#[cfg(feature = "filter-pattern")]
+#[allow(clippy::too_many_arguments)]
+fn fill_pattern_planar_yuv(
+    width: usize,
+    height: usize,
+    chroma_sampling: ChromaSampling,
+    bit_depth: SampleBitDepth,
+    pattern: PatternKind,
+    frame: usize,
+    output: &mut [u8],
+) {
+    for y in 0..height {
+        for x in 0..width {
+            let (luma, _, _) = pattern_sample(pattern, x, y, frame);
+            write_pattern_sample(output, y * width + x, luma, bit_depth);
+        }
+    }
+
+    if chroma_sampling == ChromaSampling::Monochrome {
+        return;
+    }
+
+    let bytes_per_sample = bit_depth.bytes_per_sample();
+    let luma_len = width * height * bytes_per_sample;
+    let subsample_x = chroma_sampling.subsample_x();
+    let subsample_y = chroma_sampling.subsample_y();
+    let chroma_width = width / subsample_x;
+    let chroma_height = height / subsample_y;
+    let chroma_len = chroma_width * chroma_height * bytes_per_sample;
+    let (u_plane, v_plane) = output[luma_len..luma_len + chroma_len * 2].split_at_mut(chroma_len);
+
+    for chroma_y in 0..chroma_height {
+        for chroma_x in 0..chroma_width {
+            let mut u_sum = 0u32;
+            let mut v_sum = 0u32;
+            for dy in 0..subsample_y {
+                for dx in 0..subsample_x {
+                    let x = chroma_x * subsample_x + dx;
+                    let y = chroma_y * subsample_y + dy;
+                    let (_, u, v) = pattern_sample(pattern, x, y, frame);
+                    u_sum += u32::from(u);
+                    v_sum += u32::from(v);
+                }
+            }
+            let denom = (subsample_x * subsample_y) as u32;
+            let index = chroma_y * chroma_width + chroma_x;
+            write_pattern_sample(u_plane, index, (u_sum / denom) as u8, bit_depth);
+            write_pattern_sample(v_plane, index, (v_sum / denom) as u8, bit_depth);
+        }
+    }
+}
+
+#[cfg(feature = "filter-pattern")]
+fn write_pattern_sample(
+    output: &mut [u8],
+    sample_index: usize,
+    sample: u8,
+    bit_depth: SampleBitDepth,
+) {
+    let sample = scale_sample_bit_depth(
+        u16::from(sample),
+        SampleBitDepth::new(8).expect("8-bit samples must be supported"),
+        bit_depth,
+    );
+    write_planar_sample(output, sample_index, sample, bit_depth)
+        .expect("validated pattern output must contain every sample");
 }
 
 #[cfg(feature = "filter-pattern")]
@@ -1698,9 +1967,21 @@ mod tests {
 
     #[cfg(feature = "filter-pattern")]
     #[test]
-    fn pattern_source_rejects_unsupported_formats() {
+    fn pattern_source_generates_rgb24_frame() {
         let info = FrameInfo::new(8, 8, PixelFormat::Rgb24).unwrap();
-        let err = PatternSource::new(info, PatternKind::Black, 1).unwrap_err();
-        assert!(err.to_string().contains("pattern source"));
+        let mut source = PatternSource::new(info, PatternKind::Checker, 1).unwrap();
+        let frame = source.pull().unwrap().expect("frame");
+        assert_eq!(frame.data().len(), info.expected_len());
+        assert!(frame.data().chunks_exact(3).any(|pixel| pixel != [0, 0, 0]));
+    }
+
+    #[cfg(feature = "filter-pattern")]
+    #[test]
+    fn pattern_source_generates_high_bit_depth_planar_frame() {
+        let info = FrameInfo::new(8, 8, PixelFormat::yuv444(10).unwrap()).unwrap();
+        let frame = pattern_frame_data(info, PatternKind::Gradient, 0).unwrap();
+        assert_eq!(frame.len(), info.expected_len());
+        let first = crate::read_planar_sample(&frame, 1, info.format.bit_depth()).unwrap();
+        assert!(first > 0);
     }
 }

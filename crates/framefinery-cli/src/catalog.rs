@@ -24,12 +24,12 @@ pub fn find_encoder_manifest(_name: &str) -> Option<VideoEncoderManifest> {
 }
 
 #[cfg(not(feature = "video-encoders"))]
-pub fn encode_source<'a>(
-    config: &'a VideoEncoderConfig,
+pub fn encode_source<'callback>(
+    config: &VideoEncoderConfig,
     _source: &mut dyn RawVideoFrameSource,
     _output: &mut dyn Write,
     _recon: Option<&mut dyn Write>,
-    _frame_metrics: Option<VideoEncodeFrameMetricsCallback<'a>>,
+    _frame_metrics: Option<VideoEncodeFrameMetricsCallback<'callback>>,
 ) -> Result<()> {
     Err(MediaError::UnsupportedCodec {
         codec: config.codec.to_string(),

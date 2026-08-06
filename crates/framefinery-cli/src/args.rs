@@ -3,6 +3,8 @@ use std::path::Path;
 
 use framefinery_core::PixelFormat;
 
+use crate::options::{self, CliOptionManifest, CliOptionScope};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Help(Option<HelpTopic>),
@@ -51,98 +53,9 @@ pub struct CodecPathSpec {
     pub path: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HelpRow {
-    pub syntax: &'static str,
-    pub summary: &'static str,
-}
-
-pub const USAGE: &[&str] = &[
-    "ff --help [<codecs|filters [filter]|pixfmt|settings [setting]|presets>]",
-    "ff --version",
-    "ff codecs",
-    "ff filters",
-    "ff encode [<input>] [input-options] [--filter <spec>] --encode <codec:path> [output-options]",
-];
-
-pub const OUTPUT_OPTIONS: &[HelpRow] = &[
-    HelpRow {
-        syntax: "--encode <codec:path>",
-        summary: "Encoder codec/output endpoint, e.g. av2:output.obu",
-    },
-    HelpRow {
-        syntax: "--recon <path>",
-        summary: "Write the encoder's internal reconstructed raw frame stream",
-    },
-    HelpRow {
-        syntax: "--psnr",
-        summary:
-            "Print per-frame PSNR from the encoder's internal reconstruction without writing it",
-    },
-    HelpRow {
-        syntax: "--set <key[=value]>",
-        summary: "Encode setting; run ff --help settings for accepted keys",
-    },
-    HelpRow {
-        syntax: "--preset <name>",
-        summary: "Encoder preset name",
-    },
-];
-
-pub const INPUT_OPTIONS: &[HelpRow] = &[
-    HelpRow {
-        syntax: "<input>",
-        summary: "Raw .yuv or Y4M input path; optional when the first filter is a source",
-    },
-    HelpRow {
-        syntax: "filename metadata",
-        summary: "Names imply metadata with *_<WxH>[_<fps>][_<frames>f][_<pixfmt>].yuv; Y4M headers also provide metadata",
-    },
-    HelpRow {
-        syntax: "--video <WxH:fmt>",
-        summary: "Override or provide raw metadata, e.g. 1920x1080:yuv444p",
-    },
-    HelpRow {
-        syntax: "--fps <rate>",
-        summary: "Input frame rate, e.g. 30, 29.97, or 30000/1001",
-    },
-    HelpRow {
-        syntax: "-n, --frames <count>",
-        summary: "Number of frames to process; omitted file inputs run to EOF",
-    },
-];
-
-pub const FILTER_OPTIONS: &[HelpRow] = &[HelpRow {
-    syntax: "-f, --filter <spec>",
-    summary: "Filter stage, repeatable, e.g. pattern=black or identity",
-}];
-
-pub const DISCOVERY_COMMANDS: &[HelpRow] = &[
-    HelpRow {
-        syntax: "ff --help codecs",
-        summary: "Describe compiled codec stages",
-    },
-    HelpRow {
-        syntax: "ff --help filters [filter]",
-        summary: "Describe compiled filter stages or one filter spec",
-    },
-    HelpRow {
-        syntax: "ff --help pixfmt",
-        summary: "List accepted raw pixel-format names and aliases",
-    },
-    HelpRow {
-        syntax: "ff --help settings [setting]",
-        summary: "List --set keys or describe one setting",
-    },
-    HelpRow {
-        syntax: "ff --help presets",
-        summary: "List named encoder presets when available",
-    },
-];
-
 pub fn help(version: &str) -> String {
     let mut text = format!("FrameFinery {version}\n\nUsage:\n");
-    for usage in USAGE {
+    for usage in options::CLI_USAGE {
         text.push_str("  ");
         text.push_str(usage);
         text.push('\n');
@@ -151,20 +64,33 @@ pub fn help(version: &str) -> String {
     text.push_str("\nInput options apply after <input>; output options apply after --encode.\n");
 
     text.push_str("\nInput options:\n");
-    push_help_rows(&mut text, INPUT_OPTIONS);
+    push_help_rows(
+        &mut text,
+        options::cli_options_for_scope(CliOptionScope::Input),
+    );
 
     text.push_str("\nFilter options:\n");
-    push_help_rows(&mut text, FILTER_OPTIONS);
+    push_help_rows(
+        &mut text,
+        options::cli_options_for_scope(CliOptionScope::Filter),
+    );
 
     text.push_str("\nOutput options:\n");
-    push_help_rows(&mut text, OUTPUT_OPTIONS);
+    push_help_rows(
+        &mut text,
+        options::cli_options_for_scope(CliOptionScope::Output),
+    );
 
     text.push_str("\nStage discovery:\n");
-    push_help_rows(&mut text, DISCOVERY_COMMANDS);
+    push_help_rows(
+        &mut text,
+        options::cli_options_for_scope(CliOptionScope::Discovery),
+    );
     text
 }
 
-fn push_help_rows(text: &mut String, rows: &[HelpRow]) {
+fn push_help_rows<'a>(text: &mut String, rows: impl IntoIterator<Item = &'a CliOptionManifest>) {
+    let rows = rows.into_iter().collect::<Vec<_>>();
     let width = rows.iter().map(|row| row.syntax.len()).max().unwrap_or(0) + 2;
     for row in rows {
         text.push_str(&format!(
@@ -190,8 +116,8 @@ where
     }
 
     match command.as_str() {
-        "-h" | "--help" | "help" => parse_help(cursor),
-        "-V" | "--version" | "version" => Ok(Command::Version),
+        value if options::HELP_OPTION.matches_name(value) => parse_help(cursor),
+        value if options::VERSION_OPTION.matches_name(value) => Ok(Command::Version),
         "codecs" => parse_no_extra(cursor, Command::Codecs, "codecs", Some(HelpTopic::Codecs)),
         "filters" => parse_no_extra(
             cursor,
@@ -280,7 +206,7 @@ fn parse_no_extra(
 ) -> Result<Command, String> {
     match cursor.next().as_deref() {
         None => Ok(command),
-        Some("-h") | Some("--help") => Ok(Command::Help(help_topic)),
+        Some(extra) if is_help_flag(extra) => Ok(Command::Help(help_topic)),
         Some(extra) => Err(format!("'{name}' does not accept argument '{extra}'")),
     }
 }
@@ -288,50 +214,49 @@ fn parse_no_extra(
 fn parse_encode(mut cursor: Cursor) -> Result<Command, String> {
     let mut args = EncodeArgs::default();
     while let Some(arg) = cursor.next() {
-        match arg.as_str() {
-            "-h" | "--help" => return Ok(Command::Help(None)),
-            "--encode" => {
-                if args.codec.is_some() || args.output.is_some() {
-                    return Err("encode accepts only one --encode endpoint".to_string());
+        let option = arg.as_str();
+        if is_help_flag(option) {
+            return Ok(Command::Help(None));
+        }
+        if options::ENCODE_OPTION.matches_name(option) {
+            if args.codec.is_some() || args.output.is_some() {
+                return Err("encode accepts only one --encode endpoint".to_string());
+            }
+            let endpoint = parse_codec_path_spec(option, &cursor.value(option)?)?;
+            args.codec = Some(endpoint.codec);
+            args.output = Some(endpoint.path);
+        } else if options::RECON_OPTION.matches_name(option) {
+            if args.recon.is_some() {
+                return Err("encode accepts only one reconstruction output".to_string());
+            }
+            args.recon = Some(cursor.value(option)?);
+        } else if options::PSNR_OPTION.matches_name(option) {
+            args.psnr = true;
+        } else if options::VIDEO_OPTION.matches_name(option) {
+            args.video = Some(parse_video_spec(option, &cursor.value(option)?)?);
+            args.explicit_video = true;
+        } else if options::FRAMES_OPTION.matches_name(option) {
+            args.frames = Some(parse_u32(option, &cursor.value(option)?)?);
+        } else if options::FPS_OPTION.matches_name(option) {
+            args.fps = Some(parse_fps(option, &cursor.value(option)?)?);
+            args.explicit_fps = true;
+        } else if options::FILTER_OPTION.matches_name(option) {
+            args.filters.push(cursor.value(option)?);
+        } else if options::SET_OPTION.matches_name(option) {
+            args.settings.push(parse_setting(&cursor.value(option)?));
+        } else if options::PRESET_OPTION.matches_name(option) {
+            args.preset = Some(cursor.value(option)?);
+        } else {
+            match option {
+                other if other.starts_with('-') => {
+                    return Err(format!("unknown encode option '{other}'"));
                 }
-                let endpoint = parse_codec_path_spec(arg.as_str(), &cursor.value(arg.as_str())?)?;
-                args.codec = Some(endpoint.codec);
-                args.output = Some(endpoint.path);
-            }
-            "--recon" | "--reconstruction" => {
-                if args.recon.is_some() {
-                    return Err("encode accepts only one reconstruction output".to_string());
+                other => {
+                    if args.input.is_some() {
+                        return Err(format!("unexpected encode argument '{other}'"));
+                    }
+                    args.input = Some(other.to_string());
                 }
-                args.recon = Some(cursor.value(arg.as_str())?);
-            }
-            "--psnr" => args.psnr = true,
-            "--video" => {
-                args.video = Some(parse_video_spec(
-                    arg.as_str(),
-                    &cursor.value(arg.as_str())?,
-                )?);
-                args.explicit_video = true;
-            }
-            "--frames" | "-n" => {
-                args.frames = Some(parse_u32(arg.as_str(), &cursor.value(arg.as_str())?)?);
-            }
-            "--fps" => {
-                args.fps = Some(parse_fps(arg.as_str(), &cursor.value(arg.as_str())?)?);
-                args.explicit_fps = true;
-            }
-            "--filter" | "-f" => args.filters.push(cursor.value(arg.as_str())?),
-            "--set" => args
-                .settings
-                .push(parse_setting(&cursor.value(arg.as_str())?)),
-            "--preset" => args.preset = Some(cursor.value(arg.as_str())?),
-            other if other.starts_with('-') => {
-                return Err(format!("unknown encode option '{other}'"))
-            }
-            other => {
-                if args.input.is_some() {
-                    return Err(format!("unexpected encode argument '{other}'"));
-                }
-                args.input = Some(other.to_string());
             }
         }
     }
@@ -344,6 +269,10 @@ fn parse_encode(mut cursor: Cursor) -> Result<Command, String> {
         return Err("encode requires --encode codec:path".to_string());
     }
     Ok(Command::Encode(Box::new(args)))
+}
+
+fn is_help_flag(value: &str) -> bool {
+    matches!(value, "-h" | "--help")
 }
 
 fn parse_u32(option: &str, value: &str) -> Result<u32, String> {

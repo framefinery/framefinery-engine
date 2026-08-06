@@ -31,10 +31,11 @@ pub use filters::IdentityFilter;
 #[cfg(feature = "filter-scale")]
 pub use filters::ScaleFilter;
 pub use filters::{
-    build_filter_transform, filter_pipeline_output_info, filter_spec_manifest, filter_spec_name,
-    generate_source_filter_stream, parse_filter_pipeline_specs, FilterPipelineSpec,
-    FilterSpecExample, FilterSpecForm, FilterSpecManifest, FilterSpecParameter, FilterSpecValue,
-    FilterStageSpec, CROP_FILTER_SPEC, IDENTITY_FILTER_SPEC, PATTERN_FILTER_SPEC,
+    build_filter_transform, build_raw_video_source_filter, build_source_filter,
+    filter_pipeline_output_info, filter_spec_manifest, filter_spec_name,
+    generate_source_filter_stream, parse_filter_pipeline_specs, FilterPipelineBuilder,
+    FilterPipelineSpec, FilterSpecExample, FilterSpecForm, FilterSpecManifest, FilterSpecParameter,
+    FilterSpecValue, FilterStageSpec, CROP_FILTER_SPEC, IDENTITY_FILTER_SPEC, PATTERN_FILTER_SPEC,
     PATTERN_SOURCE_NAMES, SCALE_FILTER_SPEC,
 };
 pub use filters::{filter_manifest, FilterManifest, FilterStageKind, FilterStatus, FILTERS};
@@ -48,7 +49,7 @@ pub use frame::{
 pub use packet::{Packet, StreamId, Timestamp};
 pub use pipeline::{
     run_frame_encode_pipeline, run_frame_filter_pipeline, EncodePipelineStats, Encoder, Filter,
-    FilterPipelineStats, Sink, Source,
+    FilterPipelineStats, FilteredRawVideoFrameSource, FrameSourceRawVideoAdapter, Sink, Source,
 };
 pub use settings::{
     boolean_setting_enabled, setting_name, setting_value, setting_values_label, u8_setting,
@@ -57,9 +58,10 @@ pub use settings::{
 };
 pub use video::{
     CodecId, EncodedVideoChunk, FrameEncodeMetrics, FrameRate, RawVideoFrameReadSource,
-    RawVideoFrameSource, ReconstructionMode, VideoChunkKind, VideoEncodeFrameMetrics,
-    VideoEncodeFrameMetricsCallback, VideoEncodeOutput, VideoEncoderConfig, VideoEncoderManifest,
-    VideoEncoderSession, VideoEncoderSetting, VideoRateControl, VideoSettingValue,
+    RawVideoFrameSource, RawVideoFrameSourceReadAdapter, ReconstructionMode, VideoChunkKind,
+    VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeOutput,
+    VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession, VideoEncoderSetting,
+    VideoRateControl, VideoSettingValue,
 };
 #[doc(hidden)]
 pub use video::{

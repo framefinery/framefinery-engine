@@ -2,24 +2,28 @@
 
 use std::ffi::OsString;
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, BufWriter, Cursor, Read, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use framefinery_core::{
-    boolean_setting_enabled, build_filter_transform, convert_frame_format,
-    filter_pipeline_output_info, frame_psnr, generate_source_filter_stream,
-    parse_filter_pipeline_specs, run_frame_filter_pipeline, setting_name, setting_value, Filter,
-    FilterStageSpec, Frame, FrameInfo, FramePsnr, FrameRate, MediaError, PixelFormat,
-    RawVideoFrameReadSource, ReconstructionMode, SampleBitDepth, SettingManifest, SettingValue,
-    Sink, Source, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncoderConfig,
-    VideoEncoderManifest, VideoEncoderSetting, VideoRateControl, VERSION,
+    boolean_setting_enabled, build_filter_transform, build_raw_video_source_filter,
+    convert_frame_format, frame_psnr, setting_name, setting_value, FilterPipelineBuilder,
+    FilterStageSpec, FilteredRawVideoFrameSource, FrameInfo, FramePsnr, FrameRate, PixelFormat,
+    RawVideoFrameReadSource, RawVideoFrameSource, ReconstructionMode, SampleBitDepth,
+    SettingManifest, SettingValue, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback,
+    VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSetting, VideoRateControl, VERSION,
 };
 
 use crate::args::{self, Command, EncodeArgs, HelpTopic};
 use crate::catalog::{
     self, setting_values_label, settings_label, FilterManifest, ENCODERS, FILTERS, GLOBAL_SETTINGS,
 };
+
+#[cfg(test)]
+use framefinery_core::Frame;
+#[cfg(test)]
+use framefinery_core::RawVideoFrameSourceReadAdapter;
 
 pub fn run<I>(raw_args: I) -> ExitCode
 where
@@ -110,7 +114,11 @@ fn validate_codec_settings(codec: VideoEncoderManifest, settings: &[String]) -> 
 }
 
 fn validate_filters(args: &EncodeArgs) -> Option<ExitCode> {
-    match parse_filter_pipeline_specs(&args.filters, args.input.is_some()) {
+    match FilterPipelineBuilder::from_input()
+        .with_input_present(args.input.is_some())
+        .filters(args.filters.iter().cloned())
+        .and_then(FilterPipelineBuilder::build)
+    {
         Ok(_) => None,
         Err(err) => {
             eprintln!("error: {err}");
@@ -393,15 +401,40 @@ fn valid_y4m_frame_header(header: &[u8]) -> bool {
         && header.get(5).is_some_and(|byte| byte.is_ascii_whitespace())
 }
 
+#[cfg(test)]
 fn open_job_reader(job: &EncodeJob) -> Result<Box<dyn Read>, String> {
-    let reader = open_unfiltered_job_reader(job)?;
-    if job.transform_filters.is_empty() {
-        return Ok(reader);
-    }
-    apply_transform_filters_to_reader(reader, job)
+    let mut source = open_job_source(job)?;
+    let info = job_output_info(job)?;
+    Ok(Box::new(RawVideoFrameSourceReadAdapter::new(
+        move |frame: &mut [u8]| source.read_frame(frame),
+        info,
+    )))
 }
 
-fn open_unfiltered_job_reader(job: &EncodeJob) -> Result<Box<dyn Read>, String> {
+fn open_job_source(job: &EncodeJob) -> Result<Box<dyn RawVideoFrameSource>, String> {
+    let source = open_unfiltered_job_source(job)?;
+    if job.transform_filters.is_empty() {
+        return Ok(source);
+    }
+
+    let input_info = job_source_info(job)?;
+    let output_info = job_output_info(job)?;
+    let filters = job
+        .transform_filters
+        .iter()
+        .map(build_filter_transform)
+        .collect::<framefinery_core::Result<Vec<_>>>()
+        .map_err(|err| err.to_string())?;
+    let mut source = source;
+    Ok(Box::new(FilteredRawVideoFrameSource::new(
+        move |frame: &mut [u8]| source.read_frame(frame),
+        input_info,
+        output_info,
+        filters,
+    )))
+}
+
+fn open_unfiltered_job_source(job: &EncodeJob) -> Result<Box<dyn RawVideoFrameSource>, String> {
     match &job.input {
         EncodeInput::Path(path) => {
             let file = File::open(path)
@@ -412,127 +445,25 @@ fn open_unfiltered_job_reader(job: &EncodeJob) -> Result<Box<dyn Read>, String> 
                 Box::new(BufReader::new(file).take(selected_input_byte_len(job)?))
             };
             if job.source_format == job.format {
-                Ok(reader)
+                Ok(Box::new(RawVideoFrameReadSource::new(reader)))
             } else {
-                Ok(Box::new(FrameFormatConvertingReader::new(reader, job)?))
+                let reader = Box::new(FrameFormatConvertingReader::new(reader, job)?);
+                Ok(Box::new(RawVideoFrameReadSource::new(reader)))
             }
         }
         EncodeInput::SourceFilter(source) => {
-            let info = FrameInfo::new(job.source_width, job.source_height, job.format)
-                .map_err(|err| err.to_string())?;
-            let input = generate_source_filter_stream(source, info, job.frames)
-                .map_err(|err| err.to_string())?;
-            Ok(Box::new(Cursor::new(input)))
+            let info = job_source_info(job)?;
+            build_raw_video_source_filter(source, info, job.frames).map_err(|err| err.to_string())
         }
     }
 }
 
-fn apply_transform_filters_to_reader(
-    reader: Box<dyn Read>,
-    job: &EncodeJob,
-) -> Result<Box<dyn Read>, String> {
-    let input_info = FrameInfo::new(job.source_width, job.source_height, job.format)
-        .map_err(|err| err.to_string())?;
-    let output_info =
-        FrameInfo::new(job.width, job.height, job.format).map_err(|err| err.to_string())?;
-    let mut source = RawFrameReaderSource::new(reader, input_info, job.frames);
-    let mut sink = RawFrameVecSink::new(output_info);
-    let mut filters = job
-        .transform_filters
-        .iter()
-        .map(build_filter_transform)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| err.to_string())?;
-    let mut filter_refs = filters
-        .iter_mut()
-        .map(|filter| filter.as_mut() as &mut dyn Filter)
-        .collect::<Vec<_>>();
-    let stats = run_frame_filter_pipeline(&mut source, filter_refs.as_mut_slice(), &mut sink)
-        .map_err(|err| err.to_string())?;
-    if stats.input_frames != job.frames {
-        return Err(format!(
-            "filter pipeline consumed {} frame(s), expected {}",
-            stats.input_frames, job.frames
-        ));
-    }
-    Ok(Box::new(Cursor::new(sink.into_bytes())))
+fn job_source_info(job: &EncodeJob) -> Result<FrameInfo, String> {
+    FrameInfo::new(job.source_width, job.source_height, job.format).map_err(|err| err.to_string())
 }
 
-struct RawFrameReaderSource<R> {
-    inner: R,
-    info: FrameInfo,
-    frames_remaining: usize,
-    frame_index: usize,
-}
-
-impl<R: Read> RawFrameReaderSource<R> {
-    fn new(inner: R, info: FrameInfo, frames: usize) -> Self {
-        Self {
-            inner,
-            info,
-            frames_remaining: frames,
-            frame_index: 0,
-        }
-    }
-}
-
-impl<R: Read> Source for RawFrameReaderSource<R> {
-    type Output = Frame;
-
-    fn pull(&mut self) -> framefinery_core::Result<Option<Self::Output>> {
-        if self.frames_remaining == 0 {
-            return Ok(None);
-        }
-        let mut data = vec![0; self.info.expected_len()];
-        self.inner.read_exact(&mut data).map_err(|err| {
-            MediaError::Message(format!(
-                "failed to read frame {} for filter pipeline: {err}",
-                self.frame_index + 1
-            ))
-        })?;
-        self.frames_remaining -= 1;
-        self.frame_index += 1;
-        Frame::new(self.info, data).map(Some)
-    }
-}
-
-struct RawFrameVecSink {
-    info: FrameInfo,
-    data: Vec<u8>,
-}
-
-impl RawFrameVecSink {
-    fn new(info: FrameInfo) -> Self {
-        Self {
-            info,
-            data: Vec::new(),
-        }
-    }
-
-    fn into_bytes(self) -> Vec<u8> {
-        self.data
-    }
-}
-
-impl Sink<Frame> for RawFrameVecSink {
-    fn push(&mut self, input: Frame) -> framefinery_core::Result<()> {
-        if input.info() != self.info {
-            return Err(MediaError::Unsupported {
-                feature: "filter pipeline frame format change".to_string(),
-                reason: format!(
-                    "expected {}x{}:{}, got {}x{}:{}",
-                    self.info.width,
-                    self.info.height,
-                    self.info.format,
-                    input.info().width,
-                    input.info().height,
-                    input.info().format
-                ),
-            });
-        }
-        self.data.extend(input.into_data());
-        Ok(())
-    }
+fn job_output_info(job: &EncodeJob) -> Result<FrameInfo, String> {
+    FrameInfo::new(job.width, job.height, job.format).map_err(|err| err.to_string())
 }
 
 fn selected_input_byte_len(job: &EncodeJob) -> Result<u64, String> {
@@ -835,7 +766,10 @@ fn encode_job_for_codec(
     codec: VideoEncoderManifest,
     args: &EncodeArgs,
 ) -> Result<EncodeJob, String> {
-    let filter_pipeline = parse_filter_pipeline_specs(&args.filters, args.input.is_some())
+    let filter_pipeline = FilterPipelineBuilder::from_input()
+        .with_input_present(args.input.is_some())
+        .filters(args.filters.iter().cloned())
+        .and_then(FilterPipelineBuilder::build)
         .map_err(|err| err.to_string())?;
     let input = match args.input.as_deref() {
         Some(path) => EncodeInput::Path(PathBuf::from(path)),
@@ -869,7 +803,8 @@ fn encode_job_for_codec(
     }
     let input_info =
         FrameInfo::new(source_width, source_height, format).map_err(|err| err.to_string())?;
-    let output_info = filter_pipeline_output_info(input_info, &filter_pipeline.transforms)
+    let output_info = filter_pipeline
+        .output_info(input_info)
         .map_err(|err| err.to_string())?;
     Ok(EncodeJob {
         input,
@@ -1101,9 +1036,10 @@ fn video_config_for_job(
     args: &EncodeArgs,
     job: &EncodeJob,
 ) -> Result<VideoEncoderConfig, String> {
-    let codec_id = codec.codec_id().map_err(|err| err.to_string())?;
     let info = FrameInfo::new(job.width, job.height, job.format).map_err(|err| err.to_string())?;
-    let mut config = VideoEncoderConfig::new(codec_id, info).with_frame_limit(job.frames);
+    let mut config =
+        VideoEncoderConfig::for_codec(codec.name, info).map_err(|err| err.to_string())?;
+    config = config.with_frame_limit(job.frames);
     if let Some(fps) = job.fps.as_deref() {
         config = config.with_frame_rate(frame_rate_from_cli(fps)?);
     }
@@ -1240,8 +1176,7 @@ fn encode_with_model(
     job: EncodeJob,
 ) -> Result<(), String> {
     let config = video_config_for_job(codec, args, &job)?;
-    let mut input = open_job_reader(&job)?;
-    let mut source = RawVideoFrameReadSource::new(&mut input);
+    let mut source = open_job_source(&job)?;
     let mut output = create_writer(&job.output)?;
     let mut recon = create_optional_writer(job.recon.as_deref())?;
     let mut frame_metrics = |metrics: VideoEncodeFrameMetrics<'_>| {
@@ -1265,7 +1200,7 @@ fn encode_with_model(
             FrameFormatConvertingWriter::new(recon.as_mut().expect("checked Some"), &job)?;
         catalog::encode_source(
             &config,
-            &mut source,
+            source.as_mut(),
             &mut output,
             Some(&mut recon_converter as &mut dyn Write),
             frame_metrics,
@@ -1277,7 +1212,7 @@ fn encode_with_model(
     } else {
         catalog::encode_source(
             &config,
-            &mut source,
+            source.as_mut(),
             &mut output,
             recon.as_mut().map(|writer| writer as &mut dyn Write),
             frame_metrics,

@@ -223,6 +223,96 @@ impl<R: Read> RawVideoFrameSource for RawVideoFrameReadSource<R> {
     }
 }
 
+/// [`Read`] adapter for any [`RawVideoFrameSource`] implementation.
+///
+/// The adapter buffers one raw frame at a time so legacy stream encoders that
+/// consume byte readers can still be driven from pull-based frame sources
+/// without materializing a whole stream.
+pub struct RawVideoFrameSourceReadAdapter<S> {
+    source: S,
+    frame: Vec<u8>,
+    frame_offset: usize,
+    frames_read: usize,
+    frame_limit: Option<usize>,
+}
+
+impl<S> RawVideoFrameSourceReadAdapter<S>
+where
+    S: RawVideoFrameSource,
+{
+    /// Create a byte reader over `source` using the byte length implied by `info`.
+    pub fn new(source: S, info: FrameInfo) -> Self {
+        let frame_len = info.expected_len();
+        Self {
+            source,
+            frame: vec![0; frame_len],
+            frame_offset: frame_len,
+            frames_read: 0,
+            frame_limit: None,
+        }
+    }
+
+    /// Stop reading after at most `frame_limit` complete frames.
+    pub fn with_frame_limit(mut self, frame_limit: usize) -> Self {
+        self.frame_limit = Some(frame_limit);
+        self
+    }
+
+    /// Return the number of complete frames read from the source.
+    pub const fn frames_read(&self) -> usize {
+        self.frames_read
+    }
+
+    /// Consume the adapter and return the wrapped source.
+    pub fn into_inner(self) -> S {
+        self.source
+    }
+
+    fn load_frame(&mut self) -> std::io::Result<bool> {
+        if self
+            .frame_limit
+            .is_some_and(|limit| self.frames_read >= limit)
+        {
+            return Ok(false);
+        }
+        let has_frame = self
+            .source
+            .read_frame(&mut self.frame)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))?;
+        if !has_frame {
+            return Ok(false);
+        }
+        self.frames_read += 1;
+        self.frame_offset = 0;
+        Ok(true)
+    }
+}
+
+impl<S> Read for RawVideoFrameSourceReadAdapter<S>
+where
+    S: RawVideoFrameSource,
+{
+    fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+        if output.is_empty() {
+            return Ok(0);
+        }
+
+        let mut written = 0usize;
+        while written < output.len() {
+            if self.frame_offset == self.frame.len() && !self.load_frame()? {
+                break;
+            }
+            let remaining_frame = self.frame.len() - self.frame_offset;
+            let count = remaining_frame.min(output.len() - written);
+            output[written..written + count]
+                .copy_from_slice(&self.frame[self.frame_offset..self.frame_offset + count]);
+            self.frame_offset += count;
+            written += count;
+        }
+        Ok(written)
+    }
+}
+
 /// Discovery manifest for one compiled video encoder.
 ///
 /// The manifest exposes stable metadata for catalogs, help text, and validation
@@ -451,6 +541,11 @@ impl VideoEncoderConfig {
             reconstruction: ReconstructionMode::None,
             settings: Vec::new(),
         }
+    }
+
+    /// Create an encoder config from a textual codec id.
+    pub fn for_codec(codec: impl AsRef<str>, input: FrameInfo) -> Result<Self> {
+        Ok(Self::new(CodecId::new(codec.as_ref())?, input))
     }
 
     /// Set optional frame-rate metadata.

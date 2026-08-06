@@ -20,6 +20,10 @@ ff --help settings qp
 ff --help presets
 ```
 
+The main option list is generated from the facade crate's CLI option inventory.
+Codec, filter, and setting detail pages are generated from compiled manifests,
+so disabled codecs or filters are not advertised by the binary.
+
 ## Encode
 
 The primary command shape is:
@@ -59,6 +63,16 @@ ff encode clip_1920x1080_30_50f_yuv444p8.yuv \
 
 Y4M headers provide width, height, frame rate, and planar YUV format. If
 `--frames` is omitted for a file input, encoding stops at EOF.
+
+Source filters such as `pattern=checker` can generate raw frames directly:
+
+```sh
+ff encode --filter pattern=color_blocks --video 3840x2160:gbrp8 \
+  --fps 60 --frames 3600 --encode av2:/dev/null --set qp=24
+```
+
+The source and transform filter path is pull-based and should not buffer the
+whole generated stream in memory.
 
 ## Settings
 

@@ -32,10 +32,16 @@ Important public types:
   frames.
 - `FILTERS` and `filter_manifest` expose the reusable filter catalog used by
   the `ff` CLI.
-- `FilterStageSpec`, `FilterPipelineSpec`, `parse_filter_pipeline_specs`,
+- `FilterStageSpec`, `FilterPipelineSpec`, `FilterPipelineBuilder`,
+  `build_source_filter`, `build_raw_video_source_filter`,
   `generate_source_filter_stream`, and `build_filter_transform` let frontends
   pass filter specs through the core registry without knowing concrete filter
-  implementation types.
+  implementation types. `generate_source_filter_stream` is a short-fixture
+  helper that collects all requested frames; streaming callers should prefer
+  the raw source builders.
+- `FrameSourceRawVideoAdapter`, `FilteredRawVideoFrameSource`, and
+  `RawVideoFrameSourceReadAdapter` bridge owned-frame filters, raw-frame
+  callbacks, and legacy byte-reader encoders without buffering whole streams.
 - `FilterSpecManifest` describes each filter's accepted spec forms,
   parameters, examples, and notes.
 
@@ -75,9 +81,10 @@ assert_eq!(frame.info(), info);
 # Ok::<(), framefinery_core::MediaError>(())
 ```
 
-Current pattern output supports `yuv420p8` and `yuv444p8`. The accepted pattern
-names are `black`, `checker`, `gradient`, and `color_blocks`; `blocks` is
-accepted as a short alias for `color_blocks`.
+Current pattern output supports planar YUV and gray formats from 8 through 16
+bits, plus `gbrp8` and `rgb24`. The accepted pattern names are `black`,
+`checker`, `gradient`, and `color_blocks`; `blocks` is accepted as a short alias
+for `color_blocks`.
 
 `crop` extracts rectangular regions. Subsampled planar formats require crop
 coordinates and dimensions aligned to chroma samples. `scale` resizes frames
@@ -124,6 +131,12 @@ whole raw stream to be resident in memory or requiring a total frame count up
 front. `VideoEncoderConfig::frame_limit` is an optional caller/source bound,
 not an encoder requirement. `Frame` remains the owned post-filter and
 reconstruction type; `FrameRef` is the borrowed validated view.
+
+When filters are used before a source-driven encoder, prefer
+`FilteredRawVideoFrameSource` over collecting the filtered stream into a
+`Vec<u8>`. It owns at most the current input frame and queued filter outputs,
+which keeps long generated or captured streams usable for native and future
+WASM integrations.
 
 ## Errors
 

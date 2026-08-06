@@ -52,6 +52,7 @@ codec must share a given helper implementation.
 - `CodecId`
 - `VideoEncoderConfig`
 - `RawVideoFrameSource`
+- `RawVideoFrameSourceReadAdapter`
 - `VideoEncoderSession`
 - `VideoEncoderBuilder`
 - `EncodedVideoChunk`
@@ -59,6 +60,9 @@ codec must share a given helper implementation.
 - `DecodedPictureBuffer`
 - `FilterStageSpec`
 - `FilterPipelineSpec`
+- `FilterPipelineBuilder`
+- `FilteredRawVideoFrameSource`
+- `FrameSourceRawVideoAdapter`
 - filter and encoder manifests
 
 Decoders remain future architecture scope and are not exported as part of this
@@ -87,6 +91,11 @@ registry from `framefinery-codecs`.
 `framefinery-cli` maps command-line arguments and files onto the same generic
 config and registry concepts. It should not contain AV2/VVC implementation
 branches or filter implementation branches.
+
+The facade also exposes the `ff` option inventory through
+`cli_options()` and `cli_options_for_scope(...)`. The inventory describes the
+same option names and aliases accepted by the parser, so external frontends can
+render command help or build UI forms without copying CLI strings.
 
 ## Encoder Registry
 
@@ -231,6 +240,11 @@ upper bound for callers that want bounded file/test encodes or known progress.
 File, Y4M, WebCodecs, screen-capture, and test-vector code should be adapters
 that implement this callback shape.
 
+When a byte-reader bridge is still needed, `RawVideoFrameSourceReadAdapter`
+adapts a raw-frame source to `std::io::Read` while buffering one frame at a
+time. This is a compatibility adapter for current stream encoders and should
+not be used to collect complete videos in memory.
+
 ## Encoder Sessions
 
 The simplest one-frame encode helper is `encode_frame(config, frame)`. For
@@ -333,10 +347,12 @@ buffer management.
 Filters are selected by generic stage specs:
 
 ```rust
-use framefinery::parse_filter_pipeline_specs;
+use framefinery::{FilterPipelineSpec, FrameInfo, PixelFormat};
 
-let filters = vec!["pattern=checker".to_string(), "identity".to_string()];
-let pipeline = parse_filter_pipeline_specs(&filters, false)?;
+let pipeline = FilterPipelineSpec::from_source_filter()
+    .filter("pattern=checker")?
+    .filter("identity")?
+    .build()?;
 assert_eq!(pipeline.source.unwrap().name, "pattern");
 # Ok::<(), framefinery::MediaError>(())
 ```
@@ -344,6 +360,30 @@ assert_eq!(pipeline.source.unwrap().name, "pattern");
 The CLI should pass filter strings into `framefinery-core` and let the core
 filter registry validate and build stages. The CLI should not know whether
 `identity`, `pattern`, `crop`, or future filters have concrete Rust types.
+
+Source filters can be built either as owned-frame sources or as raw-frame
+callbacks. For encoder paths and future WASM capture pipelines, prefer the raw
+form:
+
+```rust
+use framefinery::{FilterPipelineSpec, FrameInfo, PixelFormat};
+
+let info = FrameInfo::new(3840, 2160, PixelFormat::Gbrp8)?;
+let pipeline = FilterPipelineSpec::from_source_filter()
+    .filter("pattern=color_blocks")?
+    .build()?;
+let mut source = pipeline
+    .build_raw_video_source(info, 60)?
+    .expect("source filter");
+# let mut frame = vec![0; info.expected_len()];
+# assert!(source.read_frame(&mut frame)?);
+# Ok::<(), framefinery::MediaError>(())
+```
+
+Transform filters should be applied with `FilteredRawVideoFrameSource` when the
+next stage is a source-driven encoder. That adapter keeps only the current input
+frame and pending transformed frames, avoiding whole-stream buffering for long
+files, generated patterns, or browser capture feeds.
 
 ## Muxing And Transport
 

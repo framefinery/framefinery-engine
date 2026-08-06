@@ -24,6 +24,7 @@
 mod args;
 mod catalog;
 mod command;
+mod options;
 
 use std::ffi::OsString;
 use std::process::ExitCode;
@@ -35,17 +36,23 @@ pub use framefinery_codecs::{
 };
 pub use framefinery_core as core;
 pub use framefinery_core::{
-    build_filter_transform, convert_frame_format, convert_planar_frame_bit_depth, filter_manifest,
-    frame_psnr, generate_source_filter_stream, parse_filter_pipeline_specs, planar_sample_sse,
+    build_filter_transform, build_raw_video_source_filter, build_source_filter,
+    convert_frame_format, convert_planar_frame_bit_depth, filter_manifest, frame_psnr,
+    generate_source_filter_stream, parse_filter_pipeline_specs, planar_sample_sse,
     read_planar_sample, run_frame_encode_pipeline, run_frame_filter_pipeline,
     scale_sample_bit_depth, write_planar_sample, ChromaSampling, CodecId, DecodedPictureBuffer,
     DpbEntry, EncodePipelineStats, EncodedVideoChunk, Encoder, Filter, FilterManifest,
-    FilterPipelineSpec, FilterPipelineStats, FilterStageSpec, Frame, FrameEncodeMetrics, FrameInfo,
-    FramePsnr, FrameRate, FrameRef, MediaError, Packet, PictureId, PixelFormat,
-    RawVideoFrameReadSource, RawVideoFrameSource, ReconstructionMode, Result, SampleBitDepth, Sink,
-    Source, StreamId, Timestamp, VideoChunkKind, VideoEncodeFrameMetrics,
-    VideoEncodeFrameMetricsCallback, VideoEncodeOutput, VideoEncoderConfig, VideoEncoderManifest,
-    VideoEncoderSession, VideoEncoderSetting, VideoRateControl, VideoSettingValue, FILTERS,
+    FilterPipelineBuilder, FilterPipelineSpec, FilterPipelineStats, FilterStageSpec,
+    FilteredRawVideoFrameSource, Frame, FrameEncodeMetrics, FrameInfo, FramePsnr, FrameRate,
+    FrameRef, FrameSourceRawVideoAdapter, MediaError, Packet, PictureId, PixelFormat,
+    RawVideoFrameReadSource, RawVideoFrameSource, RawVideoFrameSourceReadAdapter,
+    ReconstructionMode, Result, SampleBitDepth, Sink, Source, StreamId, Timestamp, VideoChunkKind,
+    VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeOutput,
+    VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession, VideoEncoderSetting,
+    VideoRateControl, VideoSettingValue, FILTERS,
+};
+pub use options::{
+    cli_options, cli_options_for_scope, CliOptionManifest, CliOptionScope, CliOptionValue,
 };
 
 /// Version of the `framefinery` facade crate and `ff` binary.

@@ -411,3 +411,20 @@ invoke the source filter directly, for example:
 ./ff encode --filter pattern=checker --video 16x24:yuv420p8 \
   --frames 1 --fps 30 --encode av2:out.obu
 ```
+
+For local long-run memory smoke testing, prefer generated source filters and a
+hard virtual-memory cap so a regression cannot exhaust the workstation:
+
+```sh
+(ulimit -v 262144; /usr/bin/time -v ./ff encode \
+  --filter pattern=color_blocks \
+  --video 3840x2160:gbrp8 \
+  --fps 60 \
+  --frames 3600 \
+  --encode av2:/dev/null \
+  --set qp=24)
+```
+
+`ulimit -v 262144` caps the process at 256 MiB. A healthy source-filter path
+should stay bounded by a small number of frame buffers plus codec working state;
+raise the cap only when the measured peak RSS justifies the larger working set.

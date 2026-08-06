@@ -1,12 +1,12 @@
 #![cfg(feature = "codec-av2")]
 
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 
 use framefinery::{
-    create_encoder, encode_frame, encode_source, encoder, find_encoder_manifest, CodecId, Frame,
-    FrameInfo, MediaError, PixelFormat, RawVideoFrameReadSource, RawVideoFrameSource,
-    ReconstructionMode, Result, VideoEncodeFrameMetrics, VideoEncoderConfig, VideoEncoderSetting,
-    VideoRateControl,
+    cli_options_for_scope, create_encoder, encode_frame, encode_source, encoder,
+    find_encoder_manifest, CliOptionScope, CodecId, Frame, FrameInfo, MediaError, PixelFormat,
+    RawVideoFrameReadSource, RawVideoFrameSource, ReconstructionMode, Result,
+    VideoEncodeFrameMetrics, VideoEncoderConfig, VideoEncoderSetting, VideoRateControl,
 };
 
 #[test]
@@ -103,6 +103,44 @@ fn facade_exposes_fluent_encoder_builder() -> Result<()> {
         other => panic!("expected UnsupportedCodec, got {other}"),
     }
 
+    Ok(())
+}
+
+#[test]
+fn facade_exposes_cli_option_inventory() {
+    let output_options = cli_options_for_scope(CliOptionScope::Output).collect::<Vec<_>>();
+    assert!(output_options
+        .iter()
+        .any(|option| option.matches_name("--encode")));
+    assert!(output_options
+        .iter()
+        .any(|option| option.matches_name("--reconstruction")));
+    assert!(output_options
+        .iter()
+        .any(|option| option.matches_name("--psnr")));
+}
+
+#[cfg(feature = "filter-pattern")]
+#[test]
+fn facade_exposes_raw_source_filter_pipeline() -> Result<()> {
+    use framefinery::{FilterPipelineSpec, RawVideoFrameSourceReadAdapter};
+
+    let info = FrameInfo::new(8, 8, PixelFormat::Rgb24)?;
+    let pipeline = FilterPipelineSpec::from_source_filter()
+        .filter("pattern=checker")?
+        .build()?;
+    let mut source = pipeline
+        .build_raw_video_source(info, 2)?
+        .expect("pattern source");
+    let mut reader =
+        RawVideoFrameSourceReadAdapter::new(move |frame: &mut [u8]| source.read_frame(frame), info);
+    let mut data = Vec::new();
+    reader
+        .read_to_end(&mut data)
+        .map_err(|err| MediaError::Message(err.to_string()))?;
+
+    assert_eq!(data.len(), info.expected_len() * 2);
+    assert_ne!(&data[..info.expected_len()], &data[info.expected_len()..]);
     Ok(())
 }
 
