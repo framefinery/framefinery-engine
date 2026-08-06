@@ -718,12 +718,12 @@ fn av2_adaptive_cdf_lookup_cache_slot(
 }
 
 fn av2_adaptive_cdf_name_lookup_cache_slot(ptr: usize, len: usize) -> usize {
-    let mut hash = ptr.wrapping_mul(0x9e37_79b9_7f4a_7c15usize);
-    hash ^= len.wrapping_mul(0xbf58_476d_1ce4_e5b9usize);
+    let mut hash = (ptr as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    hash ^= (len as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9);
     hash ^= hash >> 33;
-    hash = hash.wrapping_mul(0xff51_afd7_ed55_8ccdusize);
+    hash = hash.wrapping_mul(0xff51_afd7_ed55_8ccd);
     hash ^= hash >> 33;
-    hash & (AV2_ADAPTIVE_CDF_NAME_LOOKUP_CACHE_SIZE - 1)
+    (hash as usize) & (AV2_ADAPTIVE_CDF_NAME_LOOKUP_CACHE_SIZE - 1)
 }
 
 impl Av2PrecarryForwardFinalizer {
