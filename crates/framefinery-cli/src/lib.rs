@@ -37,7 +37,7 @@ pub use framefinery_core::{
     frame_psnr, generate_source_filter_stream, parse_filter_pipeline_specs, planar_sample_sse,
     read_planar_sample, run_frame_encode_pipeline, run_frame_filter_pipeline,
     scale_sample_bit_depth, write_planar_sample, ChromaSampling, CodecId, DecodedPictureBuffer,
-    Decoder, DpbEntry, EncodePipelineStats, EncodedVideoChunk, Encoder, Filter, FilterManifest,
+    DpbEntry, EncodePipelineStats, EncodedVideoChunk, Encoder, Filter, FilterManifest,
     FilterPipelineSpec, FilterPipelineStats, FilterStageSpec, Frame, FrameEncodeMetrics, FrameInfo,
     FramePsnr, FrameRate, FrameRef, MediaError, Packet, PictureId, PixelFormat,
     RawVideoFrameReadSource, RawVideoFrameSource, ReconstructionMode, Result, SampleBitDepth, Sink,
@@ -47,8 +47,10 @@ pub use framefinery_core::{
     VideoEncoderSetting, VideoRateControl, VideoSettingValue, FILTERS,
 };
 
+/// Version of the `framefinery` facade crate and `ff` binary.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Run the `ff` command-line frontend with an iterator of raw OS arguments.
 pub fn run<I>(raw_args: I) -> ExitCode
 where
     I: IntoIterator<Item = OsString>,

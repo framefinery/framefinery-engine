@@ -6,6 +6,17 @@ purpose of writing them down now is to make the codebase converge around one
 integration model instead of letting the CLI, native library API, and future
 WASM package drift apart.
 
+This is not the complete API reference. The reference is generated from Rust
+`///` and `//!` documentation comments:
+
+```sh
+make api-docs
+```
+
+The generated facade entry point is `target/doc/framefinery/index.html`.
+`make api-docs-strict` fails when exported API lacks Rustdoc documentation and
+is part of the local release gate.
+
 The contract describes the API FrameFinery wants callers to build against. It
 does not describe codec internals, helper ownership, or a promise that every
 codec must share a given helper implementation.
@@ -44,6 +55,9 @@ codec must share a given helper implementation.
 - `FilterStageSpec`
 - `FilterPipelineSpec`
 - filter and encoder manifests
+
+Decoders remain future architecture scope and are not exported as part of this
+v0 release API.
 
 `framefinery-codecs` owns encoder implementations and the generic encoder
 registry:

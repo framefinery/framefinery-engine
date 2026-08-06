@@ -3,31 +3,46 @@ use std::str::FromStr;
 
 use crate::error::{MediaError, Result};
 
+/// Checked planar sample bit depth for raw frame formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SampleBitDepth(u8);
 
+/// Chroma subsampling layout for planar YUV or monochrome data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChromaSampling {
+    /// One luma or gray plane with no chroma planes.
     Monochrome,
+    /// 4:2:0 chroma, subsampled by two in width and height.
     Cs420,
+    /// 4:2:2 chroma, subsampled by two in width only.
     Cs422,
+    /// 4:4:4 chroma, no chroma subsampling.
     Cs444,
 }
 
+/// Raw pixel layout accepted by FrameFinery frame buffers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PixelFormat {
+    /// Planar YUV with explicit chroma sampling and sample bit depth.
     PlanarYuv {
+        /// Chroma sampling layout.
         chroma_sampling: ChromaSampling,
+        /// Bits per sample.
         bit_depth: SampleBitDepth,
     },
+    /// Monochrome gray plane with explicit sample bit depth.
     Gray {
+        /// Bits per sample.
         bit_depth: SampleBitDepth,
     },
+    /// Planar GBR, 8 bits per sample, ordered G plane, B plane, R plane.
     Gbrp8,
+    /// Packed RGB, 8 bits per channel, ordered R, G, B per pixel.
     Rgb24,
 }
 
 impl ChromaSampling {
+    /// Horizontal subsampling factor.
     pub const fn subsample_x(self) -> usize {
         match self {
             Self::Monochrome | Self::Cs444 => 1,
@@ -35,6 +50,7 @@ impl ChromaSampling {
         }
     }
 
+    /// Vertical subsampling factor.
     pub const fn subsample_y(self) -> usize {
         match self {
             Self::Monochrome | Self::Cs422 | Self::Cs444 => 1,
@@ -42,6 +58,7 @@ impl ChromaSampling {
         }
     }
 
+    /// Number of samples in one chroma plane for this layout.
     pub fn chroma_plane_samples(self, width: usize, height: usize) -> Option<usize> {
         let luma = width.checked_mul(height)?;
         match self {
@@ -54,10 +71,12 @@ impl ChromaSampling {
 }
 
 impl SampleBitDepth {
+    /// Number of bits used for each stored sample.
     pub const fn bits(self) -> u8 {
         self.0
     }
 
+    /// Create a bit depth in the supported 8 through 16 bit range.
     pub const fn new(bits: u8) -> Option<Self> {
         if bits >= 8 && bits <= 16 {
             Some(Self(bits))
@@ -66,6 +85,7 @@ impl SampleBitDepth {
         }
     }
 
+    /// Alias for [`SampleBitDepth::new`].
     pub const fn from_bits(bits: u8) -> Option<Self> {
         Self::new(bits)
     }
@@ -74,6 +94,7 @@ impl SampleBitDepth {
         Self(bits)
     }
 
+    /// Number of bytes used to store one sample.
     pub fn bytes_per_sample(self) -> usize {
         if self.bits() <= 8 {
             1
@@ -82,6 +103,7 @@ impl SampleBitDepth {
         }
     }
 
+    /// Maximum legal sample value for this bit depth.
     pub fn max_sample(self) -> u16 {
         (1u32.checked_shl(self.bits() as u32).unwrap() - 1) as u16
     }
@@ -91,17 +113,22 @@ impl PixelFormat {
     // TODO(deprecated): prefer numeric constructors such as
     // `PixelFormat::yuv420(8)` over named 8-bit compatibility constants.
     #[allow(non_upper_case_globals)]
+    /// Compatibility constant for 8-bit 4:2:0 planar YUV.
     pub const Yuv420p8: Self =
         Self::planar_yuv(ChromaSampling::Cs420, SampleBitDepth::new_unchecked(8));
     #[allow(non_upper_case_globals)]
+    /// Compatibility constant for 8-bit 4:2:2 planar YUV.
     pub const Yuv422p8: Self =
         Self::planar_yuv(ChromaSampling::Cs422, SampleBitDepth::new_unchecked(8));
     #[allow(non_upper_case_globals)]
+    /// Compatibility constant for 8-bit 4:4:4 planar YUV.
     pub const Yuv444p8: Self =
         Self::planar_yuv(ChromaSampling::Cs444, SampleBitDepth::new_unchecked(8));
     #[allow(non_upper_case_globals)]
+    /// Compatibility constant for 8-bit monochrome gray.
     pub const Gray8: Self = Self::gray_with_depth(SampleBitDepth::new_unchecked(8));
 
+    /// Create a planar YUV format from chroma sampling and checked bit depth.
     pub const fn planar_yuv(chroma_sampling: ChromaSampling, bit_depth: SampleBitDepth) -> Self {
         Self::PlanarYuv {
             chroma_sampling,
@@ -109,6 +136,7 @@ impl PixelFormat {
         }
     }
 
+    /// Create a planar YUV format from chroma sampling and numeric bit depth.
     pub const fn yuv(chroma_sampling: ChromaSampling, bit_depth: u8) -> Option<Self> {
         match SampleBitDepth::new(bit_depth) {
             Some(bit_depth) => Some(Self::planar_yuv(chroma_sampling, bit_depth)),
@@ -116,18 +144,22 @@ impl PixelFormat {
         }
     }
 
+    /// Create a 4:2:0 planar YUV format with the requested bit depth.
     pub const fn yuv420(bit_depth: u8) -> Option<Self> {
         Self::yuv(ChromaSampling::Cs420, bit_depth)
     }
 
+    /// Create a 4:2:2 planar YUV format with the requested bit depth.
     pub const fn yuv422(bit_depth: u8) -> Option<Self> {
         Self::yuv(ChromaSampling::Cs422, bit_depth)
     }
 
+    /// Create a 4:4:4 planar YUV format with the requested bit depth.
     pub const fn yuv444(bit_depth: u8) -> Option<Self> {
         Self::yuv(ChromaSampling::Cs444, bit_depth)
     }
 
+    /// Create a monochrome gray format with the requested bit depth.
     pub const fn gray(bit_depth: u8) -> Option<Self> {
         match SampleBitDepth::new(bit_depth) {
             Some(bit_depth) => Some(Self::Gray { bit_depth }),
@@ -139,6 +171,7 @@ impl PixelFormat {
         Self::Gray { bit_depth }
     }
 
+    /// Canonical CLI/raw-format name for this pixel format.
     pub fn name(self) -> String {
         match self {
             Self::PlanarYuv {
@@ -169,6 +202,7 @@ impl PixelFormat {
         }
     }
 
+    /// Sample bit depth used by this format.
     pub fn bit_depth(self) -> SampleBitDepth {
         match self {
             Self::PlanarYuv { bit_depth, .. } | Self::Gray { bit_depth } => bit_depth,
@@ -176,27 +210,33 @@ impl PixelFormat {
         }
     }
 
+    /// Number of bytes used to store one sample in this format.
     pub fn bytes_per_sample(self) -> usize {
         self.bit_depth().bytes_per_sample()
     }
 
+    /// Return whether this is planar YUV 4:2:0.
     pub fn is_yuv420(self) -> bool {
         self.chroma_sampling() == Some(ChromaSampling::Cs420)
     }
 
+    /// Return whether this is a planar YUV format.
     pub fn is_yuv(self) -> bool {
         self.chroma_sampling()
             .is_some_and(|sampling| sampling != ChromaSampling::Monochrome)
     }
 
+    /// Return whether this is planar RGB-family data.
     pub fn is_planar_rgb(self) -> bool {
         self == Self::Gbrp8
     }
 
+    /// Return whether this is an RGB-family format.
     pub fn is_rgb(self) -> bool {
         matches!(self, Self::Gbrp8 | Self::Rgb24)
     }
 
+    /// Chroma sampling for planar formats, or `None` for RGB-family formats.
     pub fn chroma_sampling(self) -> Option<ChromaSampling> {
         match self {
             Self::PlanarYuv {
@@ -207,10 +247,12 @@ impl PixelFormat {
         }
     }
 
+    /// Number of samples in one chroma plane for the given frame geometry.
     pub fn chroma_plane_samples(self, width: usize, height: usize) -> Option<usize> {
         self.chroma_sampling()?.chroma_plane_samples(width, height)
     }
 
+    /// Return the same planar layout with a different bit depth.
     pub fn with_bit_depth(self, bit_depth: SampleBitDepth) -> Option<Self> {
         match self.chroma_sampling()? {
             ChromaSampling::Cs420 | ChromaSampling::Cs422 | ChromaSampling::Cs444 => {
@@ -220,6 +262,7 @@ impl PixelFormat {
         }
     }
 
+    /// Total byte length of one frame with this format and geometry.
     pub fn frame_len(self, width: usize, height: usize) -> Option<usize> {
         let luma = width.checked_mul(height)?;
         let bytes_per_sample = self.bytes_per_sample();
@@ -234,6 +277,7 @@ impl PixelFormat {
         }
     }
 
+    /// Validate that geometry is legal for this format and has an addressable length.
     pub fn validate_geometry(self, width: usize, height: usize) -> Result<()> {
         if width == 0 || height == 0 {
             return Err(MediaError::InvalidDimensions { width, height });
@@ -259,6 +303,10 @@ impl PixelFormat {
     }
 }
 
+/// Convert a planar YUV or gray frame between supported bit depths.
+///
+/// The chroma layout must remain the same; this helper does not convert RGB,
+/// YUV, or chroma subsampling.
 pub fn convert_planar_frame_bit_depth(
     input: &[u8],
     width: usize,
@@ -311,6 +359,10 @@ pub fn convert_planar_frame_bit_depth(
     Ok(output)
 }
 
+/// Convert between closely related raw frame formats.
+///
+/// Currently supports same-format copies, planar bit-depth conversion, and
+/// reversible `rgb24` to/from `gbrp8` repacking.
 pub fn convert_frame_format(
     input: &[u8],
     width: usize,
@@ -384,6 +436,7 @@ fn gbrp8_to_rgb24(input: &[u8], width: usize, height: usize) -> Result<Vec<u8>> 
     Ok(output)
 }
 
+/// Scale one sample value between two bit depths with rounding.
 pub fn scale_sample_bit_depth(
     sample: u16,
     source_depth: SampleBitDepth,
@@ -398,6 +451,9 @@ pub fn scale_sample_bit_depth(
     ((sample * target_max + (source_max / 2)) / source_max) as u16
 }
 
+/// Read one little-endian planar sample from a raw sample buffer.
+///
+/// Returns `None` when `sample_index` is out of bounds.
 pub fn read_planar_sample(
     input: &[u8],
     sample_index: usize,
@@ -414,6 +470,9 @@ pub fn read_planar_sample(
     }
 }
 
+/// Write one little-endian planar sample into a raw sample buffer.
+///
+/// Returns `None` when `sample_index` is out of bounds.
 pub fn write_planar_sample(
     output: &mut [u8],
     sample_index: usize,
@@ -437,6 +496,10 @@ pub fn write_planar_sample(
     Some(())
 }
 
+/// Compute sum of squared error for two equally sized planar sample buffers.
+///
+/// Returns `None` when the buffers differ in length or high-bit-depth buffers
+/// are not made of complete little-endian samples.
 pub fn planar_sample_sse(
     source: &[u8],
     reconstruction: &[u8],
@@ -579,14 +642,19 @@ impl fmt::Display for PixelFormat {
     }
 }
 
+/// Validated raw frame geometry and pixel format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameInfo {
+    /// Frame width in pixels.
     pub width: usize,
+    /// Frame height in pixels.
     pub height: usize,
+    /// Raw pixel format.
     pub format: PixelFormat,
 }
 
 impl FrameInfo {
+    /// Validate and create frame metadata.
     pub fn new(width: usize, height: usize, format: PixelFormat) -> Result<Self> {
         format.validate_geometry(width, height)?;
         Ok(Self {
@@ -596,6 +664,7 @@ impl FrameInfo {
         })
     }
 
+    /// Byte length required for one complete frame with this metadata.
     pub fn expected_len(self) -> usize {
         self.format
             .frame_len(self.width, self.height)
@@ -603,27 +672,35 @@ impl FrameInfo {
     }
 }
 
+/// Owned raw frame buffer paired with validated frame metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frame {
     info: FrameInfo,
     data: Vec<u8>,
 }
 
+/// Borrowed raw frame buffer paired with validated frame metadata.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameRef<'a> {
     info: FrameInfo,
     data: &'a [u8],
 }
 
+/// Per-plane and aggregate PSNR values for a reconstructed frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FramePsnr {
+    /// First plane PSNR. For RGB-family formats this is red.
     pub plane0: f64,
+    /// Second plane PSNR. For RGB-family formats this is green.
     pub plane1: f64,
+    /// Third plane PSNR. For RGB-family formats this is blue.
     pub plane2: f64,
+    /// Aggregate PSNR over every sample.
     pub all: f64,
 }
 
 impl Frame {
+    /// Create an owned frame, validating that `data` has exactly the expected length.
     pub fn new(info: FrameInfo, data: Vec<u8>) -> Result<Self> {
         let expected = info.expected_len();
         let actual = data.len();
@@ -634,6 +711,7 @@ impl Frame {
         Ok(Self { info, data })
     }
 
+    /// Create an all-zero frame with the expected byte length for `info`.
     pub fn blank(info: FrameInfo) -> Self {
         Self {
             info,
@@ -641,14 +719,17 @@ impl Frame {
         }
     }
 
+    /// Metadata describing this frame.
     pub fn info(&self) -> FrameInfo {
         self.info
     }
 
+    /// Raw frame bytes.
     pub fn data(&self) -> &[u8] {
         &self.data
     }
 
+    /// Borrow this frame as a [`FrameRef`].
     pub fn as_frame_ref(&self) -> FrameRef<'_> {
         FrameRef {
             info: self.info,
@@ -656,12 +737,14 @@ impl Frame {
         }
     }
 
+    /// Consume the frame and return its raw bytes.
     pub fn into_data(self) -> Vec<u8> {
         self.data
     }
 }
 
 impl<'a> FrameRef<'a> {
+    /// Create a borrowed frame, validating that `data` has exactly the expected length.
     pub fn new(info: FrameInfo, data: &'a [u8]) -> Result<Self> {
         let expected = info.expected_len();
         let actual = data.len();
@@ -672,14 +755,17 @@ impl<'a> FrameRef<'a> {
         Ok(Self { info, data })
     }
 
+    /// Metadata describing this borrowed frame.
     pub fn info(self) -> FrameInfo {
         self.info
     }
 
+    /// Raw borrowed frame bytes.
     pub fn data(self) -> &'a [u8] {
         self.data
     }
 
+    /// Copy this borrowed frame into an owned [`Frame`].
     pub fn to_owned_frame(self) -> Frame {
         Frame {
             info: self.info,
@@ -688,6 +774,10 @@ impl<'a> FrameRef<'a> {
     }
 }
 
+/// Compute PSNR between a source frame and reconstruction.
+///
+/// Returns `None` when the buffers do not match the byte length implied by
+/// `info` or the format is unsupported by the metric helper.
 pub fn frame_psnr(info: FrameInfo, source: &[u8], reconstruction: &[u8]) -> Option<FramePsnr> {
     let luma_samples = info.width.checked_mul(info.height)?;
     if info.format == PixelFormat::Rgb24 {

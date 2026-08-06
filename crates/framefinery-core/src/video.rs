@@ -6,106 +6,171 @@ use crate::{
     Frame, FrameInfo, MediaError, PixelFormat, Result, SettingManifest, SettingValue, Timestamp,
 };
 
+/// Stable codec identifier used by CLI, manifests, and library callers.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CodecId(String);
 
+/// Rational frame rate metadata.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameRate {
+    /// Frame-rate numerator.
     pub numerator: u32,
+    /// Frame-rate denominator.
     pub denominator: u32,
 }
 
+/// Rate-control mode requested from a video encoder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VideoRateControl {
+    /// Let the codec choose its default mode.
     #[default]
     CodecDefault,
+    /// Request stream-exact lossless coding.
     Lossless,
+    /// Request lossy coding with a codec-local quantizer value.
     ConstantQuantizer(u8),
 }
 
+/// Reconstruction data requested from a video encoder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ReconstructionMode {
+    /// Do not return reconstructions or compute reconstruction-derived metrics.
     #[default]
     None,
+    /// Compute metrics while reconstructed samples are available internally.
     MetricsOnly,
+    /// Return reconstructed frames to the caller.
     Frames,
 }
 
+/// Typed value for a codec extension setting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VideoSettingValue {
+    /// Boolean setting value.
     Boolean(bool),
+    /// Integer setting value.
     Integer(i64),
+    /// Text or choice setting value.
     Text(String),
 }
 
+/// One codec extension setting in a [`VideoEncoderConfig`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoEncoderSetting {
+    /// Setting name.
     pub name: String,
+    /// Typed setting value.
     pub value: VideoSettingValue,
 }
 
+/// Codec-neutral configuration for constructing or driving a video encoder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoEncoderConfig {
+    /// Selected codec id.
     pub codec: CodecId,
+    /// Input frame geometry and pixel format.
     pub input: FrameInfo,
+    /// Optional frame-rate metadata.
     pub frame_rate: Option<FrameRate>,
+    /// Optional caller/source frame limit.
     pub frame_limit: Option<usize>,
+    /// Requested rate-control mode.
     pub rate_control: VideoRateControl,
+    /// Requested reconstruction output mode.
     pub reconstruction: ReconstructionMode,
+    /// Codec extension settings.
     pub settings: Vec<VideoEncoderSetting>,
 }
 
+/// Encoded chunk category emitted by video encoders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoChunkKind {
+    /// Codec configuration bytes.
     Config,
+    /// One coded frame or access unit.
     Frame,
+    /// End-of-stream marker.
     EndOfStream,
+    /// Whole stream payload used by compatibility encoders.
     Stream,
 }
 
+/// Encoded bytes plus timing and keyframe metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedVideoChunk {
+    /// Codec that produced the chunk.
     pub codec: CodecId,
+    /// Chunk category.
     pub kind: VideoChunkKind,
+    /// Encoded payload bytes.
     pub data: Vec<u8>,
+    /// Optional zero-based frame index associated with this chunk.
     pub frame_index: Option<usize>,
+    /// Optional presentation timestamp.
     pub pts: Option<Timestamp>,
+    /// Optional decode timestamp.
     pub dts: Option<Timestamp>,
+    /// Optional duration.
     pub duration: Option<Timestamp>,
+    /// Whether this chunk starts or represents a keyframe.
     pub keyframe: bool,
 }
 
+/// Per-frame encode metrics returned by session-style encoders.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrameEncodeMetrics {
+    /// Zero-based frame index.
     pub frame_index: usize,
+    /// Optional total frame count when known by the caller.
     pub frame_count: Option<usize>,
+    /// Number of encoded bytes produced through this frame.
     pub encoded_bytes: usize,
+    /// Optional aggregate PSNR for this frame.
     pub psnr: Option<f64>,
 }
 
+/// Output produced by one encoder-session operation.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct VideoEncodeOutput {
+    /// Encoded chunks emitted by this operation.
     pub chunks: Vec<EncodedVideoChunk>,
+    /// Reconstructed frames returned by this operation.
     pub reconstructions: Vec<Frame>,
+    /// Per-frame metrics returned by this operation.
     pub metrics: Vec<FrameEncodeMetrics>,
 }
 
+/// Buffered frame-session video encoder interface.
+///
+/// This API is convenient for filtered frame flows and tests. Long file streams
+/// should prefer source-driven encoding until the experimental codec sessions
+/// become fully incremental.
 pub trait VideoEncoderSession {
+    /// Codec id for this encoder session.
     fn codec(&self) -> &CodecId;
 
+    /// Configuration used to create this session.
     fn config(&self) -> &VideoEncoderConfig;
 
+    /// Submit one frame to the encoder session.
     fn encode_frame(&mut self, frame: Frame) -> Result<VideoEncodeOutput>;
 
+    /// Finish the stream and return any delayed output.
     fn flush(&mut self) -> Result<VideoEncodeOutput> {
         Ok(VideoEncodeOutput::default())
     }
 }
 
+/// Factory function stored in a video encoder manifest.
 pub type VideoEncoderSessionFactory =
     fn(VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>>;
 
+/// Pull-based raw video source used by source-driven encoders.
 pub trait RawVideoFrameSource {
+    /// Fill `frame` with exactly one raw frame.
+    ///
+    /// Returns `Ok(false)` only at clean EOF before any bytes of the next frame
+    /// are read.
     fn read_frame(&mut self, frame: &mut [u8]) -> Result<bool>;
 }
 
@@ -118,15 +183,18 @@ where
     }
 }
 
+/// [`RawVideoFrameSource`] adapter for any [`Read`] implementation.
 pub struct RawVideoFrameReadSource<R> {
     inner: R,
 }
 
 impl<R: Read> RawVideoFrameReadSource<R> {
+    /// Wrap a reader as a raw frame source.
     pub fn new(inner: R) -> Self {
         Self { inner }
     }
 
+    /// Return the wrapped reader.
     pub fn into_inner(self) -> R {
         self.inner
     }
@@ -155,34 +223,53 @@ impl<R: Read> RawVideoFrameSource for RawVideoFrameReadSource<R> {
     }
 }
 
+/// Public manifest for one compiled video encoder.
 #[derive(Debug, Clone, Copy)]
 pub struct VideoEncoderManifest {
+    /// Stable codec id string.
     pub name: &'static str,
+    /// Cargo feature that enables this encoder.
     pub feature: &'static str,
+    /// Short user-facing encoder summary.
     pub summary: &'static str,
+    /// Codec-specific settings accepted by this encoder.
     pub settings: &'static [SettingManifest],
+    /// Function that tests whether an input pixel format is accepted.
     pub accepts_format: fn(PixelFormat) -> bool,
+    /// Function that tests whether lossless mode is accepted for an input format.
     pub supports_lossless_format: fn(PixelFormat) -> bool,
+    /// Factory for buffered session encoders.
     pub create_session: VideoEncoderSessionFactory,
+    /// Source-driven encode entry point.
     pub encode_source: VideoEncodeSourceFn,
 }
 
+/// Request metadata passed to source-driven encoder implementations.
 #[derive(Debug, Clone, Copy)]
 pub struct VideoEncodeSourceRequest<'a> {
+    /// Encoder configuration.
     pub config: &'a VideoEncoderConfig,
 }
 
+/// Per-frame metrics passed to source-driven encode callbacks.
 pub struct VideoEncodeFrameMetrics<'a> {
+    /// Zero-based frame index.
     pub frame_idx: usize,
+    /// Optional total frame count when known by the caller.
     pub frame_count: Option<usize>,
+    /// Encoded bytes produced through this frame.
     pub bitstream_bytes: usize,
+    /// Source frame bytes for metric calculations.
     pub source: &'a [u8],
+    /// Reconstructed frame bytes for metric calculations.
     pub reconstruction: &'a [u8],
 }
 
+/// Callback type used to receive source-driven per-frame metrics.
 pub type VideoEncodeFrameMetricsCallback<'a> =
     &'a mut dyn for<'frame> FnMut(VideoEncodeFrameMetrics<'frame>);
 
+/// Source-driven encoder function stored in a video encoder manifest.
 pub type VideoEncodeSourceFn = for<'request> fn(
     &mut dyn RawVideoFrameSource,
     &mut dyn Write,
@@ -192,12 +279,16 @@ pub type VideoEncodeSourceFn = for<'request> fn(
 ) -> Result<()>;
 
 impl CodecId {
+    /// Validate and create a codec id.
+    ///
+    /// Codec ids are lowercase ASCII names with optional digits and hyphens.
     pub fn new(value: impl Into<String>) -> Result<Self> {
         let value = value.into();
         validate_codec_id(&value)?;
         Ok(Self(value))
     }
 
+    /// Borrow the codec id as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -232,6 +323,7 @@ impl TryFrom<&str> for CodecId {
 }
 
 impl FrameRate {
+    /// Create a nonzero rational frame rate.
     pub fn new(numerator: u32, denominator: u32) -> Result<Self> {
         if numerator == 0 || denominator == 0 {
             return Err(MediaError::Message(
@@ -246,6 +338,9 @@ impl FrameRate {
 }
 
 impl VideoRateControl {
+    /// Create a constant-quantizer rate-control mode.
+    ///
+    /// The accepted public range is `1..=255`.
     pub fn constant_quantizer(qp: u8) -> Result<Self> {
         if qp == 0 {
             return Err(MediaError::Message(
@@ -257,6 +352,7 @@ impl VideoRateControl {
 }
 
 impl VideoSettingValue {
+    /// Render this typed value as a CLI-compatible setting value.
     pub fn as_cli_value(&self) -> String {
         match self {
             Self::Boolean(value) => value.to_string(),
@@ -267,30 +363,36 @@ impl VideoSettingValue {
 }
 
 impl VideoEncoderSetting {
+    /// Create a setting with a validated setting name and typed value.
     pub fn new(name: impl Into<String>, value: VideoSettingValue) -> Result<Self> {
         let name = name.into();
         validate_setting_name(&name)?;
         Ok(Self { name, value })
     }
 
+    /// Create a boolean codec extension setting.
     pub fn boolean(name: impl Into<String>, value: bool) -> Result<Self> {
         Self::new(name, VideoSettingValue::Boolean(value))
     }
 
+    /// Create an integer codec extension setting.
     pub fn integer(name: impl Into<String>, value: i64) -> Result<Self> {
         Self::new(name, VideoSettingValue::Integer(value))
     }
 
+    /// Create a text or choice codec extension setting.
     pub fn text(name: impl Into<String>, value: impl Into<String>) -> Result<Self> {
         Self::new(name, VideoSettingValue::Text(value.into()))
     }
 
+    /// Render this setting as a CLI-compatible `name=value` spec.
     pub fn as_cli_spec(&self) -> String {
         format!("{}={}", self.name, self.value.as_cli_value())
     }
 }
 
 impl VideoEncoderConfig {
+    /// Create an encoder config using codec defaults for optional fields.
     pub fn new(codec: CodecId, input: FrameInfo) -> Self {
         Self {
             codec,
@@ -303,31 +405,37 @@ impl VideoEncoderConfig {
         }
     }
 
+    /// Set optional frame-rate metadata.
     pub fn with_frame_rate(mut self, frame_rate: FrameRate) -> Self {
         self.frame_rate = Some(frame_rate);
         self
     }
 
+    /// Set an optional source/caller frame limit.
     pub fn with_frame_limit(mut self, frame_limit: usize) -> Self {
         self.frame_limit = Some(frame_limit);
         self
     }
 
+    /// Set the requested rate-control mode.
     pub fn with_rate_control(mut self, rate_control: VideoRateControl) -> Self {
         self.rate_control = rate_control;
         self
     }
 
+    /// Set the requested reconstruction mode.
     pub fn with_reconstruction(mut self, reconstruction: ReconstructionMode) -> Self {
         self.reconstruction = reconstruction;
         self
     }
 
+    /// Append one codec extension setting.
     pub fn with_setting(mut self, setting: VideoEncoderSetting) -> Self {
         self.settings.push(setting);
         self
     }
 
+    /// Return CLI-compatible setting specs represented by this config.
     pub fn setting_specs(&self) -> Vec<String> {
         let mut specs = Vec::new();
         match self.rate_control {
@@ -341,6 +449,7 @@ impl VideoEncoderConfig {
 }
 
 impl EncodedVideoChunk {
+    /// Create an encoded chunk without timing metadata.
     pub fn new(codec: CodecId, kind: VideoChunkKind, data: Vec<u8>) -> Self {
         Self {
             codec,
@@ -356,6 +465,7 @@ impl EncodedVideoChunk {
 }
 
 impl VideoEncodeOutput {
+    /// Create output containing a single encoded chunk.
     pub fn from_chunk(chunk: EncodedVideoChunk) -> Self {
         Self {
             chunks: vec![chunk],
@@ -366,10 +476,12 @@ impl VideoEncodeOutput {
 }
 
 impl VideoEncoderManifest {
+    /// Return this manifest's codec id as a validated [`CodecId`].
     pub fn codec_id(self) -> Result<CodecId> {
         CodecId::new(self.name)
     }
 
+    /// Find a codec-specific setting manifest by name.
     pub fn setting(self, name: &str) -> Option<SettingManifest> {
         self.settings
             .iter()
@@ -377,14 +489,17 @@ impl VideoEncoderManifest {
             .find(|setting| setting.name == name)
     }
 
+    /// Return whether this encoder accepts the frame format in `input`.
     pub fn accepts_frame_info(self, input: FrameInfo) -> bool {
         (self.accepts_format)(input.format)
     }
 
+    /// Return whether this encoder supports lossless coding for `input`.
     pub fn supports_lossless_frame_info(self, input: FrameInfo) -> bool {
         (self.supports_lossless_format)(input.format)
     }
 
+    /// Validate codec id, input format, rate control, and extension settings.
     pub fn validate_config(self, config: &VideoEncoderConfig) -> Result<()> {
         if config.codec.as_str() != self.name {
             return Err(MediaError::UnsupportedCodec {
@@ -453,6 +568,7 @@ impl VideoEncoderManifest {
         Ok(())
     }
 
+    /// Validate `config` and create a buffered encoder session.
     pub fn create_encoder(
         self,
         config: VideoEncoderConfig,
@@ -461,6 +577,7 @@ impl VideoEncoderManifest {
         (self.create_session)(config)
     }
 
+    /// Validate `config` and encode frames pulled from `source`.
     pub fn encode_source<'a>(
         self,
         source: &mut dyn RawVideoFrameSource,

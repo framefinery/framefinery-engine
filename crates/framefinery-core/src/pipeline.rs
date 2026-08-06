@@ -1,60 +1,69 @@
 use crate::error::Result;
 use crate::{Frame, Packet};
 
-#[cfg(feature = "filter-identity")]
-pub use crate::filters::IdentityFilter;
-
+/// Counters returned after running a frame-filter pipeline.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FilterPipelineStats {
+    /// Frames pulled from the source.
     pub input_frames: usize,
+    /// Frames pushed to the sink after every filter stage.
     pub output_frames: usize,
 }
 
+/// Counters returned after running a frame-to-packet encode pipeline.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct EncodePipelineStats {
+    /// Frames pulled from the source.
     pub input_frames: usize,
+    /// Frames submitted to the encoder after filtering.
     pub encoded_frames: usize,
+    /// Packets pushed to the sink, including encoder flush packets.
     pub output_packets: usize,
 }
 
+/// Pull-based source stage for generic media pipelines.
 pub trait Source {
+    /// Item produced by this source.
     type Output;
 
+    /// Pull the next item, returning `Ok(None)` at clean end of stream.
     fn pull(&mut self) -> Result<Option<Self::Output>>;
 }
 
+/// Push-based terminal stage for generic media pipelines.
 pub trait Sink<I> {
+    /// Consume one pipeline item.
     fn push(&mut self, input: I) -> Result<()>;
 
+    /// Finish the sink after every upstream stage has completed.
     fn finish(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
-pub trait Decoder {
-    fn decode(&mut self, packet: Packet) -> Result<Vec<Frame>>;
-
-    fn finish(&mut self) -> Result<Vec<Frame>> {
-        Ok(Vec::new())
-    }
-}
-
+/// Frame-to-frame transform stage.
 pub trait Filter {
+    /// Process one frame into zero or more output frames.
     fn process(&mut self, frame: Frame) -> Result<Vec<Frame>>;
 
+    /// Flush delayed frames at end of stream.
     fn finish(&mut self) -> Result<Vec<Frame>> {
         Ok(Vec::new())
     }
 }
 
+/// Frame-to-packet encoder stage for the generic pipeline helpers.
 pub trait Encoder {
+    /// Encode one frame into zero or more packets.
     fn encode(&mut self, frame: Frame) -> Result<Vec<Packet>>;
 
+    /// Flush delayed packets at end of stream.
     fn finish(&mut self) -> Result<Vec<Packet>> {
         Ok(Vec::new())
     }
 }
 
+/// Run a source through zero or more frame filters into a frame sink.
 pub fn run_frame_filter_pipeline(
     source: &mut dyn Source<Output = Frame>,
     filters: &mut [&mut dyn Filter],
@@ -77,6 +86,7 @@ pub fn run_frame_filter_pipeline(
     Ok(stats)
 }
 
+/// Run a source through zero or more frame filters, an encoder, and a packet sink.
 pub fn run_frame_encode_pipeline(
     source: &mut dyn Source<Output = Frame>,
     filters: &mut [&mut dyn Filter],

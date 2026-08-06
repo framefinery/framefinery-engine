@@ -81,6 +81,28 @@ API documentation is published by docs.rs after crates.io publication:
 https://docs.rs/framefinery
 ```
 
+Generate the same API reference locally from the Rust `///` and `//!`
+documentation comments:
+
+```sh
+make api-docs
+```
+
+Open the generated facade reference at:
+
+```text
+target/doc/framefinery/index.html
+```
+
+Before release, run the strict documentation audit:
+
+```sh
+make api-docs-strict
+```
+
+That target fails when exported API is missing Rustdoc comments, so the
+generated reference stays tied to the code instead of becoming a stale manual.
+
 The CLI guide lives in
 [`docs/cli.md`](https://github.com/framefinery/framefinery-engine/blob/main/docs/cli.md).
 
@@ -121,11 +143,11 @@ make ci
 make release-check
 ```
 
-`make ci` is the same gate used by GitHub Actions. It runs the release check
-and a tiny AV2/VVC encode smoke using generated black, checker, and color-block
-`pattern` source filters across a few small geometries, so it does not depend
-on local media files. `make release-check` is kept as the explicit
-release-oriented target name.
+`make ci` is the same gate used by GitHub Actions. It runs the release check,
+the strict exported-API documentation audit, and a tiny AV2/VVC encode smoke
+using generated black, checker, and color-block `pattern` source filters across
+a few small geometries, so it does not depend on local media files.
+`make release-check` is kept as the explicit release-oriented target name.
 
 Release candidates should also run the local AOM CTC release manifest and save
 a performance table for version-to-version comparison:

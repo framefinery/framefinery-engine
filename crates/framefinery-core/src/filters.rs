@@ -12,65 +12,100 @@ use crate::FrameInfo;
 #[cfg(feature = "filter-pattern")]
 use crate::PixelFormat;
 
+/// Pipeline position served by a filter manifest entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterStageKind {
+    /// A source filter generates frames and replaces file input.
     Source,
+    /// A transform filter consumes and emits frames.
     Transform,
 }
 
+/// Implementation status for a declared filter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterStatus {
+    /// The filter can be constructed and executed.
     Implemented,
+    /// The filter is declared for help/discovery but execution is not ready.
     Scaffold,
 }
 
+/// Value shape for one parameter in a filter spec.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterSpecValue {
+    /// Parameter must be one of the listed strings.
     Choice(&'static [&'static str]),
+    /// Parameter must be an integer greater than zero.
     PositiveInteger,
+    /// Parameter must be an integer greater than or equal to zero.
     UnsignedInteger,
 }
 
+/// One accepted textual form for a filter spec.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FilterSpecForm {
+    /// User-facing syntax, such as `pattern=<name>`.
     pub syntax: &'static str,
+    /// Short explanation of the syntax form.
     pub summary: &'static str,
 }
 
+/// One named parameter accepted by a filter spec.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FilterSpecParameter {
+    /// Parameter name used in the spec string.
     pub name: &'static str,
+    /// Placeholder name shown for the parameter value.
     pub value_name: &'static str,
+    /// Whether this parameter is required.
     pub required: bool,
+    /// Value shape accepted by this parameter.
     pub value: FilterSpecValue,
+    /// Short explanation of the parameter.
     pub summary: &'static str,
 }
 
+/// One example filter spec for help and generated documentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FilterSpecExample {
+    /// Complete filter spec string.
     pub spec: &'static str,
+    /// Short explanation of the example.
     pub summary: &'static str,
 }
 
+/// Documentation manifest for one filter's accepted spec strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FilterSpecManifest {
+    /// Supported syntax forms.
     pub forms: &'static [FilterSpecForm],
+    /// Declared parameters.
     pub parameters: &'static [FilterSpecParameter],
+    /// Example specs.
     pub examples: &'static [FilterSpecExample],
+    /// Additional behavior notes.
     pub notes: &'static [&'static str],
 }
 
+/// Public manifest entry for a compiled filter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FilterManifest {
+    /// Stable filter name.
     pub name: &'static str,
+    /// Pipeline position served by this filter.
     pub stage: FilterStageKind,
+    /// Cargo feature that enables this filter.
     pub feature: &'static str,
+    /// Whether the filter executes today or is only a scaffold.
     pub status: FilterStatus,
+    /// Structured spec/help manifest.
     pub spec: &'static FilterSpecManifest,
+    /// Short user-facing summary.
     pub summary: &'static str,
 }
 
 impl FilterManifest {
+    /// Return a stable string label for this filter's implementation status.
     pub const fn implementation_status(self) -> &'static str {
         match self.status {
             FilterStatus::Implemented => "implemented",
@@ -79,6 +114,7 @@ impl FilterManifest {
     }
 }
 
+/// Canonical pattern source names accepted by the `pattern` source filter.
 pub const PATTERN_SOURCE_NAMES: &[&str] = &["black", "checker", "gradient", "color_blocks"];
 
 const PATTERN_SPEC_FORMS: &[FilterSpecForm] = &[
@@ -118,6 +154,7 @@ const PATTERN_SPEC_NOTES: &[&str] = &[
     "blocks is accepted as a short alias for color_blocks",
 ];
 
+/// Spec manifest for the `pattern` source filter.
 pub const PATTERN_FILTER_SPEC: FilterSpecManifest = FilterSpecManifest {
     forms: PATTERN_SPEC_FORMS,
     parameters: PATTERN_SPEC_PARAMETERS,
@@ -135,6 +172,7 @@ const IDENTITY_SPEC_EXAMPLES: &[FilterSpecExample] = &[FilterSpecExample {
     summary: "exercise the frame filter pipeline without changing pixels",
 }];
 
+/// Spec manifest for the `identity` transform filter.
 pub const IDENTITY_FILTER_SPEC: FilterSpecManifest = FilterSpecManifest {
     forms: IDENTITY_SPEC_FORMS,
     parameters: &[],
@@ -185,6 +223,7 @@ const CROP_SPEC_EXAMPLES: &[FilterSpecExample] = &[FilterSpecExample {
 
 const CROP_SPEC_NOTES: &[&str] = &["execution is still a scaffold"];
 
+/// Spec manifest for the `crop` transform scaffold.
 pub const CROP_FILTER_SPEC: FilterSpecManifest = FilterSpecManifest {
     forms: CROP_SPEC_FORMS,
     parameters: CROP_SPEC_PARAMETERS,
@@ -221,6 +260,7 @@ const SCALE_SPEC_EXAMPLES: &[FilterSpecExample] = &[FilterSpecExample {
 
 const SCALE_SPEC_NOTES: &[&str] = &["execution is still a scaffold"];
 
+/// Spec manifest for the `scale` transform scaffold.
 pub const SCALE_FILTER_SPEC: FilterSpecManifest = FilterSpecManifest {
     forms: SCALE_SPEC_FORMS,
     parameters: SCALE_SPEC_PARAMETERS,
@@ -228,6 +268,7 @@ pub const SCALE_FILTER_SPEC: FilterSpecManifest = FilterSpecManifest {
     notes: SCALE_SPEC_NOTES,
 };
 
+/// Filter manifests compiled into this build.
 pub const FILTERS: &[FilterManifest] = &[
     #[cfg(feature = "filter-pattern")]
     FilterManifest {
@@ -267,27 +308,36 @@ pub const FILTERS: &[FilterManifest] = &[
     },
 ];
 
+/// Find a compiled filter manifest by name.
 pub fn filter_manifest(name: &str) -> Option<FilterManifest> {
     FILTERS.iter().copied().find(|filter| filter.name == name)
 }
 
+/// Find a compiled filter's spec manifest by name.
 pub fn filter_spec_manifest(name: &str) -> Option<&'static FilterSpecManifest> {
     filter_manifest(name).map(|filter| filter.spec)
 }
 
+/// Parsed filter stage spec.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilterStageSpec {
+    /// Filter name parsed from `spec`.
     pub name: String,
+    /// Original full filter spec string.
     pub spec: String,
 }
 
+/// Parsed filter pipeline specification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilterPipelineSpec {
+    /// Optional source filter. Present only when no file input is used.
     pub source: Option<FilterStageSpec>,
+    /// Ordered transform filters.
     pub transforms: Vec<FilterStageSpec>,
 }
 
 impl FilterStageSpec {
+    /// Parse one raw filter spec into a stage spec.
     pub fn new(spec: impl Into<String>) -> Result<Self> {
         let spec = spec.into();
         let name = filter_spec_name(&spec).to_string();
@@ -300,12 +350,14 @@ impl FilterStageSpec {
     }
 }
 
+/// Return the filter name portion of a filter spec string.
 pub fn filter_spec_name(spec: &str) -> &str {
     spec.split_once('=')
         .or_else(|| spec.split_once(':'))
         .map_or(spec, |(name, _)| name)
 }
 
+/// Parse and validate an ordered set of filter specs for an encode pipeline.
 pub fn parse_filter_pipeline_specs(
     specs: &[String],
     input_present: bool,
@@ -358,6 +410,7 @@ pub fn parse_filter_pipeline_specs(
     Ok(FilterPipelineSpec { source, transforms })
 }
 
+/// Generate raw video bytes from an executable source filter.
 pub fn generate_source_filter_stream(
     stage: &FilterStageSpec,
     info: FrameInfo,
@@ -371,6 +424,7 @@ pub fn generate_source_filter_stream(
     }
 }
 
+/// Build an executable transform filter from a parsed stage spec.
 pub fn build_filter_transform(stage: &FilterStageSpec) -> Result<Box<dyn Filter>> {
     match stage.name.as_str() {
         "identity" => build_identity_filter(),
@@ -458,6 +512,7 @@ fn parse_pattern_stage_kind(spec: &str) -> Result<PatternKind> {
     PatternKind::parse(value)
 }
 
+/// No-op frame transform that returns each input frame unchanged.
 #[derive(Debug, Clone, Copy, Default)]
 #[cfg(feature = "filter-identity")]
 pub struct IdentityFilter;
@@ -469,23 +524,31 @@ impl Filter for IdentityFilter {
     }
 }
 
+/// Deterministic pattern produced by the `pattern` source filter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg(feature = "filter-pattern")]
 pub enum PatternKind {
+    /// Solid black frames.
     Black,
+    /// Moving checkerboard frames.
     Checker,
+    /// Moving luma/chroma gradient frames.
     Gradient,
+    /// Moving colored block frames.
     ColorBlocks,
 }
 
 #[cfg(feature = "filter-pattern")]
 impl PatternKind {
+    /// Canonical names accepted by the pattern parser.
     pub const CANONICAL_NAMES: &'static [&'static str] = PATTERN_SOURCE_NAMES;
 
+    /// Parse a pattern kind by name.
     pub fn parse(value: &str) -> Result<Self> {
         value.parse()
     }
 
+    /// Canonical name for this pattern kind.
     pub const fn name(self) -> &'static str {
         match self {
             Self::Black => "black",
@@ -514,6 +577,7 @@ impl FromStr for PatternKind {
     }
 }
 
+/// Source stage that generates deterministic raw frames from a pattern.
 #[derive(Debug, Clone)]
 #[cfg(feature = "filter-pattern")]
 pub struct PatternSource {
@@ -525,6 +589,7 @@ pub struct PatternSource {
 
 #[cfg(feature = "filter-pattern")]
 impl PatternSource {
+    /// Create a finite pattern source.
     pub fn new(info: FrameInfo, pattern: PatternKind, frames: usize) -> Result<Self> {
         validate_pattern_format(info.format)?;
         Ok(Self {
@@ -535,14 +600,17 @@ impl PatternSource {
         })
     }
 
+    /// Pattern emitted by this source.
     pub const fn pattern(&self) -> PatternKind {
         self.pattern
     }
 
+    /// Frame metadata emitted by this source.
     pub const fn info(&self) -> FrameInfo {
         self.info
     }
 
+    /// Number of frames still available before EOF.
     pub const fn frames_remaining(&self) -> usize {
         self.frames_remaining
     }
@@ -564,6 +632,7 @@ impl Source for PatternSource {
 }
 
 #[cfg(feature = "filter-pattern")]
+/// Generate a finite raw byte stream for a deterministic pattern.
 pub fn generate_pattern_stream(
     info: FrameInfo,
     pattern: PatternKind,
@@ -582,6 +651,7 @@ pub fn generate_pattern_stream(
 }
 
 #[cfg(feature = "filter-pattern")]
+/// Generate one deterministic raw frame for a pattern.
 pub fn pattern_frame_data(info: FrameInfo, pattern: PatternKind, frame: usize) -> Result<Vec<u8>> {
     validate_pattern_format(info.format)?;
     match info.format {

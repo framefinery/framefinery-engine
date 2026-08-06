@@ -13,14 +13,14 @@
 //! # Ok::<(), framefinery_core::MediaError>(())
 //! ```
 
-pub mod dpb;
-pub mod error;
-pub mod filters;
-pub mod frame;
-pub mod packet;
-pub mod pipeline;
-pub mod settings;
-pub mod video;
+mod dpb;
+mod error;
+mod filters;
+mod frame;
+mod packet;
+mod pipeline;
+mod settings;
+mod video;
 
 pub use dpb::{DecodedPictureBuffer, DpbEntry, PictureId};
 pub use error::{MediaError, Result};
@@ -42,8 +42,8 @@ pub use frame::{
 };
 pub use packet::{Packet, StreamId, Timestamp};
 pub use pipeline::{
-    run_frame_encode_pipeline, run_frame_filter_pipeline, Decoder, EncodePipelineStats, Encoder,
-    Filter, FilterPipelineStats, Sink, Source,
+    run_frame_encode_pipeline, run_frame_filter_pipeline, EncodePipelineStats, Encoder, Filter,
+    FilterPipelineStats, Sink, Source,
 };
 pub use settings::{
     boolean_setting_enabled, setting_name, setting_value, setting_values_label, u8_setting,
@@ -58,4 +58,5 @@ pub use video::{
     VideoEncoderSessionFactory, VideoEncoderSetting, VideoRateControl, VideoSettingValue,
 };
 
+/// Version of the `framefinery-core` crate compiled into this build.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

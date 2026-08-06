@@ -41,6 +41,7 @@ use framefinery_core::{
 
 pub use framefinery_core::{ChromaSampling, PixelFormat, SampleBitDepth};
 
+/// Video encoder manifests compiled into this build.
 pub const ENCODERS: &[VideoEncoderManifest] = &[
     #[cfg(feature = "av2")]
     av2::AV2_CODEC,
@@ -48,6 +49,7 @@ pub const ENCODERS: &[VideoEncoderManifest] = &[
     vvc::VVC_CODEC,
 ];
 
+/// Find a compiled video encoder manifest by codec id.
 pub fn encoder(name: &str) -> Option<VideoEncoderManifest> {
     ENCODERS
         .iter()
@@ -55,6 +57,7 @@ pub fn encoder(name: &str) -> Option<VideoEncoderManifest> {
         .find(|encoder| encoder.name == name)
 }
 
+/// Create a buffered encoder session from a codec-neutral config.
 pub fn create_encoder(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>> {
     let Some(encoder) = encoder(config.codec.as_str()) else {
         return Err(MediaError::UnsupportedCodec {

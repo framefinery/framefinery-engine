@@ -243,7 +243,7 @@ CODE_BROWSER_PROFILE_FLAG := $(if $(strip $(CODE_BROWSER_PROFILE_JSON)),--profil
 GEOMETRY_SWEEP_AV2_SETTINGS_FLAG := $(foreach setting,$(GEOMETRY_SWEEP_AV2_SETTINGS),--setting $(setting))
 GPROF_PROFILE_SETTINGS_FLAG := $(foreach setting,$(GPROF_PROFILE_SETTINGS),--set "$(setting)")
 
-.PHONY: help check-tools fmt fmt-check check feature-matrix dead-code-audit clippy-perf test doc package-list build debug run code-browser reference-list reference-setup test-vector-sets test-vectors validate-set validate-release-aomctc release-performance-table compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check ci ci-encode-smoke
+.PHONY: help check-tools fmt fmt-check check feature-matrix dead-code-audit clippy-perf test doc api-docs api-docs-strict package-list build debug run code-browser reference-list reference-setup test-vector-sets test-vectors validate-set validate-release-aomctc release-performance-table compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check ci ci-encode-smoke
 
 help:
 	@printf '%s\n' \
@@ -256,7 +256,9 @@ help:
 		'  make dead-code-audit  Fail stale internal helpers in the all-product build' \
 		'  make clippy-perf      Run Clippy performance lints on product features' \
 		'  make test             Run Rust tests' \
-		'  make doc              Build workspace API docs without dependencies' \
+		'  make doc              Build generated Rustdoc API reference' \
+		'  make api-docs         Alias for make doc; writes target/doc/framefinery/index.html' \
+		'  make api-docs-strict  Fail if exported API is missing /// documentation' \
 		'  make package-list     Show files that Cargo would include in each crate' \
 		'  make build            Build release CLI and copy it to ./ff' \
 		'                         Set CARGO_DEFAULT_FEATURES=0 to build only CARGO_FEATURES' \
@@ -375,8 +377,15 @@ clippy-perf:
 test:
 	$(CARGO) test --workspace $(CARGO_FLAGS)
 
-doc:
+doc: api-docs
+
+api-docs:
 	$(CARGO) doc --workspace --features "$(PRODUCT_FEATURES)" --no-deps
+
+api-docs-strict:
+	$(CARGO) rustdoc -p framefinery-core --features "filter-pattern filter-identity filter-crop filter-scale" -- -D missing_docs
+	$(CARGO) rustdoc -p framefinery-codecs --features "av2 vvc" -- -D missing_docs
+	$(CARGO) rustdoc -p framefinery --lib --features "$(PRODUCT_FEATURES)" -- -D missing_docs
 
 package-list:
 	$(CARGO) package --allow-dirty --list -p framefinery-core
@@ -516,7 +525,7 @@ regression: build
 	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 smoke --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(VALIDATION_REFERENCE_MODE)" --stop-on-fail
 	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc smoke --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(VALIDATION_REFERENCE_MODE)" --stop-on-fail
 
-release-check: check-tools fmt-check check feature-matrix test doc package-list build
+release-check: check-tools fmt-check check feature-matrix test api-docs-strict doc package-list build
 
 ci-encode-smoke: build
 	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(CI_ENCODE_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode off --source-filters --cleanup-recon --cleanup-output --stop-on-fail
