@@ -18,6 +18,10 @@ This repository is in bootstrap state. It currently provides project structure,
 shared media primitives, a CLI, and local experimental AV2/VVC software
 encoders.
 
+The public Rust API is still in the `0.0.x` line. It is intended to be useful
+for early integration and validation work, but names and behavior may break
+before `0.1.0` as the API contract cools down.
+
 ## Goals
 
 - Provide safe Rust media pipeline components.

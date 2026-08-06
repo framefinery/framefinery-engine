@@ -5,9 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-readme.workspace = true
+readme = "README.md"
 keywords.workspace = true
-categories.workspace = true
+categories = ["multimedia::video", "multimedia::encoding", "encoding"]
 description = "Experimental codec models for FrameFinery."
 documentation = "https://docs.rs/framefinery-codecs"
 

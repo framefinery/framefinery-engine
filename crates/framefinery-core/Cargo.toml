@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 readme = "README.md"
 keywords.workspace = true
-categories.workspace = true
+categories = ["multimedia::video", "multimedia::encoding", "encoding"]
 description = "Core media primitives for FrameFinery."
 documentation = "https://docs.rs/framefinery-core"
 

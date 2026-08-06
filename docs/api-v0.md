@@ -6,6 +6,10 @@ purpose of writing them down now is to make the codebase converge around one
 integration model instead of letting the CLI, native library API, and future
 WASM package drift apart.
 
+The `0.0.x` releases are not a stability promise. They are public checkpoints
+for early adopters and validation users, and the Rust API may still make
+breaking changes before `0.1.0`.
+
 This is not the complete API reference. The reference is generated from Rust
 `///` and `//!` documentation comments:
 
