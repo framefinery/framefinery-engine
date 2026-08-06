@@ -7,7 +7,7 @@ each later versioned release.
 
 ## Current Status
 
-- Workspace packages are set to version `0.0.2`.
+- Workspace packages are set to version `0.0.3`.
 - Publishable crate names are:
   - `framefinery-core`
   - `framefinery-codecs`
@@ -85,7 +85,7 @@ Before a manual publish:
   quickly, but users should know which APIs are intended public surface and
   which internals remain experimental.
 - Clean stale local package artifacts before final dry runs. `target/package`
-  was cleaned during 0.0.2 preparation and should be empty before the final
+  was cleaned during 0.0.3 preparation and should be empty before the final
   package inspection starts.
 - Optionally clean old ignored benchmark artifacts under `verification/generated`
   before longer release validation runs to reduce disk pressure. Keep the local

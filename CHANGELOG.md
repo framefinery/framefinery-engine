@@ -4,7 +4,7 @@ All notable release-facing changes should be recorded here before publishing a
 crate version. FrameFinery is still in the `0.0.x` line, so API names and
 behavior may change quickly while the public contract settles.
 
-## 0.0.2 - Unreleased
+## 0.0.3 - Unreleased
 
 - Shape the v0 Rust encoder API around codec-neutral configs and registry
   helpers.

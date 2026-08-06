@@ -101,7 +101,7 @@ compatibility alias for the complete filter catalog:
 
 ```toml
 framefinery-core = {
-  version = "0.0.2",
+  version = "0.0.3",
   default-features = false,
   features = ["filter-identity"]
 }

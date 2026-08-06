@@ -21,8 +21,8 @@ name = "ff"
 path = "src/main.rs"
 
 [dependencies]
-framefinery-core = { path = "../framefinery-core", version = "0.0.2", default-features = false }
-framefinery-codecs = { path = "../framefinery-codecs", version = "0.0.2", optional = true, default-features = false }
+framefinery-core = { path = "../framefinery-core", version = "0.0.3", default-features = false }
+framefinery-codecs = { path = "../framefinery-codecs", version = "0.0.3", optional = true, default-features = false }
 
 [features]
 default = ["all-codecs", "product-filters"]
