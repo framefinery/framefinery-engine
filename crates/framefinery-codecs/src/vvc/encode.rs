@@ -120,7 +120,7 @@ pub fn vvc_yuv_encode_stream_with_limits<R: Read, W: Write>(
     limits: VvcVideoLimits,
     format: PixelFormat,
 ) -> Result<(), String> {
-    vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics(
+    vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics(
         input,
         bitstream,
         reconstruction,
@@ -129,31 +129,6 @@ pub fn vvc_yuv_encode_stream_with_limits<R: Read, W: Write>(
         limits,
         format,
         VvcEncodeOptions::default(),
-        None,
-        None,
-    )
-}
-
-pub fn vvc_yuv_encode_stream_with_limits_and_progress<R: Read, W: Write>(
-    input: &mut R,
-    bitstream: &mut W,
-    reconstruction: Option<&mut dyn Write>,
-    params: VvcEncodeParams,
-    geometry: VvcVideoGeometry,
-    limits: VvcVideoLimits,
-    format: PixelFormat,
-    progress: Option<&mut dyn FnMut(VvcEncodeProgress)>,
-) -> Result<(), String> {
-    vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics(
-        input,
-        bitstream,
-        reconstruction,
-        params,
-        geometry,
-        limits,
-        format,
-        VvcEncodeOptions::default(),
-        progress,
         None,
     )
 }
@@ -187,41 +162,12 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
 >(
     input: &mut R,
     bitstream: &mut W,
-    reconstruction: Option<&mut dyn Write>,
-    params: VvcEncodeParams,
-    geometry: VvcVideoGeometry,
-    limits: VvcVideoLimits,
-    format: PixelFormat,
-    options: VvcEncodeOptions,
-    frame_metrics: Option<&mut dyn for<'a> FnMut(VvcEncodeFrameMetrics<'a>)>,
-) -> Result<(), String> {
-    vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics(
-        input,
-        bitstream,
-        reconstruction,
-        params,
-        geometry,
-        limits,
-        format,
-        options,
-        None,
-        frame_metrics,
-    )
-}
-
-fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<
-    R: Read + ?Sized,
-    W: Write + ?Sized,
->(
-    input: &mut R,
-    bitstream: &mut W,
     mut reconstruction: Option<&mut dyn Write>,
     params: VvcEncodeParams,
     geometry: VvcVideoGeometry,
     limits: VvcVideoLimits,
     format: PixelFormat,
     options: VvcEncodeOptions,
-    mut progress: Option<&mut dyn FnMut(VvcEncodeProgress)>,
     mut frame_metrics: Option<&mut dyn for<'a> FnMut(VvcEncodeFrameMetrics<'a>)>,
 ) -> Result<(), String> {
     let request = VvcEncodeRequest {
@@ -301,7 +247,7 @@ fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<
             skip_slice_config,
         ));
     }
-    write_annex_b_to(bitstream, &parameter_sets)?;
+    let mut total_bitstream_bytes = write_annex_b_to(bitstream, &parameter_sets)?;
 
     #[cfg(feature = "vvc-stats")]
     let mut vvc_stats = VvcStatsSink::from_env()?;
@@ -331,12 +277,7 @@ fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<
         if !frame_available {
             break;
         }
-        if let Some(progress) = progress.as_deref_mut() {
-            progress(VvcEncodeProgress {
-                frame_idx,
-                frame_count: frame_limit.metric_count(),
-            });
-        }
+        let frame_encode_start = Instant::now();
         let repeated_predictive_cache = if options.predictive && frame_idx > 0 {
             previous_predictive_cache
                 .as_ref()
@@ -764,6 +705,7 @@ fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<
         }
             };
         previous_predictive_cache = next_predictive_cache;
+        total_bitstream_bytes += frame_bitstream_bytes;
         #[cfg(feature = "vvc-stats")]
         frame_stats.set_bitstream_bytes(frame_bitstream_bytes);
         if let Some(writer) = reconstruction.as_deref_mut() {
@@ -782,6 +724,8 @@ fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<
                 frame_idx,
                 frame_count: frame_limit.metric_count(),
                 bitstream_bytes: frame_bitstream_bytes,
+                total_bitstream_bytes,
+                encode_elapsed: frame_encode_start.elapsed(),
                 source: &frame_buf,
                 reconstruction: &frame_recon_yuv,
             });
@@ -808,11 +752,16 @@ fn vvc_yuv_encode_stream_with_limits_and_progress_and_frame_metrics<
     }
 }
 
-fn write_annex_b_to<W: Write + ?Sized>(output: &mut W, units: &[VvcNalUnit]) -> Result<(), String> {
+fn write_annex_b_to<W: Write + ?Sized>(
+    output: &mut W,
+    units: &[VvcNalUnit],
+) -> Result<usize, String> {
     let bytes = write_annex_b(units)?;
+    let len = bytes.len();
     output
         .write_all(&bytes)
-        .map_err(|err| format!("failed to write VVC Annex-B stream: {err}"))
+        .map_err(|err| format!("failed to write VVC Annex-B stream: {err}"))?;
+    Ok(len)
 }
 
 fn vvc_intra_ctu_payload_from_decision(

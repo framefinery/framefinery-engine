@@ -160,6 +160,9 @@ impl VideoEncoderBuilder {
     }
 
     /// Encode frames pulled from `source` using this builder.
+    ///
+    /// `frame_metrics`, when present, is called after each encoded frame with
+    /// timing, per-frame bytes, cumulative bytes, and optional PSNR.
     pub fn encode_source(
         self,
         source: &mut dyn RawVideoFrameSource,

@@ -1,4 +1,5 @@
 use std::io::{Cursor, Read, Write};
+use std::time::Duration;
 
 use framefinery_core::{
     frame_psnr, CodecId, EncodedVideoChunk, Frame, FrameEncodeMetrics, MediaError,
@@ -124,13 +125,14 @@ impl VideoEncoderSession for BufferedStreamEncoderSession {
             settings: &settings,
         };
         let mut metrics = Vec::new();
+        let mut total_bitstream_bytes = 0usize;
         let mut metrics_callback = |frame: VideoEncodeFrameMetrics<'_>| {
+            let frame = complete_frame_metrics(&self.config, &mut total_bitstream_bytes, frame);
             metrics.push(FrameEncodeMetrics {
                 frame_index: frame.frame_idx,
                 frame_count: frame.frame_count,
                 encoded_bytes: frame.bitstream_bytes,
-                psnr: frame_psnr(self.config.input, frame.source, frame.reconstruction)
-                    .map(|psnr| psnr.all),
+                psnr: frame.psnr.map(|psnr| psnr.all),
             });
         };
         let should_collect_metrics = self.config.reconstruction != ReconstructionMode::None;
@@ -198,8 +200,41 @@ pub(crate) fn encode_stream_from_source(
     if let Some(frame_limit) = config.frame_limit {
         input = input.with_frame_limit(frame_limit);
     }
+    let mut total_bitstream_bytes = 0usize;
+    let mut frame_metrics = frame_metrics;
+    let has_frame_metrics = frame_metrics.is_some();
+    let mut callback = |frame: VideoEncodeFrameMetrics<'_>| {
+        let frame = complete_frame_metrics(config, &mut total_bitstream_bytes, frame);
+        if let Some(callback) = frame_metrics.as_mut() {
+            callback(frame);
+        }
+    };
+    let frame_metrics = if has_frame_metrics {
+        Some(&mut callback as VideoEncodeFrameMetricsCallback<'_>)
+    } else {
+        None
+    };
     (manifest.encode_stream)(&mut input, output, recon, request, frame_metrics)
         .map_err(MediaError::Message)
+}
+
+fn complete_frame_metrics<'a>(
+    config: &VideoEncoderConfig,
+    total_bitstream_bytes: &mut usize,
+    mut frame: VideoEncodeFrameMetrics<'a>,
+) -> VideoEncodeFrameMetrics<'a> {
+    *total_bitstream_bytes += frame.bitstream_bytes;
+    if frame.total_bitstream_bytes == 0 {
+        frame.total_bitstream_bytes = *total_bitstream_bytes;
+    } else {
+        *total_bitstream_bytes = frame.total_bitstream_bytes;
+    }
+    frame.psnr = if config.reconstruction == ReconstructionMode::MetricsOnly {
+        frame_psnr(config.input, frame.source, frame.reconstruction)
+    } else {
+        None
+    };
+    frame
 }
 
 fn split_reconstructions(config: &VideoEncoderConfig, recon: Vec<u8>) -> Result<Vec<Frame>> {
@@ -317,6 +352,9 @@ mod tests {
                     frame_idx,
                     frame_count: frame_limit.metric_count(),
                     bitstream_bytes: frame_len,
+                    total_bitstream_bytes: 0,
+                    encode_elapsed: Duration::ZERO,
+                    psnr: None,
                     source: &frame,
                     reconstruction: &frame,
                 });

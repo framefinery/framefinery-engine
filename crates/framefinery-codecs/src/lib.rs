@@ -77,7 +77,8 @@ pub fn create_encoder(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoder
 ///
 /// This path avoids buffering whole streams in memory and is intended for file,
 /// capture, and validation adapters. `frame_metrics`, when present, is called
-/// while source and reconstruction samples are still available internally.
+/// after each encoded frame with timing, per-frame bytes, cumulative bytes, and
+/// optional PSNR while source and reconstruction samples are still available.
 pub fn encode_source<'callback>(
     config: &VideoEncoderConfig,
     source: &mut dyn RawVideoFrameSource,

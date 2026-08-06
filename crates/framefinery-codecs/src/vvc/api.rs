@@ -123,16 +123,12 @@ pub struct VvcEncodeArtifacts {
     pub reconstruction: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct VvcEncodeProgress {
-    pub frame_idx: usize,
-    pub frame_count: Option<usize>,
-}
-
 pub struct VvcEncodeFrameMetrics<'a> {
     pub frame_idx: usize,
     pub frame_count: Option<usize>,
     pub bitstream_bytes: usize,
+    pub total_bitstream_bytes: usize,
+    pub encode_elapsed: std::time::Duration,
     pub source: &'a [u8],
     pub reconstruction: &'a [u8],
 }

@@ -97,6 +97,9 @@ fn encode_av2_with_manifest(
                 frame_idx: metrics.frame_idx,
                 frame_count: metrics.frame_count,
                 bitstream_bytes: metrics.bitstream_bytes,
+                total_bitstream_bytes: metrics.total_bitstream_bytes,
+                encode_elapsed: metrics.encode_elapsed,
+                psnr: None,
                 source: metrics.source,
                 reconstruction: metrics.reconstruction,
             });

@@ -109,6 +109,11 @@ fn identity_filter_runs_after_pattern_source() {
         String::from_utf8_lossy(&result.stderr)
     );
     assert!(output.metadata().expect("output metadata").len() > 0);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("frame: codec=av2 index=1/1"), "{stderr}");
+    assert!(stderr.contains("fps="), "{stderr}");
+    assert!(stderr.contains("total_bytes="), "{stderr}");
+    assert!(!stderr.contains("psnr"), "{stderr}");
     assert_eq!(
         fs::read(recon).expect("read recon"),
         vec![0u8; yuv420p8_frame_len(16, 16)]

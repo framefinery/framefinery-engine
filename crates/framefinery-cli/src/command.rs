@@ -5,6 +5,7 @@ use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::{Duration, Instant};
 
 use framefinery_core::{
     boolean_setting_enabled, build_filter_transform, build_raw_video_source_filter,
@@ -637,29 +638,60 @@ fn input_label(input: &EncodeInput) -> String {
     }
 }
 
-fn print_frame_metrics(
+fn print_frame_progress(
     codec: &str,
     job: &EncodeJob,
-    frame_idx: usize,
-    frame_count: Option<usize>,
-    bitstream_bytes: usize,
-    source: &[u8],
-    reconstruction: &[u8],
+    elapsed: Duration,
+    metrics: &VideoEncodeFrameMetrics<'_>,
 ) {
-    let bits = bitstream_bytes * 8;
-    let frame_position = match frame_count {
-        Some(frame_count) => format!("{}/{}", frame_idx + 1, frame_count),
-        None => (frame_idx + 1).to_string(),
+    let bits = metrics.bitstream_bytes * 8;
+    let total_bits = metrics.total_bitstream_bytes * 8;
+    let elapsed_secs = elapsed.as_secs_f64();
+    let fps = if elapsed_secs > 0.0 {
+        (metrics.frame_idx + 1) as f64 / elapsed_secs
+    } else {
+        0.0
     };
-    match frame_psnr_for_job(job, source, reconstruction) {
+    let frame_position = match metrics.frame_count {
+        Some(frame_count) => format!("{}/{}", metrics.frame_idx + 1, frame_count),
+        None => (metrics.frame_idx + 1).to_string(),
+    };
+    let psnr = if job.psnr {
+        metrics
+            .psnr
+            .or_else(|| frame_psnr_for_job(job, metrics.source, metrics.reconstruction))
+    } else {
+        None
+    };
+    if !job.psnr {
+        eprintln!(
+            "frame: codec={} index={} elapsed={}s fps={} frame_ms={} bits={} bytes={} total_bits={} total_bytes={}",
+            codec,
+            frame_position,
+            format_seconds(elapsed_secs),
+            format_fps(fps),
+            format_millis(metrics.encode_elapsed),
+            bits,
+            metrics.bitstream_bytes,
+            total_bits,
+            metrics.total_bitstream_bytes,
+        );
+        return;
+    }
+    match psnr {
         Some(psnr) => {
             if job.format.is_rgb() {
                 eprintln!(
-                    "frame: codec={} index={} bits={} bytes={} psnr_r={} psnr_g={} psnr_b={} psnr_all={}",
+                    "frame: codec={} index={} elapsed={}s fps={} frame_ms={} bits={} bytes={} total_bits={} total_bytes={} psnr_r={} psnr_g={} psnr_b={} psnr_all={}",
                     codec,
                     frame_position,
+                    format_seconds(elapsed_secs),
+                    format_fps(fps),
+                    format_millis(metrics.encode_elapsed),
                     bits,
-                    bitstream_bytes,
+                    metrics.bitstream_bytes,
+                    total_bits,
+                    metrics.total_bitstream_bytes,
                     format_psnr(psnr.plane0),
                     format_psnr(psnr.plane1),
                     format_psnr(psnr.plane2),
@@ -667,11 +699,16 @@ fn print_frame_metrics(
                 );
             } else {
                 eprintln!(
-                    "frame: codec={} index={} bits={} bytes={} psnr_y={} psnr_u={} psnr_v={} psnr_all={}",
+                    "frame: codec={} index={} elapsed={}s fps={} frame_ms={} bits={} bytes={} total_bits={} total_bytes={} psnr_y={} psnr_u={} psnr_v={} psnr_all={}",
                     codec,
                     frame_position,
+                    format_seconds(elapsed_secs),
+                    format_fps(fps),
+                    format_millis(metrics.encode_elapsed),
                     bits,
-                    bitstream_bytes,
+                    metrics.bitstream_bytes,
+                    total_bits,
+                    metrics.total_bitstream_bytes,
                     format_psnr(psnr.plane0),
                     format_psnr(psnr.plane1),
                     format_psnr(psnr.plane2),
@@ -680,10 +717,30 @@ fn print_frame_metrics(
             }
         }
         None => eprintln!(
-            "frame: codec={} index={} bits={} bytes={} psnr=n/a",
-            codec, frame_position, bits, bitstream_bytes,
+            "frame: codec={} index={} elapsed={}s fps={} frame_ms={} bits={} bytes={} total_bits={} total_bytes={} psnr=n/a",
+            codec,
+            frame_position,
+            format_seconds(elapsed_secs),
+            format_fps(fps),
+            format_millis(metrics.encode_elapsed),
+            bits,
+            metrics.bitstream_bytes,
+            total_bits,
+            metrics.total_bitstream_bytes,
         ),
     }
+}
+
+fn format_seconds(seconds: f64) -> String {
+    format!("{seconds:.3}")
+}
+
+fn format_fps(fps: f64) -> String {
+    format!("{fps:.2}")
+}
+
+fn format_millis(duration: Duration) -> String {
+    format!("{:.3}", duration.as_secs_f64() * 1000.0)
 }
 
 fn frame_psnr_for_job(job: &EncodeJob, source: &[u8], reconstruction: &[u8]) -> Option<FramePsnr> {
@@ -1179,22 +1236,11 @@ fn encode_with_model(
     let mut source = open_job_source(&job)?;
     let mut output = create_writer(&job.output)?;
     let mut recon = create_optional_writer(job.recon.as_deref())?;
+    let progress_start = Instant::now();
     let mut frame_metrics = |metrics: VideoEncodeFrameMetrics<'_>| {
-        print_frame_metrics(
-            codec.name,
-            &job,
-            metrics.frame_idx,
-            metrics.frame_count,
-            metrics.bitstream_bytes,
-            metrics.source,
-            metrics.reconstruction,
-        );
+        print_frame_progress(codec.name, &job, progress_start.elapsed(), &metrics);
     };
-    let frame_metrics = if job.psnr {
-        Some(&mut frame_metrics as VideoEncodeFrameMetricsCallback<'_>)
-    } else {
-        None
-    };
+    let frame_metrics = Some(&mut frame_metrics as VideoEncodeFrameMetricsCallback<'_>);
     if job.source_format != job.format && recon.is_some() {
         let mut recon_converter =
             FrameFormatConvertingWriter::new(recon.as_mut().expect("checked Some"), &job)?;

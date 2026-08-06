@@ -7,7 +7,6 @@
 //! before FrameFinery can encode arbitrary input pictures.
 
 use std::io::{Cursor, Read, Write};
-#[cfg(feature = "vvc-stats")]
 use std::time::Instant;
 
 use crate::instrumentation::CountingWriter;

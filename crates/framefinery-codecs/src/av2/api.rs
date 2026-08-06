@@ -22,6 +22,8 @@ pub struct Av2EncodeFrameMetrics<'a> {
     pub frame_idx: usize,
     pub frame_count: Option<usize>,
     pub bitstream_bytes: usize,
+    pub total_bitstream_bytes: usize,
+    pub encode_elapsed: std::time::Duration,
     pub source: &'a [u8],
     pub reconstruction: &'a [u8],
 }

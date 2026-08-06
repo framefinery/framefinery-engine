@@ -4,11 +4,25 @@ use std::str::FromStr;
 use crate::error::MediaError;
 use crate::error::Result;
 use crate::pipeline::{Filter, FrameSourceRawVideoAdapter, Source};
+#[cfg(any(
+    feature = "filter-pattern",
+    feature = "filter-crop",
+    feature = "filter-scale"
+))]
+use crate::ChromaSampling;
 use crate::Frame;
 use crate::FrameInfo;
+#[cfg(any(
+    feature = "filter-pattern",
+    feature = "filter-crop",
+    feature = "filter-scale"
+))]
 use crate::PixelFormat;
+use crate::RawVideoFrameSource;
+#[cfg(feature = "filter-pattern")]
+use crate::SampleBitDepth;
+#[cfg(feature = "filter-pattern")]
 use crate::{scale_sample_bit_depth, write_planar_sample};
-use crate::{ChromaSampling, RawVideoFrameSource, SampleBitDepth};
 
 /// Pipeline position served by a filter manifest entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

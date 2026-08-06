@@ -111,8 +111,10 @@ The registry helpers enforce that boundary:
   by `config.codec`.
 - `encode_frame(config, frame)` is the one-frame convenience path for callers
   that already own a `Frame`.
-- `encode_source(&config, source, output, recon, metrics)` is the pull-based
-  stream path for file, capture, and validation adapters.
+- `encode_source(&config, source, output, recon, frame_callback)` is the
+  pull-based stream path for file, capture, and validation adapters. The frame
+  callback is optional and reports timing, per-frame bytes, cumulative bytes,
+  source/reconstruction samples, and PSNR when metric mode is selected.
 
 `VideoEncoderManifest` is not the public object used to encode media. It
 describes a compiled encoder and validates codec-neutral configuration, while
@@ -228,7 +230,18 @@ let mut source = |frame: &mut [u8]| -> Result<bool> {
     Ok(true)
 };
 let mut bitstream = Vec::new();
-encode_source(&config, &mut source, &mut bitstream, None, None)?;
+let mut frames = 0usize;
+let mut on_frame = |metrics: framefinery::VideoEncodeFrameMetrics<'_>| {
+    frames = metrics.frame_idx + 1;
+    eprintln!(
+        "frame={} bytes={} total={} frame_ms={:.3}",
+        frames,
+        metrics.bitstream_bytes,
+        metrics.total_bitstream_bytes,
+        metrics.encode_elapsed.as_secs_f64() * 1000.0,
+    );
+};
+encode_source(&config, &mut source, &mut bitstream, None, Some(&mut on_frame))?;
 # let _ = &mut source as &mut dyn RawVideoFrameSource;
 # Ok::<(), framefinery::MediaError>(())
 ```
@@ -239,6 +252,13 @@ need a total frame count: `VideoEncoderConfig::frame_limit` is an optional
 upper bound for callers that want bounded file/test encodes or known progress.
 File, Y4M, WebCodecs, screen-capture, and test-vector code should be adapters
 that implement this callback shape.
+
+The frame callback is called after each encoded frame. `bitstream_bytes` is the
+frame payload size, `total_bitstream_bytes` is the encoded stream size observed
+through that frame, and `encode_elapsed` is per-frame wall time after the source
+frame has been read. `psnr` is populated when
+`VideoEncoderConfig::reconstruction` is `MetricsOnly`; callers can also use the
+borrowed `source` and `reconstruction` slices to compute custom metrics.
 
 When a byte-reader bridge is still needed, `RawVideoFrameSourceReadAdapter`
 adapts a raw-frame source to `std::io::Read` while buffering one frame at a
@@ -325,7 +345,8 @@ records.
 Current modes:
 
 - `None`: emit only encoded chunks;
-- `MetricsOnly`: compute quality metrics without returning reconstructed frames;
+- `MetricsOnly`: compute quality metrics, including callback PSNR, without
+  returning reconstructed frames;
 - `Frames`: return reconstructed `Frame` values to the caller.
 
 Native CLI builds can map these to `--psnr` and `--recon`. WASM builds should

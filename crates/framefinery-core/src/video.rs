@@ -1,9 +1,11 @@
 use std::fmt;
 use std::io::{Read, Write};
 use std::str::FromStr;
+use std::time::Duration;
 
 use crate::{
-    Frame, FrameInfo, MediaError, PixelFormat, Result, SettingManifest, SettingValue, Timestamp,
+    Frame, FrameInfo, FramePsnr, MediaError, PixelFormat, Result, SettingManifest, SettingValue,
+    Timestamp,
 };
 
 /// Stable codec identifier used by CLI, manifests, and library callers.
@@ -350,8 +352,14 @@ pub struct VideoEncodeFrameMetrics<'a> {
     pub frame_idx: usize,
     /// Optional total frame count when known by the caller.
     pub frame_count: Option<usize>,
-    /// Encoded bytes produced through this frame.
+    /// Encoded bytes produced by this frame.
     pub bitstream_bytes: usize,
+    /// Encoded bytes produced by all reported frames through this frame.
+    pub total_bitstream_bytes: usize,
+    /// Wall time spent encoding this frame after the source frame was read.
+    pub encode_elapsed: Duration,
+    /// PSNR for this frame when reconstruction metrics were requested.
+    pub psnr: Option<FramePsnr>,
     /// Source frame bytes for metric calculations.
     pub source: &'a [u8],
     /// Reconstructed frame bytes for metric calculations.

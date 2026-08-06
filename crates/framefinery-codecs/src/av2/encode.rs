@@ -53,6 +53,7 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
     let frame_limit = FrameLimit::from_frame_count(request.params.frames);
     let mut source_frame = vec![0; source_expected_len];
     let mut frame_index = 0usize;
+    let mut total_bitstream_bytes = 0usize;
     while frame_limit.should_read(frame_index) {
         let mut frame_stats = stats::Av2FrameStats::new(
             frame_index,
@@ -77,6 +78,7 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
         if !frame_was_read {
             break;
         }
+        let frame_encode_start = std::time::Instant::now();
         let coded_frame: Vec<u8>;
         let frame = if packed_rgb_identity {
             let stage_start = stats::Av2StageStart::now();
@@ -149,6 +151,7 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
             output
                 .write_all(&bitstream)
                 .map_err(|err| format!("failed to write AV2 bitstream: {err}"))?;
+            total_bitstream_bytes += bitstream.len();
             frame_stats.add_elapsed("bitstream_write", stage_start);
             let public_reconstruction: Vec<u8>;
             let reconstruction = if packed_rgb_identity {
@@ -172,6 +175,8 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
                     frame_idx: frame_index,
                     frame_count: frame_limit.metric_count(),
                     bitstream_bytes: bitstream.len(),
+                    total_bitstream_bytes,
+                    encode_elapsed: frame_encode_start.elapsed(),
                     source: &source_frame,
                     reconstruction,
                 });
@@ -274,6 +279,7 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
             output
                 .write_all(&bitstream)
                 .map_err(|err| format!("failed to write AV2 bitstream: {err}"))?;
+            total_bitstream_bytes += bitstream.len();
             frame_stats.add_elapsed("bitstream_write", stage_start);
             let public_reconstruction: Vec<u8>;
             let reconstruction = if packed_rgb_identity {
@@ -297,6 +303,8 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
                     frame_idx: frame_index,
                     frame_count: frame_limit.metric_count(),
                     bitstream_bytes: bitstream.len(),
+                    total_bitstream_bytes,
+                    encode_elapsed: frame_encode_start.elapsed(),
                     source: &source_frame,
                     reconstruction,
                 });
@@ -333,6 +341,7 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
         output
             .write_all(&bitstream)
             .map_err(|err| format!("failed to write AV2 bitstream: {err}"))?;
+        total_bitstream_bytes += bitstream.len();
         frame_stats.add_elapsed("bitstream_write", stage_start);
         let public_reconstruction: Vec<u8>;
         let reconstruction = if packed_rgb_identity {
@@ -353,10 +362,12 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
         if let Some(frame_metrics) = frame_metrics.as_deref_mut() {
             let stage_start = stats::Av2StageStart::now();
             frame_metrics(Av2EncodeFrameMetrics {
-                frame_idx: frame_index,
-                frame_count: frame_limit.metric_count(),
-                bitstream_bytes: bitstream.len(),
-                source: &source_frame,
+            frame_idx: frame_index,
+            frame_count: frame_limit.metric_count(),
+            bitstream_bytes: bitstream.len(),
+            total_bitstream_bytes,
+            encode_elapsed: frame_encode_start.elapsed(),
+            source: &source_frame,
                 reconstruction,
             });
             frame_stats.add_elapsed("frame_metrics", stage_start);

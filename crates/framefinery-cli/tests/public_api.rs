@@ -25,6 +25,9 @@ fn facade_drives_source_and_buffered_encoders() -> Result<()> {
             metrics.frame_idx,
             metrics.frame_count,
             metrics.bitstream_bytes,
+            metrics.total_bitstream_bytes,
+            metrics.encode_elapsed,
+            metrics.psnr,
             metrics.source.len(),
             metrics.reconstruction.len(),
         ));
@@ -43,8 +46,11 @@ fn facade_drives_source_and_buffered_encoders() -> Result<()> {
     assert!(!bitstream.is_empty());
     assert_eq!(metric_rows.len(), 1);
     assert_eq!(metric_rows[0].1, None);
-    assert_eq!(metric_rows[0].3, info.expected_len());
-    assert_eq!(metric_rows[0].4, info.expected_len());
+    assert_eq!(metric_rows[0].2, metric_rows[0].3);
+    assert!(metric_rows[0].4.as_nanos() > 0);
+    assert!(metric_rows[0].5.is_none());
+    assert_eq!(metric_rows[0].6, info.expected_len());
+    assert_eq!(metric_rows[0].7, info.expected_len());
 
     let output = encode_frame(config.clone(), Frame::blank(info))?;
     assert_eq!(output.chunks.len(), 1);
@@ -59,6 +65,33 @@ fn facade_drives_source_and_buffered_encoders() -> Result<()> {
     assert_eq!(output.chunks.len(), 1);
     assert!(!output.chunks[0].data.is_empty());
     assert_eq!(output.reconstructions, vec![Frame::blank(info)]);
+    Ok(())
+}
+
+#[test]
+fn source_callback_reports_psnr_when_metrics_are_selected() -> Result<()> {
+    let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
+    let config = VideoEncoderConfig::new(CodecId::new("av2")?, info)
+        .with_rate_control(VideoRateControl::Lossless)
+        .with_reconstruction(ReconstructionMode::MetricsOnly);
+    let pixels = vec![0; info.expected_len()];
+    let mut source = RawVideoFrameReadSource::new(Cursor::new(pixels));
+    let mut bitstream = Vec::new();
+    let mut psnr = None;
+    let mut on_metrics = |metrics: VideoEncodeFrameMetrics<'_>| {
+        psnr = metrics.psnr;
+    };
+
+    encode_source(
+        &config,
+        &mut source,
+        &mut bitstream,
+        None,
+        Some(&mut on_metrics),
+    )?;
+
+    assert!(!bitstream.is_empty());
+    assert!(psnr.expect("psnr should be computed").all.is_infinite());
     Ok(())
 }
 
