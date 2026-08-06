@@ -586,7 +586,7 @@ impl VideoEncoderConfig {
         self
     }
 
-    /// Return CLI-compatible setting specs represented by this config.
+    /// Return codec extension setting specs represented by this config.
     pub fn setting_specs(&self) -> Vec<String> {
         let mut specs = Vec::new();
         match self.rate_control {
@@ -761,6 +761,9 @@ fn setting_value_matches_manifest(setting: &VideoEncoderSetting, manifest: Setti
         (SettingValue::IntegerRange { min, max }, VideoSettingValue::Integer(value)) => {
             (i64::from(min)..=i64::from(max)).contains(value)
         }
+        (SettingValue::SignedIntegerRange { min, max }, VideoSettingValue::Integer(value)) => {
+            (i64::from(min)..=i64::from(max)).contains(value)
+        }
         _ => false,
     }
 }
@@ -802,22 +805,26 @@ mod tests {
     use super::*;
     use crate::{PixelFormat, SettingManifest, SettingSpecForm, SettingSpecManifest, SettingValue};
 
-    const PREDICTIVE_FORMS: &[SettingSpecForm] = &[SettingSpecForm {
-        syntax: "predictive=<bool>",
-        summary: "toggle prediction",
+    const GOP_FORMS: &[SettingSpecForm] = &[SettingSpecForm {
+        syntax: "gop=<-1..65535>",
+        summary: "set temporal intra period",
     }];
-    const PREDICTIVE_SPEC: SettingSpecManifest = SettingSpecManifest {
-        forms: PREDICTIVE_FORMS,
+    const GOP_SPEC: SettingSpecManifest = SettingSpecManifest {
+        forms: GOP_FORMS,
         examples: &[],
         notes: &[],
     };
-    const PREDICTIVE_SETTING: SettingManifest = SettingManifest {
-        name: "predictive",
-        value: SettingValue::Boolean,
-        spec: &PREDICTIVE_SPEC,
-        summary: "toggle prediction",
+    const GOP_SETTING: SettingManifest = SettingManifest {
+        name: "gop",
+        value: SettingValue::SignedIntegerRange {
+            min: -1,
+            max: 65535,
+        },
+        default_value: Some("-1"),
+        spec: &GOP_SPEC,
+        summary: "set temporal intra period",
     };
-    const TEST_SETTINGS: &[SettingManifest] = &[PREDICTIVE_SETTING];
+    const TEST_SETTINGS: &[SettingManifest] = &[GOP_SETTING];
 
     const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
         "test",
@@ -890,14 +897,14 @@ mod tests {
         let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8).unwrap();
         let config = VideoEncoderConfig::new(CodecId::new("vvc").unwrap(), info)
             .with_rate_control(VideoRateControl::constant_quantizer(24).unwrap())
-            .with_setting(VideoEncoderSetting::boolean("predictive", true).unwrap())
+            .with_setting(VideoEncoderSetting::integer("gop", 30).unwrap())
             .with_setting(VideoEncoderSetting::text("fast-search", "moderate").unwrap());
 
         assert_eq!(
             config.setting_specs(),
             vec![
                 "qp=24".to_string(),
-                "predictive=true".to_string(),
+                "gop=30".to_string(),
                 "fast-search=moderate".to_string()
             ]
         );
@@ -916,7 +923,7 @@ mod tests {
     fn manifest_validates_codec_format_and_settings() {
         let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8).unwrap();
         let config = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info)
-            .with_setting(VideoEncoderSetting::boolean("predictive", true).unwrap());
+            .with_setting(VideoEncoderSetting::integer("gop", -1).unwrap());
 
         TEST_CODEC
             .validate_config(&config)
@@ -929,8 +936,8 @@ mod tests {
         let unknown = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info)
             .with_setting(VideoEncoderSetting::boolean("missing", true).unwrap());
         let duplicate = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info)
-            .with_setting(VideoEncoderSetting::boolean("predictive", true).unwrap())
-            .with_setting(VideoEncoderSetting::boolean("predictive", false).unwrap());
+            .with_setting(VideoEncoderSetting::integer("gop", -1).unwrap())
+            .with_setting(VideoEncoderSetting::integer("gop", 0).unwrap());
 
         assert!(matches!(
             TEST_CODEC.validate_config(&unknown).unwrap_err(),
@@ -939,7 +946,7 @@ mod tests {
         ));
         assert!(matches!(
             TEST_CODEC.validate_config(&duplicate).unwrap_err(),
-            MediaError::DuplicateSetting { setting } if setting == "predictive"
+            MediaError::DuplicateSetting { setting } if setting == "gop"
         ));
     }
 
@@ -947,7 +954,7 @@ mod tests {
     fn manifest_rejects_invalid_setting_values_and_conflicts() {
         let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8).unwrap();
         let invalid_value = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info)
-            .with_setting(VideoEncoderSetting::text("predictive", "maybe").unwrap());
+            .with_setting(VideoEncoderSetting::integer("gop", -2).unwrap());
         let conflicting_qp = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info)
             .with_rate_control(VideoRateControl::constant_quantizer(24).unwrap())
             .with_setting(VideoEncoderSetting::integer("qp", 19).unwrap());
@@ -960,9 +967,9 @@ mod tests {
                 expected,
                 actual,
             } if codec == "test"
-                && setting == "predictive"
-                && expected == "true|false"
-                && actual == "maybe"
+                && setting == "gop"
+                && expected == "-1..65535"
+                && actual == "-2"
         ));
         assert!(matches!(
             TEST_CODEC.validate_config(&conflicting_qp).unwrap_err(),

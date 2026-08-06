@@ -56,7 +56,7 @@ pub(super) struct Av2FrameStats {
     #[cfg(feature = "av2-stats")]
     qp: Option<u8>,
     #[cfg(feature = "av2-stats")]
-    predictive: bool,
+    gop: i32,
     #[cfg(feature = "av2-stats")]
     bitstream_bytes: usize,
     #[cfg(feature = "av2-stats")]
@@ -71,7 +71,7 @@ impl Av2FrameStats {
         stream_format: Av2StreamFormat,
         lossless: bool,
         qp: Option<u8>,
-        predictive: bool,
+        gop: i32,
     ) -> Self {
         #[cfg(not(feature = "av2-stats"))]
         let _ = (
@@ -81,7 +81,7 @@ impl Av2FrameStats {
             stream_format,
             lossless,
             qp,
-            predictive,
+            gop,
         );
         Self {
             #[cfg(feature = "av2-stats")]
@@ -99,7 +99,7 @@ impl Av2FrameStats {
             #[cfg(feature = "av2-stats")]
             qp,
             #[cfg(feature = "av2-stats")]
-            predictive,
+            gop,
             #[cfg(feature = "av2-stats")]
             bitstream_bytes: 0,
             #[cfg(feature = "av2-stats")]
@@ -139,7 +139,7 @@ impl Av2FrameStats {
             .map(|value| value.to_string())
             .unwrap_or_else(|| "null".to_owned());
         let mut json = format!(
-            "{{\"kind\":\"framefinery.av2.stats.v1\",\"frame_index\":{},\"width\":{},\"height\":{},\"input_format\":\"{}\",\"chroma_sampling\":\"{:?}\",\"bit_depth\":{},\"lossless\":{},\"qp\":{},\"predictive\":{},\"bitstream_bytes\":{},\"stages\":[",
+            "{{\"kind\":\"framefinery.av2.stats.v1\",\"frame_index\":{},\"width\":{},\"height\":{},\"input_format\":\"{}\",\"chroma_sampling\":\"{:?}\",\"bit_depth\":{},\"lossless\":{},\"qp\":{},\"gop\":{},\"bitstream_bytes\":{},\"stages\":[",
             self.frame_idx,
             self.width,
             self.height,
@@ -148,7 +148,7 @@ impl Av2FrameStats {
             self.stream_format.bit_depth.bits(),
             self.lossless,
             qp,
-            self.predictive,
+            self.gop,
             self.bitstream_bytes
         );
         for (index, stage) in self.stages.iter().enumerate() {

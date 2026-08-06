@@ -198,7 +198,8 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     let residual_mode = VvcResidualCodingMode::for_encode_options(options);
     let residual_policy =
         VvcResidualCodingPolicy::new(stream_format, residual_mode).with_fast_search(options.fast_search);
-    let lossy_near_skip_enabled = options.predictive && !residual_mode.is_lossless();
+    let predictive_enabled = options.gop.is_predictive();
+    let lossy_near_skip_enabled = predictive_enabled && !residual_mode.is_lossless();
     let mut slice_config = vvc_slice_config_for_input_format(
         residual_mode.slice_config(stream_format, options.qp, options.fast_search),
         format,
@@ -206,12 +207,12 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     if residual_mode.is_lossless() && options.fast_search == VvcFastSearch::LosslessSpeed {
         slice_config = slice_config.without_lossless_speed_unused_tools();
     }
-    if options.predictive {
+    if predictive_enabled {
         slice_config = slice_config
             .with_inter_enabled()
             .with_picture_header_slice_state();
     }
-    let predictive_frame_skip_slice_config = options.predictive.then(|| {
+    let predictive_frame_skip_slice_config = predictive_enabled.then(|| {
         slice_config
             .with_picture_parameter_set_id(VVC_PREDICTIVE_FRAME_SKIP_PPS_ID)
             .without_picture_header_slice_state()
@@ -224,12 +225,12 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     };
     let transform_skip_quant_tables =
         VvcTransformSkipQuantTables::new(format.bit_depth(), luma_qp, chroma_qp);
-    let picture_partitioning = if options.predictive {
+    let picture_partitioning = if predictive_enabled {
         VvcPicturePartitioning::OneSlicePerCtu
     } else {
         residual_mode.picture_partitioning()
     };
-    let mut parameter_sets = Vec::with_capacity(if options.predictive { 3 } else { 2 });
+    let mut parameter_sets = Vec::with_capacity(if predictive_enabled { 3 } else { 2 });
     parameter_sets.push(vvc_sps_unit(
         geometry,
         slice_config,
@@ -278,7 +279,11 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
             break;
         }
         let frame_encode_start = Instant::now();
-        let repeated_predictive_cache = if options.predictive && frame_idx > 0 {
+        if options.gop.resets_references_before(frame_idx) {
+            previous_predictive_cache = None;
+        }
+        let predictive_frame = options.gop.is_predictive_frame(frame_idx);
+        let repeated_predictive_cache = if predictive_frame {
             previous_predictive_cache
                 .as_ref()
                 .filter(|cache| cache.source.as_slice() == frame_buf.as_slice())
@@ -354,9 +359,8 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 let mut frame_recon =
                     VvcReconstructionFrame::new_neutral(geometry, source_frame.format);
                 let mut frame_ctus = Vec::with_capacity(ctu_count);
-                let mut frame_ctu_decisions = options
-                    .predictive
-                    .then(|| Vec::with_capacity(ctu_count));
+                let mut frame_ctu_decisions =
+                    predictive_enabled.then(|| Vec::with_capacity(ctu_count));
                 let mut predictive_reused_ctus = vec![false; ctu_count];
                 let mut luma_mode_search_state =
                     VvcLumaModeSearchState::new_for_geometry(geometry);
@@ -364,11 +368,18 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 for region in vvc_ctu_regions(geometry) {
                     #[cfg(feature = "vvc-stats")]
                     let stage_start = Instant::now();
-                    let cached_exact_ctu = previous_predictive_cache
-                        .as_ref()
-                        .and_then(|cache| cache.matching_decision(&frame_buf, stream_frame_layout, region));
+                    let cached_exact_ctu = if predictive_frame {
+                        previous_predictive_cache.as_ref().and_then(|cache| {
+                            cache.matching_decision(&frame_buf, stream_frame_layout, region)
+                        })
+                    } else {
+                        None
+                    };
                     let cached_exact_ctu_available = cached_exact_ctu.is_some();
-                    let cached_lossy_skip_ctu = if cached_exact_ctu_available || !lossy_near_skip_enabled {
+                    let cached_lossy_skip_ctu = if !predictive_frame
+                        || cached_exact_ctu_available
+                        || !lossy_near_skip_enabled
+                    {
                         None
                     } else {
                         previous_predictive_cache.as_ref().and_then(|cache| {
@@ -386,7 +397,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             &predictive_reused_ctus,
                         );
                     let mut reused_predictive_ctu = false;
-                    let temporal_mode_hint = if options.predictive
+                    let temporal_mode_hint = if predictive_frame
                         && residual_mode.is_lossless()
                         && options.fast_search == VvcFastSearch::LosslessSpeed
                     {
@@ -457,7 +468,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             luma_qp,
                         );
                         let luma_inter_skip_mask = if frame_ctu_decisions.is_some()
-                            && options.predictive
+                            && predictive_frame
                             && residual_mode.is_lossless()
                             && options.fast_search == VvcFastSearch::LosslessSpeed
                             && vvc_lossless_speed_luma_leaf_inter_skip_allowed(stream_format)
@@ -477,7 +488,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             None
                         };
                         let chroma_inter_skip_mask = if frame_ctu_decisions.is_some()
-                            && options.predictive
+                            && predictive_frame
                             && residual_mode.is_lossless()
                             && options.fast_search == VvcFastSearch::LosslessSpeed
                             && vvc_lossless_speed_luma_leaf_inter_skip_allowed(stream_format)
@@ -616,8 +627,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 let stage_start = Instant::now();
                 #[cfg(feature = "vvc-stats")]
                 let entropy_build_start = Instant::now();
-                let predictive_frame_skip = options.predictive
-                    && frame_idx > 0
+                let predictive_frame_skip = predictive_frame
                     && frame_ctus
                         .iter()
                         .all(|ctu| matches!(ctu.payload, VvcQuantizedCtuPayload::InterSkip));
@@ -625,7 +635,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 if predictive_frame_skip {
                     frame_stats.add_counter("predictive_frame_skip_slice_count", 1);
                 }
-                let frame_slice_units = if options.predictive && frame_idx == 0 {
+                let frame_slice_units = if predictive_enabled && !predictive_frame {
                     vec![vvc_predictive_frame_slice_unit(
                         frame_idx,
                         geometry,
@@ -645,7 +655,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         skip_slice_config,
                         inter_skip_payload,
                     )?]
-                } else if options.predictive {
+                } else if predictive_enabled {
                     vec![vvc_predictive_frame_slice_unit(
                         frame_idx,
                         geometry,

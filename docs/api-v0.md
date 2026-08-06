@@ -134,7 +134,7 @@ let mut encoder = encoder("vvc")?
     .fps(30, 1)?
     .qp(24)?
     .metrics_only()
-    .setting("predictive", true)?
+    .gop(30)?
     .setting("fast-search", "moderate")?
     .build()?;
 # Ok::<(), framefinery::MediaError>(())
@@ -179,7 +179,7 @@ let input = FrameInfo::new(1280, 720, PixelFormat::Yuv420p8)?;
 let config = VideoEncoderConfig::new(CodecId::new("av2")?, input)
     .with_rate_control(VideoRateControl::constant_quantizer(24)?)
     .with_reconstruction(ReconstructionMode::MetricsOnly)
-    .with_setting(VideoEncoderSetting::boolean("predictive", true)?);
+    .with_setting(VideoEncoderSetting::integer("gop", 30)?);
 # Ok::<(), framefinery::MediaError>(())
 ```
 

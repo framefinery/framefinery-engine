@@ -90,11 +90,14 @@ Common settings:
 ```sh
 --set lossless
 --set qp=24
---set predictive
+--set gop=0
 --set fast-search=lossless-speed
 ```
 
 `--set lossless` and `--set qp=<1..255>` are mutually exclusive.
+Temporal prediction defaults to `gop=-1`, meaning one intra frame followed by
+unbounded predictive frames. Use `--set gop=0` for intra-only coding, or a
+positive value such as `--set gop=30` to insert an intra frame every 30 frames.
 Run `ff --help settings` or `ff --help settings <name>` for the accepted
 settings and their full spec contracts.
 

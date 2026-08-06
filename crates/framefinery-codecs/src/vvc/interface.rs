@@ -1,10 +1,10 @@
 use std::io::{Read, Write};
 
 use framefinery_core::{
-    boolean_setting_enabled, setting_name, u8_setting, ChromaSampling, PixelFormat,
-    RawVideoFrameSource, SettingManifest, SettingSpecExample, SettingSpecForm, SettingSpecManifest,
-    SettingValue, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback,
-    VideoEncodeSourceRequest, VideoEncoderManifest, VideoEncoderManifestHooks,
+    setting_name, u8_setting, ChromaSampling, PixelFormat, RawVideoFrameSource, SettingManifest,
+    SettingSpecExample, SettingSpecForm, SettingSpecManifest, SettingValue,
+    VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeSourceRequest,
+    VideoEncoderManifest, VideoEncoderManifestHooks,
 };
 
 use super::{
@@ -15,7 +15,7 @@ use crate::session::{
     buffered_stream_session, encode_stream_from_source, StreamEncoderManifest,
     VideoEncodeStreamRequest,
 };
-use crate::settings::{PREDICTIVE_SETTING, QP_SETTING};
+use crate::settings::{GopMode, GOP_SETTING, QP_SETTING};
 
 const VVC_FAST_SEARCH_SPEC_FORMS: &[SettingSpecForm] = &[SettingSpecForm {
     syntax: "fast-search=<mode>",
@@ -45,11 +45,12 @@ pub const VVC_FAST_SEARCH_SETTING_SPEC: SettingSpecManifest = SettingSpecManifes
 pub const VVC_FAST_SEARCH_SETTING: SettingManifest = SettingManifest {
     name: "fast-search",
     value: SettingValue::Choice(VvcFastSearch::VALUES),
+    default_value: Some("lossless-speed"),
     spec: &VVC_FAST_SEARCH_SETTING_SPEC,
     summary: "enable experimental VVC spatially guided mode-search pruning",
 };
 
-const VVC_SETTINGS: &[SettingManifest] = &[QP_SETTING, PREDICTIVE_SETTING, VVC_FAST_SEARCH_SETTING];
+const VVC_SETTINGS: &[SettingManifest] = &[QP_SETTING, GOP_SETTING, VVC_FAST_SEARCH_SETTING];
 
 pub const VVC_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
     "vvc",
@@ -174,20 +175,22 @@ fn vvc_options_from_settings(
 ) -> Result<VvcEncodeOptions, String> {
     let qp = u8_setting(settings, "qp")?;
     if lossless && qp.is_some() {
-        return Err("--set qp=<1..255> is mutually exclusive with --set lossless".to_string());
+        return Err(
+            "--set qp=<1..255> is mutually exclusive with lossless rate control".to_string(),
+        );
     }
-    let predictive = boolean_setting_enabled(settings, "predictive")?;
+    let gop = GopMode::from_settings(settings)?;
     let fast_search = vvc_fast_search_setting(settings)?;
     for spec in settings {
         let name = setting_name(spec);
-        if !matches!(name, "lossless" | "qp" | "predictive" | "fast-search") {
+        if !matches!(name, "lossless" | "qp" | "gop" | "fast-search") {
             return Err(format!("VVC encoder received unknown setting '{name}'"));
         }
     }
     Ok(VvcEncodeOptions {
         lossless,
         qp,
-        predictive,
+        gop,
         fast_search,
     })
 }
@@ -218,12 +221,18 @@ mod tests {
     }
 
     #[test]
-    fn parses_qp_and_predictive_settings() {
+    fn parses_qp_and_gop_settings() {
         let options =
-            vvc_options_from_settings(false, &["qp=19".to_string(), "predictive".to_string()])
+            vvc_options_from_settings(false, &["qp=19".to_string(), "gop=30".to_string()])
                 .expect("parse VVC settings");
         assert_eq!(options.qp, Some(19));
-        assert!(options.predictive);
+        assert_eq!(options.gop, GopMode::Fixed(30));
+    }
+
+    #[test]
+    fn defaults_to_infinite_gop() {
+        let options = vvc_options_from_settings(false, &[]).expect("parse VVC settings");
+        assert_eq!(options.gop, GopMode::Infinite);
     }
 
     #[test]
@@ -231,7 +240,7 @@ mod tests {
         let err = vvc_options_from_settings(true, &["qp=16".to_string()])
             .expect_err("QP and lossless should conflict");
         assert!(
-            err.contains("--set qp=<1..255> is mutually exclusive with --set lossless"),
+            err.contains("--set qp=<1..255> is mutually exclusive with lossless rate control"),
             "{err}"
         );
     }

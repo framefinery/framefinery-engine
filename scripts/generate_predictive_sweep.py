@@ -344,7 +344,18 @@ def write_manifest(path: Path, cases: list[CropCase]) -> None:
         )
         writer = csv.writer(manifest, lineterminator="\n")
         writer.writerow(
-            ["name", "width", "height", "frames", "format", "pattern", "fps", "lossless", "codecs", "path"]
+            [
+                "name",
+                "width",
+                "height",
+                "frames",
+                "format",
+                "pattern",
+                "fps",
+                "lossless",
+                "codecs",
+                "path",
+            ]
         )
         for case in cases:
             writer.writerow(

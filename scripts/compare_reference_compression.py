@@ -72,7 +72,7 @@ def main() -> int:
         default=[],
         help=(
             "extra FrameFinery --set key[=value] setting; qp=<1..255> "
-            "overrides manifest lossless=true rows for the FrameFinery encode"
+            "overrides manifest lossless rows for the FrameFinery encode"
         ),
     )
     parser.add_argument(

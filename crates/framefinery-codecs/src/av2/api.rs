@@ -15,7 +15,7 @@ pub struct Av2EncodeRequest {
 pub struct Av2EncodeOptions {
     pub lossless: bool,
     pub qp: Option<u8>,
-    pub predictive: bool,
+    pub gop: crate::settings::GopMode,
 }
 
 pub struct Av2EncodeFrameMetrics<'a> {

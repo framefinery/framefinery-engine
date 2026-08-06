@@ -659,8 +659,8 @@ mod tests {
             Command::Help(Some(HelpTopic::Settings(Some("qp".to_string()))))
         );
         assert_eq!(
-            parse_words(&["ff", "--help=settings", "lossless"]).unwrap(),
-            Command::Help(Some(HelpTopic::Settings(Some("lossless".to_string()))))
+            parse_words(&["ff", "--help=settings", "gop"]).unwrap(),
+            Command::Help(Some(HelpTopic::Settings(Some("gop".to_string()))))
         );
         assert_eq!(
             parse_words(&["ff", "--help", "presets"]).unwrap(),
@@ -1133,7 +1133,6 @@ mod tests {
             "--pixel-format",
             "--width",
             "--height",
-            "--lossless",
             "--set qp=<1..255>",
             "--qp <1..255>",
             "Compatibility options",

@@ -2741,6 +2741,7 @@ fn vvc_lossless_input_path_accepts_16x16_gbrp8_frames() {
         PixelFormat::Gbrp8,
         VvcEncodeOptions {
             lossless: true,
+            gop: crate::settings::GopMode::IntraOnly,
             ..VvcEncodeOptions::default()
         },
         None,
@@ -2840,7 +2841,7 @@ fn vvc_predictive_repeated_frame_matches_nonpredictive_output() {
         PixelFormat::Yuv420p8,
         VvcEncodeOptions {
             lossless: true,
-            predictive: false,
+            gop: crate::settings::GopMode::IntraOnly,
             ..VvcEncodeOptions::default()
         },
     )
@@ -2852,7 +2853,7 @@ fn vvc_predictive_repeated_frame_matches_nonpredictive_output() {
         PixelFormat::Yuv420p8,
         VvcEncodeOptions {
             lossless: true,
-            predictive: true,
+            gop: crate::settings::GopMode::Infinite,
             ..VvcEncodeOptions::default()
         },
     )
@@ -2888,7 +2889,7 @@ fn vvc_predictive_full_repeated_frame_uses_one_trailing_slice() {
         PixelFormat::Yuv420p8,
         VvcEncodeOptions {
             lossless: true,
-            predictive: false,
+            gop: crate::settings::GopMode::IntraOnly,
             ..VvcEncodeOptions::default()
         },
     )
@@ -2900,7 +2901,7 @@ fn vvc_predictive_full_repeated_frame_uses_one_trailing_slice() {
         PixelFormat::Yuv420p8,
         VvcEncodeOptions {
             lossless: true,
-            predictive: true,
+            gop: crate::settings::GopMode::Infinite,
             ..VvcEncodeOptions::default()
         },
     )
@@ -2948,7 +2949,7 @@ fn vvc_predictive_skips_repeated_right_ctu_when_left_ctu_changes() {
         PixelFormat::Yuv420p8,
         VvcEncodeOptions {
             lossless: true,
-            predictive: false,
+            gop: crate::settings::GopMode::IntraOnly,
             ..VvcEncodeOptions::default()
         },
     )
@@ -2960,7 +2961,7 @@ fn vvc_predictive_skips_repeated_right_ctu_when_left_ctu_changes() {
         PixelFormat::Yuv420p8,
         VvcEncodeOptions {
             lossless: true,
-            predictive: true,
+            gop: crate::settings::GopMode::Infinite,
             ..VvcEncodeOptions::default()
         },
     )
@@ -3048,7 +3049,7 @@ fn vvc_lossless_speed_predictive_marks_repeated_luma_leaves_in_changed_ctu() {
         PixelFormat::Yuv420p8,
         VvcEncodeOptions {
             lossless: true,
-            predictive: true,
+            gop: crate::settings::GopMode::Infinite,
             ..VvcEncodeOptions::default()
         },
     )
@@ -3070,7 +3071,7 @@ fn vvc_lossy_predictive_mixed_frame_uses_one_trailing_slice() {
         PixelFormat::Yuv420p8,
         VvcEncodeOptions {
             qp: Some(19),
-            predictive: false,
+            gop: crate::settings::GopMode::IntraOnly,
             ..VvcEncodeOptions::default()
         },
     )
@@ -3082,7 +3083,7 @@ fn vvc_lossy_predictive_mixed_frame_uses_one_trailing_slice() {
         PixelFormat::Yuv420p8,
         VvcEncodeOptions {
             qp: Some(19),
-            predictive: true,
+            gop: crate::settings::GopMode::Infinite,
             ..VvcEncodeOptions::default()
         },
     )

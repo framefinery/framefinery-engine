@@ -52,9 +52,9 @@ pub use pipeline::{
     FilterPipelineStats, FilteredRawVideoFrameSource, FrameSourceRawVideoAdapter, Sink, Source,
 };
 pub use settings::{
-    boolean_setting_enabled, setting_name, setting_value, setting_values_label, u8_setting,
-    SettingManifest, SettingSpecExample, SettingSpecForm, SettingSpecManifest, SettingValue,
-    GLOBAL_SETTINGS, LOSSLESS_SETTING, LOSSLESS_SETTING_SPEC,
+    boolean_setting_enabled, i32_setting, setting_name, setting_value, setting_values_label,
+    u8_setting, SettingManifest, SettingSpecExample, SettingSpecForm, SettingSpecManifest,
+    SettingValue, GLOBAL_SETTINGS, LOSSLESS_SETTING, LOSSLESS_SETTING_SPEC,
 };
 pub use video::{
     CodecId, EncodedVideoChunk, FrameEncodeMetrics, FrameRate, RawVideoFrameReadSource,

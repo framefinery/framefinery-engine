@@ -63,10 +63,8 @@ def main() -> int:
         default="lossless-speed",
         help="optional VVC mode-search pruning level passed as --set fast-search=<level>",
     )
-    parser.add_argument("--av2-predictive", dest="av2_predictive", action="store_true", default=True)
-    parser.add_argument("--no-av2-predictive", dest="av2_predictive", action="store_false")
-    parser.add_argument("--vvc-predictive", dest="vvc_predictive", action="store_true", default=True)
-    parser.add_argument("--no-vvc-predictive", dest="vvc_predictive", action="store_false")
+    parser.add_argument("--av2-gop", type=parse_gop, default=-1)
+    parser.add_argument("--vvc-gop", type=parse_gop, default=-1)
     parser.add_argument(
         "--direct-source-files",
         action=argparse.BooleanOptionalAction,
@@ -168,8 +166,8 @@ def main() -> int:
         "set": args.set,
         "run_name": run_name,
         "ff": str(args.ff),
-        "av2_predictive": args.av2_predictive,
-        "vvc_predictive": args.vvc_predictive,
+        "av2_gop": args.av2_gop,
+        "vvc_gop": args.vvc_gop,
         "av2_lossy_qp": args.av2_lossy_qp,
         "vvc_lossy_qp": args.vvc_lossy_qp,
         "vvc_fast_search": args.vvc_fast_search,
@@ -189,8 +187,8 @@ def rerender_report(args: argparse.Namespace) -> int:
     report = json.loads(args.rerender_json.read_text())
     report["run_name"] = args.run_name or report.get("run_name") or args.rerender_json.stem
     report.setdefault("set", DEFAULT_SET)
-    report.setdefault("av2_predictive", args.av2_predictive)
-    report.setdefault("vvc_predictive", args.vvc_predictive)
+    report.setdefault("av2_gop", args.av2_gop)
+    report.setdefault("vvc_gop", args.vvc_gop)
     report.setdefault("av2_lossy_qp", args.av2_lossy_qp)
     report.setdefault("vvc_lossy_qp", args.vvc_lossy_qp)
     report.setdefault("vvc_fast_search", args.vvc_fast_search)
@@ -307,10 +305,10 @@ def run_case(
     settings: list[str] = []
     if mode == "lossless":
         settings.append("lossless")
-    if codec == "av2" and args.av2_predictive:
-        settings.append("predictive")
-    if codec == "vvc" and args.vvc_predictive:
-        settings.append("predictive")
+    if codec == "av2" and args.av2_gop != -1:
+        settings.append(f"gop={args.av2_gop}")
+    if codec == "vvc" and args.vvc_gop != -1:
+        settings.append(f"gop={args.vvc_gop}")
     if codec == "vvc" and args.vvc_fast_search != "off":
         settings.append(f"fast-search={args.vvc_fast_search}")
     for setting in settings:
@@ -576,8 +574,8 @@ def markdown_report(report: dict[str, Any], skipped: int) -> str:
         f"# Encode Matrix: {report['run_name']}",
         "",
         f"- Set: `{report['set']}`",
-        f"- AV2 predictive: `{report['av2_predictive']}`",
-        f"- VVC predictive: `{report.get('vvc_predictive', False)}`",
+        f"- AV2 GOP: `{report.get('av2_gop', legacy_gop(report.get('av2_predictive', True)))}`",
+        f"- VVC GOP: `{report.get('vvc_gop', legacy_gop(report.get('vvc_predictive', True)))}`",
         f"- AV2 lossy QP: `{report['av2_lossy_qp']}`",
         f"- VVC fast search: `{report.get('vvc_fast_search', 'off')}`",
         f"- Write recon: `{report.get('write_recon', True)}`",
@@ -775,23 +773,23 @@ def tradeoff_scale_rows(results: list[dict[str, Any]]) -> list[str]:
 
 
 def mode_label(codec: str, mode: str, args: argparse.Namespace) -> str:
-    if codec == "av2" and args.av2_predictive:
+    if codec == "av2":
+        gop = f"+gop={args.av2_gop}"
         if mode == "lossy":
-            return f"qp={args.av2_lossy_qp}+predictive"
-        return "lossless+predictive"
-    if codec == "av2" and mode == "lossy":
-        return f"qp={args.av2_lossy_qp}"
+            return f"qp={args.av2_lossy_qp}{gop}"
+        return f"lossless{gop}"
     if codec == "vvc" and args.vvc_fast_search != "off":
-        predictive = "+predictive" if args.vvc_predictive else ""
+        gop = f"+gop={args.vvc_gop}"
         if mode == "lossy":
-            return f"qp={args.vvc_lossy_qp}{predictive}+fast={args.vvc_fast_search}"
-        return f"lossless{predictive}+fast={args.vvc_fast_search}"
+            return f"qp={args.vvc_lossy_qp}{gop}+fast={args.vvc_fast_search}"
+        return f"lossless{gop}+fast={args.vvc_fast_search}"
     if codec == "vvc" and mode == "lossy":
-        predictive = "+predictive" if args.vvc_predictive else ""
-        return f"qp={args.vvc_lossy_qp}{predictive}"
-    if codec == "vvc" and args.vvc_predictive:
-        return "lossless+predictive"
+        return f"qp={args.vvc_lossy_qp}+gop={args.vvc_gop}"
     return mode
+
+
+def legacy_gop(predictive: bool) -> int:
+    return -1 if predictive else 0
 
 
 def codec_extension(codec: str) -> str:
@@ -836,6 +834,20 @@ def parse_qp(value: str) -> int:
             f"QP expects an integer from 1 through 255, got '{value}'"
         )
     return qp
+
+
+def parse_gop(value: str) -> int:
+    try:
+        gop = int(value, 10)
+    except ValueError as err:
+        raise argparse.ArgumentTypeError(
+            f"GOP expects an integer from -1 through 65535, got '{value}'"
+        ) from err
+    if not (-1 <= gop <= 65535):
+        raise argparse.ArgumentTypeError(
+            f"GOP expects an integer from -1 through 65535, got '{value}'"
+        )
+    return gop
 
 
 def parse_positive_int(value: str) -> int:

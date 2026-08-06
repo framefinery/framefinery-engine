@@ -263,7 +263,7 @@ pub(crate) const SET_OPTION: CliOptionManifest = CliOptionManifest {
     scope: CliOptionScope::Output,
     summary: "Encode setting; run ff --help settings for accepted keys",
     details: &["bare boolean setting keys imply true"],
-    examples: &["--set lossless", "--set qp=24"],
+    examples: &["--set lossless", "--set qp=24", "--set gop=30"],
 };
 
 pub(crate) const PRESET_OPTION: CliOptionManifest = CliOptionManifest {

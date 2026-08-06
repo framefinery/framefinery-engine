@@ -313,13 +313,11 @@ Current option placement and inference rules:
   contracts are listed by `ff --help settings` and
   `ff --help settings <name>`.
 
-Global accepted settings are listed by `ff codecs`; codec-specific settings are
-listed with the codec that owns them. The current codec-specific
-`--set predictive` mode is experimental. AV2 starts a multi-picture stream and
-uses show-existing-frame, zero-MV tiles, and motion-residual tiles where the
-current subset can encode them; otherwise it falls back to the existing
-key-frame path. VVC accepts the same predictive setting so temporal coding tools
-can be developed and benchmarked behind the same CLI shape.
+Global accepted settings are listed by `ff --help settings`; codec-specific
+settings are listed with the codec that owns them. Temporal prediction defaults
+to `gop=-1`, meaning one intra frame followed by unbounded predictive frames.
+Use `--set gop=0` for intra-only coding, or a positive value such as
+`--set gop=30` to reset codec reference state at fixed GOP boundaries.
 
 The positional input is optional when the first filter is a source. The initial
 source filter is `pattern=<name>`, with `black`, `checker`, `gradient`, and

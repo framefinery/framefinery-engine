@@ -19,7 +19,10 @@ pub fn av2_encode_fixed_black_444_with_frame_metrics(
         output,
         recon,
         request,
-        Av2EncodeOptions::default(),
+        Av2EncodeOptions {
+            gop: crate::settings::GopMode::IntraOnly,
+            ..Default::default()
+        },
         frame_metrics,
     )
 }
@@ -47,7 +50,7 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
         stream_format.pixel_format(),
     );
     debug_assert_eq!(source_expected_len, coded_expected_len);
-    let mut predictive_started = false;
+    let mut predictive_headers_written = false;
     let mut predictive_reference: Option<Vec<u8>> = None;
     let mut predictive_reconstruction: Option<Vec<u8>> = None;
     let frame_limit = FrameLimit::from_frame_count(request.params.frames);
@@ -62,7 +65,7 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
             stream_format,
             options.lossless,
             options.qp,
-            options.predictive,
+            options.gop.as_i32(),
         );
         #[cfg(feature = "av2-sb-bit-profile")]
         sb_bits::set_current_frame(frame_index);
@@ -79,6 +82,12 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
             break;
         }
         let frame_encode_start = std::time::Instant::now();
+        if options.gop.resets_references_before(frame_index) {
+            predictive_reference = None;
+            predictive_reconstruction = None;
+        }
+        let predictive_enabled = options.gop.is_predictive();
+        let predictive_frame = options.gop.is_predictive_frame(frame_index);
         let coded_frame: Vec<u8>;
         let frame = if packed_rgb_identity {
             let stage_start = stats::Av2StageStart::now();
@@ -98,14 +107,15 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
                 Av2ChromaFormat::Yuv420 | Av2ChromaFormat::Yuv422 | Av2ChromaFormat::Yuv444
             )
         {
-            let (bitstream, reconstruction) = if options.predictive {
+            let (bitstream, reconstruction) = if predictive_enabled {
                 let order_hint = av2_order_hint_for_frame(frame_index);
-                if predictive_reference.as_deref() == Some(frame) {
+                if predictive_frame && predictive_reference.as_deref() == Some(frame) {
                     let stage_start = stats::Av2StageStart::now();
                     let result = av2_lossless_regular_sef_frame(frame, order_hint);
                     frame_stats.add_elapsed("lossless_show_existing_frame", stage_start);
                     result
-                } else if let Some((bitstream, reconstruction)) = predictive_reference
+                } else if predictive_frame {
+                    if let Some((bitstream, reconstruction)) = predictive_reference
                     .as_deref()
                     .and_then(|reference| {
                         let stage_start = stats::Av2StageStart::now();
@@ -119,21 +129,36 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
                         frame_stats.add_elapsed("lossless_inter_tiles", stage_start);
                         result
                     })
-                {
-                    predictive_reference = Some(frame.to_vec());
-                    (bitstream, reconstruction)
+                    {
+                        predictive_reference = Some(frame.to_vec());
+                        (bitstream, reconstruction)
+                    } else {
+                        let result =
+                            av2_lossless_subsampled_predictive_key_bitstream_and_reconstruction_for_frame(
+                                geometry,
+                                stream_format,
+                                frame,
+                                !predictive_headers_written,
+                                order_hint,
+                                rgb_identity,
+                                &mut frame_stats,
+                            );
+                        predictive_headers_written = true;
+                        predictive_reference = Some(frame.to_vec());
+                        result
+                    }
                 } else {
                     let result =
                         av2_lossless_subsampled_predictive_key_bitstream_and_reconstruction_for_frame(
                             geometry,
                             stream_format,
                             frame,
-                            !predictive_started,
+                            !predictive_headers_written,
                             order_hint,
                             rgb_identity,
                             &mut frame_stats,
                         );
-                    predictive_started = true;
+                    predictive_headers_written = true;
                     predictive_reference = Some(frame.to_vec());
                     result
                 }
@@ -196,9 +221,9 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
             options.qp.is_some() || stream_format.chroma_format == Av2ChromaFormat::Yuv420;
         if use_lossy_residual_path {
             let qp = options.qp.unwrap_or(AV2_LOSSY_DEFAULT_QP);
-            let (bitstream, reconstruction) = if options.predictive {
+            let (bitstream, reconstruction) = if predictive_enabled {
                 let order_hint = av2_order_hint_for_frame(frame_index);
-                if predictive_reference.as_deref() == Some(frame) {
+                if predictive_frame && predictive_reference.as_deref() == Some(frame) {
                     if let Some(reference_reconstruction) = predictive_reconstruction.as_deref() {
                         let stage_start = stats::Av2StageStart::now();
                         let result = av2_lossy_regular_sef_frame(
@@ -212,13 +237,13 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
                             stream_format,
                             frame,
                             qp,
-                            !predictive_started,
+                            !predictive_headers_written,
                             order_hint,
                             rgb_identity,
                             &mut frame_stats,
                         )
                     }
-                } else {
+                } else if predictive_frame {
                     if let (Some(reference), Some(reference_reconstruction)) = (
                         predictive_reference.as_deref(),
                         predictive_reconstruction.as_deref(),
@@ -240,7 +265,7 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
                                 stream_format,
                                 frame,
                                 qp,
-                                !predictive_started,
+                                !predictive_headers_written,
                                 order_hint,
                                 rgb_identity,
                                 &mut frame_stats,
@@ -252,12 +277,23 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
                             stream_format,
                             frame,
                             qp,
-                            !predictive_started,
+                            !predictive_headers_written,
                             order_hint,
                             rgb_identity,
                             &mut frame_stats,
                         )
                     }
+                } else {
+                    av2_lossy_subsampled_predictive_key_bitstream_and_reconstruction_for_frame(
+                        geometry,
+                        stream_format,
+                        frame,
+                        qp,
+                        !predictive_headers_written,
+                        order_hint,
+                        rgb_identity,
+                        &mut frame_stats,
+                    )
                 }
             } else {
                 av2_lossy_subsampled_bitstream_and_reconstruction_for_frame(
@@ -269,8 +305,8 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
                     &mut frame_stats,
                 )
             };
-            if options.predictive {
-                predictive_started = true;
+            if predictive_enabled {
+                predictive_headers_written = true;
                 predictive_reference = Some(frame.to_vec());
                 predictive_reconstruction = Some(reconstruction.clone());
             }
@@ -314,9 +350,9 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
             frame_index += 1;
             continue;
         }
-        if options.predictive {
+        if predictive_enabled {
             return Err(format!(
-                "AV2 predictive non-lossless encode for {} requires --set qp=<1..255> to use the lossy residual path",
+                "AV2 predictive GOP encode for {} requires --set qp=<1..255> to use the lossy residual path; use --set gop=0 for the intra-only legacy path",
                 request.format
             ));
         }

@@ -94,6 +94,15 @@ impl VideoEncoderBuilder {
         Ok(self.rate_control(VideoRateControl::constant_quantizer(qp)?))
     }
 
+    /// Set the temporal GOP size.
+    ///
+    /// `-1` means one intra frame followed by unbounded predictive frames.
+    /// `0` means intra-only. Positive values insert an intra frame every
+    /// `gop` frames.
+    pub fn gop(self, gop: i32) -> Result<Self> {
+        self.setting("gop", gop)
+    }
+
     /// Set reconstruction output behavior directly.
     pub fn reconstruction(mut self, reconstruction: ReconstructionMode) -> Self {
         self.reconstruction = reconstruction;

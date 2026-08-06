@@ -154,7 +154,10 @@ fn av2_rgb24_non_lossless_emits_identity_metadata_and_packed_recon() {
         &mut output,
         Some(&mut recon),
         request,
-        Av2EncodeOptions::default(),
+        Av2EncodeOptions {
+            gop: crate::settings::GopMode::IntraOnly,
+            ..Default::default()
+        },
         None,
     )
     .expect("AV2 rgb24 non-lossless encode should keep public RGB byte layout");
@@ -332,7 +335,7 @@ fn av2_lossless_predictive_reuses_repeated_frames_as_sef() {
         Av2EncodeOptions {
             lossless: true,
             qp: None,
-            predictive: true,
+            gop: crate::settings::GopMode::Infinite,
         },
         Some(&mut metrics),
     )
@@ -381,7 +384,7 @@ fn av2_lossy_predictive_reuses_repeated_frames_as_sef() {
         Av2EncodeOptions {
             lossless: false,
             qp: Some(24),
-            predictive: true,
+            gop: crate::settings::GopMode::Infinite,
         },
         Some(&mut metrics),
     )
@@ -420,7 +423,7 @@ fn av2_lossy_predictive_zero_mv_tiles_reuse_previous_reconstruction() {
         }
     }
     let mut frame_stats =
-        stats::Av2FrameStats::new(0, geometry, format, stream_format, false, Some(24), true);
+        stats::Av2FrameStats::new(0, geometry, format, stream_format, false, Some(24), -1);
 
     let (_, first_recon) =
         av2_lossy_subsampled_predictive_key_bitstream_and_reconstruction_for_frame(
@@ -532,7 +535,7 @@ fn av2_lossy_predictive_requires_qp_for_legacy_444_path() {
         Av2EncodeOptions {
             lossless: false,
             qp: None,
-            predictive: true,
+            gop: crate::settings::GopMode::Infinite,
         },
         None,
     )
@@ -582,7 +585,7 @@ fn av2_lossless_predictive_uses_zero_mv_inter_for_unchanged_tiles() {
         Av2EncodeOptions {
             lossless: true,
             qp: None,
-            predictive: true,
+            gop: crate::settings::GopMode::Infinite,
         },
         Some(&mut metrics),
     )
@@ -657,7 +660,7 @@ fn av2_lossless_predictive_uses_newmv_inter_for_shifted_tile() {
         Av2EncodeOptions {
             lossless: true,
             qp: None,
-            predictive: true,
+            gop: crate::settings::GopMode::Infinite,
         },
         Some(&mut metrics),
     )
@@ -726,7 +729,7 @@ fn av2_lossless_predictive_uses_mixed_newmv_inter_for_nonuniform_shifted_tile() 
         Av2EncodeOptions {
             lossless: true,
             qp: None,
-            predictive: true,
+            gop: crate::settings::GopMode::Infinite,
         },
         Some(&mut metrics),
     )
@@ -1139,7 +1142,7 @@ fn av2_qp_path_can_keep_yuv420_blocks_lossless() {
         Av2EncodeOptions {
             lossless: false,
             qp: Some(8),
-            predictive: false,
+            gop: crate::settings::GopMode::IntraOnly,
         },
         None,
     )
@@ -1178,7 +1181,7 @@ fn av2_qp_path_accepts_yuv422() {
         Av2EncodeOptions {
             lossless: false,
             qp: Some(8),
-            predictive: false,
+            gop: crate::settings::GopMode::IntraOnly,
         },
         None,
     )

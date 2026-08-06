@@ -132,10 +132,11 @@ debugging and reference validation. `--psnr` is the explicit metrics option: it
 computes per-frame PSNR from the encoder's internal reconstruction while the
 frame is still in memory, so long benchmark streams can report quality without
 writing reconstruction files.
-Codec-specific setting catalogs carry codec-local controls such as the
-experimental `--set predictive` temporal mode and VVC's `fast-search` mode
-pruning. Unknown options should still fail early instead of silently becoming
-unused metadata.
+Codec-specific setting catalogs carry controls such as the shared `gop`
+temporal period and VVC's `fast-search` mode pruning. Temporal prediction
+defaults to `gop=-1`, meaning one intra frame followed by unbounded predictive
+frames; `gop=0` selects intra-only coding. Unknown options should still fail
+early instead of silently becoming unused metadata.
 
 AV2's QP path maps `--set qp=<1..255>` to a nonzero frame `base_qindex` and emits regular
 transform-quantized 4x4 residuals for the current lossy intra path. The current

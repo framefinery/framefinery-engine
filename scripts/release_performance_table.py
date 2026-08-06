@@ -42,8 +42,8 @@ def main() -> int:
         choices=("off", "conservative", "moderate", "aggressive", "lossless-speed"),
         default="lossless-speed",
     )
-    parser.add_argument("--no-av2-predictive", action="store_true")
-    parser.add_argument("--no-vvc-predictive", action="store_true")
+    parser.add_argument("--av2-gop", type=parse_gop, default=-1)
+    parser.add_argument("--vvc-gop", type=parse_gop, default=-1)
     parser.add_argument("--keep-bitstreams", action="store_true")
     parser.add_argument("--write-recon", action="store_true")
     parser.add_argument("--cleanup-recon", action="store_true")
@@ -96,8 +96,8 @@ def benchmark_command(args: argparse.Namespace) -> list[str]:
         command.extend(["--mode", mode])
     if args.limit:
         command.extend(["--limit", str(args.limit)])
-    command.append("--no-av2-predictive" if args.no_av2_predictive else "--av2-predictive")
-    command.append("--no-vvc-predictive" if args.no_vvc_predictive else "--vvc-predictive")
+    command.extend(["--av2-gop", str(args.av2_gop)])
+    command.extend(["--vvc-gop", str(args.vvc_gop)])
     if not args.keep_bitstreams:
         command.append("--cleanup-output")
     if args.write_recon:
@@ -163,6 +163,20 @@ def parse_qp(value: str) -> int:
     parsed = parse_positive_int(value)
     if parsed > 255:
         raise argparse.ArgumentTypeError(f"QP expects an integer from 1 through 255, got '{value}'")
+    return parsed
+
+
+def parse_gop(value: str) -> int:
+    try:
+        parsed = int(value, 10)
+    except ValueError as err:
+        raise argparse.ArgumentTypeError(
+            f"GOP expects an integer from -1 through 65535, got '{value}'"
+        ) from err
+    if not (-1 <= parsed <= 65535):
+        raise argparse.ArgumentTypeError(
+            f"GOP expects an integer from -1 through 65535, got '{value}'"
+        )
     return parsed
 
 

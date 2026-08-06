@@ -119,7 +119,7 @@ fn facade_exposes_fluent_encoder_builder() -> Result<()> {
         .fps(30, 1)?
         .lossless()
         .reconstruction_frames()
-        .setting("predictive", true)?
+        .gop(30)?
         .into_config()?;
 
     assert_eq!(config.codec.as_str(), "av2");
@@ -127,7 +127,7 @@ fn facade_exposes_fluent_encoder_builder() -> Result<()> {
     assert_eq!(config.frame_rate.expect("fps should be set").numerator, 30);
     assert!(matches!(config.rate_control, VideoRateControl::Lossless));
     assert_eq!(config.reconstruction, ReconstructionMode::Frames);
-    assert_eq!(config.settings[0].as_cli_spec(), "predictive=true");
+    assert_eq!(config.settings[0].as_cli_spec(), "gop=30");
 
     let output = encoder("av2")?
         .input(info)

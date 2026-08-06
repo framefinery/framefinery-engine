@@ -77,7 +77,7 @@ fn run_encode(args: EncodeArgs) -> ExitCode {
         }
     };
 
-    print_encode_config(codec.name, &args, &job);
+    print_encode_config(codec, &args, &job);
 
     match encode_with_model(codec, &args, job) {
         Ok(()) => ExitCode::SUCCESS,
@@ -776,12 +776,8 @@ struct EncodeJob {
     lossless: bool,
 }
 
-fn print_encode_config(codec_name: &str, args: &EncodeArgs, job: &EncodeJob) {
-    let settings = if args.settings.is_empty() {
-        "none".to_string()
-    } else {
-        args.settings.join(",")
-    };
+fn print_encode_config(codec: VideoEncoderManifest, args: &EncodeArgs, job: &EncodeJob) {
+    let settings = effective_settings_label(codec, args);
     eprintln!(
         "input: {} video={}x{}:{} frames={} fps={}",
         input_label(&job.input),
@@ -805,7 +801,7 @@ fn print_encode_config(codec_name: &str, args: &EncodeArgs, job: &EncodeJob) {
     }
     eprintln!(
         "encoder: codec={} output={} recon={} settings={} preset={}",
-        codec_name,
+        codec.name,
         job.output.display(),
         job.recon
             .as_ref()
@@ -817,6 +813,48 @@ fn print_encode_config(codec_name: &str, args: &EncodeArgs, job: &EncodeJob) {
     if job.psnr {
         eprintln!("metrics: psnr=enabled");
     }
+}
+
+fn effective_settings_label(codec: VideoEncoderManifest, args: &EncodeArgs) -> String {
+    let mut settings = Vec::new();
+    push_effective_setting_specs(&mut settings, GLOBAL_SETTINGS, args);
+    push_effective_setting_specs(&mut settings, codec.settings, args);
+    if settings.is_empty() {
+        "none".to_string()
+    } else {
+        settings.join(",")
+    }
+}
+
+fn push_effective_setting_specs(
+    rendered: &mut Vec<String>,
+    manifests: &[SettingManifest],
+    args: &EncodeArgs,
+) {
+    for manifest in manifests {
+        if let Some(value) = effective_setting_value(*manifest, args) {
+            rendered.push(format!("{}={}", manifest.name, value));
+        }
+    }
+}
+
+fn effective_setting_value(manifest: SettingManifest, args: &EncodeArgs) -> Option<String> {
+    if manifest.name == "lossless" {
+        return boolean_setting_enabled(&args.settings, "lossless")
+            .ok()
+            .map(|enabled| enabled.to_string());
+    }
+    if manifest.name == "qp" {
+        return setting_u8(&args.settings, "qp")
+            .ok()
+            .and_then(|qp| qp.map(|value| value.to_string()))
+            .or_else(|| manifest.default_value.map(str::to_string));
+    }
+    args.settings
+        .iter()
+        .find(|spec| setting_name(spec) == manifest.name)
+        .map(|spec| setting_value(spec).unwrap_or("true").to_string())
+        .or_else(|| manifest.default_value.map(str::to_string))
 }
 
 fn encode_job_for_codec(
@@ -1209,7 +1247,7 @@ fn encoder_setting_from_cli(
             VideoEncoderSetting::boolean(name, parse_bool_setting(name, value)?)
         }
         SettingValue::Choice(_) => VideoEncoderSetting::text(name, value),
-        SettingValue::IntegerRange { .. } => {
+        SettingValue::IntegerRange { .. } | SettingValue::SignedIntegerRange { .. } => {
             let value = value
                 .parse::<i64>()
                 .map_err(|_| format!("{name} expects an integer, got '{value}'"))?;

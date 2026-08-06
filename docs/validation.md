@@ -86,12 +86,12 @@ already planar GBR, so validation compares the bytes directly.
 
 Additional encoder settings can be passed to validation with
 `VALIDATION_SETTINGS="key key=value"`. This is intended for codec experiments
-that are not part of a manifest row yet, such as experimental predictive modes:
+that are not part of a manifest row yet, such as testing a fixed temporal GOP:
 
 ```sh
 make validate-set CODEC=av2 \
   VALIDATION_SET=local-aomctc-b2-scc-predictive-sweep-3f \
-  VALIDATION_SETTINGS=predictive \
+  VALIDATION_SETTINGS=gop=30 \
   VALIDATION_REFERENCE_MODE=required
 ```
 
@@ -342,7 +342,7 @@ make compare-compression CODEC=av2 \
   COMPRESSION_SET=local-aomctc-b2-scc-1080p-lossless-50f \
   COMPRESSION_REFERENCE_BACKEND=ffmpeg-libaom \
   COMPRESSION_REFERENCE_PRESET=realtime-screen \
-  COMPRESSION_SETTINGS=predictive \
+  COMPRESSION_SETTINGS=gop=-1 \
   COMPRESSION_DIRECT_SOURCE_FILES=1
 ```
 

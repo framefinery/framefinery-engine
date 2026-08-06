@@ -113,7 +113,7 @@ impl std::str::FromStr for VvcFastSearch {
 pub struct VvcEncodeOptions {
     pub lossless: bool,
     pub qp: Option<u8>,
-    pub predictive: bool,
+    pub gop: crate::settings::GopMode,
     pub fast_search: VvcFastSearch,
 }
 

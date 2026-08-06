@@ -12,6 +12,13 @@ pub enum SettingValue {
         /// Maximum accepted value.
         max: u16,
     },
+    /// Signed integer setting constrained to an inclusive range.
+    SignedIntegerRange {
+        /// Minimum accepted value.
+        min: i32,
+        /// Maximum accepted value.
+        max: i32,
+    },
 }
 
 /// One accepted syntax form for a setting.
@@ -50,6 +57,8 @@ pub struct SettingManifest {
     pub name: &'static str,
     /// Value shape accepted by this setting.
     pub value: SettingValue,
+    /// Effective default value rendered by frontends, when the setting has a public default.
+    pub default_value: Option<&'static str>,
     /// Help/spec manifest for this setting.
     pub spec: &'static SettingSpecManifest,
     /// Short user-facing summary.
@@ -67,6 +76,9 @@ impl SettingValue {
             SettingValue::Choice(values) => values.contains(&value),
             SettingValue::IntegerRange { min, max } => value
                 .parse::<u16>()
+                .is_ok_and(|parsed| (min..=max).contains(&parsed)),
+            SettingValue::SignedIntegerRange { min, max } => value
+                .parse::<i32>()
                 .is_ok_and(|parsed| (min..=max).contains(&parsed)),
         }
     }
@@ -125,12 +137,30 @@ pub fn u8_setting(settings: &[String], name: &str) -> std::result::Result<Option
     Ok(None)
 }
 
+/// Parse a signed integer setting from CLI-style setting specs.
+///
+/// Returns `Ok(None)` when the setting is absent.
+pub fn i32_setting(settings: &[String], name: &str) -> std::result::Result<Option<i32>, String> {
+    for spec in settings {
+        if setting_name(spec) != name {
+            continue;
+        }
+        let value = setting_value(spec).unwrap_or("true");
+        let parsed = value
+            .parse::<i32>()
+            .map_err(|_| format!("{name} expects a signed integer, got '{value}'"))?;
+        return Ok(Some(parsed));
+    }
+    Ok(None)
+}
+
 /// Render a short label for the accepted values of `setting`.
 pub fn setting_values_label(setting: SettingManifest) -> String {
     match setting.value {
         SettingValue::Boolean => "true|false".to_string(),
         SettingValue::Choice(values) => values.join("|"),
         SettingValue::IntegerRange { min, max } => format!("{min}..{max}"),
+        SettingValue::SignedIntegerRange { min, max } => format!("{min}..{max}"),
     }
 }
 
@@ -172,6 +202,7 @@ pub const LOSSLESS_SETTING_SPEC: SettingSpecManifest = SettingSpecManifest {
 pub const LOSSLESS_SETTING: SettingManifest = SettingManifest {
     name: "lossless",
     value: SettingValue::Boolean,
+    default_value: Some("false"),
     spec: &LOSSLESS_SETTING_SPEC,
     summary: "request lossless coding when supported",
 };
