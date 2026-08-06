@@ -41,9 +41,10 @@ pub use framefinery_core::{
     FilterPipelineSpec, FilterPipelineStats, FilterStageSpec, Frame, FrameEncodeMetrics, FrameInfo,
     FramePsnr, FrameRate, FrameRef, MediaError, Packet, PictureId, PixelFormat,
     RawVideoFrameReadSource, RawVideoFrameSource, ReconstructionMode, Result, SampleBitDepth, Sink,
-    Source, StreamId, Timestamp, VideoChunkKind, VideoEncodeOutput, VideoEncodeSourceRequest,
-    VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession, VideoEncoderSetting,
-    VideoRateControl, VideoSettingValue, FILTERS,
+    Source, StreamId, Timestamp, VideoChunkKind, VideoEncodeFrameMetrics,
+    VideoEncodeFrameMetricsCallback, VideoEncodeOutput, VideoEncodeSourceFn,
+    VideoEncodeSourceRequest, VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession,
+    VideoEncoderSetting, VideoRateControl, VideoSettingValue, FILTERS,
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
