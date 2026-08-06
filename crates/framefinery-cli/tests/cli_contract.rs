@@ -156,6 +156,41 @@ fn psnr_option_reports_metrics_without_recon_file() {
     assert!(!dir.join("recon.yuv").exists());
 }
 
+#[cfg(all(feature = "codec-av2", feature = "filter-identity"))]
+#[test]
+fn no_progress_suppresses_per_frame_output() {
+    let dir = temp_dir("no_progress");
+    let output = dir.join("pattern.obu");
+
+    let result = Command::new(ff())
+        .args([
+            "encode",
+            "--filter",
+            "pattern=black",
+            "--video",
+            "16x16:yuv420p8",
+            "--frames",
+            "1",
+            "--encode",
+            &format!("av2:{}", output.display()),
+            "--set",
+            "lossless",
+            "--no-progress",
+        ])
+        .output()
+        .expect("run ff encode");
+
+    assert!(
+        result.status.success(),
+        "ff failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(output.metadata().expect("output metadata").len() > 0);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("encoder: codec=av2"), "{stderr}");
+    assert!(!stderr.contains("frame:"), "{stderr}");
+}
+
 #[cfg(all(
     feature = "codec-av2",
     feature = "filter-crop",

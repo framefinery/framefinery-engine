@@ -246,6 +246,16 @@ pub(crate) const PSNR_OPTION: CliOptionManifest = CliOptionManifest {
     examples: &["--psnr"],
 };
 
+pub(crate) const NO_PROGRESS_OPTION: CliOptionManifest = CliOptionManifest {
+    syntax: "--no-progress",
+    names: &["--no-progress"],
+    value: CliOptionValue::None,
+    scope: CliOptionScope::Output,
+    summary: "Suppress per-frame progress and metrics lines on stderr",
+    details: &["errors and final process status are still reported normally"],
+    examples: &["--no-progress"],
+};
+
 pub(crate) const SET_OPTION: CliOptionManifest = CliOptionManifest {
     syntax: "--set <key[=value]>",
     names: &["--set"],
@@ -283,6 +293,7 @@ pub(crate) const CLI_OPTIONS: &[CliOptionManifest] = &[
     ENCODE_OPTION,
     RECON_OPTION,
     PSNR_OPTION,
+    NO_PROGRESS_OPTION,
     SET_OPTION,
     PRESET_OPTION,
 ];

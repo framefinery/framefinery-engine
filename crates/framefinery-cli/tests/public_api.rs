@@ -96,6 +96,22 @@ fn source_callback_reports_psnr_when_metrics_are_selected() -> Result<()> {
 }
 
 #[test]
+fn source_encode_accepts_missing_metrics_callback() -> Result<()> {
+    let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
+    let config = VideoEncoderConfig::new(CodecId::new("av2")?, info)
+        .with_rate_control(VideoRateControl::Lossless)
+        .with_reconstruction(ReconstructionMode::MetricsOnly);
+    let pixels = vec![0; info.expected_len()];
+    let mut source = RawVideoFrameReadSource::new(Cursor::new(pixels));
+    let mut bitstream = Vec::new();
+
+    encode_source(&config, &mut source, &mut bitstream, None, None)?;
+
+    assert!(!bitstream.is_empty());
+    Ok(())
+}
+
+#[test]
 fn facade_exposes_fluent_encoder_builder() -> Result<()> {
     let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
     let config = encoder("av2")?
@@ -151,6 +167,9 @@ fn facade_exposes_cli_option_inventory() {
     assert!(output_options
         .iter()
         .any(|option| option.matches_name("--psnr")));
+    assert!(output_options
+        .iter()
+        .any(|option| option.matches_name("--no-progress")));
 }
 
 #[cfg(feature = "filter-pattern")]

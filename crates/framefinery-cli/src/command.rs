@@ -1240,7 +1240,11 @@ fn encode_with_model(
     let mut frame_metrics = |metrics: VideoEncodeFrameMetrics<'_>| {
         print_frame_progress(codec.name, &job, progress_start.elapsed(), &metrics);
     };
-    let frame_metrics = Some(&mut frame_metrics as VideoEncodeFrameMetricsCallback<'_>);
+    let frame_metrics = if args.no_progress {
+        None
+    } else {
+        Some(&mut frame_metrics as VideoEncodeFrameMetricsCallback<'_>)
+    };
     if job.source_format != job.format && recon.is_some() {
         let mut recon_converter =
             FrameFormatConvertingWriter::new(recon.as_mut().expect("checked Some"), &job)?;

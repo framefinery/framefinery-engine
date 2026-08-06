@@ -29,6 +29,7 @@ pub struct EncodeArgs {
     pub output: Option<String>,
     pub recon: Option<String>,
     pub psnr: bool,
+    pub no_progress: bool,
     pub codec: Option<String>,
     pub video: Option<VideoSpec>,
     pub frames: Option<u32>,
@@ -232,6 +233,8 @@ fn parse_encode(mut cursor: Cursor) -> Result<Command, String> {
             args.recon = Some(cursor.value(option)?);
         } else if options::PSNR_OPTION.matches_name(option) {
             args.psnr = true;
+        } else if options::NO_PROGRESS_OPTION.matches_name(option) {
+            args.no_progress = true;
         } else if options::VIDEO_OPTION.matches_name(option) {
             args.video = Some(parse_video_spec(option, &cursor.value(option)?)?);
             args.explicit_video = true;
@@ -720,6 +723,7 @@ mod tests {
         assert_eq!(args.output.as_deref(), Some("out.obu"));
         assert_eq!(args.recon.as_deref(), Some("out_recon.yuv"));
         assert!(!args.psnr);
+        assert!(!args.no_progress);
         assert_eq!(args.codec.as_deref(), Some("av2"));
         assert_eq!(
             args.video,
@@ -752,6 +756,26 @@ mod tests {
         };
         assert!(args.psnr);
         assert_eq!(args.recon, None);
+    }
+
+    #[test]
+    fn parses_encode_no_progress_option() {
+        let command = parse_words(&[
+            "ff",
+            "encode",
+            "in.yuv",
+            "--video",
+            "64x64:yuv420p",
+            "--encode",
+            "av2:out.obu",
+            "--no-progress",
+        ])
+        .unwrap();
+
+        let Command::Encode(args) = command else {
+            panic!("expected encode command");
+        };
+        assert!(args.no_progress);
     }
 
     #[test]
@@ -1085,6 +1109,7 @@ mod tests {
             "--encode <codec:path>",
             "--recon <path>",
             "--psnr",
+            "--no-progress",
             "--video <WxH:fmt>",
             "--fps <rate>",
             "-n, --frames <count>",

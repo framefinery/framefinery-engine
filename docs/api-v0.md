@@ -259,6 +259,8 @@ through that frame, and `encode_elapsed` is per-frame wall time after the source
 frame has been read. `psnr` is populated when
 `VideoEncoderConfig::reconstruction` is `MetricsOnly`; callers can also use the
 borrowed `source` and `reconstruction` slices to compute custom metrics.
+The callback is optional. Passing `None` disables per-frame reporting and still
+encodes normally; this is the API equivalent of the CLI `--no-progress` option.
 
 When a byte-reader bridge is still needed, `RawVideoFrameSourceReadAdapter`
 adapts a raw-frame source to `std::io::Read` while buffering one frame at a

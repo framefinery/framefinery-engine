@@ -77,7 +77,8 @@ whole generated stream in memory.
 During encode, `ff` prints one progress line per encoded frame on stderr. The
 line reports frame position, elapsed wall time, average FPS, per-frame encode
 time, per-frame bytes, and cumulative output bytes. When `--psnr` is present,
-the same line also includes per-plane and aggregate PSNR.
+the same line also includes per-plane and aggregate PSNR. Use `--no-progress`
+to suppress these per-frame lines when another process is driving the CLI.
 
 ## Settings
 
