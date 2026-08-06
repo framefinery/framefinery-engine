@@ -22,10 +22,9 @@ each later versioned release.
 - The v0 encoder API now uses `find_encoder_manifest` for discovery and
   `create_encoder`, `encode_frame`, or `encode_source` for encode operations
   selected by `VideoEncoderConfig.codec`.
-- Default product builds enable the executable `pattern` and `identity` filter
-  catalog. `crop` and `scale` remain opt-in scaffold manifests through
-  `all-filters` or their individual features until they are implemented and
-  validated.
+- Default product builds enable the executable `pattern`, `identity`, `crop`,
+  and `scale` filter catalog. `all-filters` remains a compatibility alias for
+  the complete compiled filter set.
 - `CHANGELOG.md` exists and must be updated before each publish.
 - `make validate-release-aomctc RELEASE_AOMCTC_FRAMES=1` passed locally before
   this note update.

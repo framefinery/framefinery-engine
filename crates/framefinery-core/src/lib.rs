@@ -24,13 +24,18 @@ mod video;
 
 pub use dpb::{DecodedPictureBuffer, DpbEntry, PictureId};
 pub use error::{MediaError, Result};
+#[cfg(feature = "filter-crop")]
+pub use filters::CropFilter;
 #[cfg(feature = "filter-identity")]
 pub use filters::IdentityFilter;
+#[cfg(feature = "filter-scale")]
+pub use filters::ScaleFilter;
 pub use filters::{
-    build_filter_transform, filter_spec_manifest, filter_spec_name, generate_source_filter_stream,
-    parse_filter_pipeline_specs, FilterPipelineSpec, FilterSpecExample, FilterSpecForm,
-    FilterSpecManifest, FilterSpecParameter, FilterSpecValue, FilterStageSpec, CROP_FILTER_SPEC,
-    IDENTITY_FILTER_SPEC, PATTERN_FILTER_SPEC, PATTERN_SOURCE_NAMES, SCALE_FILTER_SPEC,
+    build_filter_transform, filter_pipeline_output_info, filter_spec_manifest, filter_spec_name,
+    generate_source_filter_stream, parse_filter_pipeline_specs, FilterPipelineSpec,
+    FilterSpecExample, FilterSpecForm, FilterSpecManifest, FilterSpecParameter, FilterSpecValue,
+    FilterStageSpec, CROP_FILTER_SPEC, IDENTITY_FILTER_SPEC, PATTERN_FILTER_SPEC,
+    PATTERN_SOURCE_NAMES, SCALE_FILTER_SPEC,
 };
 pub use filters::{filter_manifest, FilterManifest, FilterStageKind, FilterStatus, FILTERS};
 #[cfg(feature = "filter-pattern")]

@@ -26,7 +26,7 @@ cd "$ROOT"
 
 CARGO="${CARGO:-cargo}"
 PYTHON="${PYTHON:-python3}"
-PRODUCT_FEATURES="${PRODUCT_FEATURES:-all-codecs all-filters}"
+PRODUCT_FEATURES="${PRODUCT_FEATURES:-all-codecs product-filters}"
 PGO_SET="${PGO_SET:-smoke}"
 PGO_FRAMES="${PGO_FRAMES:-1}"
 PGO_DIR="${PGO_DIR:-verification/generated/profiling/pgo}"

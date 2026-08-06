@@ -250,12 +250,13 @@ and `vvc` features, plus the compatibility `codec-av2` and `codec-vvc`
 features, enable the local experimental software encoders. The `filter-*`
 features map to reusable filter manifests and implementations in
 `framefinery-core`. The default `product-filters` feature enables executable
-`pattern` and `identity` stages; `all-filters` also compiles opt-in scaffold
-manifests such as `crop` and `scale`. Custom builds can disable default
-features and re-enable only the filters they want. Analysis-only features, such
-as AV2 superblock bit accounting and codec wall-time profiling, are enabled
-through dedicated Makefile switches like `AV2_SB_BITS=1`, `AV2_STATS=1`, and
-`VVC_STATS=1` so the normal product build is not slowed by instrumentation.
+`pattern`, `identity`, `crop`, and `scale` stages; `all-filters` is kept as a
+compatibility alias for the complete filter catalog. Custom builds can disable
+default features and re-enable only the filters they want. Analysis-only
+features, such as AV2 superblock bit accounting and codec wall-time profiling,
+are enabled through dedicated Makefile switches like `AV2_SB_BITS=1`,
+`AV2_STATS=1`, and `VVC_STATS=1` so the normal product build is not slowed by
+instrumentation.
 
 ## CLI Shape
 
@@ -327,8 +328,8 @@ source filter is `pattern=<name>`, with `black`, `checker`, `gradient`, and
 `color_blocks` patterns. Source filters require explicit `--video` metadata
 because there is no filename to infer dimensions or pixel format from. The
 `identity` transform filter is executable for file inputs and source-filter
-inputs. `crop` and `scale` remain opt-in future-stage scaffolds and are rejected
-until their frame transforms are implemented.
+inputs. `crop` extracts rectangular regions and `scale` performs deterministic
+nearest-neighbor resizing.
 The reusable filter catalog and implementations live in `framefinery-core`; the
 `ff` CLI reads that manifest and maps command-line strings onto the core
 pipeline API. Each filter manifest also points at a typed spec manifest, so
@@ -341,14 +342,8 @@ Default filter capability:
 |---|---|---|
 | `pattern=<name>` | source | executable generated input |
 | `identity` | transform | executable no-op frame pass-through |
-
-Opt-in scaffold filters, compiled by `all-filters` or their individual
-features:
-
-| Filter | Kind | Status |
-|---|---|---|
-| `crop` | transform | scaffold; rejected until implemented |
-| `scale` | transform | scaffold; rejected until implemented |
+| `crop` | transform | executable rectangular crop |
+| `scale` | transform | executable nearest-neighbor resize |
 
 Raw video metadata uses a compact `WxH:pixfmt` spelling when it cannot be
 inferred from the input filename or Y4M header, or when it needs to be
@@ -386,8 +381,9 @@ tools/                    Future development and validation helper scripts.
   and Y4M inputs.
 - AV2 and VVC encoders are experimental software implementations, not production codec
   implementations.
-- `identity` is the only executable transform filter. `crop` and `scale` are
-  opt-in feature-gated discovery scaffolds.
+- `crop` requires chroma-aligned rectangles for subsampled planar formats.
+- `scale` currently uses nearest-neighbor sampling rather than a resampling
+  kernel intended for display-quality resizing.
 - Reference decoders are optional local tools. Use
   `VALIDATION_REFERENCE_MODE=required` when a release or compatibility claim
   depends on external decode validation.

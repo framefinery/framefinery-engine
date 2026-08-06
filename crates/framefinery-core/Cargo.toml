@@ -13,8 +13,8 @@ documentation = "https://docs.rs/framefinery-core"
 
 [features]
 default = ["product-filters"]
-product-filters = ["filter-pattern", "filter-identity"]
-all-filters = ["product-filters", "filter-crop", "filter-scale"]
+product-filters = ["filter-pattern", "filter-identity", "filter-crop", "filter-scale"]
+all-filters = ["product-filters"]
 filter-pattern = []
 filter-identity = []
 filter-crop = []

@@ -73,8 +73,11 @@ is used, the reference reconstruction must also match the internal
 reconstruction. A lossless stream should only be enabled for a codec when both
 checks are expected to pass.
 Rows may also set `filters=<spec>|<spec>` to append executable transform
-filters to the `ff encode` command. The committed `pipeline-smoke` set uses
-this for `identity` coverage while mutating filters are still unavailable.
+filters to the `ff encode` command. The committed `pipeline-smoke` set covers
+`identity`, `crop`, and `scale`. Lossless source-byte comparison is only applied
+when all filters are source-preserving; mutating filters still require
+non-empty encoded output and internal reconstruction, plus optional reference
+decoder agreement.
 For `rgb24` lossless vectors, FrameFinery Engine writes packed RGB reconstruction bytes
 while reference raw decoder output may be planar identity GBR. The validation
 runner normalizes that reference output back to packed `rgb24` before comparing

@@ -6,11 +6,21 @@ use crate::error::Result;
 use crate::pipeline::Filter;
 #[cfg(feature = "filter-pattern")]
 use crate::pipeline::Source;
-#[cfg(feature = "filter-identity")]
+#[cfg(any(
+    feature = "filter-identity",
+    feature = "filter-crop",
+    feature = "filter-scale"
+))]
 use crate::Frame;
 use crate::FrameInfo;
-#[cfg(feature = "filter-pattern")]
+#[cfg(any(
+    feature = "filter-pattern",
+    feature = "filter-crop",
+    feature = "filter-scale"
+))]
 use crate::PixelFormat;
+#[cfg(any(feature = "filter-crop", feature = "filter-scale"))]
+use crate::{ChromaSampling, SampleBitDepth};
 
 /// Pipeline position served by a filter manifest entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -221,9 +231,12 @@ const CROP_SPEC_EXAMPLES: &[FilterSpecExample] = &[FilterSpecExample {
     summary: "select a 640x360 region from the top-left corner",
 }];
 
-const CROP_SPEC_NOTES: &[&str] = &["execution is still a scaffold"];
+const CROP_SPEC_NOTES: &[&str] = &[
+    "subsampled formats require crop coordinates and dimensions aligned to chroma samples",
+    "the output keeps the input pixel format",
+];
 
-/// Spec manifest for the `crop` transform scaffold.
+/// Spec manifest for the `crop` transform filter.
 pub const CROP_FILTER_SPEC: FilterSpecManifest = FilterSpecManifest {
     forms: CROP_SPEC_FORMS,
     parameters: CROP_SPEC_PARAMETERS,
@@ -258,9 +271,12 @@ const SCALE_SPEC_EXAMPLES: &[FilterSpecExample] = &[FilterSpecExample {
     summary: "resize frames to 1280x720",
 }];
 
-const SCALE_SPEC_NOTES: &[&str] = &["execution is still a scaffold"];
+const SCALE_SPEC_NOTES: &[&str] = &[
+    "uses deterministic nearest-neighbor sampling",
+    "the output keeps the input pixel format",
+];
 
-/// Spec manifest for the `scale` transform scaffold.
+/// Spec manifest for the `scale` transform filter.
 pub const SCALE_FILTER_SPEC: FilterSpecManifest = FilterSpecManifest {
     forms: SCALE_SPEC_FORMS,
     parameters: SCALE_SPEC_PARAMETERS,
@@ -293,18 +309,18 @@ pub const FILTERS: &[FilterManifest] = &[
         name: "crop",
         stage: FilterStageKind::Transform,
         feature: "filter-crop",
-        status: FilterStatus::Scaffold,
+        status: FilterStatus::Implemented,
         spec: &CROP_FILTER_SPEC,
-        summary: "rectangular crop filter scaffold",
+        summary: "rectangular crop transform",
     },
     #[cfg(feature = "filter-scale")]
     FilterManifest {
         name: "scale",
         stage: FilterStageKind::Transform,
         feature: "filter-scale",
-        status: FilterStatus::Scaffold,
+        status: FilterStatus::Implemented,
         spec: &SCALE_FILTER_SPEC,
-        summary: "resize filter scaffold",
+        summary: "nearest-neighbor resize transform",
     },
 ];
 
@@ -410,6 +426,31 @@ pub fn parse_filter_pipeline_specs(
     Ok(FilterPipelineSpec { source, transforms })
 }
 
+/// Return the frame metadata produced by an ordered transform filter pipeline.
+pub fn filter_pipeline_output_info(
+    input: FrameInfo,
+    transforms: &[FilterStageSpec],
+) -> Result<FrameInfo> {
+    let mut info = input;
+    for stage in transforms {
+        let Some(manifest) = filter_manifest(&stage.name) else {
+            return Err(MediaError::Message(format!(
+                "unknown filter '{}'",
+                stage.name
+            )));
+        };
+        if manifest.stage != FilterStageKind::Transform {
+            return Err(MediaError::Message(format!(
+                "filter '{}' is not a transform filter",
+                stage.name
+            )));
+        }
+        validate_executable_filter_spec(manifest, stage)?;
+        info = filter_transform_output_info(stage, info)?;
+    }
+    Ok(info)
+}
+
 /// Generate raw video bytes from an executable source filter.
 pub fn generate_source_filter_stream(
     stage: &FilterStageSpec,
@@ -428,8 +469,21 @@ pub fn generate_source_filter_stream(
 pub fn build_filter_transform(stage: &FilterStageSpec) -> Result<Box<dyn Filter>> {
     match stage.name.as_str() {
         "identity" => build_identity_filter(),
+        "crop" => build_crop_filter(&stage.spec),
+        "scale" => build_scale_filter(&stage.spec),
         other => Err(MediaError::Message(format!(
             "filter '{other}' is not an executable transform filter"
+        ))),
+    }
+}
+
+fn filter_transform_output_info(stage: &FilterStageSpec, input: FrameInfo) -> Result<FrameInfo> {
+    match stage.name.as_str() {
+        "identity" => Ok(input),
+        "crop" => crop_filter_output_info(&stage.spec, input),
+        "scale" => scale_filter_output_info(&stage.spec, input),
+        other => Err(MediaError::Message(format!(
+            "filter '{other}' has no output metadata model wired yet"
         ))),
     }
 }
@@ -448,6 +502,8 @@ fn validate_executable_filter_spec(
     match stage.name.as_str() {
         "pattern" => validate_pattern_filter_spec(&stage.spec),
         "identity" => validate_identity_filter_spec(&stage.spec),
+        "crop" => validate_crop_filter_spec(&stage.spec),
+        "scale" => validate_scale_filter_spec(&stage.spec),
         other => Err(MediaError::Message(format!(
             "filter '{other}' has no execution model wired yet"
         ))),
@@ -471,6 +527,66 @@ fn build_identity_filter() -> Result<Box<dyn Filter>> {
 #[cfg(not(feature = "filter-identity"))]
 fn build_identity_filter() -> Result<Box<dyn Filter>> {
     Err(MediaError::Message("unknown filter 'identity'".to_string()))
+}
+
+#[cfg(feature = "filter-crop")]
+fn validate_crop_filter_spec(spec: &str) -> Result<()> {
+    parse_crop_filter_spec(spec).map(|_| ())
+}
+
+#[cfg(not(feature = "filter-crop"))]
+fn validate_crop_filter_spec(_spec: &str) -> Result<()> {
+    Err(MediaError::Message("unknown filter 'crop'".to_string()))
+}
+
+#[cfg(feature = "filter-scale")]
+fn validate_scale_filter_spec(spec: &str) -> Result<()> {
+    parse_scale_filter_spec(spec).map(|_| ())
+}
+
+#[cfg(not(feature = "filter-scale"))]
+fn validate_scale_filter_spec(_spec: &str) -> Result<()> {
+    Err(MediaError::Message("unknown filter 'scale'".to_string()))
+}
+
+#[cfg(feature = "filter-crop")]
+fn build_crop_filter(spec: &str) -> Result<Box<dyn Filter>> {
+    parse_crop_filter_spec(spec).map(|filter| Box::new(filter) as Box<dyn Filter>)
+}
+
+#[cfg(not(feature = "filter-crop"))]
+fn build_crop_filter(_spec: &str) -> Result<Box<dyn Filter>> {
+    Err(MediaError::Message("unknown filter 'crop'".to_string()))
+}
+
+#[cfg(feature = "filter-scale")]
+fn build_scale_filter(spec: &str) -> Result<Box<dyn Filter>> {
+    parse_scale_filter_spec(spec).map(|filter| Box::new(filter) as Box<dyn Filter>)
+}
+
+#[cfg(not(feature = "filter-scale"))]
+fn build_scale_filter(_spec: &str) -> Result<Box<dyn Filter>> {
+    Err(MediaError::Message("unknown filter 'scale'".to_string()))
+}
+
+#[cfg(feature = "filter-crop")]
+fn crop_filter_output_info(spec: &str, input: FrameInfo) -> Result<FrameInfo> {
+    parse_crop_filter_spec(spec)?.output_info(input)
+}
+
+#[cfg(not(feature = "filter-crop"))]
+fn crop_filter_output_info(_spec: &str, _input: FrameInfo) -> Result<FrameInfo> {
+    Err(MediaError::Message("unknown filter 'crop'".to_string()))
+}
+
+#[cfg(feature = "filter-scale")]
+fn scale_filter_output_info(spec: &str, input: FrameInfo) -> Result<FrameInfo> {
+    parse_scale_filter_spec(spec)?.output_info(input)
+}
+
+#[cfg(not(feature = "filter-scale"))]
+fn scale_filter_output_info(_spec: &str, _input: FrameInfo) -> Result<FrameInfo> {
+    Err(MediaError::Message("unknown filter 'scale'".to_string()))
 }
 
 #[cfg(feature = "filter-pattern")]
@@ -521,6 +637,650 @@ pub struct IdentityFilter;
 impl Filter for IdentityFilter {
     fn process(&mut self, frame: Frame) -> Result<Vec<Frame>> {
         Ok(vec![frame])
+    }
+}
+
+/// Rectangular frame crop transform.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "filter-crop")]
+pub struct CropFilter {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+}
+
+#[cfg(feature = "filter-crop")]
+impl CropFilter {
+    /// Create a crop transform from a rectangle in luma/pixel coordinates.
+    pub fn new(x: usize, y: usize, width: usize, height: usize) -> Result<Self> {
+        if width == 0 || height == 0 {
+            return Err(MediaError::InvalidDimensions { width, height });
+        }
+        Ok(Self {
+            x,
+            y,
+            width,
+            height,
+        })
+    }
+
+    /// Left coordinate of the crop rectangle.
+    pub const fn x(self) -> usize {
+        self.x
+    }
+
+    /// Top coordinate of the crop rectangle.
+    pub const fn y(self) -> usize {
+        self.y
+    }
+
+    /// Width of the crop rectangle.
+    pub const fn width(self) -> usize {
+        self.width
+    }
+
+    /// Height of the crop rectangle.
+    pub const fn height(self) -> usize {
+        self.height
+    }
+
+    /// Metadata produced when this crop is applied to `input`.
+    pub fn output_info(self, input: FrameInfo) -> Result<FrameInfo> {
+        crop_output_info(input, self.x, self.y, self.width, self.height)
+    }
+}
+
+#[cfg(feature = "filter-crop")]
+impl Filter for CropFilter {
+    fn process(&mut self, frame: Frame) -> Result<Vec<Frame>> {
+        let input = frame.info();
+        let output = self.output_info(input)?;
+        let data = crop_frame_data(frame.data(), input, self.x, self.y, self.width, self.height)?;
+        Ok(vec![Frame::new(output, data)?])
+    }
+}
+
+/// Nearest-neighbor frame resize transform.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "filter-scale")]
+pub struct ScaleFilter {
+    width: usize,
+    height: usize,
+}
+
+#[cfg(feature = "filter-scale")]
+impl ScaleFilter {
+    /// Create a nearest-neighbor scale transform.
+    pub fn new(width: usize, height: usize) -> Result<Self> {
+        if width == 0 || height == 0 {
+            return Err(MediaError::InvalidDimensions { width, height });
+        }
+        Ok(Self { width, height })
+    }
+
+    /// Output width in pixels.
+    pub const fn width(self) -> usize {
+        self.width
+    }
+
+    /// Output height in pixels.
+    pub const fn height(self) -> usize {
+        self.height
+    }
+
+    /// Metadata produced when this scale is applied to `input`.
+    pub fn output_info(self, input: FrameInfo) -> Result<FrameInfo> {
+        FrameInfo::new(self.width, self.height, input.format)
+    }
+}
+
+#[cfg(feature = "filter-scale")]
+impl Filter for ScaleFilter {
+    fn process(&mut self, frame: Frame) -> Result<Vec<Frame>> {
+        let input = frame.info();
+        let output = self.output_info(input)?;
+        let data = scale_frame_data(frame.data(), input, self.width, self.height)?;
+        Ok(vec![Frame::new(output, data)?])
+    }
+}
+
+#[cfg(feature = "filter-crop")]
+fn parse_crop_filter_spec(spec: &str) -> Result<CropFilter> {
+    let params = parse_filter_params("crop", spec)?;
+    let mut x = None;
+    let mut y = None;
+    let mut width = None;
+    let mut height = None;
+    for (key, value) in params {
+        match key {
+            "x" => assign_usize_param("crop", "x", value, false, &mut x)?,
+            "y" => assign_usize_param("crop", "y", value, false, &mut y)?,
+            "w" => assign_usize_param("crop", "w", value, true, &mut width)?,
+            "h" => assign_usize_param("crop", "h", value, true, &mut height)?,
+            other => {
+                return Err(MediaError::Message(format!(
+                    "crop filter does not accept parameter '{other}'"
+                )));
+            }
+        }
+    }
+    CropFilter::new(
+        require_param("crop", "x", x)?,
+        require_param("crop", "y", y)?,
+        require_param("crop", "w", width)?,
+        require_param("crop", "h", height)?,
+    )
+}
+
+#[cfg(feature = "filter-scale")]
+fn parse_scale_filter_spec(spec: &str) -> Result<ScaleFilter> {
+    let params = parse_filter_params("scale", spec)?;
+    let mut width = None;
+    let mut height = None;
+    for (key, value) in params {
+        match key {
+            "w" => assign_usize_param("scale", "w", value, true, &mut width)?,
+            "h" => assign_usize_param("scale", "h", value, true, &mut height)?,
+            other => {
+                return Err(MediaError::Message(format!(
+                    "scale filter does not accept parameter '{other}'"
+                )));
+            }
+        }
+    }
+    ScaleFilter::new(
+        require_param("scale", "w", width)?,
+        require_param("scale", "h", height)?,
+    )
+}
+
+#[cfg(any(feature = "filter-crop", feature = "filter-scale"))]
+fn parse_filter_params<'a>(filter_name: &str, spec: &'a str) -> Result<Vec<(&'a str, &'a str)>> {
+    if filter_spec_name(spec) != filter_name {
+        return Err(MediaError::Message(format!(
+            "{filter_name} filter expects a spec starting with {filter_name}="
+        )));
+    }
+    let Some((_, body)) = spec.split_once('=') else {
+        return Err(MediaError::Message(format!(
+            "{filter_name} filter expects key=value parameters"
+        )));
+    };
+    if body.is_empty() {
+        return Err(MediaError::Message(format!(
+            "{filter_name} filter expects key=value parameters"
+        )));
+    }
+    let mut params = Vec::new();
+    for token in body.split(':') {
+        let Some((key, value)) = token.split_once('=') else {
+            return Err(MediaError::Message(format!(
+                "{filter_name} filter parameter '{token}' must use key=value syntax"
+            )));
+        };
+        if key.is_empty() || value.is_empty() {
+            return Err(MediaError::Message(format!(
+                "{filter_name} filter parameters cannot have empty keys or values"
+            )));
+        }
+        params.push((key, value));
+    }
+    Ok(params)
+}
+
+#[cfg(any(feature = "filter-crop", feature = "filter-scale"))]
+fn assign_usize_param(
+    filter: &str,
+    key: &str,
+    value: &str,
+    positive: bool,
+    slot: &mut Option<usize>,
+) -> Result<()> {
+    if slot.is_some() {
+        return Err(MediaError::Message(format!(
+            "{filter} filter parameter '{key}' was provided more than once"
+        )));
+    }
+    let parsed = value.parse::<usize>().map_err(|_| {
+        MediaError::Message(format!(
+            "{filter} filter parameter '{key}' expects an integer, got '{value}'"
+        ))
+    })?;
+    if positive && parsed == 0 {
+        return Err(MediaError::Message(format!(
+            "{filter} filter parameter '{key}' must be greater than zero"
+        )));
+    }
+    *slot = Some(parsed);
+    Ok(())
+}
+
+#[cfg(any(feature = "filter-crop", feature = "filter-scale"))]
+fn require_param(filter: &str, key: &str, value: Option<usize>) -> Result<usize> {
+    value.ok_or_else(|| {
+        MediaError::Message(format!(
+            "{filter} filter is missing required parameter '{key}'"
+        ))
+    })
+}
+
+#[cfg(feature = "filter-crop")]
+fn crop_output_info(
+    input: FrameInfo,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+) -> Result<FrameInfo> {
+    let x_end = x.checked_add(width).ok_or(MediaError::LengthOverflow)?;
+    let y_end = y.checked_add(height).ok_or(MediaError::LengthOverflow)?;
+    if x_end > input.width || y_end > input.height {
+        return Err(MediaError::IncompatibleFormat {
+            format: input.format.name(),
+            reason: format!(
+                "crop rectangle x={x}:y={y}:w={width}:h={height} exceeds {}x{} input",
+                input.width, input.height
+            ),
+        });
+    }
+    validate_crop_alignment(input.format, x, y, width, height)?;
+    FrameInfo::new(width, height, input.format)
+}
+
+#[cfg(feature = "filter-crop")]
+fn validate_crop_alignment(
+    format: PixelFormat,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+) -> Result<()> {
+    let Some(sampling) = format.chroma_sampling() else {
+        return Ok(());
+    };
+    let subsample_x = sampling.subsample_x();
+    let subsample_y = sampling.subsample_y();
+    if x % subsample_x != 0
+        || width % subsample_x != 0
+        || y % subsample_y != 0
+        || height % subsample_y != 0
+    {
+        return Err(MediaError::IncompatibleFormat {
+            format: format.name(),
+            reason: format!(
+                "crop coordinates and dimensions must be aligned to {subsample_x}x{subsample_y} samples"
+            ),
+        });
+    }
+    Ok(())
+}
+
+#[cfg(feature = "filter-crop")]
+fn crop_frame_data(
+    input: &[u8],
+    info: FrameInfo,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+) -> Result<Vec<u8>> {
+    let output = crop_output_info(info, x, y, width, height)?;
+    if input.len() != info.expected_len() {
+        return Err(MediaError::BufferLength {
+            expected: info.expected_len(),
+            actual: input.len(),
+        });
+    }
+    let mut data = vec![0; output.expected_len()];
+    match info.format {
+        PixelFormat::Rgb24 => crop_packed_rgb24(input, &mut data, info.width, x, y, width, height),
+        PixelFormat::Gbrp8 => crop_full_planes(
+            input,
+            &mut data,
+            info.width,
+            info.height,
+            1,
+            x,
+            y,
+            width,
+            height,
+            3,
+        ),
+        PixelFormat::Gray { bit_depth } => crop_full_planes(
+            input,
+            &mut data,
+            info.width,
+            info.height,
+            bit_depth.bytes_per_sample(),
+            x,
+            y,
+            width,
+            height,
+            1,
+        ),
+        PixelFormat::PlanarYuv {
+            chroma_sampling,
+            bit_depth,
+        } => crop_planar_yuv(
+            input,
+            &mut data,
+            info.width,
+            info.height,
+            chroma_sampling,
+            bit_depth,
+            x,
+            y,
+            width,
+            height,
+        ),
+    }
+    Ok(data)
+}
+
+#[cfg(feature = "filter-scale")]
+fn scale_frame_data(input: &[u8], info: FrameInfo, width: usize, height: usize) -> Result<Vec<u8>> {
+    let output = FrameInfo::new(width, height, info.format)?;
+    if input.len() != info.expected_len() {
+        return Err(MediaError::BufferLength {
+            expected: info.expected_len(),
+            actual: input.len(),
+        });
+    }
+    let mut data = vec![0; output.expected_len()];
+    match info.format {
+        PixelFormat::Rgb24 => {
+            scale_packed_rgb24(input, &mut data, info.width, info.height, width, height)
+        }
+        PixelFormat::Gbrp8 => scale_full_planes(
+            input,
+            &mut data,
+            info.width,
+            info.height,
+            width,
+            height,
+            1,
+            3,
+        ),
+        PixelFormat::Gray { bit_depth } => scale_full_planes(
+            input,
+            &mut data,
+            info.width,
+            info.height,
+            width,
+            height,
+            bit_depth.bytes_per_sample(),
+            1,
+        ),
+        PixelFormat::PlanarYuv {
+            chroma_sampling,
+            bit_depth,
+        } => scale_planar_yuv(
+            input,
+            &mut data,
+            info.width,
+            info.height,
+            width,
+            height,
+            chroma_sampling,
+            bit_depth,
+        ),
+    }
+    Ok(data)
+}
+
+#[cfg(feature = "filter-crop")]
+#[allow(clippy::too_many_arguments)]
+fn crop_packed_rgb24(
+    input: &[u8],
+    output: &mut [u8],
+    input_width: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+) {
+    crop_plane_bytes(input, output, input_width, x, y, width, height, width, 3);
+}
+
+#[cfg(feature = "filter-scale")]
+fn scale_packed_rgb24(
+    input: &[u8],
+    output: &mut [u8],
+    input_width: usize,
+    input_height: usize,
+    output_width: usize,
+    output_height: usize,
+) {
+    scale_plane_bytes(
+        input,
+        output,
+        input_width,
+        input_height,
+        output_width,
+        output_height,
+        3,
+    );
+}
+
+#[cfg(feature = "filter-crop")]
+#[allow(clippy::too_many_arguments)]
+fn crop_full_planes(
+    input: &[u8],
+    output: &mut [u8],
+    input_width: usize,
+    input_height: usize,
+    bytes_per_sample: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    planes: usize,
+) {
+    let input_plane_len = input_width * input_height * bytes_per_sample;
+    let output_plane_len = width * height * bytes_per_sample;
+    for plane in 0..planes {
+        let input_start = plane * input_plane_len;
+        let output_start = plane * output_plane_len;
+        crop_plane_bytes(
+            &input[input_start..input_start + input_plane_len],
+            &mut output[output_start..output_start + output_plane_len],
+            input_width,
+            x,
+            y,
+            width,
+            height,
+            width,
+            bytes_per_sample,
+        );
+    }
+}
+
+#[cfg(feature = "filter-scale")]
+#[allow(clippy::too_many_arguments)]
+fn scale_full_planes(
+    input: &[u8],
+    output: &mut [u8],
+    input_width: usize,
+    input_height: usize,
+    output_width: usize,
+    output_height: usize,
+    bytes_per_sample: usize,
+    planes: usize,
+) {
+    let input_plane_len = input_width * input_height * bytes_per_sample;
+    let output_plane_len = output_width * output_height * bytes_per_sample;
+    for plane in 0..planes {
+        let input_start = plane * input_plane_len;
+        let output_start = plane * output_plane_len;
+        scale_plane_bytes(
+            &input[input_start..input_start + input_plane_len],
+            &mut output[output_start..output_start + output_plane_len],
+            input_width,
+            input_height,
+            output_width,
+            output_height,
+            bytes_per_sample,
+        );
+    }
+}
+
+#[cfg(feature = "filter-crop")]
+#[allow(clippy::too_many_arguments)]
+fn crop_planar_yuv(
+    input: &[u8],
+    output: &mut [u8],
+    input_width: usize,
+    input_height: usize,
+    chroma_sampling: ChromaSampling,
+    bit_depth: SampleBitDepth,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+) {
+    let bytes_per_sample = bit_depth.bytes_per_sample();
+    let input_luma_len = input_width * input_height * bytes_per_sample;
+    let output_luma_len = width * height * bytes_per_sample;
+    crop_plane_bytes(
+        &input[..input_luma_len],
+        &mut output[..output_luma_len],
+        input_width,
+        x,
+        y,
+        width,
+        height,
+        width,
+        bytes_per_sample,
+    );
+    if chroma_sampling == ChromaSampling::Monochrome {
+        return;
+    }
+
+    let subsample_x = chroma_sampling.subsample_x();
+    let subsample_y = chroma_sampling.subsample_y();
+    let input_chroma_width = input_width / subsample_x;
+    let input_chroma_height = input_height / subsample_y;
+    let output_chroma_width = width / subsample_x;
+    let output_chroma_height = height / subsample_y;
+    let input_chroma_len = input_chroma_width * input_chroma_height * bytes_per_sample;
+    let output_chroma_len = output_chroma_width * output_chroma_height * bytes_per_sample;
+    let chroma_x = x / subsample_x;
+    let chroma_y = y / subsample_y;
+    for plane in 0..2 {
+        let input_start = input_luma_len + plane * input_chroma_len;
+        let output_start = output_luma_len + plane * output_chroma_len;
+        crop_plane_bytes(
+            &input[input_start..input_start + input_chroma_len],
+            &mut output[output_start..output_start + output_chroma_len],
+            input_chroma_width,
+            chroma_x,
+            chroma_y,
+            output_chroma_width,
+            output_chroma_height,
+            output_chroma_width,
+            bytes_per_sample,
+        );
+    }
+}
+
+#[cfg(feature = "filter-scale")]
+#[allow(clippy::too_many_arguments)]
+fn scale_planar_yuv(
+    input: &[u8],
+    output: &mut [u8],
+    input_width: usize,
+    input_height: usize,
+    output_width: usize,
+    output_height: usize,
+    chroma_sampling: ChromaSampling,
+    bit_depth: SampleBitDepth,
+) {
+    let bytes_per_sample = bit_depth.bytes_per_sample();
+    let input_luma_len = input_width * input_height * bytes_per_sample;
+    let output_luma_len = output_width * output_height * bytes_per_sample;
+    scale_plane_bytes(
+        &input[..input_luma_len],
+        &mut output[..output_luma_len],
+        input_width,
+        input_height,
+        output_width,
+        output_height,
+        bytes_per_sample,
+    );
+    if chroma_sampling == ChromaSampling::Monochrome {
+        return;
+    }
+
+    let subsample_x = chroma_sampling.subsample_x();
+    let subsample_y = chroma_sampling.subsample_y();
+    let input_chroma_width = input_width / subsample_x;
+    let input_chroma_height = input_height / subsample_y;
+    let output_chroma_width = output_width / subsample_x;
+    let output_chroma_height = output_height / subsample_y;
+    let input_chroma_len = input_chroma_width * input_chroma_height * bytes_per_sample;
+    let output_chroma_len = output_chroma_width * output_chroma_height * bytes_per_sample;
+    for plane in 0..2 {
+        let input_start = input_luma_len + plane * input_chroma_len;
+        let output_start = output_luma_len + plane * output_chroma_len;
+        scale_plane_bytes(
+            &input[input_start..input_start + input_chroma_len],
+            &mut output[output_start..output_start + output_chroma_len],
+            input_chroma_width,
+            input_chroma_height,
+            output_chroma_width,
+            output_chroma_height,
+            bytes_per_sample,
+        );
+    }
+}
+
+#[cfg(feature = "filter-crop")]
+#[allow(clippy::too_many_arguments)]
+fn crop_plane_bytes(
+    input: &[u8],
+    output: &mut [u8],
+    input_width: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    output_width: usize,
+    bytes_per_sample: usize,
+) {
+    let row_bytes = width * bytes_per_sample;
+    let input_stride = input_width * bytes_per_sample;
+    let output_stride = output_width * bytes_per_sample;
+    for row in 0..height {
+        let input_start = (y + row) * input_stride + x * bytes_per_sample;
+        let output_start = row * output_stride;
+        output[output_start..output_start + row_bytes]
+            .copy_from_slice(&input[input_start..input_start + row_bytes]);
+    }
+}
+
+#[cfg(feature = "filter-scale")]
+#[allow(clippy::too_many_arguments)]
+fn scale_plane_bytes(
+    input: &[u8],
+    output: &mut [u8],
+    input_width: usize,
+    input_height: usize,
+    output_width: usize,
+    output_height: usize,
+    bytes_per_sample: usize,
+) {
+    let input_stride = input_width * bytes_per_sample;
+    let output_stride = output_width * bytes_per_sample;
+    for y in 0..output_height {
+        let source_y = y * input_height / output_height;
+        for x in 0..output_width {
+            let source_x = x * input_width / output_width;
+            let input_start = source_y * input_stride + source_x * bytes_per_sample;
+            let output_start = y * output_stride + x * bytes_per_sample;
+            output[output_start..output_start + bytes_per_sample]
+                .copy_from_slice(&input[input_start..input_start + bytes_per_sample]);
+        }
     }
 }
 
@@ -812,14 +1572,23 @@ mod tests {
 
     #[cfg(feature = "filter-crop")]
     #[test]
-    fn crop_manifest_reports_scaffold_contract() {
+    fn crop_manifest_reports_transform_contract() {
         let crop = filter_manifest("crop").expect("crop manifest");
         assert_eq!(crop.stage, FilterStageKind::Transform);
-        assert_eq!(crop.status, FilterStatus::Scaffold);
+        assert_eq!(crop.status, FilterStatus::Implemented);
         assert_eq!(
             crop.spec.forms[0].syntax,
             "crop=x=<px>:y=<px>:w=<px>:h=<px>"
         );
+    }
+
+    #[cfg(feature = "filter-scale")]
+    #[test]
+    fn scale_manifest_reports_transform_contract() {
+        let scale = filter_manifest("scale").expect("scale manifest");
+        assert_eq!(scale.stage, FilterStageKind::Transform);
+        assert_eq!(scale.status, FilterStatus::Implemented);
+        assert_eq!(scale.spec.forms[0].syntax, "scale=w=<px>:h=<px>");
     }
 
     #[cfg(feature = "filter-pattern")]
@@ -844,6 +1613,68 @@ mod tests {
         let mut filter = IdentityFilter;
         let out = filter.process(frame.clone()).unwrap();
         assert_eq!(out, vec![frame]);
+    }
+
+    #[cfg(feature = "filter-crop")]
+    #[test]
+    fn crop_filter_extracts_aligned_yuv420_region() {
+        let info = FrameInfo::new(4, 4, PixelFormat::Yuv420p8).unwrap();
+        let input = [
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 100, 101, 102, 103, 200, 201,
+            202, 203,
+        ];
+        let frame = Frame::new(info, input.to_vec()).unwrap();
+        let mut filter = CropFilter::new(2, 2, 2, 2).unwrap();
+        let output = filter.process(frame).unwrap();
+
+        assert_eq!(output.len(), 1);
+        assert_eq!(
+            output[0].info(),
+            FrameInfo::new(2, 2, PixelFormat::Yuv420p8).unwrap()
+        );
+        assert_eq!(output[0].data(), &[10, 11, 14, 15, 103, 203]);
+    }
+
+    #[cfg(feature = "filter-crop")]
+    #[test]
+    fn crop_filter_rejects_unaligned_yuv420_region() {
+        let info = FrameInfo::new(4, 4, PixelFormat::Yuv420p8).unwrap();
+        let err = CropFilter::new(1, 0, 2, 2)
+            .unwrap()
+            .output_info(info)
+            .unwrap_err();
+        assert!(err.to_string().contains("aligned to 2x2"), "{err}");
+    }
+
+    #[cfg(feature = "filter-scale")]
+    #[test]
+    fn scale_filter_resizes_yuv420_with_nearest_neighbor() {
+        let info = FrameInfo::new(2, 2, PixelFormat::Yuv420p8).unwrap();
+        let frame = Frame::new(info, vec![1, 2, 3, 4, 5, 6]).unwrap();
+        let mut filter = ScaleFilter::new(4, 4).unwrap();
+        let output = filter.process(frame).unwrap();
+
+        assert_eq!(output.len(), 1);
+        assert_eq!(
+            output[0].info(),
+            FrameInfo::new(4, 4, PixelFormat::Yuv420p8).unwrap()
+        );
+        assert_eq!(
+            output[0].data(),
+            &[1, 1, 2, 2, 1, 1, 2, 2, 3, 3, 4, 4, 3, 3, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6,]
+        );
+    }
+
+    #[cfg(all(feature = "filter-crop", feature = "filter-scale"))]
+    #[test]
+    fn filter_pipeline_output_info_tracks_geometry_changes() {
+        let input = FrameInfo::new(16, 16, PixelFormat::Yuv420p8).unwrap();
+        let transforms = [
+            FilterStageSpec::new("crop=x=0:y=0:w=8:h=8").unwrap(),
+            FilterStageSpec::new("scale=w=16:h=16").unwrap(),
+        ];
+        let output = filter_pipeline_output_info(input, &transforms).unwrap();
+        assert_eq!(output, input);
     }
 
     #[cfg(feature = "filter-pattern")]

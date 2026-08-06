@@ -7,13 +7,13 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use framefinery_core::{
-    boolean_setting_enabled, build_filter_transform, convert_frame_format, frame_psnr,
-    generate_source_filter_stream, parse_filter_pipeline_specs, run_frame_filter_pipeline,
-    setting_name, setting_value, Filter, FilterStageSpec, Frame, FrameInfo, FramePsnr, FrameRate,
-    MediaError, PixelFormat, RawVideoFrameReadSource, ReconstructionMode, SampleBitDepth,
-    SettingManifest, SettingValue, Sink, Source, VideoEncodeFrameMetrics,
-    VideoEncodeFrameMetricsCallback, VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSetting,
-    VideoRateControl, VERSION,
+    boolean_setting_enabled, build_filter_transform, convert_frame_format,
+    filter_pipeline_output_info, frame_psnr, generate_source_filter_stream,
+    parse_filter_pipeline_specs, run_frame_filter_pipeline, setting_name, setting_value, Filter,
+    FilterStageSpec, Frame, FrameInfo, FramePsnr, FrameRate, MediaError, PixelFormat,
+    RawVideoFrameReadSource, ReconstructionMode, SampleBitDepth, SettingManifest, SettingValue,
+    Sink, Source, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncoderConfig,
+    VideoEncoderManifest, VideoEncoderSetting, VideoRateControl, VERSION,
 };
 
 use crate::args::{self, Command, EncodeArgs, HelpTopic};
@@ -286,8 +286,8 @@ fn validate_y4m_job_metadata(
     job: &EncodeJob,
     path: &Path,
 ) -> Result<(), String> {
-    if metadata.width != job.width
-        || metadata.height != job.height
+    if metadata.width != job.source_width
+        || metadata.height != job.source_height
         || metadata.format != job.source_format
     {
         return Err(format!(
@@ -296,8 +296,8 @@ fn validate_y4m_job_metadata(
             metadata.width,
             metadata.height,
             metadata.format,
-            job.width,
-            job.height,
+            job.source_width,
+            job.source_height,
             job.source_format
         ));
     }
@@ -323,11 +323,11 @@ impl<R: BufRead> Y4mFrameReader<R> {
         }
         let frame_len = job
             .source_format
-            .frame_len(job.width, job.height)
+            .frame_len(job.source_width, job.source_height)
             .ok_or_else(|| {
                 format!(
                     "frame length overflow for {}x{}:{}",
-                    job.width, job.height, job.source_format
+                    job.source_width, job.source_height, job.source_format
                 )
             })?;
         Ok(Self {
@@ -418,8 +418,8 @@ fn open_unfiltered_job_reader(job: &EncodeJob) -> Result<Box<dyn Read>, String> 
             }
         }
         EncodeInput::SourceFilter(source) => {
-            let info =
-                FrameInfo::new(job.width, job.height, job.format).map_err(|err| err.to_string())?;
+            let info = FrameInfo::new(job.source_width, job.source_height, job.format)
+                .map_err(|err| err.to_string())?;
             let input = generate_source_filter_stream(source, info, job.frames)
                 .map_err(|err| err.to_string())?;
             Ok(Box::new(Cursor::new(input)))
@@ -431,9 +431,12 @@ fn apply_transform_filters_to_reader(
     reader: Box<dyn Read>,
     job: &EncodeJob,
 ) -> Result<Box<dyn Read>, String> {
-    let info = FrameInfo::new(job.width, job.height, job.format).map_err(|err| err.to_string())?;
-    let mut source = RawFrameReaderSource::new(reader, info, job.frames);
-    let mut sink = RawFrameVecSink::new(info);
+    let input_info = FrameInfo::new(job.source_width, job.source_height, job.format)
+        .map_err(|err| err.to_string())?;
+    let output_info =
+        FrameInfo::new(job.width, job.height, job.format).map_err(|err| err.to_string())?;
+    let mut source = RawFrameReaderSource::new(reader, input_info, job.frames);
+    let mut sink = RawFrameVecSink::new(output_info);
     let mut filters = job
         .transform_filters
         .iter()
@@ -535,11 +538,11 @@ impl Sink<Frame> for RawFrameVecSink {
 fn selected_input_byte_len(job: &EncodeJob) -> Result<u64, String> {
     let frame_len = job
         .source_format
-        .frame_len(job.width, job.height)
+        .frame_len(job.source_width, job.source_height)
         .ok_or_else(|| {
             format!(
                 "frame length overflow for {}x{}:{}",
-                job.width, job.height, job.source_format
+                job.source_width, job.source_height, job.source_format
             )
         })?;
     let byte_len = frame_len
@@ -564,17 +567,17 @@ impl<R: Read> FrameFormatConvertingReader<R> {
     fn new(inner: R, job: &EncodeJob) -> Result<Self, String> {
         let source_frame_len = job
             .source_format
-            .frame_len(job.width, job.height)
+            .frame_len(job.source_width, job.source_height)
             .ok_or_else(|| {
                 format!(
                     "frame length overflow for {}x{}:{}",
-                    job.width, job.height, job.source_format
+                    job.source_width, job.source_height, job.source_format
                 )
             })?;
         Ok(Self {
             inner,
-            width: job.width,
-            height: job.height,
+            width: job.source_width,
+            height: job.source_height,
             source_format: job.source_format,
             target_format: job.format,
             source_frame: vec![0; source_frame_len],
@@ -776,6 +779,8 @@ struct EncodeJob {
     frames: usize,
     fps: Option<String>,
     validate_y4m_metadata: bool,
+    source_width: usize,
+    source_height: usize,
     width: usize,
     height: usize,
     source_format: PixelFormat,
@@ -792,14 +797,20 @@ fn print_encode_config(codec_name: &str, args: &EncodeArgs, job: &EncodeJob) {
     eprintln!(
         "input: {} video={}x{}:{} frames={} fps={}",
         input_label(&job.input),
-        job.width,
-        job.height,
+        job.source_width,
+        job.source_height,
         job.source_format,
         job.frames,
         job.fps.as_deref().unwrap_or("unspecified")
     );
     if job.source_format != job.format {
         eprintln!("input-convert: {} -> {}", job.source_format, job.format);
+    }
+    if job.source_width != job.width || job.source_height != job.height {
+        eprintln!(
+            "filter-output: video={}x{}:{}",
+            job.width, job.height, job.format
+        );
     }
     for filter in &args.filters {
         eprintln!("filter: {filter}");
@@ -841,8 +852,9 @@ fn encode_job_for_codec(
         EncodeInput::Path(path) => read_y4m_file_metadata(path)?,
         EncodeInput::SourceFilter(_) => None,
     };
-    let (width, height, source_format) = resolve_video_metadata(args, y4m_metadata.as_ref())?;
-    let frames = resolve_frame_count(args, &input, source_format, width, height)?;
+    let (source_width, source_height, source_format) =
+        resolve_video_metadata(args, y4m_metadata.as_ref())?;
+    let frames = resolve_frame_count(args, &input, source_format, source_width, source_height)?;
     let lossless = boolean_setting_enabled(&args.settings, "lossless")?;
     let format = if lossless && source_format != PixelFormat::Rgb24 {
         source_format
@@ -855,6 +867,10 @@ fn encode_job_for_codec(
             codec.name
         ));
     }
+    let input_info =
+        FrameInfo::new(source_width, source_height, format).map_err(|err| err.to_string())?;
+    let output_info = filter_pipeline_output_info(input_info, &filter_pipeline.transforms)
+        .map_err(|err| err.to_string())?;
     Ok(EncodeJob {
         input,
         output,
@@ -864,10 +880,12 @@ fn encode_job_for_codec(
         frames,
         fps: resolve_fps_metadata(args, y4m_metadata.as_ref()),
         validate_y4m_metadata: y4m_metadata.is_some() && !args.explicit_video,
-        width,
-        height,
+        source_width,
+        source_height,
+        width: output_info.width,
+        height: output_info.height,
         source_format,
-        format,
+        format: output_info.format,
         lossless,
     })
 }
@@ -2473,6 +2491,8 @@ mod tests {
             frames: 1,
             fps: None,
             validate_y4m_metadata: false,
+            source_width: 8,
+            source_height: 8,
             width: 8,
             height: 8,
             source_format: PixelFormat::Yuv420p8,
@@ -2558,11 +2578,63 @@ mod tests {
 
     #[cfg(feature = "filter-crop")]
     #[test]
-    fn encode_job_rejects_transform_filter_scaffolds() {
+    fn encode_job_accepts_crop_filter_and_updates_geometry() {
         let path = temp_yuv_path("crop_filter_8x8");
+        let mut input = (0..256).map(|index| index as u8).collect::<Vec<_>>();
+        input.extend((0..64).map(|index| 100 + index as u8));
+        input.extend((0..64).map(|index| 180 + index as u8));
         let mut file = File::create(&path).expect("create temp yuv");
-        file.write_all(&vec![0; 8 * 8 * 3 / 2])
-            .expect("write temp yuv");
+        file.write_all(&input).expect("write temp yuv");
+        drop(file);
+
+        let args = EncodeArgs {
+            input: Some(path.to_string_lossy().to_string()),
+            output: Some("out.obu".to_string()),
+            codec: Some("av2".to_string()),
+            video: Some(args::VideoSpec {
+                width: 16,
+                height: 16,
+                pixel_format: Some("yuv420p8".to_string()),
+            }),
+            filters: vec!["crop=x=8:y=8:w=8:h=8".to_string()],
+            frames: None,
+            ..EncodeArgs::default()
+        };
+
+        let job = encode_job(&args).expect("crop filter should be accepted");
+        assert_eq!(job.source_width, 16);
+        assert_eq!(job.source_height, 16);
+        assert_eq!(job.width, 8);
+        assert_eq!(job.height, 8);
+
+        let mut reader = open_job_reader(&job).expect("open cropped reader");
+        let mut cropped = Vec::new();
+        reader
+            .read_to_end(&mut cropped)
+            .expect("read cropped input");
+        let mut expected = Vec::new();
+        for row in 8..16 {
+            expected.extend_from_slice(&input[row * 16 + 8..row * 16 + 16]);
+        }
+        let u_start = 16 * 16;
+        let v_start = u_start + 8 * 8;
+        for row in 4..8 {
+            expected.extend_from_slice(&input[u_start + row * 8 + 4..u_start + row * 8 + 8]);
+        }
+        for row in 4..8 {
+            expected.extend_from_slice(&input[v_start + row * 8 + 4..v_start + row * 8 + 8]);
+        }
+        assert_eq!(cropped, expected);
+        let _ = fs::remove_file(path);
+    }
+
+    #[cfg(feature = "filter-scale")]
+    #[test]
+    fn encode_job_accepts_scale_filter_and_updates_geometry() {
+        let path = temp_yuv_path("scale_filter_8x8");
+        let input = vec![7; 8 * 8 * 3 / 2];
+        let mut file = File::create(&path).expect("create temp yuv");
+        file.write_all(&input).expect("write temp yuv");
         drop(file);
 
         let args = EncodeArgs {
@@ -2574,16 +2646,21 @@ mod tests {
                 height: 8,
                 pixel_format: Some("yuv420p8".to_string()),
             }),
-            filters: vec!["crop=x=0:y=0:w=8:h=8".to_string()],
+            filters: vec!["scale=w=16:h=16".to_string()],
             frames: None,
             ..EncodeArgs::default()
         };
 
-        let err = encode_job(&args).expect_err("crop execution should remain explicit");
-        assert!(
-            err.contains("discovery scaffold but execution is not implemented"),
-            "{err}"
-        );
+        let job = encode_job(&args).expect("scale filter should be accepted");
+        assert_eq!(job.source_width, 8);
+        assert_eq!(job.source_height, 8);
+        assert_eq!(job.width, 16);
+        assert_eq!(job.height, 16);
+
+        let mut reader = open_job_reader(&job).expect("open scaled reader");
+        let mut scaled = Vec::new();
+        reader.read_to_end(&mut scaled).expect("read scaled input");
+        assert_eq!(scaled, vec![7; 16 * 16 * 3 / 2]);
         let _ = fs::remove_file(path);
     }
 
@@ -2598,6 +2675,8 @@ mod tests {
             frames: 1,
             fps: None,
             validate_y4m_metadata: false,
+            source_width: 2,
+            source_height: 2,
             width: 2,
             height: 2,
             source_format: PixelFormat::Yuv422p8,
@@ -2626,6 +2705,8 @@ mod tests {
             frames: 1,
             fps: None,
             validate_y4m_metadata: false,
+            source_width: 2,
+            source_height: 2,
             width: 2,
             height: 2,
             source_format: format,

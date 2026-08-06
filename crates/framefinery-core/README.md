@@ -79,10 +79,10 @@ Current pattern output supports `yuv420p8` and `yuv444p8`. The accepted pattern
 names are `black`, `checker`, `gradient`, and `color_blocks`; `blocks` is
 accepted as a short alias for `color_blocks`.
 
-`crop` and `scale` are currently manifest scaffolds. They are kept out of the
-default product filter set and must be compiled explicitly with `all-filters`,
-`filter-crop`, or `filter-scale` until executable implementations and
-validation coverage exist.
+`crop` extracts rectangular regions. Subsampled planar formats require crop
+coordinates and dimensions aligned to chroma samples. `scale` resizes frames
+with deterministic nearest-neighbor sampling. Both transforms keep the input
+pixel format and update frame geometry before encoder construction.
 
 ## Features
 
@@ -91,16 +91,13 @@ direct `framefinery-core` users:
 
 - `filter-pattern`
 - `filter-identity`
-
-Discovery scaffolds are available as explicit opt-ins:
-
-- `all-filters`
 - `filter-crop`
 - `filter-scale`
+- `all-filters`
 
 Applications that want a smaller compiled surface can disable default features
-and enable individual filter implementations. Applications that want the
-scaffold manifests as well can use `all-filters`:
+and enable individual filter implementations. `all-filters` is kept as a
+compatibility alias for the complete filter catalog:
 
 ```toml
 framefinery-core = {

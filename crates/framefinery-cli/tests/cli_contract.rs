@@ -157,10 +157,11 @@ fn psnr_option_reports_metrics_without_recon_file() {
     feature = "filter-identity"
 ))]
 #[test]
-fn crop_filter_reports_explicit_scaffold_error() {
-    let dir = temp_dir("crop_scaffold");
+fn crop_filter_encodes_cropped_lossless_frame() {
+    let dir = temp_dir("crop_filter");
     let input = dir.join("clip_16x16_30_1f_yuv420p8.yuv");
     let output = dir.join("out.obu");
+    let recon = dir.join("crop_recon.yuv");
     File::create(&input)
         .expect("create input")
         .write_all(&vec![0u8; yuv420p8_frame_len(16, 16)])
@@ -174,14 +175,22 @@ fn crop_filter_reports_explicit_scaffold_error() {
             "crop=x=0:y=0:w=8:h=8",
             "--encode",
             &format!("av2:{}", output.display()),
+            "--recon",
+            recon.to_str().expect("recon path utf8"),
+            "--set",
+            "lossless",
         ])
         .output()
         .expect("run ff encode");
 
-    assert!(!result.status.success());
-    let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
-        stderr.contains("discovery scaffold but execution is not implemented"),
-        "{stderr}"
+        result.status.success(),
+        "ff failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(output.metadata().expect("output metadata").len() > 0);
+    assert_eq!(
+        fs::read(recon).expect("read recon"),
+        vec![0u8; yuv420p8_frame_len(8, 8)]
     );
 }

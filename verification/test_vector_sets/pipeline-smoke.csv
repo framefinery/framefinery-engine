@@ -2,3 +2,5 @@
 name,width,height,frames,format,pattern,fps,lossless,codecs,filters
 identity_420,16,16,1,yuv420p8,checker,30,true,av2|vvc,identity
 identity_444_2f,32,32,2,yuv444p8,color_blocks,30,true,av2|vvc,identity
+crop_420,16,16,1,yuv420p8,checker,30,false,av2|vvc,crop=x=0:y=0:w=8:h=8
+scale_420,8,8,1,yuv420p8,checker,30,false,av2|vvc,scale=w=16:h=16

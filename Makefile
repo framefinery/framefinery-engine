@@ -348,7 +348,7 @@ help:
 		'Optional build-time selection:' \
 		'  make build CARGO_FEATURES=all    Build all normal product stages' \
 		'  make build CARGO_FEATURES="all-codecs all-filters"' \
-		'                         Build product codecs plus opt-in filter scaffolds' \
+		'                         Build product codecs plus the full filter catalog' \
 		'  make build CARGO_FEATURES="av2 filter-scale"' \
 		'  make build CARGO_FEATURES=        Build without optional stages'
 
