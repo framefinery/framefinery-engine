@@ -274,6 +274,22 @@ Source -> Filter -> Encoder -> Packetizer/Muxer -> Sink
 The encoder emits chunks. Packetizers, muxers, filesystem writers, WebSocket
 sinks, and browser callbacks consume chunks.
 
+## Errors
+
+Public fallible APIs return `Result<T, MediaError>`. Stable API boundaries
+should prefer structured variants over string-only errors so callers can match
+common failures:
+
+- `UnsupportedCodec` for missing or mismatched encoder IDs;
+- `UnsupportedPixelFormat` for codec/input-format rejection;
+- `UnknownSetting`, `DuplicateSetting`, `InvalidSettingValue`, and
+  `ConflictingSettings` for config validation;
+- `ShortFrameRead` for EOF after a partial raw frame;
+- `EncodeAfterFlush` and `FrameLimitExceeded` for session lifecycle errors.
+
+Codec-internal experimental paths may still map implementation-specific
+failures to string messages until those errors become stable API concepts.
+
 ## Stability Tiers
 
 - `Frame`, `FrameInfo`, `PixelFormat`: intended to stabilize early.

@@ -57,8 +57,8 @@ pub fn encoder(name: &str) -> Option<VideoEncoderManifest> {
 
 pub fn create_encoder(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>> {
     let Some(encoder) = encoder(config.codec.as_str()) else {
-        return Err(MediaError::Unsupported {
-            feature: format!("codec '{}'", config.codec),
+        return Err(MediaError::UnsupportedCodec {
+            codec: config.codec.to_string(),
             reason: "no encoder with this codec id is compiled into this build".to_string(),
         });
     };

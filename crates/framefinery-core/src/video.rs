@@ -144,7 +144,7 @@ impl<R: Read> RawVideoFrameSource for RawVideoFrameReadSource<R> {
                 if offset == 0 {
                     return Ok(false);
                 }
-                return Err(MediaError::BufferLength {
+                return Err(MediaError::ShortFrameRead {
                     expected: frame.len(),
                     actual: offset,
                 });
@@ -387,68 +387,67 @@ impl VideoEncoderManifest {
 
     pub fn validate_config(self, config: &VideoEncoderConfig) -> Result<()> {
         if config.codec.as_str() != self.name {
-            return Err(MediaError::Unsupported {
-                feature: format!("codec '{}'", config.codec),
+            return Err(MediaError::UnsupportedCodec {
+                codec: config.codec.to_string(),
                 reason: format!("manifest '{}' cannot create it", self.name),
             });
         }
         if !self.accepts_frame_info(config.input) {
-            return Err(MediaError::Unsupported {
-                feature: format!("codec '{}'", self.name),
-                reason: format!("does not accept {} input", config.input.format),
+            return Err(MediaError::UnsupportedPixelFormat {
+                codec: self.name.to_string(),
+                format: config.input.format.to_string(),
             });
         }
         if matches!(config.rate_control, VideoRateControl::Lossless)
             && !self.supports_lossless_frame_info(config.input)
         {
-            return Err(MediaError::Unsupported {
-                feature: format!("codec '{}'", self.name),
-                reason: format!("does not support lossless {} input", config.input.format),
+            return Err(MediaError::UnsupportedPixelFormat {
+                codec: self.name.to_string(),
+                format: format!("lossless {}", config.input.format),
             });
         }
 
         let mut seen = Vec::new();
         for setting in &config.settings {
             if setting.name == "lossless" {
-                return Err(MediaError::Message(
-                    "use VideoRateControl::Lossless instead of a lossless extension setting"
-                        .to_string(),
-                ));
+                return Err(MediaError::ConflictingSettings {
+                    setting: setting.name.clone(),
+                    conflict: "VideoRateControl::Lossless".to_string(),
+                });
             }
             if matches!(config.rate_control, VideoRateControl::ConstantQuantizer(_))
                 && setting.name == "qp"
             {
-                return Err(MediaError::Message(
-                    "use VideoRateControl::ConstantQuantizer instead of a duplicate qp setting"
-                        .to_string(),
-                ));
+                return Err(MediaError::ConflictingSettings {
+                    setting: setting.name.clone(),
+                    conflict: "VideoRateControl::ConstantQuantizer".to_string(),
+                });
             }
             if matches!(config.rate_control, VideoRateControl::Lossless) && setting.name == "qp" {
-                return Err(MediaError::Message(
-                    "lossless rate control is mutually exclusive with qp".to_string(),
-                ));
+                return Err(MediaError::ConflictingSettings {
+                    setting: setting.name.clone(),
+                    conflict: "lossless rate control".to_string(),
+                });
             }
             if seen.contains(&setting.name.as_str()) {
-                return Err(MediaError::Message(format!(
-                    "duplicate encoder setting '{}'",
-                    setting.name
-                )));
+                return Err(MediaError::DuplicateSetting {
+                    setting: setting.name.clone(),
+                });
             }
             seen.push(setting.name.as_str());
             let Some(manifest) = self.setting(&setting.name) else {
-                return Err(MediaError::Unsupported {
-                    feature: format!("codec '{}'", self.name),
-                    reason: format!("unknown setting '{}'", setting.name),
+                return Err(MediaError::UnknownSetting {
+                    codec: self.name.to_string(),
+                    setting: setting.name.clone(),
                 });
             };
             if !setting_value_matches_manifest(setting, manifest.value) {
-                return Err(MediaError::Message(format!(
-                    "codec '{}' setting '{}' expects {}, got '{}'",
-                    self.name,
-                    manifest.name,
-                    crate::setting_values_label(manifest),
-                    setting.value.as_cli_value()
-                )));
+                return Err(MediaError::InvalidSettingValue {
+                    codec: self.name.to_string(),
+                    setting: manifest.name.to_string(),
+                    expected: crate::setting_values_label(manifest),
+                    actual: setting.value.as_cli_value(),
+                });
             }
         }
         Ok(())
@@ -659,15 +658,77 @@ mod tests {
             .with_setting(VideoEncoderSetting::boolean("predictive", true).unwrap())
             .with_setting(VideoEncoderSetting::boolean("predictive", false).unwrap());
 
-        assert!(TEST_CODEC
-            .validate_config(&unknown)
-            .unwrap_err()
-            .to_string()
-            .contains("unknown setting"));
-        assert!(TEST_CODEC
-            .validate_config(&duplicate)
-            .unwrap_err()
-            .to_string()
-            .contains("duplicate encoder setting"));
+        assert!(matches!(
+            TEST_CODEC.validate_config(&unknown).unwrap_err(),
+            MediaError::UnknownSetting { codec, setting }
+                if codec == "test" && setting == "missing"
+        ));
+        assert!(matches!(
+            TEST_CODEC.validate_config(&duplicate).unwrap_err(),
+            MediaError::DuplicateSetting { setting } if setting == "predictive"
+        ));
+    }
+
+    #[test]
+    fn manifest_rejects_invalid_setting_values_and_conflicts() {
+        let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8).unwrap();
+        let invalid_value = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info)
+            .with_setting(VideoEncoderSetting::text("predictive", "maybe").unwrap());
+        let conflicting_qp = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info)
+            .with_rate_control(VideoRateControl::constant_quantizer(24).unwrap())
+            .with_setting(VideoEncoderSetting::integer("qp", 19).unwrap());
+
+        assert!(matches!(
+            TEST_CODEC.validate_config(&invalid_value).unwrap_err(),
+            MediaError::InvalidSettingValue {
+                codec,
+                setting,
+                expected,
+                actual,
+            } if codec == "test"
+                && setting == "predictive"
+                && expected == "true|false"
+                && actual == "maybe"
+        ));
+        assert!(matches!(
+            TEST_CODEC.validate_config(&conflicting_qp).unwrap_err(),
+            MediaError::ConflictingSettings { setting, conflict }
+                if setting == "qp" && conflict == "VideoRateControl::ConstantQuantizer"
+        ));
+    }
+
+    #[test]
+    fn manifest_rejects_codec_and_format_mismatches_structurally() {
+        let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8).unwrap();
+        let wrong_codec = VideoEncoderConfig::new(CodecId::new("other").unwrap(), info);
+        let wrong_format = VideoEncoderConfig::new(
+            CodecId::new("test").unwrap(),
+            FrameInfo::new(16, 16, PixelFormat::Rgb24).unwrap(),
+        );
+
+        assert!(matches!(
+            TEST_CODEC.validate_config(&wrong_codec).unwrap_err(),
+            MediaError::UnsupportedCodec { codec, .. } if codec == "other"
+        ));
+        assert!(matches!(
+            TEST_CODEC.validate_config(&wrong_format).unwrap_err(),
+            MediaError::UnsupportedPixelFormat { codec, format }
+                if codec == "test" && format == "rgb24"
+        ));
+    }
+
+    #[test]
+    fn raw_video_read_source_reports_short_frames_structurally() {
+        let mut source = RawVideoFrameReadSource::new(std::io::Cursor::new(vec![1, 2, 3]));
+        let mut frame = [0u8; 4];
+        let err = source.read_frame(&mut frame).unwrap_err();
+
+        assert!(matches!(
+            err,
+            MediaError::ShortFrameRead {
+                expected: 4,
+                actual: 3,
+            }
+        ));
     }
 }

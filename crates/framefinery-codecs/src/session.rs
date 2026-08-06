@@ -64,9 +64,7 @@ impl VideoEncoderSession for BufferedStreamEncoderSession {
 
     fn encode_frame(&mut self, frame: Frame) -> Result<VideoEncodeOutput> {
         if self.flushed {
-            return Err(MediaError::Message(
-                "cannot encode a frame after encoder flush".to_string(),
-            ));
+            return Err(MediaError::EncodeAfterFlush);
         }
         if frame.info() != self.config.input {
             return Err(MediaError::IncompatibleFormat {
@@ -87,10 +85,9 @@ impl VideoEncoderSession for BufferedStreamEncoderSession {
             .frame_limit
             .is_some_and(|limit| self.frames.len() >= limit)
         {
-            return Err(MediaError::Message(format!(
-                "encoder frame limit {} was exceeded",
-                self.config.frame_limit.unwrap()
-            )));
+            return Err(MediaError::FrameLimitExceeded {
+                limit: self.config.frame_limit.unwrap(),
+            });
         }
         self.frames.push(frame);
         Ok(VideoEncodeOutput::default())
@@ -416,11 +413,33 @@ mod tests {
 
         assert_eq!(first.chunks.len(), 1);
         assert!(second.chunks.is_empty());
-        assert!(encoder
-            .encode_frame(Frame::new(info, vec![3u8; info.expected_len()]).unwrap())
-            .unwrap_err()
-            .to_string()
-            .contains("after encoder flush"));
+        assert!(matches!(
+            encoder
+                .encode_frame(Frame::new(info, vec![3u8; info.expected_len()]).unwrap())
+                .unwrap_err(),
+            MediaError::EncodeAfterFlush
+        ));
+    }
+
+    #[test]
+    fn buffered_session_rejects_frame_limit_overflow_structurally() {
+        let info = FrameInfo::new(2, 2, PixelFormat::Rgb24).unwrap();
+        let mut encoder = TEST_CODEC
+            .create_encoder(config(info))
+            .expect("create test encoder session");
+
+        encoder
+            .encode_frame(Frame::new(info, vec![1u8; info.expected_len()]).unwrap())
+            .expect("first frame");
+        encoder
+            .encode_frame(Frame::new(info, vec![2u8; info.expected_len()]).unwrap())
+            .expect("second frame");
+        assert!(matches!(
+            encoder
+                .encode_frame(Frame::new(info, vec![3u8; info.expected_len()]).unwrap())
+                .unwrap_err(),
+            MediaError::FrameLimitExceeded { limit: 2 }
+        ));
     }
 
     #[test]
@@ -477,6 +496,10 @@ mod tests {
             Ok(_) => panic!("unknown setting should reject encoder creation"),
             Err(err) => err,
         };
-        assert!(err.to_string().contains("unknown setting"));
+        assert!(matches!(
+            err,
+            MediaError::UnknownSetting { codec, setting }
+                if codec == "test" && setting == "missing"
+        ));
     }
 }

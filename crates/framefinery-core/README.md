@@ -126,3 +126,9 @@ reconstruction type; `FrameRef` is the borrowed validated view.
 Public fallible APIs return `framefinery_core::Result<T>`, an alias for
 `Result<T, MediaError>`. Buffer sizes and frame dimensions are validated before
 frame construction or pattern generation.
+
+Encoder-facing API boundaries use structured `MediaError` variants for common
+failures such as unsupported codecs, unsupported pixel formats, unknown or
+invalid settings, short raw-frame reads, encode-after-flush, and frame-limit
+violations. Experimental codec internals may still surface string messages
+until the failure mode is stable enough to expose directly.
