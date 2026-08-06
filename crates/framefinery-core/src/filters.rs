@@ -901,10 +901,10 @@ fn validate_crop_alignment(
     };
     let subsample_x = sampling.subsample_x();
     let subsample_y = sampling.subsample_y();
-    if x % subsample_x != 0
-        || width % subsample_x != 0
-        || y % subsample_y != 0
-        || height % subsample_y != 0
+    if !x.is_multiple_of(subsample_x)
+        || !width.is_multiple_of(subsample_x)
+        || !y.is_multiple_of(subsample_y)
+        || !height.is_multiple_of(subsample_y)
     {
         return Err(MediaError::IncompatibleFormat {
             format: format.name(),

@@ -292,8 +292,10 @@ mod tests {
         &[],
         test_accepts_format,
         test_accepts_format,
-        test_create_session,
-        test_encode_source,
+        framefinery_core::VideoEncoderManifestHooks {
+            create_session: test_create_session,
+            encode_source: test_encode_source,
+        },
     );
 
     const TEST_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManifest {

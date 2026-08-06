@@ -281,6 +281,15 @@ pub type VideoEncodeSourceFn = for<'request> fn(
     Option<VideoEncodeFrameMetricsCallback<'request>>,
 ) -> Result<()>;
 
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub struct VideoEncoderManifestHooks {
+    #[doc(hidden)]
+    pub create_session: VideoEncoderSessionFactory,
+    #[doc(hidden)]
+    pub encode_source: VideoEncodeSourceFn,
+}
+
 impl CodecId {
     /// Validate and create a codec id.
     ///
@@ -487,8 +496,7 @@ impl VideoEncoderManifest {
         settings: &'static [SettingManifest],
         accepts_format: fn(PixelFormat) -> bool,
         supports_lossless_format: fn(PixelFormat) -> bool,
-        create_session_hook: VideoEncoderSessionFactory,
-        encode_source_hook: VideoEncodeSourceFn,
+        hooks: VideoEncoderManifestHooks,
     ) -> Self {
         Self {
             name,
@@ -497,8 +505,8 @@ impl VideoEncoderManifest {
             settings,
             accepts_format,
             supports_lossless_format,
-            create_session_hook,
-            encode_source_hook,
+            create_session_hook: hooks.create_session,
+            encode_source_hook: hooks.encode_source,
         }
     }
 
@@ -679,8 +687,10 @@ mod tests {
         TEST_SETTINGS,
         test_accepts_format,
         test_supports_lossless_format,
-        test_create_session,
-        test_encode_source,
+        VideoEncoderManifestHooks {
+            create_session: test_create_session,
+            encode_source: test_encode_source,
+        },
     );
 
     struct TestSession {

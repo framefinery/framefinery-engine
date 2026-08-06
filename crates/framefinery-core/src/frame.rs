@@ -283,14 +283,15 @@ impl PixelFormat {
             return Err(MediaError::InvalidDimensions { width, height });
         }
 
-        if self.is_yuv420() && (width % 2 != 0 || height % 2 != 0) {
+        if self.is_yuv420() && (!width.is_multiple_of(2) || !height.is_multiple_of(2)) {
             return Err(MediaError::IncompatibleFormat {
                 format: self.name(),
                 reason: "width and height must be even".to_string(),
             });
         }
 
-        if matches!(self.chroma_sampling(), Some(ChromaSampling::Cs422)) && width % 2 != 0 {
+        if matches!(self.chroma_sampling(), Some(ChromaSampling::Cs422)) && !width.is_multiple_of(2)
+        {
             return Err(MediaError::IncompatibleFormat {
                 format: self.name(),
                 reason: "width must be even".to_string(),
@@ -520,7 +521,7 @@ pub fn planar_sample_sse(
                 .sum(),
         );
     }
-    if source.len() % 2 != 0 {
+    if !source.len().is_multiple_of(2) {
         return None;
     }
 

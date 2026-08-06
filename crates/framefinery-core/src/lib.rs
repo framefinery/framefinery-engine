@@ -62,7 +62,10 @@ pub use video::{
     VideoEncoderSession, VideoEncoderSetting, VideoRateControl, VideoSettingValue,
 };
 #[doc(hidden)]
-pub use video::{VideoEncodeSourceFn, VideoEncodeSourceRequest, VideoEncoderSessionFactory};
+pub use video::{
+    VideoEncodeSourceFn, VideoEncodeSourceRequest, VideoEncoderManifestHooks,
+    VideoEncoderSessionFactory,
+};
 
 /// Version of the `framefinery-core` crate compiled into this build.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

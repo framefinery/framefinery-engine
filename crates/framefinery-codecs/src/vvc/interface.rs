@@ -4,7 +4,7 @@ use framefinery_core::{
     boolean_setting_enabled, setting_name, u8_setting, ChromaSampling, PixelFormat,
     RawVideoFrameSource, SettingManifest, SettingSpecExample, SettingSpecForm, SettingSpecManifest,
     SettingValue, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback,
-    VideoEncodeSourceRequest, VideoEncoderManifest,
+    VideoEncodeSourceRequest, VideoEncoderManifest, VideoEncoderManifestHooks,
 };
 
 use super::{
@@ -58,8 +58,10 @@ pub const VVC_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
     VVC_SETTINGS,
     vvc_accepts_format,
     vvc_supports_lossless_format,
-    create_vvc_session,
-    encode_vvc_source,
+    VideoEncoderManifestHooks {
+        create_session: create_vvc_session,
+        encode_source: encode_vvc_source,
+    },
 );
 
 pub(crate) const VVC_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManifest {

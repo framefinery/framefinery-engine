@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use framefinery_core::{
     boolean_setting_enabled, setting_name, u8_setting, ChromaSampling, PixelFormat,
     RawVideoFrameSource, SettingManifest, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback,
-    VideoEncodeSourceRequest, VideoEncoderManifest,
+    VideoEncodeSourceRequest, VideoEncoderManifest, VideoEncoderManifestHooks,
 };
 
 use super::{
@@ -25,8 +25,10 @@ pub const AV2_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
     AV2_SETTINGS,
     av2_accepts_format,
     av2_supports_lossless_format,
-    create_av2_session,
-    encode_av2_source,
+    VideoEncoderManifestHooks {
+        create_session: create_av2_session,
+        encode_source: encode_av2_source,
+    },
 );
 
 pub(crate) const AV2_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManifest {

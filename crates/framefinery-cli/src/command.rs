@@ -1636,8 +1636,10 @@ mod tests {
         TEST_CODEC_SETTINGS,
         test_codec_accepts_format,
         test_codec_accepts_format,
-        test_create_session,
-        test_encode_source,
+        framefinery_core::VideoEncoderManifestHooks {
+            create_session: test_create_session,
+            encode_source: test_encode_source,
+        },
     );
 
     const TEST_GBRP_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
@@ -1647,8 +1649,10 @@ mod tests {
         TEST_CODEC_SETTINGS,
         test_gbrp_codec_accepts_format,
         test_gbrp_codec_accepts_format,
-        test_create_session,
-        test_encode_source,
+        framefinery_core::VideoEncoderManifestHooks {
+            create_session: test_create_session,
+            encode_source: test_encode_source,
+        },
     );
 
     struct TestSession {
