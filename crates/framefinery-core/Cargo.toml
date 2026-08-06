@@ -12,7 +12,9 @@ description = "Core media primitives for FrameFinery."
 documentation = "https://docs.rs/framefinery-core"
 
 [features]
-default = ["filter-pattern", "filter-identity", "filter-crop", "filter-scale"]
+default = ["product-filters"]
+product-filters = ["filter-pattern", "filter-identity"]
+all-filters = ["product-filters", "filter-crop", "filter-scale"]
 filter-pattern = []
 filter-identity = []
 filter-crop = []

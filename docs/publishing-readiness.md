@@ -22,6 +22,10 @@ each later versioned release.
 - The v0 encoder API now uses `find_encoder_manifest` for discovery and
   `create_encoder`, `encode_frame`, or `encode_source` for encode operations
   selected by `VideoEncoderConfig.codec`.
+- Default product builds enable the executable `pattern` and `identity` filter
+  catalog. `crop` and `scale` remain opt-in scaffold manifests through
+  `all-filters` or their individual features until they are implemented and
+  validated.
 - `CHANGELOG.md` exists and must be updated before each publish.
 - `make validate-release-aomctc RELEASE_AOMCTC_FRAMES=1` passed locally before
   this note update.
@@ -81,10 +85,9 @@ Before a manual publish:
 - Keep public API stability expectations visible. Version `0.0.x` can move
   quickly, but users should know which APIs are intended public surface and
   which internals remain experimental.
-- Decide whether placeholder filters such as `crop` and `scale` should remain
-  enabled in the default feature catalog before the first broad announcement.
 - Clean stale local package artifacts before final dry runs. `target/package`
-  should be empty before the final package inspection starts.
+  was cleaned during 0.0.2 preparation and should be empty before the final
+  package inspection starts.
 - Optionally clean old ignored benchmark artifacts under `verification/generated`
   before longer release validation runs to reduce disk pressure. Keep the local
   Wayland `gbrp8` capture files under `verification/generated/test_vectors/`

@@ -25,8 +25,9 @@ Those modules are allowed to keep codec-specific internal structures while they
 evolve behind the software-facing API.
 The user-facing package is `framefinery`; it provides the public facade crate
 and the `ff` binary. Its default feature set enables AV2, VVC, and the current
-core filter catalog so `cargo install framefinery` produces the normal CLI
-build.
+product filter catalog so `cargo install framefinery` produces the normal CLI
+build. Filter scaffolds that reserve future names, such as `crop` and `scale`,
+remain opt-in through `all-filters` or their individual `filter-*` features.
 
 The first public video API contract is documented in [`api-v0.md`](api-v0.md).
 That contract is deliberately codec-neutral: callers select encoders by codec
@@ -50,9 +51,11 @@ features or separate crates. The Makefile default enables the normal product
 feature set so `./ff` is usable after `make build` without compiling
 analysis-only instrumentation; override `CARGO_FEATURES` for narrower binaries.
 Runtime pipeline construction can still choose which compiled stages to connect.
-Filter features are individually toggleable and enabled by default for the
-normal product build. Instrumentation features should stay behind explicit
-Makefile switches such as `AV2_SB_BITS=1` or `AV2_LOSSY_STATS=1`.
+Filter features are individually toggleable. The normal product build enables
+the executable `pattern` and `identity` filters by default; discovery scaffolds
+are kept out of that default until they have implementations and validation.
+Instrumentation features should stay behind explicit Makefile switches such as
+`AV2_SB_BITS=1` or `AV2_LOSSY_STATS=1`.
 
 ## CLI Contract
 
@@ -77,7 +80,7 @@ Initial command families:
 
 The first executable transform filter is `identity`, which is intentionally
 simple so the shared frame pipeline can be validated before adding mutating
-filters. `crop` and `scale` remain discovery scaffolds until their frame
+filters. `crop` and `scale` remain opt-in discovery scaffolds until their frame
 transforms are implemented and covered by validation manifests.
 
 Raw video metadata should use the compact `WxH:pixfmt` form, for example

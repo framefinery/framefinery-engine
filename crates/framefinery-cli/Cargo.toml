@@ -25,9 +25,10 @@ framefinery-core = { path = "../framefinery-core", version = "0.0.2", default-fe
 framefinery-codecs = { path = "../framefinery-codecs", version = "0.0.2", optional = true, default-features = false }
 
 [features]
-default = ["all-codecs", "all-filters"]
+default = ["all-codecs", "product-filters"]
 all-codecs = ["av2", "vvc"]
-all-filters = ["filter-pattern", "filter-identity", "filter-crop", "filter-scale"]
+product-filters = ["filter-pattern", "filter-identity"]
+all-filters = ["product-filters", "filter-crop", "filter-scale"]
 av2 = ["codec-av2"]
 vvc = ["codec-vvc"]
 video-encoders = ["dep:framefinery-codecs"]

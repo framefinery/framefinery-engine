@@ -71,7 +71,7 @@ make run ARGS="--help"
 ```
 
 The crates.io package is intended to be `framefinery`. By default it includes
-the public library facade, the `ff` CLI binary, AV2, VVC, and the current filter
+the public library facade, the `ff` CLI binary, AV2, VVC, and the product filter
 catalog:
 
 ```sh
@@ -232,14 +232,15 @@ external decoding.
 
 Codec and filter availability is selected at build time. The published
 `framefinery` package enables the normal product feature set by default, so
-`cargo install framefinery` and `make build` include every codec and filter stage
-currently intended for the developer CLI without compiling analysis-only
-instrumentation.
+`cargo install framefinery` and `make build` include every codec and product
+filter stage currently intended for the developer CLI without compiling
+analysis-only instrumentation.
 
 Override `CARGO_FEATURES` to build a smaller or more specialized binary:
 
 ```sh
 make build CARGO_FEATURES=all
+make build CARGO_FEATURES="all-codecs all-filters"
 make build CARGO_FEATURES="av2 filter-pattern filter-identity"
 make build CARGO_FEATURES=
 ```
@@ -248,12 +249,13 @@ make build CARGO_FEATURES=
 and `vvc` features, plus the compatibility `codec-av2` and `codec-vvc`
 features, enable the local experimental software encoders. The `filter-*`
 features map to reusable filter manifests and implementations in
-`framefinery-core`; all filters are enabled by default, and custom builds can
-disable default features and re-enable only the filters they want. Analysis-only
-features, such as AV2 superblock bit accounting and codec wall-time profiling,
-are enabled through dedicated Makefile switches like `AV2_SB_BITS=1`,
-`AV2_STATS=1`, and `VVC_STATS=1` so the normal product build is
-not slowed by instrumentation.
+`framefinery-core`. The default `product-filters` feature enables executable
+`pattern` and `identity` stages; `all-filters` also compiles opt-in scaffold
+manifests such as `crop` and `scale`. Custom builds can disable default
+features and re-enable only the filters they want. Analysis-only features, such
+as AV2 superblock bit accounting and codec wall-time profiling, are enabled
+through dedicated Makefile switches like `AV2_SB_BITS=1`, `AV2_STATS=1`, and
+`VVC_STATS=1` so the normal product build is not slowed by instrumentation.
 
 ## CLI Shape
 
@@ -325,20 +327,26 @@ source filter is `pattern=<name>`, with `black`, `checker`, `gradient`, and
 `color_blocks` patterns. Source filters require explicit `--video` metadata
 because there is no filename to infer dimensions or pixel format from. The
 `identity` transform filter is executable for file inputs and source-filter
-inputs; `crop` and `scale` remain listed as future stage scaffolds and are
-rejected until their frame transforms are implemented.
+inputs. `crop` and `scale` remain opt-in future-stage scaffolds and are rejected
+until their frame transforms are implemented.
 The reusable filter catalog and implementations live in `framefinery-core`; the
 `ff` CLI reads that manifest and maps command-line strings onto the core
 pipeline API. Each filter manifest also points at a typed spec manifest, so
 `ff --help filters <name>` can print the accepted forms, parameters, examples,
 and notes without duplicating filter-specific prose in the CLI.
 
-Current filter capability:
+Default filter capability:
 
 | Filter | Kind | Status |
 |---|---|---|
 | `pattern=<name>` | source | executable generated input |
 | `identity` | transform | executable no-op frame pass-through |
+
+Opt-in scaffold filters, compiled by `all-filters` or their individual
+features:
+
+| Filter | Kind | Status |
+|---|---|---|
 | `crop` | transform | scaffold; rejected until implemented |
 | `scale` | transform | scaffold; rejected until implemented |
 
@@ -379,7 +387,7 @@ tools/                    Future development and validation helper scripts.
 - AV2 and VVC encoders are experimental software implementations, not production codec
   implementations.
 - `identity` is the only executable transform filter. `crop` and `scale` are
-  feature-gated discovery scaffolds.
+  opt-in feature-gated discovery scaffolds.
 - Reference decoders are optional local tools. Use
   `VALIDATION_REFERENCE_MODE=required` when a release or compatibility claim
   depends on external decode validation.

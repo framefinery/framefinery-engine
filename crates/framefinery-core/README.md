@@ -79,21 +79,28 @@ Current pattern output supports `yuv420p8` and `yuv444p8`. The accepted pattern
 names are `black`, `checker`, `gradient`, and `color_blocks`; `blocks` is
 accepted as a short alias for `color_blocks`.
 
-`crop` and `scale` are currently manifest scaffolds. They are listed so the CLI
-and library API reserve stable names, but executable filter implementations
-still need to be added.
+`crop` and `scale` are currently manifest scaffolds. They are kept out of the
+default product filter set and must be compiled explicitly with `all-filters`,
+`filter-crop`, or `filter-scale` until executable implementations and
+validation coverage exist.
 
 ## Features
 
-All filter features are enabled by default for direct `framefinery-core` users:
+The default `product-filters` feature enables the executable filter catalog for
+direct `framefinery-core` users:
 
 - `filter-pattern`
 - `filter-identity`
+
+Discovery scaffolds are available as explicit opt-ins:
+
+- `all-filters`
 - `filter-crop`
 - `filter-scale`
 
 Applications that want a smaller compiled surface can disable default features
-and enable individual filter implementations:
+and enable individual filter implementations. Applications that want the
+scaffold manifests as well can use `all-filters`:
 
 ```toml
 framefinery-core = {

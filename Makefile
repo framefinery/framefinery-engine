@@ -1,6 +1,6 @@
 CARGO ?= cargo
 PYTHON ?= python3
-PRODUCT_FEATURES ?= all-codecs all-filters
+PRODUCT_FEATURES ?= all-codecs product-filters
 CARGO_FEATURES ?= all
 CARGO_DEFAULT_FEATURES ?= 1
 AV2_SB_BITS ?= 0
@@ -347,6 +347,8 @@ help:
 		'' \
 		'Optional build-time selection:' \
 		'  make build CARGO_FEATURES=all    Build all normal product stages' \
+		'  make build CARGO_FEATURES="all-codecs all-filters"' \
+		'                         Build product codecs plus opt-in filter scaffolds' \
 		'  make build CARGO_FEATURES="av2 filter-scale"' \
 		'  make build CARGO_FEATURES=        Build without optional stages'
 
@@ -364,9 +366,10 @@ check:
 	$(CARGO) check --workspace $(CARGO_FLAGS)
 
 feature-matrix:
-	$(CARGO) check -p framefinery --no-default-features --features "codec-av2 all-filters"
-	$(CARGO) check -p framefinery --no-default-features --features "codec-vvc all-filters"
+	$(CARGO) check -p framefinery --no-default-features --features "codec-av2 product-filters"
+	$(CARGO) check -p framefinery --no-default-features --features "codec-vvc product-filters"
 	$(CARGO) check -p framefinery --no-default-features --features "all-codecs filter-pattern filter-identity"
+	$(CARGO) check -p framefinery --no-default-features --features "all-codecs all-filters"
 
 dead-code-audit:
 	RUSTFLAGS="-F dead_code" $(CARGO) check --workspace --features "$(PRODUCT_FEATURES) framefinery-codecs/dead-code-audit"

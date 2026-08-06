@@ -14,6 +14,8 @@ behavior may change quickly while the public contract settles.
   raw stream adapters.
 - Document the v0 API contract and API stability expectations ahead of the next
   crates.io deployment.
+- Keep default builds on the product filter catalog (`pattern` and `identity`)
+  while leaving `crop` and `scale` scaffold manifests as explicit opt-ins.
 - Keep generated package/profiling artifacts out of release preparation; final
   dry-runs should start from a clean generated-artifact state.
 
