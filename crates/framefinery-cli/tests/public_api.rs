@@ -3,9 +3,9 @@
 use std::io::Cursor;
 
 use framefinery::{
-    create_encoder, encoder, CodecId, Frame, FrameInfo, MediaError, PixelFormat,
-    RawVideoFrameReadSource, RawVideoFrameSource, ReconstructionMode, Result,
-    VideoEncodeFrameMetrics, VideoEncoderConfig, VideoEncoderSetting, VideoRateControl,
+    create_encoder, encode_frame, encode_source, find_encoder_manifest, CodecId, Frame, FrameInfo,
+    MediaError, PixelFormat, RawVideoFrameReadSource, RawVideoFrameSource, ReconstructionMode,
+    Result, VideoEncodeFrameMetrics, VideoEncoderConfig, VideoEncoderSetting, VideoRateControl,
 };
 
 #[test]
@@ -29,12 +29,13 @@ fn facade_drives_source_and_buffered_encoders() -> Result<()> {
         ));
     };
 
-    let codec = encoder("av2").expect("av2 feature should expose the encoder");
-    codec.encode_source(
+    let codec = find_encoder_manifest("av2").expect("av2 feature should expose the encoder");
+    assert_eq!(codec.name, "av2");
+    encode_source(
+        &config,
         &mut source,
         &mut bitstream,
         None,
-        &config,
         Some(&mut on_metrics),
     )?;
 
@@ -43,6 +44,11 @@ fn facade_drives_source_and_buffered_encoders() -> Result<()> {
     assert_eq!(metric_rows[0].1, None);
     assert_eq!(metric_rows[0].3, info.expected_len());
     assert_eq!(metric_rows[0].4, info.expected_len());
+
+    let output = encode_frame(config.clone(), Frame::blank(info))?;
+    assert_eq!(output.chunks.len(), 1);
+    assert!(!output.chunks[0].data.is_empty());
+    assert_eq!(output.reconstructions, vec![Frame::blank(info)]);
 
     let mut encoder = create_encoder(config)?;
     let step = encoder.encode_frame(Frame::blank(info))?;

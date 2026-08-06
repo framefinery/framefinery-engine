@@ -18,16 +18,16 @@ use crate::settings::{PREDICTIVE_SETTING, QP_SETTING};
 
 const AV2_SETTINGS: &[SettingManifest] = &[QP_SETTING, PREDICTIVE_SETTING];
 
-pub const AV2_CODEC: VideoEncoderManifest = VideoEncoderManifest {
-    name: "av2",
-    feature: "codec-av2",
-    summary: "local experimental FrameFinery AV2 encoder",
-    settings: AV2_SETTINGS,
-    accepts_format: av2_accepts_format,
-    supports_lossless_format: av2_supports_lossless_format,
-    create_session: create_av2_session,
-    encode_source: encode_av2_source,
-};
+pub const AV2_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
+    "av2",
+    "codec-av2",
+    "local experimental FrameFinery AV2 encoder",
+    AV2_SETTINGS,
+    av2_accepts_format,
+    av2_supports_lossless_format,
+    create_av2_session,
+    encode_av2_source,
+);
 
 pub(crate) const AV2_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManifest {
     public: AV2_CODEC,
@@ -180,8 +180,7 @@ mod tests {
             frame_counts.push(metrics.frame_count);
         };
 
-        AV2_CODEC
-            .encode_source(&mut source, &mut output, None, &config, Some(&mut metrics))
+        crate::encode_source(&config, &mut source, &mut output, None, Some(&mut metrics))
             .expect("AV2 source encode without frame limit");
 
         assert!(!output.is_empty());

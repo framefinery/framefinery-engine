@@ -106,6 +106,43 @@ generated reference stays tied to the code instead of becoming a stale manual.
 The CLI guide lives in
 [`docs/cli.md`](https://github.com/framefinery/framefinery-engine/blob/main/docs/cli.md).
 
+## Library API Sketch
+
+The public Rust facade is codec-neutral. Select the codec once in
+`VideoEncoderConfig`; callers should not fetch a codec manifest and then pass a
+separate config for a different codec. Manifest lookup is for discovery,
+catalogs, help text, and capability checks:
+
+```rust
+use framefinery::{
+    encode_frame, find_encoder_manifest, CodecId, Frame, FrameInfo, PixelFormat,
+    ReconstructionMode, Result, VideoEncoderConfig, VideoRateControl,
+};
+
+fn encode_one_black_frame() -> Result<Vec<u8>> {
+    let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
+    let config = VideoEncoderConfig::new(CodecId::new("av2")?, info)
+        .with_rate_control(VideoRateControl::Lossless)
+        .with_reconstruction(ReconstructionMode::Frames);
+
+    let manifest = find_encoder_manifest(config.codec.as_str())
+        .expect("av2 is enabled in the default build");
+    assert!(manifest.accepts_frame_info(config.input));
+
+    let output = encode_frame(config, Frame::blank(info))?;
+    Ok(output
+        .chunks
+        .into_iter()
+        .flat_map(|chunk| chunk.data)
+        .collect())
+}
+```
+
+For longer raw streams, use `encode_source(&config, source, output, recon,
+metrics)`. The source callback fills one frame buffer at a time and returns
+`Ok(false)` at clean EOF, so file and capture adapters do not need to preload a
+whole video in memory.
+
 Generate a standalone Rust module/code browser:
 
 ```sh

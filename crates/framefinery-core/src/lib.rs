@@ -53,10 +53,11 @@ pub use settings::{
 pub use video::{
     CodecId, EncodedVideoChunk, FrameEncodeMetrics, FrameRate, RawVideoFrameReadSource,
     RawVideoFrameSource, ReconstructionMode, VideoChunkKind, VideoEncodeFrameMetrics,
-    VideoEncodeFrameMetricsCallback, VideoEncodeOutput, VideoEncodeSourceFn,
-    VideoEncodeSourceRequest, VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession,
-    VideoEncoderSessionFactory, VideoEncoderSetting, VideoRateControl, VideoSettingValue,
+    VideoEncodeFrameMetricsCallback, VideoEncodeOutput, VideoEncoderConfig, VideoEncoderManifest,
+    VideoEncoderSession, VideoEncoderSetting, VideoRateControl, VideoSettingValue,
 };
+#[doc(hidden)]
+pub use video::{VideoEncodeSourceFn, VideoEncodeSourceRequest, VideoEncoderSessionFactory};
 
 /// Version of the `framefinery-core` crate compiled into this build.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

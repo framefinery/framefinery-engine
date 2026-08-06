@@ -63,9 +63,11 @@ v0 release API.
 registry:
 
 - `ENCODERS`
-- `encoder("av2")`
-- `encoder("vvc")`
+- `find_encoder_manifest("av2")`
+- `find_encoder_manifest("vvc")`
 - `create_encoder(config)`
+- `encode_frame(config, frame)`
+- `encode_source(&config, source, output, recon, metrics)`
 
 Codec-specific modules remain implementation territory while the API cools.
 Benchmark-only internals may be exposed under hidden feature-gated paths, but
@@ -78,6 +80,25 @@ registry from `framefinery-codecs`.
 `framefinery-cli` maps command-line arguments and files onto the same generic
 config and registry concepts. It should not contain AV2/VVC implementation
 branches or filter implementation branches.
+
+## Encoder Registry
+
+`VideoEncoderConfig.codec` is the single codec selector for encoding. Callers
+should not fetch one manifest and then drive it with a config for another codec.
+The registry helpers enforce that boundary:
+
+- `find_encoder_manifest(name)` returns discovery metadata for catalogs, help
+  pages, capability checks, and setting validation UI.
+- `create_encoder(config)` creates a frame-session encoder for the codec named
+  by `config.codec`.
+- `encode_frame(config, frame)` is the one-frame convenience path for callers
+  that already own a `Frame`.
+- `encode_source(&config, source, output, recon, metrics)` is the pull-based
+  stream path for file, capture, and validation adapters.
+
+`VideoEncoderManifest` is not the public object used to encode media. It
+describes a compiled encoder and validates codec-neutral configuration, while
+codec registration hooks remain implementation detail.
 
 ## Codec Identity
 
@@ -145,7 +166,8 @@ raw-frame source callback:
 
 ```rust
 use framefinery::{
-    CodecId, FrameInfo, PixelFormat, RawVideoFrameSource, Result, VideoEncoderConfig,
+    encode_source, CodecId, FrameInfo, PixelFormat, RawVideoFrameSource, Result,
+    VideoEncoderConfig,
 };
 
 let input = FrameInfo::new(640, 360, PixelFormat::Yuv420p8)?;
@@ -159,7 +181,9 @@ let mut source = |frame: &mut [u8]| -> Result<bool> {
     emitted = true;
     Ok(true)
 };
-# let _ = (&config, &mut source as &mut dyn RawVideoFrameSource);
+let mut bitstream = Vec::new();
+encode_source(&config, &mut source, &mut bitstream, None, None)?;
+# let _ = &mut source as &mut dyn RawVideoFrameSource;
 # Ok::<(), framefinery::MediaError>(())
 ```
 
@@ -172,15 +196,23 @@ that implement this callback shape.
 
 ## Encoder Sessions
 
-The intended encoder shape is a frame-session API:
+The simplest one-frame encode helper is `encode_frame(config, frame)`. For
+callers that already own filtered frames and want to feed a stream one frame at
+a time, the lower-level session API is:
 
 ```rust
-use framefinery::{create_encoder, Frame, Result, VideoEncodeOutput, VideoEncoderConfig};
+use framefinery::{
+    create_encoder, encode_frame, Frame, Result, VideoEncodeOutput, VideoEncoderConfig,
+};
 
 fn drive_encoder(
     config: VideoEncoderConfig,
     frames: impl IntoIterator<Item = Frame>,
 ) -> Result<VideoEncodeOutput> {
+    // For a single frame, prefer:
+    // let output = encode_frame(config, frame)?;
+    //
+    // Sessions are useful when the caller naturally owns a sequence of frames.
     let mut encoder = create_encoder(config)?;
     let mut output = VideoEncodeOutput::default();
     for frame in frames {

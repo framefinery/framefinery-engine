@@ -161,7 +161,7 @@ pub trait VideoEncoderSession {
     }
 }
 
-/// Factory function stored in a video encoder manifest.
+#[doc(hidden)]
 pub type VideoEncoderSessionFactory =
     fn(VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>>;
 
@@ -223,7 +223,12 @@ impl<R: Read> RawVideoFrameSource for RawVideoFrameReadSource<R> {
     }
 }
 
-/// Public manifest for one compiled video encoder.
+/// Discovery manifest for one compiled video encoder.
+///
+/// The manifest exposes stable metadata for catalogs, help text, and validation
+/// of codec-neutral configs. Normal callers should create and drive encoders
+/// through registry helpers provided by `framefinery` or `framefinery-codecs`,
+/// using the codec id already stored in [`VideoEncoderConfig`].
 #[derive(Debug, Clone, Copy)]
 pub struct VideoEncoderManifest {
     /// Stable codec id string.
@@ -238,16 +243,14 @@ pub struct VideoEncoderManifest {
     pub accepts_format: fn(PixelFormat) -> bool,
     /// Function that tests whether lossless mode is accepted for an input format.
     pub supports_lossless_format: fn(PixelFormat) -> bool,
-    /// Factory for buffered session encoders.
-    pub create_session: VideoEncoderSessionFactory,
-    /// Source-driven encode entry point.
-    pub encode_source: VideoEncodeSourceFn,
+    create_session_hook: VideoEncoderSessionFactory,
+    encode_source_hook: VideoEncodeSourceFn,
 }
 
-/// Request metadata passed to source-driven encoder implementations.
+#[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
 pub struct VideoEncodeSourceRequest<'a> {
-    /// Encoder configuration.
+    #[doc(hidden)]
     pub config: &'a VideoEncoderConfig,
 }
 
@@ -269,7 +272,7 @@ pub struct VideoEncodeFrameMetrics<'a> {
 pub type VideoEncodeFrameMetricsCallback<'a> =
     &'a mut dyn for<'frame> FnMut(VideoEncodeFrameMetrics<'frame>);
 
-/// Source-driven encoder function stored in a video encoder manifest.
+#[doc(hidden)]
 pub type VideoEncodeSourceFn = for<'request> fn(
     &mut dyn RawVideoFrameSource,
     &mut dyn Write,
@@ -476,6 +479,39 @@ impl VideoEncodeOutput {
 }
 
 impl VideoEncoderManifest {
+    #[doc(hidden)]
+    pub const fn new(
+        name: &'static str,
+        feature: &'static str,
+        summary: &'static str,
+        settings: &'static [SettingManifest],
+        accepts_format: fn(PixelFormat) -> bool,
+        supports_lossless_format: fn(PixelFormat) -> bool,
+        create_session_hook: VideoEncoderSessionFactory,
+        encode_source_hook: VideoEncodeSourceFn,
+    ) -> Self {
+        Self {
+            name,
+            feature,
+            summary,
+            settings,
+            accepts_format,
+            supports_lossless_format,
+            create_session_hook,
+            encode_source_hook,
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn session_factory(self) -> VideoEncoderSessionFactory {
+        self.create_session_hook
+    }
+
+    #[doc(hidden)]
+    pub fn source_encode_hook(self) -> VideoEncodeSourceFn {
+        self.encode_source_hook
+    }
+
     /// Return this manifest's codec id as a validated [`CodecId`].
     pub fn codec_id(self) -> Result<CodecId> {
         CodecId::new(self.name)
@@ -567,34 +603,6 @@ impl VideoEncoderManifest {
         }
         Ok(())
     }
-
-    /// Validate `config` and create a buffered encoder session.
-    pub fn create_encoder(
-        self,
-        config: VideoEncoderConfig,
-    ) -> Result<Box<dyn VideoEncoderSession>> {
-        self.validate_config(&config)?;
-        (self.create_session)(config)
-    }
-
-    /// Validate `config` and encode frames pulled from `source`.
-    pub fn encode_source<'a>(
-        self,
-        source: &mut dyn RawVideoFrameSource,
-        output: &mut dyn Write,
-        recon: Option<&mut dyn Write>,
-        config: &'a VideoEncoderConfig,
-        frame_metrics: Option<VideoEncodeFrameMetricsCallback<'a>>,
-    ) -> Result<()> {
-        self.validate_config(config)?;
-        (self.encode_source)(
-            source,
-            output,
-            recon,
-            VideoEncodeSourceRequest { config },
-            frame_metrics,
-        )
-    }
 }
 
 fn setting_value_matches_manifest(setting: &VideoEncoderSetting, manifest: SettingValue) -> bool {
@@ -664,16 +672,16 @@ mod tests {
     };
     const TEST_SETTINGS: &[SettingManifest] = &[PREDICTIVE_SETTING];
 
-    const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest {
-        name: "test",
-        feature: "test-codec",
-        summary: "test codec",
-        settings: TEST_SETTINGS,
-        accepts_format: test_accepts_format,
-        supports_lossless_format: test_supports_lossless_format,
-        create_session: test_create_session,
-        encode_source: test_encode_source,
-    };
+    const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
+        "test",
+        "test-codec",
+        "test codec",
+        TEST_SETTINGS,
+        test_accepts_format,
+        test_supports_lossless_format,
+        test_create_session,
+        test_encode_source,
+    );
 
     struct TestSession {
         config: VideoEncoderConfig,

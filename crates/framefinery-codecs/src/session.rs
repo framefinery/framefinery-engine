@@ -285,16 +285,16 @@ mod tests {
     use crate::picture::{read_input_frame, FrameLimit};
     use framefinery_core::{FrameInfo, PixelFormat, VideoEncoderSetting};
 
-    const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest {
-        name: "test",
-        feature: "test-codec",
-        summary: "test stream bridge codec",
-        settings: &[],
-        accepts_format: test_accepts_format,
-        supports_lossless_format: test_accepts_format,
-        create_session: test_create_session,
-        encode_source: test_encode_source,
-    };
+    const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
+        "test",
+        "test-codec",
+        "test stream bridge codec",
+        &[],
+        test_accepts_format,
+        test_accepts_format,
+        test_create_session,
+        test_encode_source,
+    );
 
     const TEST_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManifest {
         public: TEST_CODEC,
@@ -322,6 +322,28 @@ mod tests {
             output,
             recon,
             request,
+            frame_metrics,
+        )
+    }
+
+    fn create_test_encoder(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>> {
+        TEST_CODEC.validate_config(&config)?;
+        (TEST_CODEC.session_factory())(config)
+    }
+
+    fn encode_test_source<'a>(
+        config: &'a VideoEncoderConfig,
+        source: &mut dyn RawVideoFrameSource,
+        output: &mut dyn Write,
+        recon: Option<&mut dyn Write>,
+        frame_metrics: Option<VideoEncodeFrameMetricsCallback<'a>>,
+    ) -> Result<()> {
+        TEST_CODEC.validate_config(config)?;
+        (TEST_CODEC.source_encode_hook())(
+            source,
+            output,
+            recon,
+            VideoEncodeSourceRequest { config },
             frame_metrics,
         )
     }
@@ -384,8 +406,7 @@ mod tests {
         };
         let mut output = Vec::new();
 
-        TEST_CODEC
-            .encode_source(&mut source, &mut output, None, &config(info), None)
+        encode_test_source(&config(info), &mut source, &mut output, None, None)
             .expect("source bridge encode");
 
         assert_eq!(index, 2);
@@ -398,9 +419,7 @@ mod tests {
     #[test]
     fn buffered_session_flush_is_idempotent_and_then_closed() {
         let info = FrameInfo::new(2, 2, PixelFormat::Rgb24).unwrap();
-        let mut encoder = TEST_CODEC
-            .create_encoder(config(info))
-            .expect("create test encoder session");
+        let mut encoder = create_test_encoder(config(info)).expect("create test encoder session");
 
         encoder
             .encode_frame(Frame::new(info, vec![1u8; info.expected_len()]).unwrap())
@@ -424,9 +443,7 @@ mod tests {
     #[test]
     fn buffered_session_rejects_frame_limit_overflow_structurally() {
         let info = FrameInfo::new(2, 2, PixelFormat::Rgb24).unwrap();
-        let mut encoder = TEST_CODEC
-            .create_encoder(config(info))
-            .expect("create test encoder session");
+        let mut encoder = create_test_encoder(config(info)).expect("create test encoder session");
 
         encoder
             .encode_frame(Frame::new(info, vec![1u8; info.expected_len()]).unwrap())
@@ -446,9 +463,7 @@ mod tests {
     fn buffered_session_rejects_wrong_frame_info() {
         let info = FrameInfo::new(2, 2, PixelFormat::Rgb24).unwrap();
         let other = FrameInfo::new(4, 2, PixelFormat::Rgb24).unwrap();
-        let mut encoder = TEST_CODEC
-            .create_encoder(config(info))
-            .expect("create test encoder session");
+        let mut encoder = create_test_encoder(config(info)).expect("create test encoder session");
 
         let err = encoder
             .encode_frame(Frame::new(other, vec![0; other.expected_len()]).unwrap())
@@ -475,8 +490,7 @@ mod tests {
         };
         let mut output = Vec::new();
 
-        TEST_CODEC
-            .encode_source(&mut source, &mut output, None, &config, None)
+        encode_test_source(&config, &mut source, &mut output, None, None)
             .expect("source bridge encode");
 
         assert_eq!(index, 2);
@@ -492,7 +506,7 @@ mod tests {
         let config =
             config(info).with_setting(VideoEncoderSetting::boolean("missing", true).unwrap());
 
-        let err = match TEST_CODEC.create_encoder(config) {
+        let err = match create_test_encoder(config) {
             Ok(_) => panic!("unknown setting should reject encoder creation"),
             Err(err) => err,
         };

@@ -50,7 +50,7 @@ where
 
 fn run_encode(args: EncodeArgs) -> ExitCode {
     let codec_name = args.codec.as_deref().expect("encode parser requires codec");
-    let Some(codec) = catalog::encoder(codec_name) else {
+    let Some(codec) = catalog::find_encoder_manifest(codec_name) else {
         eprintln!("error: unknown codec '{codec_name}'");
         eprintln!("run 'ff codecs' to list known codec stages");
         return ExitCode::from(2);
@@ -1245,28 +1245,26 @@ fn encode_with_model(
     if job.source_format != job.format && recon.is_some() {
         let mut recon_converter =
             FrameFormatConvertingWriter::new(recon.as_mut().expect("checked Some"), &job)?;
-        codec
-            .encode_source(
-                &mut source,
-                &mut output,
-                Some(&mut recon_converter as &mut dyn Write),
-                &config,
-                frame_metrics,
-            )
-            .map_err(|err| err.to_string())?;
+        catalog::encode_source(
+            &config,
+            &mut source,
+            &mut output,
+            Some(&mut recon_converter as &mut dyn Write),
+            frame_metrics,
+        )
+        .map_err(|err| err.to_string())?;
         recon_converter
             .finish()
             .map_err(|err| format!("failed to finish reconstruction conversion: {err}"))?;
     } else {
-        codec
-            .encode_source(
-                &mut source,
-                &mut output,
-                recon.as_mut().map(|writer| writer as &mut dyn Write),
-                &config,
-                frame_metrics,
-            )
-            .map_err(|err| err.to_string())?;
+        catalog::encode_source(
+            &config,
+            &mut source,
+            &mut output,
+            recon.as_mut().map(|writer| writer as &mut dyn Write),
+            frame_metrics,
+        )
+        .map_err(|err| err.to_string())?;
     }
     if let (Some(path), Some(writer)) = (job.recon.as_deref(), recon.as_mut()) {
         flush_writer(path, writer)?;
@@ -1613,27 +1611,27 @@ mod tests {
 
     const TEST_CODEC_SETTINGS: &[SettingManifest] = &[];
 
-    const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest {
-        name: "test",
-        feature: "test-codec",
-        summary: "test codec manifest",
-        settings: TEST_CODEC_SETTINGS,
-        accepts_format: test_codec_accepts_format,
-        supports_lossless_format: test_codec_accepts_format,
-        create_session: test_create_session,
-        encode_source: test_encode_source,
-    };
+    const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
+        "test",
+        "test-codec",
+        "test codec manifest",
+        TEST_CODEC_SETTINGS,
+        test_codec_accepts_format,
+        test_codec_accepts_format,
+        test_create_session,
+        test_encode_source,
+    );
 
-    const TEST_GBRP_CODEC: VideoEncoderManifest = VideoEncoderManifest {
-        name: "test-gbrp",
-        feature: "test-codec-gbrp",
-        summary: "test codec manifest with gbrp8 support",
-        settings: TEST_CODEC_SETTINGS,
-        accepts_format: test_gbrp_codec_accepts_format,
-        supports_lossless_format: test_gbrp_codec_accepts_format,
-        create_session: test_create_session,
-        encode_source: test_encode_source,
-    };
+    const TEST_GBRP_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
+        "test-gbrp",
+        "test-codec-gbrp",
+        "test codec manifest with gbrp8 support",
+        TEST_CODEC_SETTINGS,
+        test_gbrp_codec_accepts_format,
+        test_gbrp_codec_accepts_format,
+        test_create_session,
+        test_encode_source,
+    );
 
     struct TestSession {
         config: VideoEncoderConfig,

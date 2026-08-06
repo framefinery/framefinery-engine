@@ -4,17 +4,37 @@ pub use framefinery_core::{
 };
 
 #[cfg(feature = "video-encoders")]
-pub use framefinery_codecs::{encoder, ENCODERS};
+pub use framefinery_codecs::{encode_source, find_encoder_manifest, ENCODERS};
 
 #[cfg(not(feature = "video-encoders"))]
-use framefinery_core::VideoEncoderManifest;
+use std::io::Write;
+
+#[cfg(not(feature = "video-encoders"))]
+use framefinery_core::{
+    MediaError, RawVideoFrameSource, Result, VideoEncodeFrameMetricsCallback, VideoEncoderConfig,
+    VideoEncoderManifest,
+};
 
 #[cfg(not(feature = "video-encoders"))]
 pub const ENCODERS: &[VideoEncoderManifest] = &[];
 
 #[cfg(not(feature = "video-encoders"))]
-pub fn encoder(_name: &str) -> Option<VideoEncoderManifest> {
+pub fn find_encoder_manifest(_name: &str) -> Option<VideoEncoderManifest> {
     None
+}
+
+#[cfg(not(feature = "video-encoders"))]
+pub fn encode_source<'a>(
+    config: &'a VideoEncoderConfig,
+    _source: &mut dyn RawVideoFrameSource,
+    _output: &mut dyn Write,
+    _recon: Option<&mut dyn Write>,
+    _frame_metrics: Option<VideoEncodeFrameMetricsCallback<'a>>,
+) -> Result<()> {
+    Err(MediaError::UnsupportedCodec {
+        codec: config.codec.to_string(),
+        reason: "no encoder with this codec id is compiled into this build".to_string(),
+    })
 }
 
 pub fn global_setting(name: &str) -> Option<SettingManifest> {

@@ -2,8 +2,9 @@
 #![cfg_attr(not(feature = "dead-code-audit"), allow(dead_code, unused_imports))]
 //!
 //! The public API is the generic encoder registry exposed as [`ENCODERS`],
-//! [`encoder`], and [`create_encoder`]. Codec-specific modules are internal
-//! implementation territory while the generic v0 video API settles.
+//! [`find_encoder_manifest`], [`create_encoder`], [`encode_frame`], and
+//! [`encode_source`]. Codec-specific modules are internal implementation
+//! territory while the generic v0 video API settles.
 
 #[cfg(feature = "av2")]
 #[doc(hidden)]
@@ -35,8 +36,12 @@ pub mod bench {
     }
 }
 
+use std::io::Write;
+
 use framefinery_core::{
-    MediaError, Result, VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession,
+    Frame, MediaError, RawVideoFrameSource, Result, VideoEncodeFrameMetricsCallback,
+    VideoEncodeOutput, VideoEncodeSourceRequest, VideoEncoderConfig, VideoEncoderManifest,
+    VideoEncoderSession,
 };
 
 pub use framefinery_core::{ChromaSampling, PixelFormat, SampleBitDepth};
@@ -50,7 +55,7 @@ pub const ENCODERS: &[VideoEncoderManifest] = &[
 ];
 
 /// Find a compiled video encoder manifest by codec id.
-pub fn encoder(name: &str) -> Option<VideoEncoderManifest> {
+pub fn find_encoder_manifest(name: &str) -> Option<VideoEncoderManifest> {
     ENCODERS
         .iter()
         .copied()
@@ -59,13 +64,57 @@ pub fn encoder(name: &str) -> Option<VideoEncoderManifest> {
 
 /// Create a buffered encoder session from a codec-neutral config.
 pub fn create_encoder(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>> {
-    let Some(encoder) = encoder(config.codec.as_str()) else {
-        return Err(MediaError::UnsupportedCodec {
-            codec: config.codec.to_string(),
-            reason: "no encoder with this codec id is compiled into this build".to_string(),
-        });
+    let Some(manifest) = find_encoder_manifest(config.codec.as_str()) else {
+        return Err(unsupported_codec(config.codec.as_str()));
     };
-    encoder.create_encoder(config)
+    manifest.validate_config(&config)?;
+    (manifest.session_factory())(config)
+}
+
+/// Encode frames pulled from `source` using the codec selected by `config`.
+///
+/// This path avoids buffering whole streams in memory and is intended for file,
+/// capture, and validation adapters. `frame_metrics`, when present, is called
+/// while source and reconstruction samples are still available internally.
+pub fn encode_source<'a>(
+    config: &'a VideoEncoderConfig,
+    source: &mut dyn RawVideoFrameSource,
+    output: &mut dyn Write,
+    recon: Option<&mut dyn Write>,
+    frame_metrics: Option<VideoEncodeFrameMetricsCallback<'a>>,
+) -> Result<()> {
+    let Some(manifest) = find_encoder_manifest(config.codec.as_str()) else {
+        return Err(unsupported_codec(config.codec.as_str()));
+    };
+    manifest.validate_config(config)?;
+    (manifest.source_encode_hook())(
+        source,
+        output,
+        recon,
+        VideoEncodeSourceRequest { config },
+        frame_metrics,
+    )
+}
+
+/// Encode one frame using the codec selected by `config`.
+///
+/// This is the convenience path for one-frame callers. It creates a session,
+/// submits `frame`, flushes the encoder, and returns the combined output.
+pub fn encode_frame(config: VideoEncoderConfig, frame: Frame) -> Result<VideoEncodeOutput> {
+    let mut encoder = create_encoder(config)?;
+    let mut output = encoder.encode_frame(frame)?;
+    let tail = encoder.flush()?;
+    output.chunks.extend(tail.chunks);
+    output.reconstructions.extend(tail.reconstructions);
+    output.metrics.extend(tail.metrics);
+    Ok(output)
+}
+
+fn unsupported_codec(codec: &str) -> MediaError {
+    MediaError::UnsupportedCodec {
+        codec: codec.to_string(),
+        reason: "no encoder with this codec id is compiled into this build".to_string(),
+    }
 }
 
 #[cfg(all(test, feature = "av2"))]

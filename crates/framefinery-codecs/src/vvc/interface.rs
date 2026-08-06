@@ -51,16 +51,16 @@ pub const VVC_FAST_SEARCH_SETTING: SettingManifest = SettingManifest {
 
 const VVC_SETTINGS: &[SettingManifest] = &[QP_SETTING, PREDICTIVE_SETTING, VVC_FAST_SEARCH_SETTING];
 
-pub const VVC_CODEC: VideoEncoderManifest = VideoEncoderManifest {
-    name: "vvc",
-    feature: "codec-vvc",
-    summary: "local experimental FrameFinery VVC/H.266 encoder",
-    settings: VVC_SETTINGS,
-    accepts_format: vvc_accepts_format,
-    supports_lossless_format: vvc_supports_lossless_format,
-    create_session: create_vvc_session,
-    encode_source: encode_vvc_source,
-};
+pub const VVC_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
+    "vvc",
+    "codec-vvc",
+    "local experimental FrameFinery VVC/H.266 encoder",
+    VVC_SETTINGS,
+    vvc_accepts_format,
+    vvc_supports_lossless_format,
+    create_vvc_session,
+    encode_vvc_source,
+);
 
 pub(crate) const VVC_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManifest {
     public: VVC_CODEC,
@@ -253,8 +253,7 @@ mod tests {
             frame_counts.push(metrics.frame_count);
         };
 
-        VVC_CODEC
-            .encode_source(&mut source, &mut output, None, &config, Some(&mut metrics))
+        crate::encode_source(&config, &mut source, &mut output, None, Some(&mut metrics))
             .expect("VVC source encode without frame limit");
 
         assert!(!output.is_empty());

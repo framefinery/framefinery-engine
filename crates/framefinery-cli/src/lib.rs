@@ -6,18 +6,19 @@
 //!
 //! ```no_run
 //! use framefinery::{
-//!     encoder, CodecId, FrameInfo, PixelFormat, RawVideoFrameReadSource, VideoEncoderConfig,
+//!     encode_frame, CodecId, Frame, FrameInfo, PixelFormat, ReconstructionMode,
+//!     VideoEncoderConfig, VideoRateControl,
 //! };
 //!
 //! # fn main() -> framefinery::Result<()> {
 //! let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
-//! let config = VideoEncoderConfig::new(CodecId::new("av2")?, info);
-//! let pixels = vec![0; info.expected_len()];
-//! let mut source = RawVideoFrameReadSource::new(std::io::Cursor::new(pixels));
-//! let mut bitstream = Vec::new();
+//! let config = VideoEncoderConfig::new(CodecId::new("av2")?, info)
+//!     .with_rate_control(VideoRateControl::Lossless)
+//!     .with_reconstruction(ReconstructionMode::Frames);
+//! let frame = Frame::blank(info);
 //!
-//! let codec = encoder("av2").expect("the av2 feature is enabled");
-//! codec.encode_source(&mut source, &mut bitstream, None, &config, None)?;
+//! let output = encode_frame(config, frame)?;
+//! assert_eq!(output.reconstructions.len(), 1);
 //! # Ok(())
 //! # }
 //! ```
@@ -30,7 +31,9 @@ use std::ffi::OsString;
 use std::process::ExitCode;
 
 #[cfg(feature = "video-encoders")]
-pub use framefinery_codecs::{create_encoder, encoder, ENCODERS};
+pub use framefinery_codecs::{
+    create_encoder, encode_frame, encode_source, find_encoder_manifest, ENCODERS,
+};
 pub use framefinery_core as core;
 pub use framefinery_core::{
     build_filter_transform, convert_frame_format, convert_planar_frame_bit_depth, filter_manifest,
@@ -42,9 +45,8 @@ pub use framefinery_core::{
     FramePsnr, FrameRate, FrameRef, MediaError, Packet, PictureId, PixelFormat,
     RawVideoFrameReadSource, RawVideoFrameSource, ReconstructionMode, Result, SampleBitDepth, Sink,
     Source, StreamId, Timestamp, VideoChunkKind, VideoEncodeFrameMetrics,
-    VideoEncodeFrameMetricsCallback, VideoEncodeOutput, VideoEncodeSourceFn,
-    VideoEncodeSourceRequest, VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession,
-    VideoEncoderSetting, VideoRateControl, VideoSettingValue, FILTERS,
+    VideoEncodeFrameMetricsCallback, VideoEncodeOutput, VideoEncoderConfig, VideoEncoderManifest,
+    VideoEncoderSession, VideoEncoderSetting, VideoRateControl, VideoSettingValue, FILTERS,
 };
 
 /// Version of the `framefinery` facade crate and `ff` binary.
