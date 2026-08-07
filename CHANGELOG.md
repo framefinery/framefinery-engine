@@ -14,8 +14,17 @@ behavior may change quickly while the public contract settles.
   raw stream adapters.
 - Document the v0 API contract and API stability expectations ahead of the next
   crates.io deployment.
+- Connect the CLI help/startup summaries to the same codec, filter, and setting
+  manifests used by the public API, including default effective settings and
+  `--no-progress` for quiet backend-driven CLI runs.
 - Implement `crop` and nearest-neighbor `scale` as core transform filters and
   include them in the default product filter catalog.
+- Harden generated test-vector manifest parsing so unknown, duplicate, empty,
+  or row-value-looking CSV headers fail before validation silently drops a
+  field.
+- Add a compact raw input and codec support matrix covering tested format
+  families, bit depths, lossless support, CLI fallback behavior, and current
+  geometry limits.
 - Keep generated package/profiling artifacts out of release preparation; final
   dry-runs should start from a clean generated-artifact state.
 

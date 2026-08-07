@@ -531,7 +531,7 @@ regression: build
 release-check: check-tools fmt-check check feature-matrix test api-docs-strict doc package-list build
 
 ci-encode-smoke: build
-	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(CI_ENCODE_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode off --source-filters --cleanup-recon --cleanup-output --stop-on-fail
+	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(CI_ENCODE_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode off --source-filters --setting "gop=0" --cleanup-recon --cleanup-output --stop-on-fail
 	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc "$(CI_ENCODE_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode off --source-filters --cleanup-recon --cleanup-output --stop-on-fail
 
 ci: release-check ci-encode-smoke

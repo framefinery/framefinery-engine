@@ -355,7 +355,9 @@ If a `.yuv` filename has dimensions but no pixel-format token, the CLI assumes
 as `--encode av2:output.obu`.
 
 The raw input CLI/API contract is documented in
-[`docs/raw-input-formats.md`](docs/raw-input-formats.md).
+[`docs/raw-input-formats.md`](docs/raw-input-formats.md), including the current
+codec/input support matrix for tested chroma layouts, bit depths, lossless
+paths, fallback behavior, and geometry limits.
 The initial molten Rust/API contract is documented in
 [`docs/api-v0.md`](docs/api-v0.md).
 

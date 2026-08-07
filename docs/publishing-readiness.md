@@ -166,8 +166,6 @@ Current observations:
 
 - Keep the CLI guide aligned with `ff --help`, especially when settings move
   between top-level flags and `--set key=value`.
-- Add a compatibility table for tested input formats, bit depths, chroma
-  layouts, lossless support, and current codec geometry limits.
 - Add docs.rs examples for library users once the public pipeline API settles.
 - Keep codec patent wording visible near install and release documentation; the
   source license and commercial-license notice do not grant codec patent rights.

@@ -20,6 +20,26 @@ DEFAULT_SET_DIR = REPO_ROOT / "verification" / "test_vector_sets"
 DEFAULT_OUT_DIR = REPO_ROOT / "verification" / "generated" / "test_vectors"
 LOCAL_SET_DIR = "local"
 
+MANIFEST_COLUMNS = frozenset(
+    {
+        "name",
+        "width",
+        "height",
+        "frames",
+        "format",
+        "pattern",
+        "fps",
+        "source",
+        "crop_x",
+        "crop_y",
+        "lossless",
+        "codecs",
+        "filters",
+        "path",
+    }
+)
+BOOLEAN_HEADER_HINTS = frozenset({"1", "0", "true", "false", "yes", "no", "on", "off"})
+
 
 @dataclass(frozen=True)
 class TestVectorSource:
@@ -143,6 +163,7 @@ def load_vector_set(path: Path) -> TestVectorSet:
         raise ValueError(f"test vector manifest has no CSV rows: {path}")
 
     reader = csv.DictReader(rows)
+    validate_manifest_columns(reader.fieldnames, path)
     vectors = [parse_vector(row, path) for row in reader]
     if not vectors:
         raise ValueError(f"test vector manifest has no vectors: {path}")
@@ -154,6 +175,54 @@ def load_vector_set(path: Path) -> TestVectorSet:
         vectors=vectors,
         sources=sources,
     )
+
+
+def validate_manifest_columns(fieldnames: list[str] | None, path: Path) -> None:
+    if fieldnames is None:
+        raise ValueError(f"test vector manifest has no CSV header: {path}")
+
+    seen: set[str] = set()
+    unknown: list[str] = []
+    duplicate: list[str] = []
+    whitespace: list[str] = []
+    empty = False
+    for raw_name in fieldnames:
+        name = (raw_name or "").strip()
+        if not name:
+            empty = True
+            continue
+        if raw_name != name:
+            whitespace.append(raw_name)
+            continue
+        if name in seen:
+            duplicate.append(name)
+            continue
+        seen.add(name)
+        if name not in MANIFEST_COLUMNS:
+            unknown.append(name)
+
+    if empty:
+        raise ValueError(f"{path} has an empty manifest column name")
+    if whitespace:
+        names = ", ".join(repr(name) for name in whitespace)
+        raise ValueError(f"{path} has manifest column(s) with surrounding whitespace: {names}")
+    if duplicate:
+        names = ", ".join(sorted(duplicate))
+        raise ValueError(f"{path} has duplicate manifest column(s): {names}")
+    if unknown:
+        hints = [
+            f"'{name}' looks like a row value; did you mean 'lossless'?"
+            for name in unknown
+            if name.lower() in BOOLEAN_HEADER_HINTS
+        ]
+        allowed = ", ".join(sorted(MANIFEST_COLUMNS))
+        details = "; ".join(hints)
+        suffix = f" {details}" if details else ""
+        names = ", ".join(sorted(unknown))
+        raise ValueError(
+            f"{path} has unknown manifest column(s): {names}.{suffix} "
+            f"Allowed columns: {allowed}"
+        )
 
 
 def parse_source(value: str) -> TestVectorSource:

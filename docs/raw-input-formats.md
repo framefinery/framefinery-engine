@@ -127,6 +127,28 @@ shared frame-format converter before calling the codec. The same converter also
 handles reversible packed `rgb24` to planar `gbrp8` repacking for codecs whose
 native RGB path is planar.
 
+### Current Codec Support Matrix
+
+This table describes the default 0.0.3 product build. "Native" means the
+compiled encoder manifest accepts the format through `VideoEncoderConfig`.
+"CLI fallback" means the CLI converts each pulled frame before calling the
+encoder. `--set lossless` never uses the 8-bit fallback converter.
+
+| Input family | AV2 | VVC | Lossless | Geometry notes |
+|---|---|---|---|---|
+| `yuv420p8`, `yuv420p10le` | native lossy/lossless | native lossy/lossless | exact for both codecs | Shared raw metadata requires even width and height. AV2 additionally requires width and height in 8-pixel steps. VVC currently requires even width and height and pads the coded canvas to 8-pixel granularity. |
+| `yuv422p8`, `yuv422p10le` | native lossy/lossless | native lossy/lossless | exact for both codecs | Shared raw metadata requires even width. AV2 requires width and height in 8-pixel steps. VVC currently requires even width and height. |
+| `yuv444p8`, `yuv444p10le`, `gbrp8` | native lossy/lossless | native lossy/lossless | exact for both codecs | AV2 requires width and height in 8-pixel steps. VVC currently requires even width and height. |
+| `yuv420p11le`..`yuv420p12le`, `yuv422p11le`..`yuv422p12le`, `yuv444p11le`..`yuv444p12le` | CLI fallback to matching 8-bit format for non-lossless runs | native lossy/lossless | exact only on VVC | AV2 lossless rejects these formats. VVC follows the same geometry constraints as the matching chroma family above. |
+| `yuv420p13le`..`yuv420p16le`, `yuv422p13le`..`yuv422p16le`, `yuv444p13le`..`yuv444p16le` | CLI fallback to matching 8-bit format for non-lossless runs | CLI fallback to matching 8-bit format for non-lossless runs | not exact for either codec | Lossless rejects these formats because neither codec manifest advertises native exact support above 12 bits. |
+| `rgb24` | accepted and repacked to planar identity GBR internally | CLI repack to `gbrp8`; API callers should pass `gbrp8` | exact through the CLI path | No RGB-to-YUV conversion is performed. Geometry follows the codec that receives the planar `gbrp8` frame. |
+| `gray8`..`gray16le` | not accepted | not accepted | not supported | The core frame/filter model supports gray buffers, but current AV2/VVC encoders do not. |
+
+Lossless "exact" means the current validation paths compare source bytes with
+the encoder's internal reconstruction bytes for that format. Reference-decoder
+agreement is still controlled by the validation target and available reference
+tools.
+
 Current behavior:
 
 - AV2 accepts `yuv420p8`/`yuv420p10le`, `yuv422p8`/`yuv422p10le`, and

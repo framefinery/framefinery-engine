@@ -20,6 +20,10 @@ identity_16x16,16,16,1,yuv420p8,checker,30,true,identity
 `lossless` is optional and defaults to false. When true, validation passes
 `--set lossless` to the encoder and compares the internal reconstruction
 against the generated source bytes.
+Manifest column names are validated before rows are parsed. Unknown, duplicate,
+or empty column names fail the generator; boolean row values such as `true`
+belong under the `lossless` header and are rejected if they accidentally appear
+as a header name.
 `codecs` is optional and defaults to all codecs. Use a `|`-separated list such
 as `av2|vvc` to enable a row only for selected codec validation and compression
 comparison runs, or `none` to keep the vector generateable while no codec path
