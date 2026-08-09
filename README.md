@@ -325,6 +325,9 @@ Current option placement and inference rules:
 - Bare `--set` keys imply `true`. Accepted settings and setting-specific
   defaults/contracts are listed by `ff --help settings` and
   `ff --help settings <name>`.
+- VVC accepts `--set profile=auto|main-10-444|main-12-444|main-10|main-12`.
+  The default `auto` keeps palette-capable profile signalling unless a tighter
+  profile is explicitly requested.
 
 Global accepted settings are listed by `ff --help settings`; codec-specific
 settings are listed with the codec that owns them. Temporal prediction defaults

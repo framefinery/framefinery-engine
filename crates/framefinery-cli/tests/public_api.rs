@@ -2,6 +2,8 @@
 
 use std::io::{Cursor, Read};
 
+#[cfg(feature = "codec-vvc")]
+use framefinery::VvcProfile;
 use framefinery::{
     apply_encoder_settings, cli_options_for_scope, create_encoder, effective_encoder_settings,
     encode_frame, encode_source, encoder, fetch_encoder_manifest, find_encoder_manifest,
@@ -177,6 +179,22 @@ fn facade_round_trips_cli_style_encoder_settings() -> Result<()> {
         manifest.effective_setting_specs(&config)?,
         vec!["lossless=false", "qp=24", "gop=0"]
     );
+    Ok(())
+}
+
+#[cfg(feature = "codec-vvc")]
+#[test]
+fn facade_exposes_vvc_profile_setting_through_builder() -> Result<()> {
+    let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
+    let config = encoder("vvc")?
+        .input(info)
+        .setting("profile", VvcProfile::Main10)?
+        .into_config()?;
+
+    assert_eq!(config.setting_specs(), vec!["profile=main-10"]);
+    assert!(effective_encoder_settings(&config)?
+        .iter()
+        .any(|spec| spec == "profile=main-10"));
     Ok(())
 }
 

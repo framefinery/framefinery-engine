@@ -9,7 +9,7 @@ use framefinery_api::{
 
 use super::{
     vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics, VvcEncodeFrameMetrics,
-    VvcEncodeOptions, VvcEncodeParams, VvcFastSearch, VvcVideoGeometry, VvcVideoLimits,
+    VvcEncodeOptions, VvcEncodeParams, VvcFastSearch, VvcProfile, VvcVideoGeometry, VvcVideoLimits,
 };
 use crate::session::{
     buffered_stream_session, encode_stream_from_source, StreamEncoderManifest,
@@ -50,7 +50,54 @@ pub const VVC_FAST_SEARCH_SETTING: SettingManifest = SettingManifest {
     summary: "enable experimental VVC spatially guided mode-search pruning",
 };
 
-const VVC_SETTINGS: &[SettingManifest] = &[QP_SETTING, GOP_SETTING, VVC_FAST_SEARCH_SETTING];
+const VVC_PROFILE_SPEC_FORMS: &[SettingSpecForm] = &[SettingSpecForm {
+    syntax: "profile=<profile>",
+    summary: "select the signalled VVC profile and matching tool constraints",
+}];
+
+const VVC_PROFILE_SPEC_EXAMPLES: &[SettingSpecExample] = &[
+    SettingSpecExample {
+        spec: "profile=auto",
+        summary: "select the lowest 444-capable profile for the input bit depth",
+    },
+    SettingSpecExample {
+        spec: "profile=main-10",
+        summary: "signal Main 10 and gate out profile-forbidden screen-content tools",
+    },
+    SettingSpecExample {
+        spec: "profile=main-10-444",
+        summary: "signal the 10-bit 444-capable profile explicitly",
+    },
+];
+
+const VVC_PROFILE_SPEC_NOTES: &[&str] = &[
+    "default is auto, which keeps palette legal by selecting Main 10 4:4:4 or Main 12 4:4:4 by input bit depth",
+    "main-10 and main-12 only support 4:2:0 input and disable palette/IBC tool selection",
+    "10-bit profiles reject 11-bit and 12-bit input",
+];
+
+/// Spec manifest for VVC's `profile` setting.
+pub const VVC_PROFILE_SETTING_SPEC: SettingSpecManifest = SettingSpecManifest {
+    forms: VVC_PROFILE_SPEC_FORMS,
+    examples: VVC_PROFILE_SPEC_EXAMPLES,
+    notes: VVC_PROFILE_SPEC_NOTES,
+};
+
+/// VVC-specific setting that controls profile signalling and tool constraints.
+pub const VVC_PROFILE_SETTING: SettingManifest = SettingManifest {
+    name: "profile",
+    value: SettingValue::Choice(VvcProfile::VALUES),
+    default_value: Some("auto"),
+    spec: &VVC_PROFILE_SETTING_SPEC,
+    summary: "select the VVC profile and profile-constrained tool set",
+};
+
+const VVC_SETTINGS: &[SettingManifest] = &[
+    QP_SETTING,
+    GOP_SETTING,
+    VVC_FAST_SEARCH_SETTING,
+    VVC_PROFILE_SETTING,
+];
 
 pub const VVC_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
     "vvc",
@@ -181,9 +228,10 @@ fn vvc_options_from_settings(
     }
     let gop = GopMode::from_settings(settings)?;
     let fast_search = vvc_fast_search_setting(settings)?;
+    let profile = vvc_profile_setting(settings)?;
     for spec in settings {
         let name = setting_name(spec);
-        if !matches!(name, "lossless" | "qp" | "gop" | "fast-search") {
+        if !matches!(name, "lossless" | "qp" | "gop" | "fast-search" | "profile") {
             return Err(format!("VVC encoder received unknown setting '{name}'"));
         }
     }
@@ -192,6 +240,7 @@ fn vvc_options_from_settings(
         qp,
         gop,
         fast_search,
+        profile,
     })
 }
 
@@ -206,6 +255,17 @@ fn vvc_fast_search_setting(settings: &[String]) -> Result<VvcFastSearch, String>
     Ok(VvcFastSearch::default())
 }
 
+fn vvc_profile_setting(settings: &[String]) -> Result<VvcProfile, String> {
+    for spec in settings {
+        if setting_name(spec) != "profile" {
+            continue;
+        }
+        let value = framefinery_api::setting_value(spec).unwrap_or("true");
+        return value.parse::<VvcProfile>();
+    }
+    Ok(VvcProfile::default())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +278,13 @@ mod tests {
         let options = vvc_options_from_settings(false, &["fast-search=moderate".to_string()])
             .expect("parse VVC settings");
         assert_eq!(options.fast_search, VvcFastSearch::Moderate);
+    }
+
+    #[test]
+    fn parses_profile_setting() {
+        let options = vvc_options_from_settings(false, &["profile=main-10".to_string()])
+            .expect("parse VVC settings");
+        assert_eq!(options.profile, VvcProfile::Main10);
     }
 
     #[test]

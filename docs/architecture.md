@@ -133,10 +133,14 @@ computes per-frame PSNR from the encoder's internal reconstruction while the
 frame is still in memory, so long benchmark streams can report quality without
 writing reconstruction files.
 Codec-specific setting catalogs carry controls such as the shared `gop`
-temporal period and VVC's `fast-search` mode pruning. Temporal prediction
-defaults to `gop=-1`, meaning one intra frame followed by unbounded predictive
-frames; `gop=0` selects intra-only coding. Unknown options should still fail
-early instead of silently becoming unused metadata.
+temporal period and VVC's `fast-search` mode pruning and `profile` signalling.
+Temporal prediction defaults to `gop=-1`, meaning one intra frame followed by
+unbounded predictive frames; `gop=0` selects intra-only coding. VVC defaults to
+`profile=auto`, which selects the lowest 4:4:4-capable profile for the input
+bit depth so palette and related screen-content tools remain legal. Explicit
+lower VVC profiles must gate unavailable tools before block-level mode
+selection. Unknown options should still fail early instead of silently becoming
+unused metadata.
 
 AV2's QP path maps `--set qp=<1..255>` to a nonzero frame `base_qindex` and emits regular
 transform-quantized 4x4 residuals for the current lossy intra path. The current

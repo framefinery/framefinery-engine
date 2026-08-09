@@ -135,6 +135,7 @@ let mut encoder = encoder("vvc")?
     .qp(24)?
     .metrics_only()
     .gop(30)?
+    .setting("profile", "auto")?
     .setting("fast-search", "moderate")?
     .build()?;
 # Ok::<(), framefinery::MediaError>(())
@@ -146,6 +147,9 @@ rate-control mode, and extension settings before returning a session. The
 lower-level `VideoEncoderConfig` remains available for adapters that need to
 store, serialize, or mutate configuration before choosing how to drive an
 encoder.
+VVC's profile selector is a codec extension setting, so CLI, native, and WASM
+frontends should pass it through the same settings path as `fast-search`, for
+example `profile=auto` or `profile=main-10`.
 
 ## Codec Identity
 

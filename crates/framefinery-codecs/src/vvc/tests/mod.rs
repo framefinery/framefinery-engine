@@ -242,12 +242,12 @@ fn vvc_gbrp8_input_requests_srgb_vui_signal() {
 }
 
 #[test]
-fn vvc_sps_signals_native_420_bit_depth_profiles() {
+fn vvc_sps_defaults_to_lowest_444_capable_profile_by_bit_depth() {
     let geometry = VvcVideoGeometry {
         width: 16,
         height: 16,
     };
-    for (bits, expected_profile) in [(8, 1), (10, 1), (12, 2)] {
+    for (bits, expected_profile) in [(8, 33), (10, 33), (12, 34)] {
         let rbsp = vvc_sps_rbsp(
             geometry,
             VvcSliceSyntaxConfig::yuv420_residual(),
@@ -259,6 +259,152 @@ fn vvc_sps_signals_native_420_bit_depth_profiles() {
         );
         assert_eq!(vvc_u_value(&rbsp, "general_profile_idc"), expected_profile);
     }
+}
+
+#[test]
+fn vvc_sps_signals_explicit_native_420_bit_depth_profiles() {
+    let geometry = VvcVideoGeometry {
+        width: 16,
+        height: 16,
+    };
+    for (profile, bits, expected_profile) in [
+        (VvcProfile::Main10, 8, 1),
+        (VvcProfile::Main10, 10, 1),
+        (VvcProfile::Main12, 12, 2),
+    ] {
+        let rbsp = vvc_sps_rbsp(
+            geometry,
+            VvcSliceSyntaxConfig::yuv420_residual().with_profile(profile),
+            SampleBitDepth::new(bits).expect("valid bit depth"),
+        );
+        assert_eq!(
+            vvc_ue_value(&rbsp, "sps_bitdepth_minus8"),
+            u32::from(bits - 8)
+        );
+        assert_eq!(vvc_u_value(&rbsp, "general_profile_idc"), expected_profile);
+    }
+}
+
+#[test]
+fn vvc_profile_validation_rejects_unsupported_format_or_depth() {
+    let yuv420_12 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(12).expect("valid bit depth"),
+    };
+    let yuv422_10 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs422,
+        bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
+    };
+    let yuv444_10 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
+    };
+
+    assert_eq!(
+        VvcProfile::Auto
+            .validate_for_format(yuv420_12)
+            .expect("auto selects 12-bit 444 profile"),
+        VvcProfile::Main12FourFourFour
+    );
+    assert!(VvcProfile::Main10
+        .validate_for_format(yuv420_12)
+        .expect_err("main-10 rejects 12-bit")
+        .contains("at most 10-bit"));
+    assert!(VvcProfile::Main10
+        .validate_for_format(yuv422_10)
+        .expect_err("main-10 rejects 4:2:2")
+        .contains("does not support"));
+    assert!(VvcProfile::Main12
+        .validate_for_format(yuv444_10)
+        .expect_err("main-12 rejects 4:4:4")
+        .contains("does not support"));
+}
+
+#[test]
+fn vvc_lower_profiles_gate_profile_forbidden_tools() {
+    let geometry = VvcVideoGeometry {
+        width: 16,
+        height: 16,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
+    };
+    let mut config = VvcSliceSyntaxConfig::yuv420_residual();
+    config.tools.palette_enabled = true;
+    config.tools.ibc_enabled = true;
+    let config = config
+        .with_validated_profile_for_format(VvcProfile::Main10, format)
+        .expect("main-10 accepts 10-bit 4:2:0");
+
+    assert!(!config.tools.palette_enabled);
+    assert!(!config.tools.ibc_enabled);
+    let rbsp = vvc_sps_rbsp(
+        geometry,
+        config,
+        SampleBitDepth::new(10).expect("valid bit depth"),
+    );
+    assert_eq!(vvc_u_value(&rbsp, "general_profile_idc"), 1);
+    assert_vvc_flag(&rbsp, "sps_palette_enabled_flag", false);
+    assert_vvc_flag(&rbsp, "sps_ibc_enabled_flag", false);
+}
+
+#[test]
+fn vvc_sps_gpm_flag_follows_merge_candidate_count() {
+    let geometry = VvcVideoGeometry {
+        width: 16,
+        height: 16,
+    };
+
+    let intra = vvc_sps_rbsp_8bit(geometry, vvc_test_slice_config());
+    assert_eq!(vvc_ue_value(&intra, "sps_six_minus_max_num_merge_cand"), 0);
+    assert_vvc_flag(&intra, "sps_gpm_enabled_flag", false);
+
+    let predictive = vvc_sps_rbsp_8bit(geometry, vvc_test_slice_config().with_inter_enabled());
+    assert_eq!(
+        vvc_ue_value(&predictive, "sps_six_minus_max_num_merge_cand"),
+        5
+    );
+    assert_vvc_field_absent(&predictive, "sps_gpm_enabled_flag");
+    assert_vvc_flag(&predictive, "sps_palette_enabled_flag", false);
+}
+
+#[test]
+fn vvc_predictive_slice_type_matches_actual_ctu_payloads() {
+    let geometry = VvcVideoGeometry {
+        width: 64,
+        height: 64,
+    };
+    let inter_skip_ctus: Vec<_> = vvc_ctu_regions(geometry)
+        .map(|region| VvcQuantizedCtu {
+            slice_address: region.slice_address,
+            geometry: region.geometry,
+            payload: VvcQuantizedCtuPayload::InterSkip,
+        })
+        .collect();
+
+    assert_eq!(
+        vvc_slice_type_for_ctus(VvcPictureKind::Trail, &[]),
+        VvcSliceType::I
+    );
+    assert_eq!(
+        vvc_slice_type_for_ctus(VvcPictureKind::Trail, &inter_skip_ctus),
+        VvcSliceType::P
+    );
+    assert_eq!(
+        vvc_slice_type_for_ctus(VvcPictureKind::Idr, &inter_skip_ctus),
+        VvcSliceType::I
+    );
+
+    let black = quantize_vvc_color(VvcSampledColor { y: 0, u: 0, v: 0 });
+    let rbsp = vvc_slice_rbsp(
+        VvcPictureKind::Trail,
+        geometry,
+        black,
+        vvc_test_slice_config().with_inter_enabled(),
+    );
+    assert_eq!(vvc_ue_value(&rbsp, "sh_slice_type"), VvcSliceType::I.code());
+    assert_vvc_field_absent(&rbsp, "sh_no_output_of_prior_pics_flag");
 }
 
 #[test]

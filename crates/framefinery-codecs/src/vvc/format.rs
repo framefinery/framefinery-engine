@@ -76,6 +76,7 @@ pub(super) struct VvcSyntaxToolFlags {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct VvcSliceSyntaxConfig {
+    profile: VvcProfile,
     coding_tree: VvcCodingTreeConfig,
     tools: VvcSyntaxToolFlags,
     ref_pic_resampling_enabled: bool,
@@ -137,11 +138,22 @@ impl VvcSyntaxToolFlags {
     const fn mts_enabled(self) -> bool {
         self.mts_enabled || self.explicit_mts_intra_enabled
     }
+
+    const fn constrained_to_profile(mut self, profile: VvcProfile) -> Self {
+        if !profile.allows_palette() {
+            self.palette_enabled = false;
+        }
+        if !profile.allows_ibc() {
+            self.ibc_enabled = false;
+        }
+        self
+    }
 }
 
 impl VvcSliceSyntaxConfig {
     const fn new(coding_tree: VvcCodingTreeConfig, tools: VvcSyntaxToolFlags) -> Self {
         Self {
+            profile: VvcProfile::Auto,
             coding_tree,
             tools,
             ref_pic_resampling_enabled: true,
@@ -196,6 +208,17 @@ impl VvcSliceSyntaxConfig {
         self
     }
 
+    fn with_validated_profile_for_format(
+        mut self,
+        profile: VvcProfile,
+        format: VvcPictureFormat,
+    ) -> Result<Self, String> {
+        let profile = profile.validate_for_format(format)?;
+        self.profile = profile;
+        self.tools = self.tools.constrained_to_profile(profile);
+        Ok(self)
+    }
+
     #[cfg(test)]
     const fn palette_444_lossless(bit_depth: SampleBitDepth) -> Self {
         let mut config = Self::palette_444();
@@ -209,6 +232,13 @@ impl VvcSliceSyntaxConfig {
 
     const fn with_vui_signal(mut self, vui_signal: VvcVuiSignal) -> Self {
         self.vui_signal = Some(vui_signal);
+        self
+    }
+
+    #[cfg(test)]
+    const fn with_profile(mut self, profile: VvcProfile) -> Self {
+        self.profile = profile;
+        self.tools = self.tools.constrained_to_profile(profile);
         self
     }
 

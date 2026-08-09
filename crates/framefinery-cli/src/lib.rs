@@ -46,6 +46,8 @@ pub use framefinery_api::{
     VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession, VideoEncoderSetting,
     VideoRateControl, VideoSettingValue, FILTERS,
 };
+#[cfg(feature = "codec-vvc")]
+pub use framefinery_codecs::VvcProfile;
 #[cfg(feature = "video-encoders")]
 pub use framefinery_codecs::{
     apply_encoder_settings, create_encoder, effective_encoder_settings, encode_frame,

@@ -49,6 +49,8 @@ use framefinery_api::{
 
 pub use builder::{encoder, VideoEncoderBuilder};
 pub use framefinery_api::{ChromaSampling, PixelFormat, SampleBitDepth};
+#[cfg(feature = "vvc")]
+pub use vvc::VvcProfile;
 
 /// Video encoder manifests compiled into this build.
 pub const ENCODERS: &[VideoEncoderManifest] = &[

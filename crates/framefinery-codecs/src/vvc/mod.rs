@@ -61,7 +61,8 @@ use header::{
 use header::{
     vvc_poc_lsb_for_frame_idx, vvc_pps_rbsp, vvc_pps_rbsp_with_partitioning_and_config,
     vvc_predictive_frame_skip_slice_unit, vvc_slice_address_bits, vvc_slice_payload,
-    vvc_slice_rbsp, vvc_sps_payload, vvc_sps_rbsp, write_vvc_coding_tree_entropy, VvcPictureKind,
+    vvc_slice_rbsp, vvc_slice_type_for_ctus, vvc_sps_payload, vvc_sps_rbsp,
+    write_vvc_coding_tree_entropy, VvcPictureKind, VvcSliceType,
 };
 pub use nal::{
     nal_unit_header_bytes, parse_annex_b_nal_units, write_annex_b, write_nal_unit_header,
@@ -109,7 +110,10 @@ include!("encode.rs");
 #[cfg(test)]
 include!("test_support.rs");
 
-pub use interface::{VVC_CODEC, VVC_FAST_SEARCH_SETTING, VVC_FAST_SEARCH_SETTING_SPEC};
+pub use interface::{
+    VVC_CODEC, VVC_FAST_SEARCH_SETTING, VVC_FAST_SEARCH_SETTING_SPEC, VVC_PROFILE_SETTING,
+    VVC_PROFILE_SETTING_SPEC,
+};
 
 #[cfg(test)]
 mod tests;

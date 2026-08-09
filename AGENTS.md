@@ -266,6 +266,18 @@ Ad hoc decode/playback notes for generated WASM captures:
   `ffplay -f rawvideo -pixel_format gbrp -video_size <WxH> -framerate <fps>
   -autoexit <decoded.yuv>`.
 
+VVC/VTM debugging notes:
+
+- The local VTM tree is expected at `verification/references/vvc/vtm/`.
+- VTM profile capabilities are defined in
+  `source/Lib/CommonLib/ProfileTierLevel.cpp`; decoder-side profile constraint
+  checks are in `source/Lib/DecoderLib/VLCReader.cpp`.
+- When comparing SPS/PPS syntax against VTM, check the matching parser
+  conditionals before changing the writer. For example, VTM reads
+  `sps_gpm_enabled_flag` only when the signalled max merge candidate count is
+  at least 2, and picture-header RPL/QP fields only when the PPS says those
+  fields are carried in the picture header.
+
 ## Useful Commands
 
 Common local quality gates:

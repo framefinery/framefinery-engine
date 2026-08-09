@@ -92,12 +92,17 @@ Common settings:
 --set qp=24
 --set gop=0
 --set fast-search=lossless-speed
+--set profile=auto
 ```
 
 `--set lossless` and `--set qp=<1..255>` are mutually exclusive.
 Temporal prediction defaults to `gop=-1`, meaning one intra frame followed by
 unbounded predictive frames. Use `--set gop=0` for intra-only coding, or a
 positive value such as `--set gop=30` to insert an intra frame every 30 frames.
+VVC defaults to `profile=auto`, which selects the lowest 4:4:4-capable profile
+for the input bit depth so palette and related screen-content tools remain
+legal. Use explicit VVC values such as `profile=main-10` only when the tighter
+profile is required.
 Run `ff --help settings` or `ff --help settings <name>` for the accepted
 settings, defaults, and full spec contracts.
 

@@ -207,10 +207,17 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     if residual_mode.is_lossless() && options.fast_search == VvcFastSearch::LosslessSpeed {
         slice_config = slice_config.without_lossless_speed_unused_tools();
     }
+    slice_config = slice_config.with_validated_profile_for_format(options.profile, stream_format)?;
+    let picture_partitioning = if predictive_enabled {
+        VvcPicturePartitioning::OneSlicePerCtu
+    } else {
+        residual_mode.picture_partitioning()
+    };
     if predictive_enabled {
-        slice_config = slice_config
-            .with_inter_enabled()
-            .with_picture_header_slice_state();
+        slice_config = slice_config.with_inter_enabled();
+        if picture_partitioning == VvcPicturePartitioning::OneSlicePerCtu && ctu_count > 1 {
+            slice_config = slice_config.with_picture_header_slice_state();
+        }
     }
     let predictive_frame_skip_slice_config = predictive_enabled.then(|| {
         slice_config
@@ -225,11 +232,6 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     };
     let transform_skip_quant_tables =
         VvcTransformSkipQuantTables::new(format.bit_depth(), luma_qp, chroma_qp);
-    let picture_partitioning = if predictive_enabled {
-        VvcPicturePartitioning::OneSlicePerCtu
-    } else {
-        residual_mode.picture_partitioning()
-    };
     let mut parameter_sets = Vec::with_capacity(if predictive_enabled { 3 } else { 2 });
     parameter_sets.push(vvc_sps_unit(
         geometry,

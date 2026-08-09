@@ -4,9 +4,9 @@ use crate::picture::{ChromaSampling, SampleBitDepth};
 use super::vvc_cabac_bits_with_luma_max_leaf_size;
 use super::{
     vvc_frame_cabac_payload, vvc_frame_inter_skip_cabac_payload, VvcCabacPayload,
-    VvcCodingTreeConfig, VvcNalUnit, VvcNalUnitType, VvcQuantizedCtu, VvcQuantizedCtuPayload,
-    VvcSliceSyntaxConfig, VvcSyntaxRbsp, VvcSyntaxWriter, VvcVideoGeometry, VvcVuiSignal,
-    VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
+    VvcCodingTreeConfig, VvcNalUnit, VvcNalUnitType, VvcProfile, VvcQuantizedCtu,
+    VvcQuantizedCtuPayload, VvcSliceSyntaxConfig, VvcSyntaxRbsp, VvcSyntaxWriter, VvcVideoGeometry,
+    VvcVuiSignal, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
 };
 #[cfg(test)]
 use super::{VvcQuantizedColor, VVC_CURRENT_MAX_LUMA_LEAF_SIZE};
@@ -26,6 +26,12 @@ pub(in crate::vvc) const VVC_POC_LSB_BITS: u8 = VVC_SPS_LOG2_MAX_POC_LSB_MINUS4 
 pub(in crate::vvc) enum VvcPicturePartitioning {
     SingleSlice,
     OneSlicePerCtu,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::vvc) enum VvcSliceType {
+    I,
+    P,
 }
 
 impl VvcPictureKind {
@@ -51,6 +57,19 @@ impl VvcPictureKind {
 
     const fn is_irap(self) -> bool {
         matches!(self, Self::Idr | Self::Cra)
+    }
+}
+
+impl VvcSliceType {
+    pub(in crate::vvc) const fn code(self) -> u32 {
+        match self {
+            Self::I => 2,
+            Self::P => 1,
+        }
+    }
+
+    const fn is_inter(self) -> bool {
+        matches!(self, Self::P)
     }
 }
 
@@ -330,7 +349,7 @@ pub(in crate::vvc) fn vvc_sps_rbsp(
     writer.write_flag("sps_ptl_dpb_hrd_params_present_flag", true);
     writer.write_u(
         "general_profile_idc",
-        vvc_general_profile_idc(config, palette_enabled, bit_depth) as u64,
+        vvc_general_profile_idc(slice_config.profile, bit_depth) as u64,
         7,
     );
     writer.write_flag("general_tier_flag", false);
@@ -487,9 +506,10 @@ pub(in crate::vvc) fn vvc_sps_rbsp(
     if mmvd_enabled {
         writer.write_flag("sps_mmvd_fullpel_only_flag", false);
     }
+    let sps_six_minus_max_num_merge_cand = if slice_config.inter_enabled { 5 } else { 0 };
     writer.write_ue(
         "sps_six_minus_max_num_merge_cand",
-        if slice_config.inter_enabled { 5 } else { 0 },
+        sps_six_minus_max_num_merge_cand,
     );
     writer.write_flag("sps_sbt_enabled_flag", false);
     let affine_enabled = false;
@@ -504,7 +524,10 @@ pub(in crate::vvc) fn vvc_sps_rbsp(
     }
     writer.write_flag("sps_bcw_enabled_flag", false);
     writer.write_flag("sps_ciip_enabled_flag", false);
-    writer.write_flag("sps_gpm_enabled_flag", false);
+    let max_num_merge_cand = 6 - sps_six_minus_max_num_merge_cand;
+    if max_num_merge_cand >= 2 {
+        writer.write_flag("sps_gpm_enabled_flag", false);
+    }
     writer.write_ue("sps_log2_parallel_merge_level_minus2", 0);
     writer.write_flag("sps_isp_enabled_flag", tool_flags.isp_enabled);
     writer.write_flag("sps_mrl_enabled_flag", tool_flags.mrl_enabled);
@@ -672,31 +695,11 @@ fn chroma_format_idc(chroma_sampling: ChromaSampling) -> u32 {
     }
 }
 
-fn vvc_general_profile_idc(
-    config: VvcCodingTreeConfig,
-    palette_enabled: bool,
-    bit_depth: SampleBitDepth,
-) -> u32 {
-    const VVC_PROFILE_MAIN_10: u32 = 1;
-    const VVC_PROFILE_MAIN_12: u32 = 2;
-    const VVC_PROFILE_MAIN_10_444: u32 = 33;
-    const VVC_PROFILE_MAIN_12_444: u32 = 34;
-
-    if matches!(
-        config.chroma_sampling,
-        ChromaSampling::Cs422 | ChromaSampling::Cs444
-    ) || palette_enabled
-    {
-        if bit_depth.bits() > 10 {
-            VVC_PROFILE_MAIN_12_444
-        } else {
-            VVC_PROFILE_MAIN_10_444
-        }
-    } else if bit_depth.bits() > 10 {
-        VVC_PROFILE_MAIN_12
-    } else {
-        VVC_PROFILE_MAIN_10
-    }
+fn vvc_general_profile_idc(profile: VvcProfile, bit_depth: SampleBitDepth) -> u32 {
+    profile
+        .effective_for_bit_depth(bit_depth)
+        .expect("slice config profile should be valid for SPS bit depth")
+        .general_profile_idc()
 }
 
 fn vvc_pps_payload_with_partitioning(
@@ -921,12 +924,14 @@ fn vvc_frame_slice_rbsp_with_poc(
     slice_config: VvcSliceSyntaxConfig,
 ) -> VvcSyntaxRbsp {
     let mut writer = VvcSyntaxWriter::without_fields();
+    let slice_type = vvc_slice_type_for_ctus(picture_kind, ctus);
     write_vvc_frame_slice_header(
         &mut writer,
         picture_kind,
         poc_lsb,
         picture_geometry,
         slice_config,
+        slice_type,
     );
     write_vvc_frame_coding_tree_entropy(
         &mut writer,
@@ -934,6 +939,7 @@ fn vvc_frame_slice_rbsp_with_poc(
         picture_geometry,
         ctus,
         slice_config,
+        slice_type,
     );
     writer.rbsp_trailing_bits();
     debug_assert!(writer.is_byte_aligned());
@@ -954,6 +960,7 @@ fn vvc_frame_slice_payload_with_poc_and_cabac_payload(
         poc_lsb,
         picture_geometry,
         slice_config,
+        VvcSliceType::P,
     );
     writer.write_packed_cabac_bits(
         "cabac_vvc_frame_quantized_residual_bits",
@@ -971,6 +978,7 @@ fn write_vvc_frame_slice_header(
     poc_lsb: u32,
     _picture_geometry: VvcVideoGeometry,
     slice_config: VvcSliceSyntaxConfig,
+    slice_type: VvcSliceType,
 ) {
     let tool_flags = slice_config.tools;
     writer.write_flag("sh_picture_header_in_slice_header_flag", true);
@@ -979,7 +987,7 @@ fn write_vvc_frame_slice_header(
         writer.write_flag("sh_no_output_of_prior_pics_flag", false);
     }
     if slice_config.inter_enabled && !picture_kind.is_irap() {
-        writer.write_ue("sh_slice_type", 1);
+        writer.write_ue("sh_slice_type", slice_type.code());
     }
     if !vvc_picture_header_carries_slice_state(slice_config) {
         write_vvc_slice_header_ref_pic_lists(writer, picture_kind);
@@ -1029,7 +1037,12 @@ pub(in crate::vvc) fn vvc_slice_rbsp_with_poc(
             vvc_slice_address_bits(picture_geometry),
         );
     }
-    writer.write_flag("sh_no_output_of_prior_pics_flag", false);
+    if slice_config.inter_enabled && !picture_kind.is_irap() {
+        writer.write_ue("sh_slice_type", VvcSliceType::I.code());
+    }
+    if picture_kind.is_irap() {
+        writer.write_flag("sh_no_output_of_prior_pics_flag", false);
+    }
     if !vvc_picture_header_carries_slice_state(slice_config) {
         write_vvc_slice_header_ref_pic_lists(&mut writer, picture_kind);
         writer.write_se("sh_qp_delta", slice_config.slice_qp - VVC_PPS_INIT_QP);
@@ -1094,14 +1107,31 @@ fn write_vvc_frame_coding_tree_entropy(
     picture_geometry: VvcVideoGeometry,
     ctus: &[VvcQuantizedCtu],
     slice_config: VvcSliceSyntaxConfig,
+    slice_type: VvcSliceType,
 ) {
-    let inter_slice = slice_config.inter_enabled && !picture_kind.is_irap();
+    let inter_slice =
+        slice_config.inter_enabled && !picture_kind.is_irap() && slice_type.is_inter();
     let payload = vvc_frame_cabac_payload(picture_geometry, ctus, slice_config, inter_slice);
     writer.write_packed_cabac_bits(
         "cabac_vvc_frame_quantized_residual_bits",
         &payload.bytes,
         payload.bit_len,
     );
+}
+
+pub(in crate::vvc) fn vvc_slice_type_for_ctus(
+    picture_kind: VvcPictureKind,
+    ctus: &[VvcQuantizedCtu],
+) -> VvcSliceType {
+    if !picture_kind.is_irap()
+        && ctus
+            .iter()
+            .any(|ctu| matches!(ctu.payload, VvcQuantizedCtuPayload::InterSkip))
+    {
+        VvcSliceType::P
+    } else {
+        VvcSliceType::I
+    }
 }
 
 pub(in crate::vvc) fn vvc_picture_ctu_cols(geometry: VvcVideoGeometry) -> usize {
