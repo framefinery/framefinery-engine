@@ -25,6 +25,9 @@ behavior may change quickly while the public contract settles.
 - Add a compact raw input and codec support matrix covering tested format
   families, bit depths, lossless support, CLI fallback behavior, and current
   geometry limits.
+- Add a target-practice browser WASM artifact and local screen-capture/upload
+  example, plus a `wasm32-unknown-unknown` CI check, without introducing a
+  published WASM package yet.
 - Keep generated package/profiling artifacts out of release preparation; final
   dry-runs should start from a clean generated-artifact state.
 

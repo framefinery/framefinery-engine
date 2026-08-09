@@ -335,7 +335,7 @@ fn finalize_vvc_luma_tu_with_temporal_mode_hint(
     };
     let preselected_residual = if hint.bdpcm_mode.is_enabled() {
         #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
+        let prediction_start = StageStart::now();
         predict_vvc_luma_bdpcm_block_into_with_availability(
             predicted_luma,
             prediction_scratch,
@@ -352,7 +352,7 @@ fn finalize_vvc_luma_tu_with_temporal_mode_hint(
             vvc_elapsed_nanos(prediction_start),
         );
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_luma_tu_at_into(
             luma_residuals,
             source_frame,
@@ -389,7 +389,7 @@ fn finalize_vvc_luma_tu_with_temporal_mode_hint(
         })
     } else {
         #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
+        let prediction_start = StageStart::now();
         if coding_decision.mrl_index == 0 {
             predict_vvc_luma_intra_block_into_with_availability(
                 predicted_luma,
@@ -420,7 +420,7 @@ fn finalize_vvc_luma_tu_with_temporal_mode_hint(
             vvc_elapsed_nanos(prediction_start),
         );
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_luma_tu_at_into(
             luma_residuals,
             source_frame,
@@ -481,7 +481,7 @@ fn finalize_vvc_chroma_tu_with_temporal_mode_hint(
 ) -> Option<VvcFinalizedChromaTu> {
     let preselected_residual = if hint.bdpcm_mode.is_enabled() {
         #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
+        let prediction_start = StageStart::now();
         predict_vvc_chroma_bdpcm_block_into_with_availability(
             predicted_cb,
             prediction_scratch,
@@ -512,7 +512,7 @@ fn finalize_vvc_chroma_tu_with_temporal_mode_hint(
         let chroma_x = usize::from(node.x) / chroma_subsample_x(source_frame.format.chroma_sampling);
         let chroma_y = usize::from(node.y) / chroma_subsample_y(source_frame.format.chroma_sampling);
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             cb_residuals,
             &source_frame.cb,
@@ -527,7 +527,7 @@ fn finalize_vvc_chroma_tu_with_temporal_mode_hint(
         #[cfg(feature = "vvc-stats")]
         intra_search_stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             cr_residuals,
             &source_frame.cr,
@@ -576,7 +576,7 @@ fn finalize_vvc_chroma_tu_with_temporal_mode_hint(
         })
     } else {
         #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
+        let prediction_start = StageStart::now();
         predict_vvc_chroma_mode_pair_blocks_into_with_availability(
             predicted_cb,
             predicted_cr,
@@ -602,7 +602,7 @@ fn finalize_vvc_chroma_tu_with_temporal_mode_hint(
         let chroma_x = usize::from(node.x) / chroma_subsample_x(source_frame.format.chroma_sampling);
         let chroma_y = usize::from(node.y) / chroma_subsample_y(source_frame.format.chroma_sampling);
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             cb_residuals,
             &source_frame.cb,
@@ -617,7 +617,7 @@ fn finalize_vvc_chroma_tu_with_temporal_mode_hint(
         #[cfg(feature = "vvc-stats")]
         intra_search_stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             cr_residuals,
             &source_frame.cr,
@@ -797,7 +797,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         ) {
             let luma_mode = hint.mode;
             #[cfg(feature = "vvc-stats")]
-            let luma_finalize_start = Instant::now();
+            let luma_finalize_start = StageStart::now();
             if let Some(luma_tu) = finalize_vvc_luma_tu_with_temporal_mode_hint(
                 hint,
                 policy,
@@ -849,13 +849,13 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             }
         }
         #[cfg(feature = "vvc-stats")]
-        let luma_mode_search_start = Instant::now();
+        let luma_mode_search_start = StageStart::now();
         let mut best_luma_mode = VvcIntraPredictionMode::Dc;
         let mut best_luma_score = u64::MAX;
         let mut luma_candidate_costs = VvcLumaIntraCandidateCosts::new(u64::MAX);
         if !vvc_luma_lossless_speed_skips_dc(policy) {
             #[cfg(feature = "vvc-stats")]
-            let prediction_start = Instant::now();
+            let prediction_start = StageStart::now();
             predict_vvc_luma_intra_block_into_with_availability(
                 &mut predicted_luma,
                 &mut prediction_scratch,
@@ -872,7 +872,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 vvc_elapsed_nanos(prediction_start),
             );
             #[cfg(feature = "vvc-stats")]
-            let score_start = Instant::now();
+            let score_start = StageStart::now();
             let dc_score = score_luma_mode_candidate(
                 &mut luma_rd_cache,
                 score_metric,
@@ -929,7 +929,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             );
             for mode in luma_directional_candidates.iter() {
                 #[cfg(feature = "vvc-stats")]
-                let prediction_start = Instant::now();
+                let prediction_start = StageStart::now();
                 predict_vvc_luma_intra_block_into_with_availability(
                     &mut candidate_luma_prediction,
                     &mut prediction_scratch,
@@ -946,7 +946,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                     vvc_elapsed_nanos(prediction_start),
                 );
                 #[cfg(feature = "vvc-stats")]
-                let score_start = Instant::now();
+                let score_start = StageStart::now();
                 let candidate_score = score_luma_mode_candidate(
                     &mut luma_rd_cache,
                     score_metric,
@@ -991,7 +991,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                     .add_refinement(best_luma_mode.luma_mode_index(), refinement_fast_search);
                 for mode in luma_directional_candidates.iter_from(refinement_start) {
                     #[cfg(feature = "vvc-stats")]
-                    let prediction_start = Instant::now();
+                    let prediction_start = StageStart::now();
                     predict_vvc_luma_intra_block_into_with_availability(
                         &mut candidate_luma_prediction,
                         &mut prediction_scratch,
@@ -1008,7 +1008,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                         vvc_elapsed_nanos(prediction_start),
                     );
                     #[cfg(feature = "vvc-stats")]
-                    let score_start = Instant::now();
+                    let score_start = StageStart::now();
                     let candidate_score = score_luma_mode_candidate(
                         &mut luma_rd_cache,
                         score_metric,
@@ -1049,7 +1049,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             luma_residuals.extend_from_slice(&cached.residuals);
         } else {
             #[cfg(feature = "vvc-stats")]
-            let residual_start = Instant::now();
+            let residual_start = StageStart::now();
             residual_luma_tu_at_into(
                 &mut luma_residuals,
                 source_frame,
@@ -1063,7 +1063,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             intra_search_stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         }
         #[cfg(feature = "vvc-stats")]
-        let luma_rd_start = Instant::now();
+        let luma_rd_start = StageStart::now();
         let selected_luma_mode = select_vvc_luma_mode_with_rd_refinement(
             policy,
             node,
@@ -1097,7 +1097,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         let mut luma_mode = selected_luma_mode.mode;
         let mut luma_coding_decision = policy.select_luma_tu_coding_decision(node, luma_mode);
         #[cfg(feature = "vvc-stats")]
-        let luma_mrl_start = Instant::now();
+        let luma_mrl_start = StageStart::now();
         let selected_luma_mrl = select_vvc_luma_mrl_prediction(
             policy,
             luma_coding_decision.residual_coding,
@@ -1125,7 +1125,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         luma_coding_decision.mrl_index = selected_luma_mrl.mrl_index;
         let mut selected_luma_residual = selected_luma_mrl.residual;
         #[cfg(feature = "vvc-stats")]
-        let luma_bdpcm_start = Instant::now();
+        let luma_bdpcm_start = StageStart::now();
         if let Some(selected_bdpcm) = select_vvc_luma_bdpcm_prediction(
             policy,
             node,
@@ -1162,7 +1162,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             usize::from(node.height),
         );
         #[cfg(feature = "vvc-stats")]
-        let luma_finalize_start = Instant::now();
+        let luma_finalize_start = StageStart::now();
         let luma_tu = finalize_vvc_luma_tu(
             luma_coding_decision,
             source_frame,
@@ -1266,7 +1266,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             chroma_height,
         ) {
             #[cfg(feature = "vvc-stats")]
-            let chroma_finalize_start = Instant::now();
+            let chroma_finalize_start = StageStart::now();
             if let Some(chroma_tu) = finalize_vvc_chroma_tu_with_temporal_mode_hint(
                 hint,
                 policy,
@@ -1335,9 +1335,9 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         }
         let initial_chroma_mode = VvcChromaIntraPredictionMode::Derived;
         #[cfg(feature = "vvc-stats")]
-        let chroma_mode_search_start = Instant::now();
+        let chroma_mode_search_start = StageStart::now();
         #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
+        let prediction_start = StageStart::now();
         predict_vvc_chroma_mode_pair_blocks_into_with_availability(
             &mut predicted_cb,
             &mut predicted_cr,
@@ -1370,7 +1370,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 )
             } else {
                 #[cfg(feature = "vvc-stats")]
-                let score_start = Instant::now();
+                let score_start = StageStart::now();
                 let initial_score = score_chroma_mode_candidate(
                     &mut chroma_rd_cache,
                     score_metric,
@@ -1412,7 +1412,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                         }
                         let chroma_mode = VvcChromaIntraPredictionMode::Explicit(explicit_mode);
                         #[cfg(feature = "vvc-stats")]
-                        let prediction_start = Instant::now();
+                        let prediction_start = StageStart::now();
                         predict_vvc_chroma_mode_pair_blocks_into_with_availability(
                             &mut candidate_cb_prediction,
                             &mut candidate_cr_prediction,
@@ -1436,7 +1436,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                             vvc_elapsed_nanos(prediction_start),
                         );
                         #[cfg(feature = "vvc-stats")]
-                        let score_start = Instant::now();
+                        let score_start = StageStart::now();
                         let candidate_score = score_chroma_mode_candidate(
                             &mut chroma_rd_cache,
                             score_metric,
@@ -1494,7 +1494,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                     ] {
                         let chroma_mode = VvcChromaIntraPredictionMode::Cclm(cclm_mode);
                         #[cfg(feature = "vvc-stats")]
-                        let prediction_start = Instant::now();
+                        let prediction_start = StageStart::now();
                         predict_vvc_chroma_mode_pair_blocks_into_with_availability(
                             &mut candidate_cb_prediction,
                             &mut candidate_cr_prediction,
@@ -1518,7 +1518,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                             vvc_elapsed_nanos(prediction_start),
                         );
                         #[cfg(feature = "vvc-stats")]
-                        let score_start = Instant::now();
+                        let score_start = StageStart::now();
                         let candidate_score = score_chroma_mode_candidate(
                             &mut chroma_rd_cache,
                             score_metric,
@@ -1566,7 +1566,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             cr_residuals.extend_from_slice(&cached.cr_residuals);
         } else {
             #[cfg(feature = "vvc-stats")]
-            let residual_start = Instant::now();
+            let residual_start = StageStart::now();
             residual_chroma_tu_at_into(
                 &mut cb_residuals,
                 &source_frame.cb,
@@ -1581,7 +1581,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             #[cfg(feature = "vvc-stats")]
             intra_search_stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
             #[cfg(feature = "vvc-stats")]
-            let residual_start = Instant::now();
+            let residual_start = StageStart::now();
             residual_chroma_tu_at_into(
                 &mut cr_residuals,
                 &source_frame.cr,
@@ -1597,7 +1597,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             intra_search_stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         }
         #[cfg(feature = "vvc-stats")]
-        let chroma_rd_start = Instant::now();
+        let chroma_rd_start = StageStart::now();
         let selected_chroma_mode = if vvc_chroma_lossy_speed_direct_bdpcm_candidates_allowed(
             policy,
             source_frame.format.chroma_sampling,
@@ -1651,7 +1651,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         let mut chroma_mode = selected_chroma_mode.mode;
         let mut selected_chroma_residual = selected_chroma_mode.residual;
         #[cfg(feature = "vvc-stats")]
-        let chroma_bdpcm_start = Instant::now();
+        let chroma_bdpcm_start = StageStart::now();
         if let Some(selected_bdpcm) = select_vvc_chroma_bdpcm_prediction(
             policy,
             node,
@@ -1691,7 +1691,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             residual_energy_stats.add_chroma_residuals(&cr_residuals, chroma_width, chroma_height);
         }
         #[cfg(feature = "vvc-stats")]
-        let chroma_finalize_start = Instant::now();
+        let chroma_finalize_start = StageStart::now();
         let chroma_tu = finalize_vvc_chroma_tu(
             chroma_coding_decision,
             source_frame,
@@ -1830,7 +1830,7 @@ fn score_vvc_luma_planar_candidate(
     intra_search_stats: &mut VvcIntraSearchStats,
 ) -> u64 {
     #[cfg(feature = "vvc-stats")]
-    let prediction_start = Instant::now();
+    let prediction_start = StageStart::now();
     predict_vvc_luma_intra_block_into_with_availability(
         candidate_luma_prediction,
         prediction_scratch,
@@ -1847,7 +1847,7 @@ fn score_vvc_luma_planar_candidate(
         vvc_elapsed_nanos(prediction_start),
     );
     #[cfg(feature = "vvc-stats")]
-    let score_start = Instant::now();
+    let score_start = StageStart::now();
     let candidate_score = score_luma_mode_candidate(
         luma_rd_cache,
         score_metric,

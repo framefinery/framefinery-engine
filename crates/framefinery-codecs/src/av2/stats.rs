@@ -1,7 +1,4 @@
 #[cfg(feature = "av2-stats")]
-use std::time::Instant;
-
-#[cfg(feature = "av2-stats")]
 use crate::instrumentation::JsonlInstrumentationSink;
 
 use super::{Av2StreamFormat, Av2VideoGeometry};
@@ -171,21 +168,4 @@ struct Av2StageStats {
     nanos: u64,
 }
 
-pub(super) struct Av2StageStart {
-    #[cfg(feature = "av2-stats")]
-    start: Instant,
-}
-
-impl Av2StageStart {
-    pub(super) fn now() -> Self {
-        Self {
-            #[cfg(feature = "av2-stats")]
-            start: Instant::now(),
-        }
-    }
-
-    #[cfg(feature = "av2-stats")]
-    fn elapsed_nanos(self) -> u64 {
-        self.start.elapsed().as_nanos() as u64
-    }
-}
+pub(super) type Av2StageStart = crate::timing::StageStart;

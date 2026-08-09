@@ -6,6 +6,13 @@ const PARTITION_CONTEXT_DIM: usize = MVP_SUPERBLOCK_SIZE / MI_SIZE;
 const TX4X4_SIZE: usize = 4;
 const TX4X4_SAMPLES: usize = TX4X4_SIZE * TX4X4_SIZE;
 const TX4X4_SCAN: [usize; TX4X4_SAMPLES] = [0, 4, 1, 8, 5, 2, 12, 9, 6, 3, 13, 10, 7, 14, 11, 15];
+const TX8X8_SIZE: usize = 8;
+const TX8X8_SAMPLES: usize = TX8X8_SIZE * TX8X8_SIZE;
+const TX8X8_SCAN: [usize; TX8X8_SAMPLES] = [
+    0, 8, 1, 16, 9, 2, 24, 17, 10, 3, 32, 25, 18, 11, 4, 40, 33, 26, 19, 12, 5, 48, 41, 34, 27,
+    20, 13, 6, 56, 49, 42, 35, 28, 21, 14, 7, 57, 50, 43, 36, 29, 22, 15, 58, 51, 44, 37, 30,
+    23, 59, 52, 45, 38, 31, 60, 53, 46, 39, 61, 54, 47, 62, 55, 63,
+];
 const AVM_CDF_PROB_TOP: u16 = 32768;
 const LOSSLESS_DC_PREDICTOR: u8 = 128;
 const BLACK_LOSSLESS_DC_LEVEL: u16 = 512;
@@ -643,6 +650,12 @@ const DEFAULT_TXB_SKIP_U_TX4X4_CTX6_CDF: [u16; 6] = [
 ];
 const DEFAULT_TXB_SKIP_U_TX4X4_CTX7_CDF: [u16; 6] = avm_cdf2(13655, 0, 0, -1);
 const DEFAULT_TXB_SKIP_U_TX4X4_CTX8_CDF: [u16; 6] = avm_cdf2(22348, 0, 0, 0);
+const DEFAULT_TXB_SKIP_U_TX8X8_CTX6_CDF: [u16; 6] = avm_cdf2(5170, 1, 0, 0);
+const DEFAULT_TXB_SKIP_U_TX8X8_CTX7_CDF: [u16; 6] = avm_cdf2(12844, 0, 0, -1);
+const DEFAULT_TXB_SKIP_U_TX8X8_CTX8_CDF: [u16; 6] = avm_cdf2(22336, 0, -1, -1);
+const DEFAULT_TXB_SKIP_U_INTER_TX8X8_CTX6_CDF: [u16; 6] = avm_cdf2(5152, -1, -1, -1);
+const DEFAULT_TXB_SKIP_U_INTER_TX8X8_CTX7_CDF: [u16; 6] = avm_cdf2(15362, -1, -1, -1);
+const DEFAULT_TXB_SKIP_U_INTER_TX8X8_CTX8_CDF: [u16; 6] = avm_cdf2(24814, 0, -1, -1);
 const DEFAULT_TXB_SKIP_U_FSC_TX4X4_CTX6_CDF: [u16; 6] = avm_cdf2(5437, -1, -2, -2);
 const DEFAULT_TXB_SKIP_U_FSC_TX4X4_CTX7_CDF: [u16; 6] = avm_cdf2(17819, -1, 0, -1);
 const DEFAULT_TXB_SKIP_U_FSC_TX4X4_CTX8_CDF: [u16; 6] = avm_cdf2(28074, 0, -1, 1);
@@ -663,6 +676,8 @@ const DEFAULT_EOB_MULTI16_Y_CTX0_CDF: [u16; 9] = avm_cdf5(1946, 3059, 6834, 1512
 const DEFAULT_EOB_MULTI16_Y_INTER_CTX0_CDF: [u16; 9] =
     avm_cdf5(558, 835, 2739, 6534, -1, 0, 0);
 const DEFAULT_EOB_MULTI16_UV_CTX2_CDF: [u16; 9] = avm_cdf5(8000, 10366, 14466, 19569, -1, -1, -1);
+const DEFAULT_EOB_MULTI64_UV_CTX2_CDF: [u16; 11] =
+    avm_cdf7(13125, 16136, 21482, 26341, 29681, 31034, -1, -1, -1);
 const DEFAULT_COEFF_BASE_LF_EOB_Y_TX4X4_CTX0_CDF: [u16; 9] =
     avm_cdf5(27486, 31140, 31779, 32064, 0, -1, -2);
 const DEFAULT_COEFF_BASE_EOB_Y_CDFS: [[u16; 7]; 4] = [

@@ -28,6 +28,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           components: rustfmt
+          targets: wasm32-unknown-unknown
 
       - name: Show Tool Versions
         run: |

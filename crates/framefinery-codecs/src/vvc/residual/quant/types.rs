@@ -49,7 +49,7 @@ use super::{
 #[cfg(feature = "vvc-stats")]
 use crate::instrumentation::JsonlInstrumentationSink;
 #[cfg(feature = "vvc-stats")]
-use std::time::Instant;
+use crate::timing::StageStart;
 
 #[cfg(not(feature = "vvc-stats"))]
 struct VvcIntraSearchStats;
@@ -70,8 +70,8 @@ const VVC_LOSSY_CHROMA_RD_WINNER_CANDIDATES: usize = 5;
 const VVC_LUMA_MIN_INTRA_MODE_SYNTAX_BINS: u8 = 2;
 
 #[cfg(feature = "vvc-stats")]
-fn vvc_elapsed_nanos(start: Instant) -> u64 {
-    start.elapsed().as_nanos() as u64
+fn vvc_elapsed_nanos(start: StageStart) -> u64 {
+    start.elapsed_nanos()
 }
 
 #[cfg(feature = "vvc-stats")]

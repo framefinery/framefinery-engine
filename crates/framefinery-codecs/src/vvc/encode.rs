@@ -270,7 +270,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
             chroma_qp,
         );
         #[cfg(feature = "vvc-stats")]
-        let stage_start = Instant::now();
+        let stage_start = StageStart::now();
         let frame_available =
             read_input_frame(input, &mut frame_buf, frame_idx, frame_limit, "VVC input")?;
         #[cfg(feature = "vvc-stats")]
@@ -278,7 +278,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         if !frame_available {
             break;
         }
-        let frame_encode_start = Instant::now();
+        let frame_encode_start = StageStart::now();
         if options.gop.resets_references_before(frame_idx) {
             previous_predictive_cache = None;
         }
@@ -295,9 +295,9 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
             if let Some(repeated_cache) = repeated_predictive_cache {
                 let mut frame_bitstream = CountingWriter::new(bitstream);
                 #[cfg(feature = "vvc-stats")]
-                let stage_start = Instant::now();
+                let stage_start = StageStart::now();
                 #[cfg(feature = "vvc-stats")]
-                let entropy_build_start = Instant::now();
+                let entropy_build_start = StageStart::now();
                 let skip_slice_config = predictive_frame_skip_slice_config
                     .expect("predictive single-slice config is available in predictive mode");
                 let inter_skip_payload =
@@ -327,7 +327,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     );
                 }
                 #[cfg(feature = "vvc-stats")]
-                let annexb_write_start = Instant::now();
+                let annexb_write_start = StageStart::now();
                 write_annex_b_to(&mut frame_bitstream, &frame_slice_units)?;
                 #[cfg(feature = "vvc-stats")]
                 frame_stats.add_counter(
@@ -337,7 +337,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 #[cfg(feature = "vvc-stats")]
                 frame_stats.add_elapsed("frame_entropy_write", stage_start);
                 #[cfg(feature = "vvc-stats")]
-                let stage_start = Instant::now();
+                let stage_start = StageStart::now();
                 let yuv = repeated_cache.reconstruction.to_yuv();
                 #[cfg(feature = "vvc-stats")]
                 frame_stats.add_elapsed("frame_recon_finalize", stage_start);
@@ -348,7 +348,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 )
             } else {
         #[cfg(feature = "vvc-stats")]
-        let stage_start = Instant::now();
+        let stage_start = StageStart::now();
         let source_frame =
             sample_vvc_yuv_frame(&frame_buf, VvcEncodeParams { frames: 1 }, geometry, format)?;
         #[cfg(feature = "vvc-stats")]
@@ -367,7 +367,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 let mut ctu_quant_scratch = VvcCtuQuantScratch::default();
                 for region in vvc_ctu_regions(geometry) {
                     #[cfg(feature = "vvc-stats")]
-                    let stage_start = Instant::now();
+                    let stage_start = StageStart::now();
                     let cached_exact_ctu = if predictive_frame {
                         previous_predictive_cache.as_ref().and_then(|cache| {
                             cache.matching_decision(&frame_buf, stream_frame_layout, region)
@@ -624,9 +624,9 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     });
                 }
                 #[cfg(feature = "vvc-stats")]
-                let stage_start = Instant::now();
+                let stage_start = StageStart::now();
                 #[cfg(feature = "vvc-stats")]
-                let entropy_build_start = Instant::now();
+                let entropy_build_start = StageStart::now();
                 let predictive_frame_skip = predictive_frame
                     && frame_ctus
                         .iter()
@@ -685,7 +685,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     entropy_build_start.elapsed().as_nanos() as u64,
                 );
                 #[cfg(feature = "vvc-stats")]
-                let annexb_write_start = Instant::now();
+                let annexb_write_start = StageStart::now();
                 write_annex_b_to(&mut frame_bitstream, &frame_slice_units)?;
                 #[cfg(feature = "vvc-stats")]
                 frame_stats.add_counter(
@@ -695,7 +695,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 #[cfg(feature = "vvc-stats")]
                 frame_stats.add_elapsed("frame_entropy_write", stage_start);
                 #[cfg(feature = "vvc-stats")]
-                let stage_start = Instant::now();
+                let stage_start = StageStart::now();
                 let yuv = frame_recon.to_yuv();
                 let next_predictive_cache =
                     frame_ctu_decisions.map(|ctu_decisions| std::sync::Arc::new(VvcPredictiveFrameCache {
@@ -720,7 +720,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         frame_stats.set_bitstream_bytes(frame_bitstream_bytes);
         if let Some(writer) = reconstruction.as_deref_mut() {
             #[cfg(feature = "vvc-stats")]
-            let stage_start = Instant::now();
+            let stage_start = StageStart::now();
             writer.write_all(&frame_recon_yuv).map_err(|err| {
                 format!("failed to write VVC reconstruction frame {frame_idx}: {err}")
             })?;
@@ -729,7 +729,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         }
         if let Some(frame_metrics) = frame_metrics.as_deref_mut() {
             #[cfg(feature = "vvc-stats")]
-            let stage_start = Instant::now();
+            let stage_start = StageStart::now();
             frame_metrics(VvcEncodeFrameMetrics {
                 frame_idx,
                 frame_count: frame_limit.metric_count(),

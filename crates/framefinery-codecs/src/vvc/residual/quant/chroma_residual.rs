@@ -93,7 +93,7 @@ fn finalize_vvc_chroma_tu(
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcFinalizedChromaTu {
     #[cfg(feature = "vvc-stats")]
-    let score_start = Instant::now();
+    let score_start = StageStart::now();
     let selected_residual = preselected_residual
         .map(|residual| residual.residual)
         .unwrap_or_else(|| VvcSelectedChromaResidual {
@@ -136,7 +136,7 @@ fn finalize_vvc_chroma_tu(
         )
     {
         #[cfg(feature = "vvc-stats")]
-        let fill_start = Instant::now();
+        let fill_start = StageStart::now();
         copy_source_chroma_node_into_reconstruction(
             &mut frame_recon.cb,
             &source_frame.cb,
@@ -148,7 +148,7 @@ fn finalize_vvc_chroma_tu(
         stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
     } else if cb_residual.transform_skip {
         #[cfg(feature = "vvc-stats")]
-        let fill_start = Instant::now();
+        let fill_start = StageStart::now();
         fill_visible_chroma_transform_skip_node(
             &mut frame_recon.cb,
             source_frame.geometry,
@@ -163,7 +163,7 @@ fn finalize_vvc_chroma_tu(
         stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
     } else {
         #[cfg(feature = "vvc-stats")]
-        let recon_start = Instant::now();
+        let recon_start = StageStart::now();
         reconstruct_vvc_chroma_residual_block_into(
             cb_residual,
             reconstructed_residual,
@@ -177,7 +177,7 @@ fn finalize_vvc_chroma_tu(
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
         #[cfg(feature = "vvc-stats")]
-        let fill_start = Instant::now();
+        let fill_start = StageStart::now();
         fill_visible_chroma_node(
             &mut frame_recon.cb,
             source_frame.geometry,
@@ -200,7 +200,7 @@ fn finalize_vvc_chroma_tu(
         )
     {
         #[cfg(feature = "vvc-stats")]
-        let fill_start = Instant::now();
+        let fill_start = StageStart::now();
         copy_source_chroma_node_into_reconstruction(
             &mut frame_recon.cr,
             &source_frame.cr,
@@ -212,7 +212,7 @@ fn finalize_vvc_chroma_tu(
         stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
     } else if cr_residual.transform_skip {
         #[cfg(feature = "vvc-stats")]
-        let fill_start = Instant::now();
+        let fill_start = StageStart::now();
         fill_visible_chroma_transform_skip_node(
             &mut frame_recon.cr,
             source_frame.geometry,
@@ -227,7 +227,7 @@ fn finalize_vvc_chroma_tu(
         stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
     } else {
         #[cfg(feature = "vvc-stats")]
-        let recon_start = Instant::now();
+        let recon_start = StageStart::now();
         reconstruct_vvc_chroma_residual_block_into(
             cr_residual,
             reconstructed_residual,
@@ -241,7 +241,7 @@ fn finalize_vvc_chroma_tu(
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
         #[cfg(feature = "vvc-stats")]
-        let fill_start = Instant::now();
+        let fill_start = StageStart::now();
         fill_visible_chroma_node(
             &mut frame_recon.cr,
             source_frame.geometry,
@@ -439,7 +439,7 @@ fn finalize_vvc_chroma_residual_block(
     match residual_coding {
         VvcTuResidualCodingMode::TransformSkip => {
             #[cfg(feature = "vvc-stats")]
-            let quant_start = Instant::now();
+            let quant_start = StageStart::now();
             let block =
                 finalize_vvc_chroma_transform_skip_residual_block(residuals, width, height, chroma_ts_quant);
             #[cfg(feature = "vvc-stats")]
@@ -448,7 +448,7 @@ fn finalize_vvc_chroma_residual_block(
         }
         VvcTuResidualCodingMode::Transformed => {
             #[cfg(feature = "vvc-stats")]
-            let quant_start = Instant::now();
+            let quant_start = StageStart::now();
             let quantized = quantize_vvc_chroma_residual_greedy_with_qp(
                 residuals,
                 width as u16,
@@ -537,7 +537,7 @@ fn select_vvc_scored_chroma_residual_block_with_transform_skip(
     match residual_coding {
         VvcTuResidualCodingMode::TransformSkip => {
             #[cfg(feature = "vvc-stats")]
-            let quant_start = Instant::now();
+            let quant_start = StageStart::now();
             let block = finalize_vvc_chroma_transform_skip_residual_block(
                 residuals,
                 width,
@@ -567,7 +567,7 @@ fn select_vvc_scored_chroma_residual_block_with_transform_skip(
                 chroma_qp,
             ) {
                 #[cfg(feature = "vvc-stats")]
-                let quant_start = Instant::now();
+                let quant_start = StageStart::now();
                 let transform_skip = finalize_vvc_chroma_transform_skip_residual_block(
                     residuals,
                     width,
@@ -595,7 +595,7 @@ fn select_vvc_scored_chroma_residual_block_with_transform_skip(
                 }
             }
             #[cfg(feature = "vvc-stats")]
-            let quant_start = Instant::now();
+            let quant_start = StageStart::now();
             let quantized = quantize_vvc_chroma_residual_greedy_with_qp(
                 residuals,
                 width as u16,
@@ -659,7 +659,7 @@ fn select_vvc_chroma_residual_block_with_transform_skip(
     }
 
     #[cfg(feature = "vvc-stats")]
-    let quant_start = Instant::now();
+    let quant_start = StageStart::now();
     let transform_skip = finalize_vvc_chroma_transform_skip_residual_block(
         residuals,
         width,

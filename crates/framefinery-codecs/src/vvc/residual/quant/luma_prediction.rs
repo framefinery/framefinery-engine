@@ -41,7 +41,7 @@ fn select_vvc_luma_mrl_prediction(
         ),
         None => {
             #[cfg(feature = "vvc-stats")]
-            let score_start = Instant::now();
+            let score_start = StageStart::now();
             let candidate = score_vvc_luma_mrl_candidate(
                 score_metric,
                 residual_coding,
@@ -63,7 +63,7 @@ fn select_vvc_luma_mrl_prediction(
     };
     for mrl_index in 1..=2 {
         #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
+        let prediction_start = StageStart::now();
         predict_vvc_luma_intra_block_into_with_mrl_and_availability(
             candidate_prediction,
             prediction_scratch,
@@ -82,7 +82,7 @@ fn select_vvc_luma_mrl_prediction(
             stats.add_luma_rd_prediction_nanos(nanos);
         }
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_luma_tu_at_into(
             candidate_residuals,
             source_frame,
@@ -99,7 +99,7 @@ fn select_vvc_luma_mrl_prediction(
             stats.add_luma_rd_residual_build_nanos(nanos);
         }
         #[cfg(feature = "vvc-stats")]
-        let score_start = Instant::now();
+        let score_start = StageStart::now();
         let candidate = score_vvc_luma_mrl_candidate(
             score_metric,
             residual_coding,
@@ -162,7 +162,7 @@ fn select_vvc_luma_bdpcm_prediction(
 
     let baseline_residual = selected_residual.unwrap_or_else(|| {
         #[cfg(feature = "vvc-stats")]
-        let score_start = Instant::now();
+        let score_start = StageStart::now();
         let scored_residual = select_vvc_scored_luma_residual_block_with_mts(
             selected_decision.residual_coding,
             selected_decision.mts_index,
@@ -199,7 +199,7 @@ fn select_vvc_luma_bdpcm_prediction(
     for bdpcm_mode in [VvcBdpcmMode::Horizontal, VvcBdpcmMode::Vertical] {
         if direct_residual {
             #[cfg(feature = "vvc-stats")]
-            let residual_start = Instant::now();
+            let residual_start = StageStart::now();
             residual_vvc_luma_bdpcm_block_into_with_availability(
                 candidate_residuals,
                 prediction_scratch,
@@ -215,7 +215,7 @@ fn select_vvc_luma_bdpcm_prediction(
             stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         } else {
             #[cfg(feature = "vvc-stats")]
-            let prediction_start = Instant::now();
+            let prediction_start = StageStart::now();
             predict_vvc_luma_bdpcm_block_into_with_availability(
                 candidate_prediction,
                 prediction_scratch,
@@ -232,7 +232,7 @@ fn select_vvc_luma_bdpcm_prediction(
                 vvc_elapsed_nanos(prediction_start),
             );
             #[cfg(feature = "vvc-stats")]
-            let residual_start = Instant::now();
+            let residual_start = StageStart::now();
             residual_luma_tu_at_into(
                 candidate_residuals,
                 source_frame,
@@ -246,7 +246,7 @@ fn select_vvc_luma_bdpcm_prediction(
             stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         }
         #[cfg(feature = "vvc-stats")]
-        let score_start = Instant::now();
+        let score_start = StageStart::now();
         let residual = VvcSelectedLumaResidual {
             block: finalize_vvc_luma_bdpcm_transform_skip_residual_block(
                 candidate_residuals,
@@ -301,7 +301,7 @@ fn select_vvc_luma_bdpcm_prediction(
         };
         #[cfg(feature = "vvc-stats")]
         {
-            let prediction_start = Instant::now();
+            let prediction_start = StageStart::now();
             predict_vvc_luma_bdpcm_block_into_with_availability(
                 selected_prediction,
                 prediction_scratch,

@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FrameFinery WASM Screen Capture</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background: #15171a;
+        color: #f2f4f8;
+      }
+
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      h1 {
+        margin: 0 0 18px;
+        font-size: 24px;
+        letter-spacing: 0;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        align-items: end;
+        margin-bottom: 16px;
+      }
+
+      label {
+        display: grid;
+        gap: 5px;
+        font-size: 13px;
+        color: #c8d0dc;
+      }
+
+      input,
+      select,
+      button {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 36px;
+        border-radius: 6px;
+        border: 1px solid #434a55;
+        background: #22262d;
+        color: #f2f4f8;
+        padding: 7px 9px;
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+        background: #2d7ff9;
+        border-color: #2d7ff9;
+        color: #fff;
+        font-weight: 600;
+      }
+
+      button.secondary {
+        background: #2a2f38;
+        border-color: #545d6b;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #060708;
+        border: 1px solid #333944;
+        border-radius: 8px;
+      }
+
+      pre {
+        min-height: 140px;
+        overflow: auto;
+        border: 1px solid #333944;
+        border-radius: 8px;
+        background: #0d1015;
+        padding: 12px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>FrameFinery WASM Screen Capture</h1>
+      <div class="controls">
+        <label>
+          Codec
+          <select id="codec">
+            <option value="av2">AV2</option>
+            <option value="vvc">VVC</option>
+          </select>
+        </label>
+        <label>
+          Width
+          <input id="width" type="number" min="8" step="8" value="640" />
+        </label>
+        <label>
+          Height
+          <input id="height" type="number" min="8" step="8" value="360" />
+        </label>
+        <label>
+          Frames
+          <input id="frames" type="number" min="1" max="180" value="30" />
+        </label>
+        <label>
+          FPS
+          <input id="fps" type="number" min="1" max="60" value="10" />
+        </label>
+        <label>
+          QP
+          <input id="qp" type="number" min="1" max="255" value="24" />
+        </label>
+        <label>
+          GOP
+          <input id="gop" type="number" min="-1" max="65535" value="-1" />
+        </label>
+        <label>
+          Mode
+          <select id="mode">
+            <option value="lossy">Lossy</option>
+            <option value="lossless">Lossless</option>
+          </select>
+        </label>
+        <button id="start">Capture</button>
+        <button id="stop" class="secondary" disabled>Stop</button>
+      </div>
+      <canvas id="preview" width="640" height="360"></canvas>
+      <pre id="log"></pre>
+    </main>
+    <script type="module">
+      const els = {
+        codec: document.getElementById("codec"),
+        width: document.getElementById("width"),
+        height: document.getElementById("height"),
+        frames: document.getElementById("frames"),
+        fps: document.getElementById("fps"),
+        qp: document.getElementById("qp"),
+        gop: document.getElementById("gop"),
+        mode: document.getElementById("mode"),
+        start: document.getElementById("start"),
+        stop: document.getElementById("stop"),
+        preview: document.getElementById("preview"),
+        log: document.getElementById("log"),
+      };
+
+      const decoder = new TextDecoder();
+      let wasm;
+      let memory;
+      let stream;
+      let video;
+      let timer;
+      let captureActive = false;
+
+      function log(line) {
+        const time = new Date().toLocaleTimeString();
+        els.log.textContent += `[${time}] ${line}\n`;
+        els.log.scrollTop = els.log.scrollHeight;
+      }
+
+      async function loadWasm() {
+        if (wasm) {
+          return;
+        }
+        const response = await fetch("framefinery_wasm_target.wasm");
+        const bytes = await response.arrayBuffer();
+        const module = await WebAssembly.instantiate(bytes, {});
+        wasm = module.instance.exports;
+        memory = wasm.memory;
+        const version = readString(wasm.ff_wasm_version_ptr(), wasm.ff_wasm_version_len());
+        log(`loaded FrameFinery WASM target ${version}`);
+      }
+
+      function readString(ptr, len) {
+        if (!ptr || !len) {
+          return "";
+        }
+        return decoder.decode(new Uint8Array(memory.buffer, ptr, len));
+      }
+
+      function check(status) {
+        if (status === 0) {
+          return;
+        }
+        throw new Error(readString(wasm.ff_wasm_last_error_ptr(), wasm.ff_wasm_last_error_len()));
+      }
+
+      function valueNumber(element) {
+        return Number.parseInt(element.value, 10);
+      }
+
+      function codecId() {
+        return els.codec.value === "vvc" ? wasm.ff_wasm_codec_vvc() : wasm.ff_wasm_codec_av2();
+      }
+
+      async function startCapture() {
+        await loadWasm();
+        const width = valueNumber(els.width);
+        const height = valueNumber(els.height);
+        const maxFrames = valueNumber(els.frames);
+        const fps = valueNumber(els.fps);
+        const lossless = els.mode.value === "lossless" ? 1 : 0;
+        const qp = valueNumber(els.qp);
+        const gop = valueNumber(els.gop);
+
+        els.preview.width = width;
+        els.preview.height = height;
+        check(wasm.ff_wasm_configure(codecId(), width, height, maxFrames, lossless, qp, gop));
+
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: fps },
+          audio: false,
+        });
+        video = document.createElement("video");
+        video.srcObject = stream;
+        video.muted = true;
+        await video.play();
+
+        captureActive = true;
+        els.start.disabled = true;
+        els.stop.disabled = false;
+        log(`capturing ${maxFrames} frame(s) at ${width}x${height}`);
+
+        const context = els.preview.getContext("2d", { willReadFrequently: true });
+        const frameIntervalMs = Math.max(1, Math.round(1000 / fps));
+        timer = setInterval(() => {
+          try {
+            if (!captureActive) {
+              return;
+            }
+            context.drawImage(video, 0, 0, width, height);
+            const image = context.getImageData(0, 0, width, height);
+            const ptr = wasm.ff_wasm_input_ptr();
+            const len = wasm.ff_wasm_input_len();
+            new Uint8Array(memory.buffer, ptr, len).set(image.data);
+            check(wasm.ff_wasm_push_rgba_frame());
+            const captured = wasm.ff_wasm_frame_count();
+            if (captured >= maxFrames) {
+              stopCapture();
+            }
+          } catch (error) {
+            stopCapture(false);
+            log(`capture failed: ${error.message}`);
+          }
+        }, frameIntervalMs);
+      }
+
+      async function stopCapture(encode = true) {
+        if (!captureActive) {
+          return;
+        }
+        captureActive = false;
+        clearInterval(timer);
+        timer = undefined;
+        if (stream) {
+          stream.getTracks().forEach((track) => track.stop());
+          stream = undefined;
+        }
+        els.start.disabled = false;
+        els.stop.disabled = true;
+
+        if (!encode) {
+          return;
+        }
+
+        const frames = wasm.ff_wasm_frame_count();
+        log(`encoding ${frames} captured frame(s)`);
+        const encodeStartMs = performance.now();
+        check(wasm.ff_wasm_encode());
+        const encodeMs = performance.now() - encodeStartMs;
+        const ptr = wasm.ff_wasm_output_ptr();
+        const len = wasm.ff_wasm_output_len();
+        const output = new Uint8Array(memory.buffer, ptr, len).slice();
+        const fps = encodeMs > 0 ? (wasm.ff_wasm_encoded_frames() * 1000) / encodeMs : 0;
+        const psnr = wasm.ff_wasm_psnr_all();
+        log(
+          `encoded ${wasm.ff_wasm_encoded_frames()} frame(s), ${len} byte(s), ${fps.toFixed(2)} fps, ${encodeMs.toFixed(1)} ms, psnr=${Number.isFinite(psnr) ? psnr.toFixed(3) : psnr}`,
+        );
+
+        const response = await fetch(
+          `/upload?codec=${encodeURIComponent(els.codec.value)}&frames=${frames}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/octet-stream" },
+            body: output,
+          },
+        );
+        if (!response.ok) {
+          throw new Error(`upload failed with HTTP ${response.status}`);
+        }
+        const result = await response.json();
+        log(`saved ${result.bytes} byte(s) to ${result.path}`);
+      }
+
+      els.start.addEventListener("click", () => {
+        startCapture().catch((error) => log(`error: ${error.message}`));
+      });
+      els.stop.addEventListener("click", () => {
+        stopCapture().catch((error) => log(`error: ${error.message}`));
+      });
+      loadWasm().catch((error) => log(`error: ${error.message}`));
+    </script>
+  </body>
+</html>

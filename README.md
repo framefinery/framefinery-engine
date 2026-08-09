@@ -183,10 +183,23 @@ make release-check
 ```
 
 `make ci` is the same gate used by GitHub Actions. It runs the release check,
-the strict exported-API documentation audit, and a tiny AV2/VVC encode smoke
-using generated black, checker, and color-block `pattern` source filters across
-a few small geometries, so it does not depend on local media files.
+the strict exported-API documentation audit, a `wasm32-unknown-unknown`
+type-check for the browser target-practice artifact, and a tiny AV2/VVC encode
+smoke using generated black, checker, and color-block `pattern` source filters
+across a few small geometries, so it does not depend on local media files.
 `make release-check` is kept as the explicit release-oriented target name.
+
+The first target-practice browser WASM demo is intentionally not a published
+web package. Build it and serve the local screen-capture/upload example with:
+
+```sh
+rustup target add wasm32-unknown-unknown
+make wasm-build
+make wasm-screen-demo
+```
+
+The demo writes uploaded elementary streams under
+`verification/generated/wasm_screen_capture/`.
 
 Release candidates should also run the local AOM CTC release manifest and save
 a performance table for version-to-version comparison:

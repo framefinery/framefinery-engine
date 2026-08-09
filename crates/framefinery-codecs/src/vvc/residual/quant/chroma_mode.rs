@@ -41,7 +41,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
 
     let mut best_mode = raw_mode;
     #[cfg(feature = "vvc-stats")]
-    let score_start = Instant::now();
+    let score_start = StageStart::now();
     let mut best_candidate = score_vvc_chroma_mode_rd_candidate(
         policy,
         raw_decision,
@@ -77,7 +77,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
             #[cfg(feature = "vvc-stats")]
             stats.add_chroma_rd_cached_candidate();
             #[cfg(feature = "vvc-stats")]
-            let score_start = Instant::now();
+            let score_start = StageStart::now();
             let rd_candidate = score_vvc_chroma_mode_rd_candidate(
                 policy,
                 coding_decision,
@@ -100,7 +100,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
                 best_mode = mode;
                 best_candidate = rd_candidate;
                 #[cfg(feature = "vvc-stats")]
-                let prediction_start = Instant::now();
+                let prediction_start = StageStart::now();
                 predict_vvc_chroma_mode_pair_blocks_into_with_availability(
                     selected_cb_prediction,
                     selected_cr_prediction,
@@ -130,7 +130,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_rd_generated_candidate();
         #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
+        let prediction_start = StageStart::now();
         predict_vvc_chroma_mode_pair_blocks_into_with_availability(
             candidate_cb_prediction,
             candidate_cr_prediction,
@@ -159,7 +159,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
         let chroma_y =
             usize::from(node.y) / chroma_subsample_y(source_frame.format.chroma_sampling);
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             candidate_cb_residuals,
             &source_frame.cb,
@@ -178,7 +178,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
             stats.add_chroma_rd_residual_build_nanos(nanos);
         }
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             candidate_cr_residuals,
             &source_frame.cr,
@@ -197,7 +197,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
             stats.add_chroma_rd_residual_build_nanos(nanos);
         }
         #[cfg(feature = "vvc-stats")]
-        let score_start = Instant::now();
+        let score_start = StageStart::now();
         let rd_candidate = score_vvc_chroma_mode_rd_candidate(
             policy,
             coding_decision,
@@ -301,7 +301,7 @@ fn select_vvc_chroma_bdpcm_prediction(
     .flatten()
     {
         #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
+        let prediction_start = StageStart::now();
         predict_vvc_chroma_bdpcm_block_into_with_availability(
             candidate_cb_prediction,
             prediction_scratch,
@@ -334,7 +334,7 @@ fn select_vvc_chroma_bdpcm_prediction(
         let chroma_y =
             usize::from(node.y) / chroma_subsample_y(source_frame.format.chroma_sampling);
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             candidate_cb_residuals,
             &source_frame.cb,
@@ -349,7 +349,7 @@ fn select_vvc_chroma_bdpcm_prediction(
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             candidate_cr_residuals,
             &source_frame.cr,
@@ -412,7 +412,7 @@ fn select_vvc_chroma_bdpcm_prediction(
     let baseline_decision = policy.select_chroma_tu_coding_decision(node, selected_mode);
     let baseline_residual = selected_residual.unwrap_or_else(|| {
         #[cfg(feature = "vvc-stats")]
-        let score_start = Instant::now();
+        let score_start = StageStart::now();
         let residual = VvcSelectedChromaResidual {
             cb: finalize_vvc_chroma_residual_block(
                 baseline_decision.residual_coding,
@@ -468,7 +468,7 @@ fn select_vvc_chroma_bdpcm_prediction(
         .flatten()
     {
         #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
+        let prediction_start = StageStart::now();
         predict_vvc_chroma_bdpcm_block_into_with_availability(
             candidate_cb_prediction,
             prediction_scratch,
@@ -501,7 +501,7 @@ fn select_vvc_chroma_bdpcm_prediction(
         let chroma_y =
             usize::from(node.y) / chroma_subsample_y(source_frame.format.chroma_sampling);
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             candidate_cb_residuals,
             &source_frame.cb,
@@ -516,7 +516,7 @@ fn select_vvc_chroma_bdpcm_prediction(
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             candidate_cr_residuals,
             &source_frame.cr,
@@ -531,7 +531,7 @@ fn select_vvc_chroma_bdpcm_prediction(
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         #[cfg(feature = "vvc-stats")]
-        let score_start = Instant::now();
+        let score_start = StageStart::now();
         let residual = VvcSelectedChromaResidual {
             cb: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
                 candidate_cb_residuals,

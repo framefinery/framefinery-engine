@@ -18,6 +18,8 @@ mod picture;
 mod session;
 #[cfg(any(feature = "av2", feature = "vvc"))]
 mod settings;
+#[cfg(any(feature = "av2", feature = "vvc"))]
+mod timing;
 mod trace;
 #[cfg(feature = "vvc")]
 #[doc(hidden)]

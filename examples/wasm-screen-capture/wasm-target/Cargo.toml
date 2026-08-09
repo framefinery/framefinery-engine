@@ -1,0 +1,23 @@
+[package]
+name = "framefinery-wasm-target"
+version = "0.0.3"
+edition = "2021"
+rust-version = "1.87"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "Target-practice browser WASM artifact for FrameFinery screen capture experiments."
+
+[workspace]
+
+[lib]
+name = "framefinery_wasm_target"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+framefinery = { path = "../../../crates/framefinery-cli", default-features = false }
+
+[features]
+default = ["av2", "vvc"]
+av2 = ["framefinery/codec-av2"]
+vvc = ["framefinery/codec-vvc"]

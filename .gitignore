@@ -9,6 +9,7 @@ target/
 /ff-gprof
 /ff-optimized
 /ff-pgo
+/examples/wasm-screen-capture/framefinery_wasm_target.wasm
 /ff-smoke-*
 /gmon.out
 /gprof.txt

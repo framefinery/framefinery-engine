@@ -175,6 +175,18 @@ fn write_lossy_subsampled_residual_coefficients(
         leaf_height: chroma_span.height * TX4X4_SIZE,
         coded_mi_context,
     };
+    if lossy.chroma_format == Av2ChromaFormat::Yuv444 && !mode.use_fsc {
+        write_lossy_444_chroma_tx8x8(
+            writer,
+            decision,
+            contexts,
+            lossy,
+            Some(mode),
+            chroma_span,
+            false,
+        );
+        return;
+    }
     let mut last_u_txb_nonzero = false;
     for row in 0..chroma_span.height {
         let abs_row = chroma_span.row + row;
@@ -1360,6 +1372,20 @@ fn write_lossy_inter_residual_coefficients(
         visible_cols_mi,
         lossy.chroma_format,
     );
+    if lossy.chroma_format == Av2ChromaFormat::Yuv444 {
+        write_lossy_444_inter_chroma_txb(
+            writer,
+            decision,
+            contexts,
+            lossy,
+            reference,
+            mv_row_px,
+            mv_col_px,
+            chroma_span,
+            use_regular_inter_txb_contexts,
+        );
+        return;
+    }
     let mut last_u_txb_nonzero = false;
     for row in 0..chroma_span.height {
         let abs_row = chroma_span.row + row;
@@ -1732,6 +1758,155 @@ fn write_luma_palette_residual_coefficients(
             contexts.v_above[abs_col] = context;
             contexts.v_left[abs_row] = context;
         }
+    }
+}
+
+fn write_lossy_444_chroma_tx8x8(
+    writer: &mut Av2EntropyWriter,
+    decision: Av2TileDecision,
+    contexts: &mut Av2TxbEntropyContexts,
+    lossy: &mut Av2LossySubsampledTileState<'_>,
+    mode: Option<Av2LossySubsampledModeDecision>,
+    chroma_span: Av2ChromaTx4x4Span,
+    use_inter_contexts: bool,
+) {
+    debug_assert_eq!(lossy.chroma_format, Av2ChromaFormat::Yuv444);
+    debug_assert_eq!(decision.block_size.width, 8);
+    debug_assert_eq!(decision.block_size.height, 8);
+
+    let abs_row = chroma_span.row;
+    let abs_col = chroma_span.col;
+    let u_skip_ctx =
+        chroma_txb_skip_base_context(contexts.u_above[abs_col], contexts.u_left[abs_row]) + 6;
+    let u_analysis =
+        mode.map(|mode| lossy.chroma_444_intra_tx8x8_analysis(Av2LossyPlane::U, chroma_span, mode));
+    let (u_context, u_nonzero, u_residual) = if let Some(analysis) = u_analysis.as_ref() {
+        let candidate = lossy.regular_dct_quantized_tx8x8_residual_candidate(analysis);
+        let (context, nonzero) = write_chroma_tx8x8_txb(
+            writer,
+            Av2ChromaPlane::U,
+            u_skip_ctx,
+            &candidate.coefficients,
+            use_inter_contexts,
+        );
+        (context, nonzero, Some(candidate.residual))
+    } else {
+        write_u_txb_all_zero_tx8x8(writer, u_skip_ctx, use_inter_contexts);
+        (0, false, None)
+    };
+    for col in abs_col..(abs_col + chroma_span.width).min(contexts.u_above.len()) {
+        contexts.u_above[col] = u_context;
+    }
+    for row in abs_row..(abs_row + chroma_span.height).min(contexts.u_left.len()) {
+        contexts.u_left[row] = u_context;
+    }
+
+    let v_skip_ctx = chroma_txb_skip_base_context(contexts.v_above[abs_col], contexts.v_left[abs_row])
+        + if u_nonzero { 6 } else { 0 };
+    let v_analysis =
+        mode.map(|mode| lossy.chroma_444_intra_tx8x8_analysis(Av2LossyPlane::V, chroma_span, mode));
+    let (v_context, v_residual) = if let Some(analysis) = v_analysis.as_ref() {
+        let candidate = lossy.regular_dct_quantized_tx8x8_residual_candidate(analysis);
+        let (context, _) = write_chroma_tx8x8_txb(
+            writer,
+            Av2ChromaPlane::V,
+            v_skip_ctx,
+            &candidate.coefficients,
+            use_inter_contexts,
+        );
+        (context, Some(candidate.residual))
+    } else {
+        write_v_txb_all_zero(writer, v_skip_ctx);
+        (0, None)
+    };
+    for col in abs_col..(abs_col + chroma_span.width).min(contexts.v_above.len()) {
+        contexts.v_above[col] = v_context;
+    }
+    for row in abs_row..(abs_row + chroma_span.height).min(contexts.v_left.len()) {
+        contexts.v_left[row] = v_context;
+    }
+
+    if let (Some(analysis), Some(residual)) = (u_analysis.as_ref(), u_residual.as_ref()) {
+        lossy.fill_chroma_444_tx8x8_leaf(Av2LossyPlane::U, analysis, residual);
+    }
+    if let (Some(analysis), Some(residual)) = (v_analysis.as_ref(), v_residual.as_ref()) {
+        lossy.fill_chroma_444_tx8x8_leaf(Av2LossyPlane::V, analysis, residual);
+    }
+}
+
+fn write_lossy_444_inter_chroma_txb(
+    writer: &mut Av2EntropyWriter,
+    decision: Av2TileDecision,
+    contexts: &mut Av2TxbEntropyContexts,
+    lossy: &mut Av2LossySubsampledTileState<'_>,
+    reference: &[u8],
+    mv_row_px: i16,
+    mv_col_px: i16,
+    chroma_span: Av2ChromaTx4x4Span,
+    use_inter_contexts: bool,
+) {
+    debug_assert_eq!(lossy.chroma_format, Av2ChromaFormat::Yuv444);
+    debug_assert_eq!(decision.block_size.width, 8);
+    debug_assert_eq!(decision.block_size.height, 8);
+
+    let abs_row = chroma_span.row;
+    let abs_col = chroma_span.col;
+    let u_skip_ctx =
+        chroma_txb_skip_base_context(contexts.u_above[abs_col], contexts.u_left[abs_row]) + 6;
+    let u_analysis = lossy.chroma_444_inter_tx8x8_analysis(
+        reference,
+        Av2LossyPlane::U,
+        chroma_span,
+        mv_row_px,
+        mv_col_px,
+    );
+    let u_candidate = lossy.regular_dct_quantized_tx8x8_residual_candidate(&u_analysis);
+    let (u_context, u_nonzero) = write_chroma_tx8x8_txb(
+        writer,
+        Av2ChromaPlane::U,
+        u_skip_ctx,
+        &u_candidate.coefficients,
+        use_inter_contexts,
+    );
+    lossy.fill_chroma_444_tx8x8_leaf(
+        Av2LossyPlane::U,
+        &u_analysis,
+        &u_candidate.residual,
+    );
+    for col in abs_col..(abs_col + chroma_span.width).min(contexts.u_above.len()) {
+        contexts.u_above[col] = u_context;
+    }
+    for row in abs_row..(abs_row + chroma_span.height).min(contexts.u_left.len()) {
+        contexts.u_left[row] = u_context;
+    }
+
+    let v_skip_ctx = chroma_txb_skip_base_context(contexts.v_above[abs_col], contexts.v_left[abs_row])
+        + if u_nonzero { 6 } else { 0 };
+    let v_analysis = lossy.chroma_444_inter_tx8x8_analysis(
+        reference,
+        Av2LossyPlane::V,
+        chroma_span,
+        mv_row_px,
+        mv_col_px,
+    );
+    let v_candidate = lossy.regular_dct_quantized_tx8x8_residual_candidate(&v_analysis);
+    let (v_context, _) = write_chroma_tx8x8_txb(
+        writer,
+        Av2ChromaPlane::V,
+        v_skip_ctx,
+        &v_candidate.coefficients,
+        use_inter_contexts,
+    );
+    lossy.fill_chroma_444_tx8x8_leaf(
+        Av2LossyPlane::V,
+        &v_analysis,
+        &v_candidate.residual,
+    );
+    for col in abs_col..(abs_col + chroma_span.width).min(contexts.v_above.len()) {
+        contexts.v_above[col] = v_context;
+    }
+    for row in abs_row..(abs_row + chroma_span.height).min(contexts.v_left.len()) {
+        contexts.v_left[row] = v_context;
     }
 }
 

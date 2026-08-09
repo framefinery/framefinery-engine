@@ -14,7 +14,7 @@ fn score_luma_mode_candidate(
     let _ = stats;
     if cache.materializes_mode_search_residuals() {
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_luma_tu_at_into(
             residuals,
             source_frame,
@@ -63,7 +63,7 @@ fn score_chroma_mode_candidate(
     let _ = stats;
     if cache.materializes_mode_search_residuals() {
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             cb_residuals,
             &source_frame.cb,
@@ -78,7 +78,7 @@ fn score_chroma_mode_candidate(
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
             cr_residuals,
             &source_frame.cr,
@@ -156,7 +156,7 @@ fn select_vvc_luma_mode_with_rd_refinement(
 
     let mut best_mode = raw_mode;
     #[cfg(feature = "vvc-stats")]
-    let score_start = Instant::now();
+    let score_start = StageStart::now();
     let mut best_candidate = score_vvc_luma_mode_rd_candidate(
         policy,
         raw_decision,
@@ -197,7 +197,7 @@ fn select_vvc_luma_mode_with_rd_refinement(
             #[cfg(feature = "vvc-stats")]
             stats.add_luma_rd_cached_candidate();
             #[cfg(feature = "vvc-stats")]
-            let score_start = Instant::now();
+            let score_start = StageStart::now();
             let rd_candidate = score_vvc_luma_mode_rd_candidate(
                 policy,
                 coding_decision,
@@ -219,7 +219,7 @@ fn select_vvc_luma_mode_with_rd_refinement(
                 best_mode = mode;
                 best_candidate = rd_candidate;
                 #[cfg(feature = "vvc-stats")]
-                let prediction_start = Instant::now();
+                let prediction_start = StageStart::now();
                 predict_vvc_luma_intra_block_into_with_availability(
                     selected_prediction,
                     prediction_scratch,
@@ -240,7 +240,7 @@ fn select_vvc_luma_mode_with_rd_refinement(
         #[cfg(feature = "vvc-stats")]
         stats.add_luma_rd_generated_candidate();
         #[cfg(feature = "vvc-stats")]
-        let prediction_start = Instant::now();
+        let prediction_start = StageStart::now();
         predict_vvc_luma_intra_block_into_with_availability(
             candidate_prediction,
             prediction_scratch,
@@ -258,7 +258,7 @@ fn select_vvc_luma_mode_with_rd_refinement(
             stats.add_luma_prediction_nanos(vvc_luma_prediction_stats_family(mode), nanos);
         }
         #[cfg(feature = "vvc-stats")]
-        let residual_start = Instant::now();
+        let residual_start = StageStart::now();
         residual_luma_tu_at_into(
             candidate_residuals,
             source_frame,
@@ -275,7 +275,7 @@ fn select_vvc_luma_mode_with_rd_refinement(
             stats.add_luma_residual_build_nanos(nanos);
         }
         #[cfg(feature = "vvc-stats")]
-        let score_start = Instant::now();
+        let score_start = StageStart::now();
         let rd_candidate = score_vvc_luma_mode_rd_candidate(
             policy,
             coding_decision,

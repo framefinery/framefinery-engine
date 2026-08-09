@@ -69,8 +69,8 @@ impl VvcFrameStats {
         }
     }
 
-    fn add_elapsed(&mut self, name: &'static str, start: Instant) {
-        self.add_stage(name, start.elapsed().as_nanos() as u64, 1);
+    fn add_elapsed(&mut self, name: &'static str, start: StageStart) {
+        self.add_stage(name, start.elapsed_nanos(), 1);
     }
 
     fn add_stage(&mut self, name: &'static str, nanos: u64, count: u64) {

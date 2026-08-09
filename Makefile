@@ -56,6 +56,13 @@ BUILD_ARTIFACT_PROFILE := release
 CODE_BROWSER_OUT ?= verification/generated/code_browser/framefinery-engine.html
 CODE_BROWSER_TITLE ?= FrameFinery Engine Code Browser
 CODE_BROWSER_PROFILE_JSON ?=
+WASM_EXAMPLE_DIR ?= examples/wasm-screen-capture
+WASM_TARGET_MANIFEST ?= $(WASM_EXAMPLE_DIR)/wasm-target/Cargo.toml
+WASM_TARGET_DIR ?= target/wasm-screen-capture
+WASM_FEATURES ?= av2 vvc
+WASM_FEATURE_FLAGS := $(if $(strip $(WASM_FEATURES)),--features "$(WASM_FEATURES)",)
+WASM_ARTIFACT := $(WASM_TARGET_DIR)/wasm32-unknown-unknown/release/framefinery_wasm_target.wasm
+WASM_EXAMPLE_ARTIFACT := $(WASM_EXAMPLE_DIR)/framefinery_wasm_target.wasm
 ifeq ($(strip $(PROFILE)),gprof)
 BUILD_TARGET_DIR := $(GPROF_TARGET_DIR)
 BUILD_BINARY := ./ff-gprof
@@ -243,7 +250,7 @@ CODE_BROWSER_PROFILE_FLAG := $(if $(strip $(CODE_BROWSER_PROFILE_JSON)),--profil
 GEOMETRY_SWEEP_AV2_SETTINGS_FLAG := $(foreach setting,$(GEOMETRY_SWEEP_AV2_SETTINGS),--setting $(setting))
 GPROF_PROFILE_SETTINGS_FLAG := $(foreach setting,$(GPROF_PROFILE_SETTINGS),--set "$(setting)")
 
-.PHONY: help check-tools fmt fmt-check check feature-matrix dead-code-audit clippy-perf test doc api-docs api-docs-strict package-list build debug run code-browser reference-list reference-setup test-vector-sets test-vectors validate-set validate-release-aomctc release-performance-table compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check ci ci-encode-smoke
+.PHONY: help check-tools fmt fmt-check check feature-matrix dead-code-audit clippy-perf test doc api-docs api-docs-strict package-list build debug run code-browser wasm-check wasm-build wasm-screen-demo reference-list reference-setup test-vector-sets test-vectors validate-set validate-release-aomctc release-performance-table compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check ci ci-encode-smoke
 
 help:
 	@printf '%s\n' \
@@ -278,6 +285,9 @@ help:
 		'  make code-browser     Generate a standalone Rust module/code browser' \
 		'                         Override CODE_BROWSER_OUT=verification/generated/code_browser/name.html' \
 		'                         Add CODE_BROWSER_PROFILE_JSON=path/to/hotspots_profile.json for wall-time heatmaps' \
+		'  make wasm-check       Type-check the browser target-practice WASM artifact' \
+		'  make wasm-build       Build examples/wasm-screen-capture/framefinery_wasm_target.wasm' \
+		'  make wasm-screen-demo Build WASM and serve the local screen-capture demo' \
 		'  make reference-list   List declared external reference tools' \
 		'  make reference-setup  Clone/build declared references, REFERENCE_CODEC=all' \
 		'  make test-vector-sets List generated-vector manifests' \
@@ -358,9 +368,11 @@ check-tools:
 
 fmt:
 	$(CARGO) fmt --all
+	$(CARGO) fmt --manifest-path "$(WASM_TARGET_MANIFEST)"
 
 fmt-check:
 	$(CARGO) fmt --all -- --check
+	$(CARGO) fmt --manifest-path "$(WASM_TARGET_MANIFEST)" -- --check
 
 check:
 	$(CARGO) check --workspace $(CARGO_FLAGS)
@@ -408,6 +420,17 @@ run:
 
 code-browser:
 	$(PYTHON) scripts/generate_rust_code_browser.py --root . --output "$(CODE_BROWSER_OUT)" --title "$(CODE_BROWSER_TITLE)" $(CODE_BROWSER_PROFILE_FLAG)
+
+wasm-check:
+	$(CARGO) check --manifest-path "$(WASM_TARGET_MANIFEST)" --target wasm32-unknown-unknown --target-dir "$(WASM_TARGET_DIR)" --no-default-features $(WASM_FEATURE_FLAGS)
+
+wasm-build:
+	$(CARGO) build --manifest-path "$(WASM_TARGET_MANIFEST)" --target wasm32-unknown-unknown --target-dir "$(WASM_TARGET_DIR)" --release --no-default-features $(WASM_FEATURE_FLAGS)
+	cp "$(WASM_ARTIFACT)" "$(WASM_EXAMPLE_ARTIFACT)"
+	@printf 'wrote %s\n' "$(WASM_EXAMPLE_ARTIFACT)"
+
+wasm-screen-demo: wasm-build
+	$(PYTHON) "$(WASM_EXAMPLE_DIR)/server.py"
 
 reference-list:
 	$(PYTHON) scripts/reference_tools.py list --codec "$(REFERENCE_CODEC)"
@@ -534,7 +557,7 @@ ci-encode-smoke: build
 	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(CI_ENCODE_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode off --source-filters --setting "gop=0" --cleanup-recon --cleanup-output --stop-on-fail
 	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc "$(CI_ENCODE_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode off --source-filters --cleanup-recon --cleanup-output --stop-on-fail
 
-ci: release-check ci-encode-smoke
+ci: release-check wasm-check ci-encode-smoke
 
 clean:
 	$(CARGO) clean

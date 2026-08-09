@@ -1,6 +1,6 @@
 # Publishing Readiness Notes
 
-Last updated: 2026-08-06.
+Last updated: 2026-08-07.
 
 These notes track work to finish before the next crates.io publish and before
 each later versioned release.
@@ -13,10 +13,14 @@ each later versioned release.
   - `framefinery-codecs`
   - `framefinery`
 - The installed binary name remains `ff`.
-- `make ci` exists and is the shared local/GitHub Actions quality gate.
+- `make ci` exists and is the shared local/GitHub Actions quality gate. It now
+  includes a `wasm32-unknown-unknown` type-check for the local browser target
+  practice crate.
 - GitHub Actions workflow exists at `.github/workflows/ci.yml` and runs
-  `make ci` on Rust `1.87.0` and `stable`.
-- Local `make ci` passed after the workflow was added.
+  `make ci` on Rust `1.87.0` and `stable`, with the `wasm32-unknown-unknown`
+  target installed.
+- Local `make ci` passed on 2026-08-07 after the workflow and WASM target
+  additions.
 - The `ci-smoke` manifest exists and runs source-filter-generated black,
   checker, and color-block frames for AV2 and VVC without local media files.
 - The v0 encoder API now uses `find_encoder_manifest` for discovery and
@@ -25,6 +29,9 @@ each later versioned release.
 - Default product builds enable the executable `pattern`, `identity`, `crop`,
   and `scale` filter catalog. `all-filters` remains a compatibility alias for
   the complete compiled filter set.
+- A target-practice browser WASM example exists under
+  `examples/wasm-screen-capture/`. It builds through `make wasm-build`, serves
+  locally through `make wasm-screen-demo`, and is intentionally unpublished.
 - `CHANGELOG.md` exists and must be updated before each publish.
 - `make validate-release-aomctc RELEASE_AOMCTC_FRAMES=1` passed locally before
   this note update.
@@ -70,8 +77,9 @@ Before a manual publish:
 ## Remaining Before Next Publish
 
 - Confirm the remote GitHub Actions run passes on Rust `1.87.0` and `stable`.
-  Until that happens for the release commit, the declared MSRV is still only
-  locally assumed, not proven by CI for that revision.
+  Until that happens for the release commit, the declared MSRV and
+  `wasm32-unknown-unknown` check are still only locally proven for that
+  revision.
 - Decide whether package archives should carry local copies of `LICENSE` and
   `COMMERCIAL-LICENSE.md`. The manifests use standard SPDX
   `license = "AGPL-3.0-or-later"`; adding `license-file` as well makes Cargo
@@ -150,6 +158,8 @@ Current observations:
 - Generated fixtures, encoded streams, reconstructions, reference checkouts,
   profiling traces, external drivers, and local validation manifests are absent
   from the package lists.
+- The local WASM screen-capture example is outside the publishable package
+  archives. Its copied `.wasm` build artifact is ignored.
 - `Cargo.toml.orig` appears in package lists as Cargo's normalized-manifest
   companion and is expected.
 

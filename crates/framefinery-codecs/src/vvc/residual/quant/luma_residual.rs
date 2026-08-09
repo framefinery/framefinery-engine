@@ -95,7 +95,7 @@ fn finalize_vvc_luma_tu(
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcFinalizedLumaTu {
     #[cfg(feature = "vvc-stats")]
-    let score_start = Instant::now();
+    let score_start = StageStart::now();
     let selected_residual = match preselected_residual {
         Some(residual) => refine_vvc_luma_final_mts_residual(
             residual.residual,
@@ -142,13 +142,13 @@ fn finalize_vvc_luma_tu(
         )
     {
         #[cfg(feature = "vvc-stats")]
-        let fill_start = Instant::now();
+        let fill_start = StageStart::now();
         copy_source_luma_node_into_reconstruction(&mut frame_recon.luma, source_frame, node);
         #[cfg(feature = "vvc-stats")]
         stats.add_luma_fill_nanos(vvc_elapsed_nanos(fill_start));
     } else if residual.transform_skip {
         #[cfg(feature = "vvc-stats")]
-        let fill_start = Instant::now();
+        let fill_start = StageStart::now();
         fill_visible_luma_transform_skip_node(
             &mut frame_recon.luma,
             source_frame.geometry,
@@ -162,7 +162,7 @@ fn finalize_vvc_luma_tu(
         stats.add_luma_fill_nanos(vvc_elapsed_nanos(fill_start));
     } else {
         #[cfg(feature = "vvc-stats")]
-        let recon_start = Instant::now();
+        let recon_start = StageStart::now();
         reconstruct_vvc_luma_residual_block_into(
             residual,
             mts_index,
@@ -177,7 +177,7 @@ fn finalize_vvc_luma_tu(
         #[cfg(feature = "vvc-stats")]
         stats.add_luma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
         #[cfg(feature = "vvc-stats")]
-        let fill_start = Instant::now();
+        let fill_start = StageStart::now();
         fill_visible_luma_node(
             &mut frame_recon.luma,
             source_frame.geometry,
@@ -683,7 +683,7 @@ fn select_vvc_scored_luma_transform_skip_candidate(
     }
 
     #[cfg(feature = "vvc-stats")]
-    let quant_start = Instant::now();
+    let quant_start = StageStart::now();
     let transform_skip =
         finalize_vvc_luma_transform_skip_residual_block(residuals, width, height, luma_ts_quant);
     #[cfg(feature = "vvc-stats")]
@@ -837,7 +837,7 @@ fn finalize_vvc_luma_residual_block(
         VvcTuResidualCodingMode::TransformSkip => {
             debug_assert_eq!(mts_index, 0);
             #[cfg(feature = "vvc-stats")]
-            let quant_start = Instant::now();
+            let quant_start = StageStart::now();
             let block = finalize_vvc_luma_transform_skip_residual_block(
                 residuals,
                 width,
@@ -850,7 +850,7 @@ fn finalize_vvc_luma_residual_block(
         }
         VvcTuResidualCodingMode::Transformed => {
             #[cfg(feature = "vvc-stats")]
-            let quant_start = Instant::now();
+            let quant_start = StageStart::now();
             let quantized = match quantization_search {
                 VvcLumaResidualQuantizationSearch::Full => {
                     quantize_vvc_luma_residual_greedy_with_qp_and_mts_into(

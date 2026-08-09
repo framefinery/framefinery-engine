@@ -7,7 +7,6 @@
 //! before FrameFinery can encode arbitrary input pictures.
 
 use std::io::{Cursor, Read, Write};
-use std::time::Instant;
 
 use crate::instrumentation::CountingWriter;
 #[cfg(feature = "vvc-stats")]
@@ -18,6 +17,7 @@ use crate::picture::{
     unpack_planar_samples, ChromaSampling, FrameLimit, Picture, PixelFormat, PlanarYuvFrameLayout,
     PlanarYuvGeometry, SampleBitDepth,
 };
+use crate::timing::StageStart;
 
 #[cfg(feature = "bench-internals")]
 #[doc(hidden)]

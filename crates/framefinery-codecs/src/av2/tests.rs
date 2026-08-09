@@ -1114,6 +1114,77 @@ fn av2_regular_qp_intra_modes_skip_lossless_bdpcm_flags() {
 }
 
 #[test]
+fn av2_regular_qp_yuv444_chroma_uses_8x8_skip_syntax() {
+    let geometry = Av2VideoGeometry {
+        width: 16,
+        height: 8,
+    };
+    let format = PixelFormat::Yuv444p8;
+    let bit_depth = SampleBitDepth::new(8).expect("8-bit depth is supported");
+    let source = vec![0; Picture::expected_len(geometry.width, geometry.height, format)];
+    let mut recon = vec![0; source.len()];
+    let qp = 24;
+    let payload = av2_lossy_subsampled_tile_entropy_payload_for_region_with_fields(
+        Av2TileRegion::root(geometry),
+        Av2Black444MvpProfile::current(),
+        geometry,
+        Av2ChromaFormat::Yuv444,
+        bit_depth,
+        &source,
+        &mut recon,
+        qp,
+        Av2QuantizationParams::regular_qp(qp, bit_depth).base_qindex,
+        true,
+    );
+
+    let u_tx8x8_decisions = payload
+        .fields
+        .iter()
+        .filter(|field| {
+            field.name.starts_with("tile.coeff.u.txb_all_zero_tx8x8")
+                || field.name.starts_with("tile.coeff.u.txb_nonzero_tx8x8")
+        })
+        .count();
+    let v_tx8x8_decisions = payload
+        .fields
+        .iter()
+        .filter(|field| {
+            field
+                .name
+                .starts_with("tile.coeff.v.txb_all_zero_tx4x4_ctx")
+                || field.name.starts_with("tile.coeff.v.txb_nonzero_tx4x4_ctx")
+        })
+        .count();
+
+    assert_eq!(
+        u_tx8x8_decisions, 2,
+        "two 8x8 4:4:4 coding leaves should emit one U TX_8X8 decision each"
+    );
+    assert_eq!(
+        v_tx8x8_decisions, 2,
+        "two 8x8 4:4:4 coding leaves should emit one V TX_8X8 decision each"
+    );
+    assert!(
+        payload.fields.iter().all(|field| !matches!(
+            field.name,
+            "tile.coeff.v.txb_all_zero_tx4x4_ctx3"
+                | "tile.coeff.v.txb_nonzero_tx4x4_ctx3"
+                | "tile.coeff.v.txb_all_zero_tx4x4_ctx4"
+                | "tile.coeff.v.txb_nonzero_tx4x4_ctx4"
+                | "tile.coeff.v.txb_all_zero_tx4x4_ctx5"
+                | "tile.coeff.v.txb_nonzero_tx4x4_ctx5"
+                | "tile.coeff.v.txb_all_zero_tx4x4_ctx9"
+                | "tile.coeff.v.txb_nonzero_tx4x4_ctx9"
+                | "tile.coeff.v.txb_all_zero_tx4x4_ctx10"
+                | "tile.coeff.v.txb_nonzero_tx4x4_ctx10"
+                | "tile.coeff.v.txb_all_zero_tx4x4_ctx11"
+                | "tile.coeff.v.txb_nonzero_tx4x4_ctx11"
+        )),
+        "TX_8X8 V decisions must not use the 4x4 block-larger-than-TXB offset"
+    );
+}
+
+#[test]
 fn av2_qp_path_can_keep_yuv420_blocks_lossless() {
     let geometry = Av2VideoGeometry {
         width: 8,

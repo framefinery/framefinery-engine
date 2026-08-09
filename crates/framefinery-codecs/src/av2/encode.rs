@@ -81,7 +81,7 @@ pub fn av2_encode_fixed_black_444_with_options_and_frame_metrics(
         if !frame_was_read {
             break;
         }
-        let frame_encode_start = std::time::Instant::now();
+        let frame_encode_start = crate::timing::StageStart::now();
         if options.gop.resets_references_before(frame_index) {
             predictive_reference = None;
             predictive_reconstruction = None;
