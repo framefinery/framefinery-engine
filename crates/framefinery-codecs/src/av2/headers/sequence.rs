@@ -22,6 +22,23 @@ fn av2_mvp_444_sequence_header_payload(
     )
 }
 
+fn av2_mvp_444_sequence_header_payload_for_visible(
+    coded_geometry: Av2VideoGeometry,
+    visible_geometry: Av2VideoGeometry,
+    bit_depth: SampleBitDepth,
+    profile: Av2Black444MvpProfile,
+) -> Av2SyntaxPayload {
+    av2_mvp_sequence_header_payload_for_visible(
+        coded_geometry,
+        visible_geometry,
+        profile,
+        Av2StreamFormat {
+            chroma_format: Av2ChromaFormat::Yuv444,
+            bit_depth,
+        },
+    )
+}
+
 fn av2_mvp_sequence_header_payload(
     geometry: Av2VideoGeometry,
     profile: Av2Black444MvpProfile,
@@ -30,12 +47,42 @@ fn av2_mvp_sequence_header_payload(
     av2_mvp_sequence_header_payload_with_mode(geometry, profile, stream_format, true)
 }
 
+fn av2_mvp_sequence_header_payload_for_visible(
+    coded_geometry: Av2VideoGeometry,
+    visible_geometry: Av2VideoGeometry,
+    profile: Av2Black444MvpProfile,
+    stream_format: Av2StreamFormat,
+) -> Av2SyntaxPayload {
+    av2_mvp_sequence_header_payload_with_mode_for_visible(
+        coded_geometry,
+        visible_geometry,
+        profile,
+        stream_format,
+        true,
+    )
+}
+
 fn av2_mvp_predictive_sequence_header_payload(
     geometry: Av2VideoGeometry,
     profile: Av2Black444MvpProfile,
     stream_format: Av2StreamFormat,
 ) -> Av2SyntaxPayload {
     av2_mvp_sequence_header_payload_with_mode(geometry, profile, stream_format, false)
+}
+
+fn av2_mvp_predictive_sequence_header_payload_for_visible(
+    coded_geometry: Av2VideoGeometry,
+    visible_geometry: Av2VideoGeometry,
+    profile: Av2Black444MvpProfile,
+    stream_format: Av2StreamFormat,
+) -> Av2SyntaxPayload {
+    av2_mvp_sequence_header_payload_with_mode_for_visible(
+        coded_geometry,
+        visible_geometry,
+        profile,
+        stream_format,
+        false,
+    )
 }
 
 fn append_rgb_content_interpretation_if_needed(out: &mut Vec<u8>, rgb_identity: bool) {
@@ -83,6 +130,27 @@ fn av2_mvp_sequence_header_payload_with_mode(
     stream_format: Av2StreamFormat,
     single_picture_header: bool,
 ) -> Av2SyntaxPayload {
+    av2_mvp_sequence_header_payload_with_mode_for_visible(
+        geometry,
+        geometry,
+        profile,
+        stream_format,
+        single_picture_header,
+    )
+}
+
+fn av2_mvp_sequence_header_payload_with_mode_for_visible(
+    geometry: Av2VideoGeometry,
+    visible_geometry: Av2VideoGeometry,
+    profile: Av2Black444MvpProfile,
+    stream_format: Av2StreamFormat,
+    single_picture_header: bool,
+) -> Av2SyntaxPayload {
+    debug_assert_eq!(
+        visible_geometry.coded(),
+        geometry,
+        "AV2 coded sequence geometry must be the 8-aligned visible geometry"
+    );
     let mut writer = Av2SyntaxWriter::new();
     let width_bits = av2_frame_dimension_bits(geometry.width);
     let height_bits = av2_frame_dimension_bits(geometry.height);
@@ -142,7 +210,22 @@ fn av2_mvp_sequence_header_payload_with_mode(
         (geometry.height - 1) as u64,
         height_bits,
     );
-    writer.write_flag("sequence_header.conf_win_enabled_flag", false);
+    writer.write_flag(
+        "sequence_header.conf_win_enabled_flag",
+        !visible_geometry.is_coded(),
+    );
+    if !visible_geometry.is_coded() {
+        writer.write_uvlc("sequence_header.conf_win_left_offset", 0);
+        writer.write_uvlc(
+            "sequence_header.conf_win_right_offset",
+            visible_geometry.crop_right(),
+        );
+        writer.write_uvlc("sequence_header.conf_win_top_offset", 0);
+        writer.write_uvlc(
+            "sequence_header.conf_win_bottom_offset",
+            visible_geometry.crop_bottom(),
+        );
+    }
 
     if !single_picture_header {
         writer.write_flag(

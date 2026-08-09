@@ -102,5 +102,7 @@ streams under `/media/gabriel/storage/YUV/aomctc`. Use
 `make validate-release-aomctc` for the recurring release crash/regression pass
 and `make release-performance-table` for the version performance table. Both
 release targets read source files directly and avoid raw source copies.
-Rows with dimensions that are not multiples of 8 are VVC-only because AV2
-rejects those geometries; the remaining B2 rows cover both AV2 and VVC.
+Rows with dimensions that are not multiples of 8 may cover both AV2 and VVC when
+the visible geometry is legal for the input format. AV2 pads internally to its
+current 8-pixel coded canvas and signals the visible crop to the reference
+decoder.

@@ -4,21 +4,57 @@ pub struct Av2VideoGeometry {
     pub height: usize,
 }
 
+pub const AV2_CODED_DIMENSION_GRANULARITY: usize = 8;
+const AV2_MAX_FRAME_DIMENSION: usize = 1 << 16;
+
 impl Av2VideoGeometry {
     fn validate_shape(self) -> Result<(), String> {
-        if self.width < 8 || self.height < 8 {
+        if self.width == 0 || self.height == 0 {
             return Err(format!(
-                "AV2 geometry expects at least 8x8 visible pictures; got {}x{}",
+                "AV2 geometry expects non-zero width and height; got {}x{}",
                 self.width, self.height
             ));
         }
-        if !self.width.is_multiple_of(8) || !self.height.is_multiple_of(8) {
+        let coded = self.coded();
+        if coded.width > AV2_MAX_FRAME_DIMENSION || coded.height > AV2_MAX_FRAME_DIMENSION {
             return Err(format!(
-                "AV2 geometry currently requires dimensions in 8-pixel steps; got {}x{}",
-                self.width, self.height
+                "AV2 geometry supports at most {}x{} coded pictures at this entry point; got {}x{} visible -> {}x{} coded",
+                AV2_MAX_FRAME_DIMENSION,
+                AV2_MAX_FRAME_DIMENSION,
+                self.width,
+                self.height,
+                coded.width,
+                coded.height
             ));
         }
         Ok(())
+    }
+
+    fn coded(self) -> Self {
+        Self {
+            width: coded_canvas_dimension(self.width),
+            height: coded_canvas_dimension(self.height),
+        }
+    }
+
+    fn is_coded(self) -> bool {
+        self == self.coded()
+    }
+
+    fn crop_right(self) -> u32 {
+        (self.coded().width - self.width) as u32
+    }
+
+    fn crop_bottom(self) -> u32 {
+        (self.coded().height - self.height) as u32
+    }
+}
+
+fn coded_canvas_dimension(value: usize) -> usize {
+    if value == 0 {
+        0
+    } else {
+        value.div_ceil(AV2_CODED_DIMENSION_GRANULARITY) * AV2_CODED_DIMENSION_GRANULARITY
     }
 }
 

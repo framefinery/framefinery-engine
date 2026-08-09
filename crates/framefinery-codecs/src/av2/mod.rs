@@ -1,7 +1,8 @@
 use std::io::{Read, Write};
 
 use crate::picture::{
-    read_input_frame, ChromaSampling, FrameLimit, Picture, PixelFormat, SampleBitDepth,
+    read_input_frame, ChromaSampling, FrameLimit, Picture, PixelFormat, PlanarYuvFrameLayout,
+    PlanarYuvPlane, SampleBitDepth,
 };
 
 // Keep the public/internal module names stable while grouping the imported AV2

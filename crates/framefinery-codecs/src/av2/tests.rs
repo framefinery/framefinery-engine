@@ -16,7 +16,7 @@ fn av2_accepts_basic_yuv_request_shape() {
 }
 
 #[test]
-fn av2_rejects_non_mi_aligned_request_shape() {
+fn av2_accepts_non_mi_aligned_request_shape() {
     let request = Av2EncodeRequest {
         params: Av2EncodeParams { frames: 1 },
         geometry: Av2VideoGeometry {
@@ -26,10 +26,22 @@ fn av2_rejects_non_mi_aligned_request_shape() {
         format: PixelFormat::Yuv420p8,
     };
 
-    let err = request
-        .validate()
-        .expect_err("height must be 8-pixel aligned");
-    assert!(err.contains("8-pixel steps"), "{err}");
+    assert!(request.validate().is_ok());
+}
+
+#[test]
+fn av2_rejects_empty_request_shape() {
+    let request = Av2EncodeRequest {
+        params: Av2EncodeParams { frames: 1 },
+        geometry: Av2VideoGeometry {
+            width: 0,
+            height: 16,
+        },
+        format: PixelFormat::Yuv444p8,
+    };
+
+    let err = request.validate().expect_err("zero width must be rejected");
+    assert!(err.contains("non-zero width and height"), "{err}");
 }
 
 #[test]
@@ -127,6 +139,67 @@ fn av2_gbrp8_lossless_emits_identity_metadata_and_planar_recon() {
             .windows(ci_header.len())
             .any(|window| window == ci_header.as_slice()),
         "RGB identity stream should carry a content-interpretation OBU"
+    );
+}
+
+#[test]
+fn av2_gbrp8_lossless_crops_coded_padding_to_visible_recon() {
+    let geometry = Av2VideoGeometry {
+        width: 13,
+        height: 11,
+    };
+    let request = Av2EncodeRequest {
+        params: Av2EncodeParams { frames: 1 },
+        geometry,
+        format: PixelFormat::Gbrp8,
+    };
+    let frame_len = Picture::expected_len(geometry.width, geometry.height, request.format);
+    let input: Vec<u8> = (0..frame_len)
+        .map(|index| ((index * 23 + 7) & 0xff) as u8)
+        .collect();
+    let mut source = input.as_slice();
+    let mut output = Vec::new();
+    let mut recon = Vec::new();
+
+    av2_encode_fixed_black_444_with_options_and_frame_metrics(
+        &mut source,
+        &mut output,
+        Some(&mut recon),
+        request,
+        Av2EncodeOptions {
+            lossless: true,
+            ..Default::default()
+        },
+        None,
+    )
+    .expect("AV2 gbrp8 lossless encode should support non-8-aligned visible geometry");
+
+    assert_eq!(recon, input);
+    let stream_format =
+        Av2StreamFormat::from_pixel_format(request.format).expect("gbrp8 maps to AV2 4:4:4");
+    let sequence = av2_mvp_sequence_header_payload_for_visible(
+        geometry.coded(),
+        geometry,
+        Av2Black444MvpProfile::current(),
+        stream_format,
+    );
+    assert_has_field_with_bit_count(
+        &sequence,
+        "sequence_header.conf_win_enabled_flag",
+        Av2SyntaxCode::Flag,
+        1,
+    );
+    assert_has_field_with_bit_count(
+        &sequence,
+        "sequence_header.conf_win_right_offset",
+        Av2SyntaxCode::Uvlc,
+        expected_uvlc_bit_count(geometry.crop_right()),
+    );
+    assert_has_field_with_bit_count(
+        &sequence,
+        "sequence_header.conf_win_bottom_offset",
+        Av2SyntaxCode::Uvlc,
+        expected_uvlc_bit_count(geometry.crop_bottom()),
     );
 }
 
@@ -242,12 +315,14 @@ fn av2_mvp_444_encodes_all_requested_frames() {
 
     let mut expected_output = av2_mvp_444_bitstream_for_mode(
         geometry,
+        geometry,
         request.format.bit_depth(),
         &Av2Mvp444FrameMode::from_frame(&first, geometry, request.format.bit_depth())
             .expect("first frame mode"),
         false,
     );
     expected_output.extend_from_slice(&av2_mvp_444_bitstream_for_mode(
+        geometry,
         geometry,
         request.format.bit_depth(),
         &Av2Mvp444FrameMode::from_frame(&second, geometry, request.format.bit_depth())
@@ -427,6 +502,7 @@ fn av2_lossy_predictive_zero_mv_tiles_reuse_previous_reconstruction() {
 
     let (_, first_recon) =
         av2_lossy_subsampled_predictive_key_bitstream_and_reconstruction_for_frame(
+            geometry,
             geometry,
             stream_format,
             &first,
