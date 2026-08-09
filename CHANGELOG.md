@@ -25,11 +25,22 @@ behavior may change quickly while the public contract settles.
 - Add a compact raw input and codec support matrix covering tested format
   families, bit depths, lossless support, CLI fallback behavior, and current
   geometry limits.
+- Allow AV2 to encode visible frame sizes that are not aligned to its current
+  8-pixel coded-canvas granularity by padding internally and signaling the
+  visible crop to reference decoders.
 - Add a target-practice browser WASM artifact and local screen-capture/upload
   example, plus a `wasm32-unknown-unknown` CI check, without introducing a
   published WASM package yet.
+- Change the WASM screen-capture demo and local server to stream encoded AV2
+  output progressively instead of buffering the full capture before upload.
 - Rename the shared media/API package from `framefinery-core` to
   `framefinery-api` to avoid colliding with an existing project name.
+- Add a VVC `profile` encoder setting to the Rust API and CLI, defaulting to
+  the lowest profile that preserves currently available 4:4:4 compression tools
+  for the selected bit depth while gating tools that lower selected profiles do
+  not allow.
+- Fix VVC syntax/profile handling needed by VTM reference validation and keep
+  the regression target's AV2 smoke path on explicit all-intra GOP settings.
 - Keep generated package/profiling artifacts out of release preparation; final
   dry-runs should start from a clean generated-artifact state.
 

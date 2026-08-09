@@ -132,8 +132,10 @@ Before a manual publish:
   ```
 
 - Keep release validation wording precise. The `release-aomctc` manifest is
-  local-machine dependent and currently marks non-multiple-of-8 A5 and mobile
-  rows as VVC-only because AV2 rejects those geometries.
+  local-machine dependent and may include non-multiple-of-8 visible dimensions
+  for both AV2 and VVC when the source geometry is legal for the input format.
+  AV2 pads internally to its current 8-pixel coded canvas and signals the
+  visible crop to the reference decoder.
 - Keep successful validation and benchmark runs from retaining large encoded or
   reconstruction artifacts. The release validation/performance targets should
   continue cleaning successful outputs by default.
