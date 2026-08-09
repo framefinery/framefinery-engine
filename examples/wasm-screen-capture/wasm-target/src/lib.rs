@@ -1,14 +1,11 @@
 use std::cell::RefCell;
 
-use framefinery::{
-    encoder, FrameInfo, PixelFormat, Result as FrameFineryResult, VideoEncodeFrameMetrics,
-};
+use framefinery::{encoder, Frame, FrameInfo, PixelFormat, VideoEncodeOutput};
 
 const STATUS_OK: i32 = 0;
 const STATUS_ERROR: i32 = -1;
 const CODEC_AV2: u32 = 1;
 const CODEC_VVC: u32 = 2;
-const MAX_CAPTURE_BYTES: usize = 512 * 1024 * 1024;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 thread_local! {
@@ -20,7 +17,8 @@ thread_local! {
 struct WasmState {
     config: Option<CaptureConfig>,
     input_rgba: Vec<u8>,
-    frames_gbrp: Vec<u8>,
+    frame_gbrp: Vec<u8>,
+    last_output: Vec<u8>,
     output: Vec<u8>,
     stats: EncodeStats,
 }
@@ -31,7 +29,6 @@ struct CaptureConfig {
     width: usize,
     height: usize,
     rgba_frame_len: usize,
-    gbrp_frame_len: usize,
     max_frames: usize,
     lossless: bool,
     qp: u8,
@@ -48,7 +45,7 @@ enum WasmCodec {
 struct EncodeStats {
     frames: usize,
     total_bytes: usize,
-    encode_ms: f64,
+    psnr_count: usize,
     psnr_all: f64,
 }
 
@@ -57,7 +54,7 @@ impl Default for EncodeStats {
         Self {
             frames: 0,
             total_bytes: 0,
-            encode_ms: 0.0,
+            psnr_count: 0,
             psnr_all: f64::NAN,
         }
     }
@@ -135,35 +132,8 @@ pub extern "C" fn ff_wasm_input_len() -> u32 {
 }
 
 #[no_mangle]
-pub extern "C" fn ff_wasm_push_rgba_frame() -> i32 {
-    run_status(push_rgba_frame)
-}
-
-#[no_mangle]
-pub extern "C" fn ff_wasm_encode() -> i32 {
-    run_status(encode_captured_frames)
-}
-
-#[no_mangle]
-pub extern "C" fn ff_wasm_reset_capture() {
-    STATE.with(|state| {
-        let mut state = state.borrow_mut();
-        state.frames_gbrp.clear();
-        state.output.clear();
-        state.stats = EncodeStats::default();
-    });
-    clear_error();
-}
-
-#[no_mangle]
-pub extern "C" fn ff_wasm_frame_count() -> u32 {
-    STATE.with(|state| {
-        let state = state.borrow();
-        let Some(config) = state.config else {
-            return 0;
-        };
-        saturating_u32(state.frames_gbrp.len() / config.gbrp_frame_len)
-    })
+pub extern "C" fn ff_wasm_encode_frame() -> i32 {
+    run_status(encode_frame_from_rgba)
 }
 
 #[no_mangle]
@@ -179,6 +149,23 @@ pub extern "C" fn ff_wasm_output_ptr() -> u32 {
 }
 
 #[no_mangle]
+pub extern "C" fn ff_wasm_last_output_ptr() -> u32 {
+    STATE.with(|state| {
+        let state = state.borrow();
+        if state.last_output.is_empty() {
+            0
+        } else {
+            state.last_output.as_ptr() as u32
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn ff_wasm_last_output_len() -> u32 {
+    STATE.with(|state| saturating_u32(state.borrow().last_output.len()))
+}
+
+#[no_mangle]
 pub extern "C" fn ff_wasm_output_len() -> u32 {
     STATE.with(|state| saturating_u32(state.borrow().output.len()))
 }
@@ -191,11 +178,6 @@ pub extern "C" fn ff_wasm_encoded_frames() -> u32 {
 #[no_mangle]
 pub extern "C" fn ff_wasm_encoded_bytes() -> u32 {
     STATE.with(|state| saturating_u32(state.borrow().stats.total_bytes))
-}
-
-#[no_mangle]
-pub extern "C" fn ff_wasm_encode_ms() -> f64 {
-    STATE.with(|state| state.borrow().stats.encode_ms)
 }
 
 #[no_mangle]
@@ -241,14 +223,6 @@ fn configure(
     let info = FrameInfo::new(width, height, PixelFormat::Gbrp8).map_err(|err| err.to_string())?;
     let rgba_frame_len = checked_frame_len(width, height, 4)?;
     let gbrp_frame_len = checked_frame_len(width, height, 3)?;
-    let max_capture_len = gbrp_frame_len
-        .checked_mul(max_frames)
-        .ok_or_else(|| "capture byte length overflow".to_string())?;
-    if max_capture_len > MAX_CAPTURE_BYTES {
-        return Err(format!(
-            "capture would reserve up to {max_capture_len} bytes; current target-practice limit is {MAX_CAPTURE_BYTES} bytes"
-        ));
-    }
 
     let builder = encoder(codec.as_str())
         .map_err(|err| err.to_string())?
@@ -271,7 +245,6 @@ fn configure(
             width,
             height,
             rgba_frame_len,
-            gbrp_frame_len,
             max_frames,
             lossless,
             qp,
@@ -279,24 +252,25 @@ fn configure(
         });
         state.input_rgba.clear();
         state.input_rgba.resize(rgba_frame_len, 0);
-        state.frames_gbrp.clear();
+        state.frame_gbrp.clear();
+        state.frame_gbrp.resize(gbrp_frame_len, 0);
+        state.last_output.clear();
         state.output.clear();
         state.stats = EncodeStats::default();
     });
     Ok(())
 }
 
-fn push_rgba_frame() -> WasmResult<()> {
-    STATE.with(|state| {
+fn encode_frame_from_rgba() -> WasmResult<()> {
+    let (config, frame_data) = STATE.with(|state| {
         let mut state = state.borrow_mut();
         let config = state
             .config
             .ok_or_else(|| "WASM encoder is not configured".to_string())?;
-        let frames = state.frames_gbrp.len() / config.gbrp_frame_len;
-        if frames >= config.max_frames {
+        if state.stats.frames >= config.max_frames {
             return Err(format!(
-                "capture already holds {frames} frame(s), max is {}",
-                config.max_frames
+                "encoder already accepted {} frame(s), max is {}",
+                state.stats.frames, config.max_frames
             ));
         }
         if state.input_rgba.len() != config.rgba_frame_len {
@@ -305,39 +279,19 @@ fn push_rgba_frame() -> WasmResult<()> {
 
         let WasmState {
             input_rgba,
-            frames_gbrp,
+            frame_gbrp,
             ..
         } = &mut *state;
-        frames_gbrp
-            .try_reserve_exact(config.gbrp_frame_len)
-            .map_err(|_| "failed to reserve frame storage".to_string())?;
-        let start = frames_gbrp.len();
-        frames_gbrp.resize(start + config.gbrp_frame_len, 0);
-        let output = &mut frames_gbrp[start..start + config.gbrp_frame_len];
-        rgba_to_gbrp8(input_rgba, output, config.width * config.height);
-        Ok(())
-    })
-}
-
-fn encode_captured_frames() -> WasmResult<()> {
-    let (config, frames_gbrp) = STATE.with(|state| {
-        let state = state.borrow();
-        let config = state
-            .config
-            .ok_or_else(|| "WASM encoder is not configured".to_string())?;
-        Ok::<_, String>((config, state.frames_gbrp.clone()))
+        rgba_to_gbrp8(input_rgba, frame_gbrp, config.width * config.height);
+        Ok::<_, String>((config, frame_gbrp.clone()))
     })?;
-    let frame_count = frames_gbrp.len() / config.gbrp_frame_len;
-    if frame_count == 0 {
-        return Err("no frames have been captured".to_string());
-    }
 
     let info = FrameInfo::new(config.width, config.height, PixelFormat::Gbrp8)
         .map_err(|err| err.to_string())?;
     let builder = encoder(config.codec.as_str())
         .map_err(|err| err.to_string())?
         .input(info)
-        .frame_limit(frame_count)
+        .frame_limit(1)
         .metrics_only()
         .gop(config.gop)
         .map_err(|err| err.to_string())?;
@@ -347,65 +301,36 @@ fn encode_captured_frames() -> WasmResult<()> {
         builder.qp(config.qp).map_err(|err| err.to_string())?
     };
 
-    let mut offset = 0usize;
-    let mut source = |frame: &mut [u8]| -> FrameFineryResult<bool> {
-        if offset >= frames_gbrp.len() {
-            return Ok(false);
-        }
-        let next = offset + config.gbrp_frame_len;
-        frame.copy_from_slice(&frames_gbrp[offset..next]);
-        offset = next;
-        Ok(true)
-    };
-    let mut output = Vec::new();
-    let mut stats = MetricsAccumulator::default();
-    let mut callback = |metrics: VideoEncodeFrameMetrics<'_>| {
-        stats.push(metrics);
-    };
-
-    builder
-        .encode_source(&mut source, &mut output, None, Some(&mut callback))
-        .map_err(|err| err.to_string())?;
-    let stats = stats.finish();
+    let frame = Frame::new(info, frame_data).map_err(|err| err.to_string())?;
+    let frame_output = builder.encode_frame(frame).map_err(|err| err.to_string())?;
 
     STATE.with(|state| {
         let mut state = state.borrow_mut();
-        state.output = output;
-        state.stats = stats;
+        append_encode_output(&mut state, frame_output);
     });
     Ok(())
 }
 
-#[derive(Default)]
-struct MetricsAccumulator {
-    frames: usize,
-    total_bytes: usize,
-    encode_ms: f64,
-    psnr_sum: f64,
-    psnr_count: usize,
-}
-
-impl MetricsAccumulator {
-    fn push(&mut self, metrics: VideoEncodeFrameMetrics<'_>) {
-        self.frames = metrics.frame_idx + 1;
-        self.total_bytes = metrics.total_bitstream_bytes;
-        self.encode_ms += metrics.encode_elapsed.as_secs_f64() * 1000.0;
-        if let Some(psnr) = metrics.psnr {
-            self.psnr_sum += psnr.all;
-            self.psnr_count += 1;
-        }
+fn append_encode_output(state: &mut WasmState, frame_output: VideoEncodeOutput) {
+    state.last_output.clear();
+    for chunk in frame_output.chunks {
+        state.last_output.extend_from_slice(&chunk.data);
     }
-
-    fn finish(self) -> EncodeStats {
-        EncodeStats {
-            frames: self.frames,
-            total_bytes: self.total_bytes,
-            encode_ms: self.encode_ms,
-            psnr_all: if self.psnr_count == 0 {
-                f64::NAN
+    let frame_bytes = state.last_output.len();
+    if frame_bytes > 0 {
+        state.output.extend_from_slice(&state.last_output);
+    }
+    state.stats.frames += 1;
+    state.stats.total_bytes += frame_bytes;
+    for metric in frame_output.metrics {
+        if let Some(psnr) = metric.psnr {
+            let previous_sum = if state.stats.psnr_count == 0 {
+                0.0
             } else {
-                self.psnr_sum / self.psnr_count as f64
-            },
+                state.stats.psnr_all * state.stats.psnr_count as f64
+            };
+            state.stats.psnr_count += 1;
+            state.stats.psnr_all = (previous_sum + psnr) / state.stats.psnr_count as f64;
         }
     }
 }

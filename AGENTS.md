@@ -239,6 +239,33 @@ path.
 
 Prefer `required` when validating a release or claiming reference compatibility.
 
+Ad hoc decode/playback notes for generated WASM captures:
+
+- WASM screen-capture streams are written under
+  `verification/generated/wasm_screen_capture/`.
+- To decode an AV2 `.obu` with the local reference decoder, use
+  `python3 scripts/reference_tools.py decode --codec av2 --bitstream <in.obu>
+  --output <out.yuv> --no-build`. This expects the AVM decoder at
+  `verification/references/av2/avm/build/avmdec` if references have already
+  been set up.
+- The WASM screen-capture demo currently feeds browser frames as `gbrp8`.
+  Reference-decoded raw output for these captures should normally be played as
+  `gbrp`, not `yuv420p`. AVM `--i420` can fail for these RGB-family streams.
+- The browser demo should center-crop the captured screen to the configured
+  encode dimensions without scaling. Scaling browser screen captures into the
+  encode size adds resampling noise that dominates screen-content experiments.
+- The browser demo uses `/stream`, a dependency-free WebSocket receiver in
+  `examples/wasm-screen-capture/server.py`. It sends the WASM ABI's
+  per-`encode_frame` output (`ff_wasm_last_output_ptr/len`) as binary messages;
+  the server writes a `.part` file as bytes arrive and renames it after the
+  browser sends the final frame count.
+- If no sidecar metadata exists, infer raw playback dimensions from decoded
+  size: for `gbrp8`, bytes = frames * width * height * 3. The frame count is
+  often in the filename, e.g. `30f`.
+- Example playback shape:
+  `ffplay -f rawvideo -pixel_format gbrp -video_size <WxH> -framerate <fps>
+  -autoexit <decoded.yuv>`.
+
 ## Useful Commands
 
 Common local quality gates:

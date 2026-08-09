@@ -78,7 +78,7 @@
       canvas {
         display: block;
         width: 100%;
-        aspect-ratio: 16 / 9;
+        height: auto;
         background: #060708;
         border: 1px solid #333944;
         border-radius: 8px;
@@ -115,11 +115,11 @@
           <input id="height" type="number" min="8" step="8" value="360" />
         </label>
         <label>
-          Frames
+          Max frames
           <input id="frames" type="number" min="1" max="180" value="30" />
         </label>
         <label>
-          FPS
+          Max FPS
           <input id="fps" type="number" min="1" max="60" value="10" />
         </label>
         <label>
@@ -137,7 +137,7 @@
             <option value="lossless">Lossless</option>
           </select>
         </label>
-        <button id="start">Capture</button>
+        <button id="start">Start stream</button>
         <button id="stop" class="secondary" disabled>Stop</button>
       </div>
       <canvas id="preview" width="640" height="360"></canvas>
@@ -164,8 +164,12 @@
       let memory;
       let stream;
       let video;
-      let timer;
       let captureActive = false;
+      let activeSession = 0;
+      let captureStartMs = 0;
+      let totalEncodeMs = 0;
+      let lastProgressLogMs = 0;
+      let activeUpload;
 
       function log(line) {
         const time = new Date().toLocaleTimeString();
@@ -208,12 +212,209 @@
         return els.codec.value === "vvc" ? wasm.ff_wasm_codec_vvc() : wasm.ff_wasm_codec_av2();
       }
 
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function stopStream() {
+        if (stream) {
+          stream.getTracks().forEach((track) => track.stop());
+          stream = undefined;
+        }
+      }
+
+      function formatPsnr(value) {
+        return Number.isFinite(value) ? value.toFixed(3) : String(value);
+      }
+
+      function captureCropRect(videoElement, width, height) {
+        const sourceWidth = videoElement.videoWidth;
+        const sourceHeight = videoElement.videoHeight;
+        if (!sourceWidth || !sourceHeight) {
+          throw new Error("screen capture did not report a video size");
+        }
+        if (width > sourceWidth || height > sourceHeight) {
+          throw new Error(
+            `requested ${width}x${height} capture exceeds source ${sourceWidth}x${sourceHeight}; choose dimensions that fit inside the shared screen`,
+          );
+        }
+        return {
+          sourceWidth,
+          sourceHeight,
+          x: Math.floor((sourceWidth - width) / 2),
+          y: Math.floor((sourceHeight - height) / 2),
+          width,
+          height,
+        };
+      }
+
+      function streamUrl(metadata) {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const params = new URLSearchParams({
+          codec: metadata.codec,
+          width: String(metadata.width),
+          height: String(metadata.height),
+          max_frames: String(metadata.maxFrames),
+          max_fps: String(metadata.maxFps),
+        });
+        return `${protocol}//${window.location.host}/stream?${params}`;
+      }
+
+      function openEncodedStream(metadata) {
+        return new Promise((resolve, reject) => {
+          const socket = new WebSocket(streamUrl(metadata));
+          let opened = false;
+          let finishedSettled = false;
+          let resolveFinished;
+          let rejectFinished;
+          const upload = {
+            socket,
+            bytesSent: 0,
+            finalMessage: undefined,
+            error: undefined,
+            aborted: false,
+            finished: new Promise((finishResolve, finishReject) => {
+              resolveFinished = finishResolve;
+              rejectFinished = finishReject;
+            }),
+          };
+
+          socket.binaryType = "arraybuffer";
+          upload.finished.catch(() => {});
+
+          socket.addEventListener(
+            "open",
+            () => {
+              opened = true;
+              resolve(upload);
+            },
+            { once: true },
+          );
+          socket.addEventListener("message", (event) => {
+            if (typeof event.data !== "string") {
+              return;
+            }
+            const message = JSON.parse(event.data);
+            if (message.type === "started") {
+              log(`streaming encoded chunks to ${message.path}`);
+              return;
+            }
+            if (message.type === "finished") {
+              upload.finalMessage = message;
+              if (!finishedSettled) {
+                finishedSettled = true;
+                resolveFinished(message);
+              }
+              return;
+            }
+            if (message.type === "error") {
+              const error = new Error(message.message || "server stream failed");
+              upload.error = error;
+              if (!finishedSettled) {
+                finishedSettled = true;
+                rejectFinished(error);
+              }
+              return;
+            }
+            log(`ignored stream message: ${event.data}`);
+          });
+          socket.addEventListener("error", () => {
+            const error = new Error("stream socket error");
+            upload.error = error;
+            if (!opened) {
+              reject(error);
+            }
+            if (!finishedSettled && !upload.aborted) {
+              finishedSettled = true;
+              rejectFinished(error);
+            }
+          });
+          socket.addEventListener("close", () => {
+            if (!opened) {
+              reject(new Error("stream socket closed before opening"));
+            }
+            if (!finishedSettled && !upload.aborted) {
+              const error = new Error("stream socket closed before the server confirmed the capture");
+              upload.error = error;
+              finishedSettled = true;
+              rejectFinished(error);
+            }
+          });
+        });
+      }
+
+      async function waitForUploadBuffer(upload) {
+        const maxBufferedBytes = 8 * 1024 * 1024;
+        while (upload.socket.bufferedAmount > maxBufferedBytes) {
+          if (upload.error) {
+            throw upload.error;
+          }
+          if (upload.socket.readyState !== WebSocket.OPEN) {
+            throw new Error("stream socket closed while waiting for upload backpressure");
+          }
+          await sleep(10);
+        }
+        if (upload.error) {
+          throw upload.error;
+        }
+      }
+
+      async function streamLastEncodedOutput(upload) {
+        if (!upload || upload.socket.readyState !== WebSocket.OPEN) {
+          throw new Error("encoded stream is not open");
+        }
+        if (upload.error) {
+          throw upload.error;
+        }
+        const len = wasm.ff_wasm_last_output_len();
+        if (len === 0) {
+          return 0;
+        }
+        const ptr = wasm.ff_wasm_last_output_ptr();
+        if (!ptr) {
+          throw new Error("WASM reported last encoded output bytes without a pointer");
+        }
+        const chunk = new Uint8Array(memory.buffer, ptr, len).slice();
+        upload.socket.send(chunk);
+        upload.bytesSent += chunk.byteLength;
+        await waitForUploadBuffer(upload);
+        return chunk.byteLength;
+      }
+
+      async function finishEncodedStream(upload, frames) {
+        if (!upload) {
+          return undefined;
+        }
+        if (upload.socket.readyState !== WebSocket.OPEN) {
+          throw new Error("stream socket closed before finish");
+        }
+        upload.socket.send(JSON.stringify({ type: "finish", frames, bytes: upload.bytesSent }));
+        const result = await upload.finished;
+        if (upload.socket.readyState === WebSocket.OPEN) {
+          upload.socket.close(1000, "finished");
+        }
+        return result;
+      }
+
+      function abortEncodedStream(upload) {
+        if (!upload) {
+          return;
+        }
+        upload.aborted = true;
+        if (upload.socket.readyState === WebSocket.OPEN || upload.socket.readyState === WebSocket.CONNECTING) {
+          upload.socket.close(4000, "capture aborted");
+        }
+      }
+
       async function startCapture() {
         await loadWasm();
+        if (captureActive) {
+          return;
+        }
         const width = valueNumber(els.width);
         const height = valueNumber(els.height);
         const maxFrames = valueNumber(els.frames);
-        const fps = valueNumber(els.fps);
+        const maxFps = valueNumber(els.fps);
         const lossless = els.mode.value === "lossless" ? 1 : 0;
         const qp = valueNumber(els.qp);
         const gop = valueNumber(els.gop);
@@ -223,87 +424,162 @@
         check(wasm.ff_wasm_configure(codecId(), width, height, maxFrames, lossless, qp, gop));
 
         stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { frameRate: fps },
+          video: { frameRate: maxFps },
           audio: false,
         });
         video = document.createElement("video");
         video.srcObject = stream;
         video.muted = true;
+        video.playsInline = true;
         await video.play();
+        let crop;
+        try {
+          crop = captureCropRect(video, width, height);
+        } catch (error) {
+          stopStream();
+          throw error;
+        }
+        let upload;
+        try {
+          upload = await openEncodedStream({
+            codec: els.codec.value,
+            width,
+            height,
+            maxFrames,
+            maxFps,
+          });
+        } catch (error) {
+          stopStream();
+          throw error;
+        }
 
+        const session = ++activeSession;
+        activeUpload = upload;
         captureActive = true;
+        captureStartMs = performance.now();
+        totalEncodeMs = 0;
+        lastProgressLogMs = captureStartMs;
         els.start.disabled = true;
         els.stop.disabled = false;
-        log(`capturing ${maxFrames} frame(s) at ${width}x${height}`);
+        stream
+          .getVideoTracks()
+          .forEach((track) =>
+            track.addEventListener("ended", () => {
+              stopCapture().catch((error) => log(`error: ${error.message}`));
+            }),
+          );
+        log(
+          `stream-encoding up to ${maxFrames} frame(s) from centered ${width}x${height} crop of ${crop.sourceWidth}x${crop.sourceHeight} at ${crop.x},${crop.y}, max ${maxFps} fps`,
+        );
 
         const context = els.preview.getContext("2d", { willReadFrequently: true });
-        const frameIntervalMs = Math.max(1, Math.round(1000 / fps));
-        timer = setInterval(() => {
-          try {
-            if (!captureActive) {
-              return;
-            }
-            context.drawImage(video, 0, 0, width, height);
-            const image = context.getImageData(0, 0, width, height);
-            const ptr = wasm.ff_wasm_input_ptr();
-            const len = wasm.ff_wasm_input_len();
-            new Uint8Array(memory.buffer, ptr, len).set(image.data);
-            check(wasm.ff_wasm_push_rgba_frame());
-            const captured = wasm.ff_wasm_frame_count();
-            if (captured >= maxFrames) {
-              stopCapture();
-            }
-          } catch (error) {
-            stopCapture(false);
-            log(`capture failed: ${error.message}`);
-          }
-        }, frameIntervalMs);
+        context.imageSmoothingEnabled = false;
+        const frameIntervalMs = Math.max(1, 1000 / maxFps);
+        captureLoop(session, context, crop, maxFrames, frameIntervalMs).catch((error) => {
+          stopCapture(false).catch((stopError) => log(`stop failed: ${stopError.message}`));
+          log(`stream failed: ${error.message}`);
+        });
       }
 
-      async function stopCapture(encode = true) {
-        if (!captureActive) {
+      async function captureLoop(session, context, crop, maxFrames, frameIntervalMs) {
+        let nextCaptureMs = performance.now();
+        while (captureActive && session === activeSession) {
+          if (wasm.ff_wasm_encoded_frames() >= maxFrames) {
+            break;
+          }
+          const waitMs = nextCaptureMs - performance.now();
+          if (waitMs > 0) {
+            await sleep(waitMs);
+          }
+          if (!captureActive || session !== activeSession) {
+            break;
+          }
+
+          const frameStartMs = performance.now();
+          try {
+            context.drawImage(
+              video,
+              crop.x,
+              crop.y,
+              crop.width,
+              crop.height,
+              0,
+              0,
+              crop.width,
+              crop.height,
+            );
+            const image = context.getImageData(0, 0, crop.width, crop.height);
+            const ptr = wasm.ff_wasm_input_ptr();
+            const len = wasm.ff_wasm_input_len();
+            if (image.data.length !== len) {
+              throw new Error(`RGBA frame length mismatch: canvas=${image.data.length}, wasm=${len}`);
+            }
+            new Uint8Array(memory.buffer, ptr, len).set(image.data);
+            const encodeStartMs = performance.now();
+            check(wasm.ff_wasm_encode_frame());
+            const encodeMs = performance.now() - encodeStartMs;
+            totalEncodeMs += encodeMs;
+            await streamLastEncodedOutput(activeUpload);
+            maybeLogProgress(maxFrames, encodeMs);
+          } catch (error) {
+            throw error;
+          }
+
+          nextCaptureMs = Math.max(nextCaptureMs + frameIntervalMs, performance.now());
+          if (performance.now() - frameStartMs > frameIntervalMs) {
+            nextCaptureMs = performance.now();
+          }
+        }
+
+        if (captureActive && session === activeSession) {
+          await stopCapture(true);
+        }
+      }
+
+      function maybeLogProgress(maxFrames, encodeMs) {
+        const now = performance.now();
+        const frames = wasm.ff_wasm_encoded_frames();
+        if (frames < maxFrames && now - lastProgressLogMs < 1000) {
+          return;
+        }
+        lastProgressLogMs = now;
+        const wallMs = Math.max(1, now - captureStartMs);
+        const wallFps = (frames * 1000) / wallMs;
+        const encodeFps = totalEncodeMs > 0 ? (frames * 1000) / totalEncodeMs : 0;
+        const psnr = wasm.ff_wasm_psnr_all();
+        const bytes = activeUpload ? activeUpload.bytesSent : wasm.ff_wasm_encoded_bytes();
+        log(
+          `encoded ${frames}/${maxFrames} frame(s), sent=${bytes} byte(s), wall=${wallFps.toFixed(2)} fps, encode=${encodeFps.toFixed(2)} fps, last=${encodeMs.toFixed(1)} ms, psnr=${formatPsnr(psnr)}`,
+        );
+      }
+
+      async function stopCapture(upload = true) {
+        const uploadStream = activeUpload;
+        if (!captureActive && !uploadStream) {
           return;
         }
         captureActive = false;
-        clearInterval(timer);
-        timer = undefined;
-        if (stream) {
-          stream.getTracks().forEach((track) => track.stop());
-          stream = undefined;
-        }
+        activeSession += 1;
+        stopStream();
+        activeUpload = undefined;
         els.start.disabled = false;
         els.stop.disabled = true;
 
-        if (!encode) {
+        if (!upload) {
+          abortEncodedStream(uploadStream);
           return;
         }
 
-        const frames = wasm.ff_wasm_frame_count();
-        log(`encoding ${frames} captured frame(s)`);
-        const encodeStartMs = performance.now();
-        check(wasm.ff_wasm_encode());
-        const encodeMs = performance.now() - encodeStartMs;
-        const ptr = wasm.ff_wasm_output_ptr();
-        const len = wasm.ff_wasm_output_len();
-        const output = new Uint8Array(memory.buffer, ptr, len).slice();
-        const fps = encodeMs > 0 ? (wasm.ff_wasm_encoded_frames() * 1000) / encodeMs : 0;
+        const frames = wasm.ff_wasm_encoded_frames();
+        const wallMs = Math.max(1, performance.now() - captureStartMs);
+        const wallFps = (frames * 1000) / wallMs;
+        const encodeFps = totalEncodeMs > 0 ? (frames * 1000) / totalEncodeMs : 0;
         const psnr = wasm.ff_wasm_psnr_all();
         log(
-          `encoded ${wasm.ff_wasm_encoded_frames()} frame(s), ${len} byte(s), ${fps.toFixed(2)} fps, ${encodeMs.toFixed(1)} ms, psnr=${Number.isFinite(psnr) ? psnr.toFixed(3) : psnr}`,
+          `finishing ${frames} frame(s), sent=${uploadStream ? uploadStream.bytesSent : 0} byte(s), wall=${wallFps.toFixed(2)} fps, encode=${encodeFps.toFixed(2)} fps, encode-time=${totalEncodeMs.toFixed(1)} ms, psnr=${formatPsnr(psnr)}`,
         );
 
-        const response = await fetch(
-          `/upload?codec=${encodeURIComponent(els.codec.value)}&frames=${frames}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/octet-stream" },
-            body: output,
-          },
-        );
-        if (!response.ok) {
-          throw new Error(`upload failed with HTTP ${response.status}`);
-        }
-        const result = await response.json();
+        const result = await finishEncodedStream(uploadStream, frames);
         log(`saved ${result.bytes} byte(s) to ${result.path}`);
       }
 

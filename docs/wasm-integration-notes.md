@@ -166,8 +166,9 @@ Before this is viable as a direct web package:
 - expose TypeScript definitions;
 - support `VideoFrame`, `ImageData`, canvas/OffscreenCanvas, RGBA, and planar
   YUV input adapters;
-- define lifecycle calls: load, configure, encode, flush, reset, close,
-  terminate;
+- define lifecycle calls that directly mirror the native encoder API as closely
+  as the WASM boundary allows: load, configure/create, encodeFrame, flush,
+  reset/drop, close, terminate;
 - define typed errors for unsupported format, unsupported setting, invalid
   dimensions, memory pressure, cancellation, and encoder failure;
 - publish feature variants eventually, such as AV2-only, VVC-only, and
@@ -197,5 +198,9 @@ That makes the browser package a direct encoder SDK instead of a CLI emulator.
 4. Rework the CLI to consume those encoder structs through the shared API.
 5. Add packetizer/muxer traits after the encoded chunk contract is proven.
 6. Add a small `framefinery-wasm` crate only after native API shape settles.
-7. Build a minimal browser demo that captures screen frames and streams
-   elementary chunks to a local receiving server.
+7. Keep the browser demo stream-first: capture one screen frame, encode it,
+   expose the per-call encoded output across the WASM ABI, and send those bytes
+   to the local WebSocket receiver before scheduling the next frame. The
+   current one-frame AV2/VVC bridge should be replaced by a true predictive
+   incremental session in the Rust encoder API, not hidden behind batch WASM
+   glue.
