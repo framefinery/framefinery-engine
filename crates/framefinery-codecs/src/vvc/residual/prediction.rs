@@ -584,7 +584,8 @@ pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
     mode: VvcBdpcmMode,
     source_luma: &[VvcSample],
     reference_luma: &[VvcSample],
-    geometry: VvcVideoGeometry,
+    source_geometry: VvcVideoGeometry,
+    reference_geometry: VvcVideoGeometry,
     node: VvcCodingTreeNode,
     bit_depth: SampleBitDepth,
     availability: Option<VvcPlaneAvailability<'_>>,
@@ -593,8 +594,8 @@ pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
     let start_y = usize::from(node.y);
     let width = usize::from(node.width);
     let height = usize::from(node.height);
-    let copy_width = width.min(geometry.width.saturating_sub(start_x));
-    let copy_height = height.min(geometry.height.saturating_sub(start_y));
+    let max_source_x = source_geometry.width.saturating_sub(1);
+    let max_source_y = source_geometry.height.saturating_sub(1);
 
     residuals.clear();
     residuals.resize(width * height, 0);
@@ -604,8 +605,8 @@ pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
             left_references_into(
                 &mut scratch.left[..height],
                 reference_luma,
-                geometry.width,
-                geometry.height,
+                reference_geometry.width,
+                reference_geometry.height,
                 start_x,
                 start_y,
                 height,
@@ -616,14 +617,12 @@ pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
             for y in 0..height {
                 let predictor = scratch.left[y];
                 let dst = y * width;
-                if y < copy_height {
-                    let src = (start_y + y) * geometry.width + start_x;
-                    for x in 0..copy_width {
-                        residuals[dst + x] = vvc_sample_delta_i16(source_luma[src + x], predictor);
-                    }
-                }
-                for x in copy_width..width {
-                    residuals[dst + x] = vvc_sample_delta_i16(0, predictor);
+                let src_y = (start_y + y).min(max_source_y);
+                let src_row = src_y * source_geometry.width;
+                for x in 0..width {
+                    let src_x = (start_x + x).min(max_source_x);
+                    residuals[dst + x] =
+                        vvc_sample_delta_i16(source_luma[src_row + src_x], predictor);
                 }
             }
         }
@@ -631,8 +630,8 @@ pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
             top_references_into(
                 &mut scratch.top[..width],
                 reference_luma,
-                geometry.width,
-                geometry.height,
+                reference_geometry.width,
+                reference_geometry.height,
                 start_x,
                 start_y,
                 width,
@@ -642,15 +641,12 @@ pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
             );
             for y in 0..height {
                 let dst = y * width;
-                if y < copy_height {
-                    let src = (start_y + y) * geometry.width + start_x;
-                    for x in 0..copy_width {
-                        residuals[dst + x] =
-                            vvc_sample_delta_i16(source_luma[src + x], scratch.top[x]);
-                    }
-                }
-                for x in copy_width..width {
-                    residuals[dst + x] = vvc_sample_delta_i16(0, scratch.top[x]);
+                let src_y = (start_y + y).min(max_source_y);
+                let src_row = src_y * source_geometry.width;
+                for x in 0..width {
+                    let src_x = (start_x + x).min(max_source_x);
+                    residuals[dst + x] =
+                        vvc_sample_delta_i16(source_luma[src_row + src_x], scratch.top[x]);
                 }
             }
         }

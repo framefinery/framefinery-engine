@@ -126,6 +126,7 @@ fn finalize_vvc_chroma_tu(
     stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
     let cb_residual = selected_residual.cb;
     let cr_residual = selected_residual.cr;
+    let coded_geometry = frame_recon.coded_geometry();
     if exact_transform_skip_qp
         && vvc_chroma_transform_skip_score_is_exact(
             cb_residual,
@@ -141,6 +142,7 @@ fn finalize_vvc_chroma_tu(
             &mut frame_recon.cb,
             &source_frame.cb,
             source_frame.geometry,
+            coded_geometry,
             source_frame.format,
             node,
         );
@@ -151,7 +153,7 @@ fn finalize_vvc_chroma_tu(
         let fill_start = StageStart::now();
         fill_visible_chroma_transform_skip_node(
             &mut frame_recon.cb,
-            source_frame.geometry,
+            coded_geometry,
             node,
             source_frame.format.chroma_sampling,
             predicted_cb,
@@ -180,7 +182,7 @@ fn finalize_vvc_chroma_tu(
         let fill_start = StageStart::now();
         fill_visible_chroma_node(
             &mut frame_recon.cb,
-            source_frame.geometry,
+            coded_geometry,
             node,
             source_frame.format.chroma_sampling,
             predicted_cb,
@@ -205,6 +207,7 @@ fn finalize_vvc_chroma_tu(
             &mut frame_recon.cr,
             &source_frame.cr,
             source_frame.geometry,
+            coded_geometry,
             source_frame.format,
             node,
         );
@@ -215,7 +218,7 @@ fn finalize_vvc_chroma_tu(
         let fill_start = StageStart::now();
         fill_visible_chroma_transform_skip_node(
             &mut frame_recon.cr,
-            source_frame.geometry,
+            coded_geometry,
             node,
             source_frame.format.chroma_sampling,
             predicted_cr,
@@ -244,7 +247,7 @@ fn finalize_vvc_chroma_tu(
         let fill_start = StageStart::now();
         fill_visible_chroma_node(
             &mut frame_recon.cr,
-            source_frame.geometry,
+            coded_geometry,
             node,
             source_frame.format.chroma_sampling,
             predicted_cr,
@@ -293,6 +296,9 @@ fn fill_visible_chroma_transform_skip_node(
     let chroma_height = geometry.height / subsample_y;
     let visible_width = node_width.min(chroma_width.saturating_sub(start_x));
     let visible_height = node_height.min(chroma_height.saturating_sub(start_y));
+    if visible_width == 0 || visible_height == 0 {
+        return;
+    }
     let active_width = node_width.min(4);
     let active_height = node_height.min(4);
     if residual.bdpcm_mode.is_enabled() {
@@ -402,16 +408,25 @@ fn fill_visible_chroma_bdpcm_transform_skip_node(
 fn copy_source_chroma_node_into_reconstruction(
     chroma: &mut [VvcSample],
     source: &[VvcSample],
-    geometry: VvcVideoGeometry,
+    source_geometry: VvcVideoGeometry,
+    dst_geometry: VvcVideoGeometry,
     format: VvcPictureFormat,
     node: VvcCodingTreeNode,
 ) {
     let subsample_x = chroma_subsample_x(format.chroma_sampling);
     let subsample_y = chroma_subsample_y(format.chroma_sampling);
-    let chroma_width = geometry.width / subsample_x;
-    let chroma_height = geometry.height / subsample_y;
+    let source_chroma_width = source_geometry.width / subsample_x;
+    let source_chroma_height = source_geometry.height / subsample_y;
+    if source_chroma_width == 0 || source_chroma_height == 0 {
+        return;
+    }
+    let chroma_width = dst_geometry.width / subsample_x;
+    let chroma_height = dst_geometry.height / subsample_y;
     let start_x = usize::from(node.x) / subsample_x;
     let start_y = usize::from(node.y) / subsample_y;
+    if start_x >= chroma_width || start_y >= chroma_height {
+        return;
+    }
     let end_x = start_x
         .saturating_add(usize::from(node.width) / subsample_x)
         .min(chroma_width);
@@ -419,8 +434,13 @@ fn copy_source_chroma_node_into_reconstruction(
         .saturating_add(usize::from(node.height) / subsample_y)
         .min(chroma_height);
     for y in start_y..end_y {
-        let row = y * chroma_width;
-        chroma[row + start_x..row + end_x].copy_from_slice(&source[row + start_x..row + end_x]);
+        let dst_row = y * chroma_width;
+        let src_y = y.min(source_chroma_height - 1);
+        let src_row = src_y * source_chroma_width;
+        for x in start_x..end_x {
+            let src_x = x.min(source_chroma_width - 1);
+            chroma[dst_row + x] = source[src_row + src_x];
+        }
     }
 }
 

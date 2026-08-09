@@ -689,12 +689,14 @@ fn prediction_plane_residual_sad(
     let mut score = 0u64;
     for y in 0..copy_height {
         let dst = y * width;
-        let src = (origin_y + y) * stride + origin_x;
-        for (sample, predicted) in samples[src..src + copy_width]
-            .iter()
-            .zip(&predicted[dst..dst + copy_width])
-        {
-            score += vvc_sample_delta_sad_score(*sample, *predicted);
+        if copy_width > 0 {
+            let src = (origin_y + y) * stride + origin_x;
+            for (sample, predicted) in samples[src..src + copy_width]
+                .iter()
+                .zip(&predicted[dst..dst + copy_width])
+            {
+                score += vvc_sample_delta_sad_score(*sample, *predicted);
+            }
         }
         for predicted in &predicted[dst + copy_width..dst + width] {
             score += vvc_sample_delta_sad_score(padding_sample, *predicted);
@@ -724,12 +726,14 @@ fn prediction_plane_residual_sse(
     let mut score = 0u64;
     for y in 0..copy_height {
         let dst = y * width;
-        let src = (origin_y + y) * stride + origin_x;
-        for (sample, predicted) in samples[src..src + copy_width]
-            .iter()
-            .zip(&predicted[dst..dst + copy_width])
-        {
-            score += vvc_sample_delta_sse_score(*sample, *predicted);
+        if copy_width > 0 {
+            let src = (origin_y + y) * stride + origin_x;
+            for (sample, predicted) in samples[src..src + copy_width]
+                .iter()
+                .zip(&predicted[dst..dst + copy_width])
+            {
+                score += vvc_sample_delta_sse_score(*sample, *predicted);
+            }
         }
         for predicted in &predicted[dst + copy_width..dst + width] {
             score += vvc_sample_delta_sse_score(padding_sample, *predicted);

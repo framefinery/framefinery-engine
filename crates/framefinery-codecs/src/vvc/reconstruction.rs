@@ -12,9 +12,10 @@ struct VvcReconstructionFrame {
 
 impl VvcReconstructionFrame {
     fn new_neutral(geometry: VvcVideoGeometry, format: VvcPictureFormat) -> Self {
+        let coded_geometry = geometry.coded();
         let layout = PlanarYuvGeometry::for_validated_shape(
-            geometry.width,
-            geometry.height,
+            coded_geometry.width,
+            coded_geometry.height,
             format.chroma_sampling,
             format.bit_depth,
         );
@@ -32,7 +33,7 @@ impl VvcReconstructionFrame {
     }
 
     fn luma_availability(&self) -> VvcPlaneAvailability<'_> {
-        VvcPlaneAvailability::new(&self.luma_available, self.geometry.width)
+        VvcPlaneAvailability::new(&self.luma_available, self.luma_width())
     }
 
     fn cb_availability(&self) -> VvcPlaneAvailability<'_> {
@@ -44,10 +45,12 @@ impl VvcReconstructionFrame {
     }
 
     fn mark_luma_node_available(&mut self, node: VvcCodingTreeNode) {
+        let luma_width = self.luma_width();
+        let luma_height = self.luma_height();
         mark_vvc_plane_node_available(
             &mut self.luma_available,
-            self.geometry.width,
-            self.geometry.height,
+            luma_width,
+            luma_height,
             usize::from(node.x),
             usize::from(node.y),
             usize::from(node.width),
@@ -87,18 +90,20 @@ impl VvcReconstructionFrame {
     fn copy_ctu_from(&mut self, previous: &Self, region: VvcCtuRegion) {
         debug_assert_eq!(self.geometry, previous.geometry);
         debug_assert_eq!(self.format, previous.format);
+        let luma_width = self.luma_width();
+        let luma_height = self.luma_height();
         let width = region
             .geometry
             .width
-            .min(self.geometry.width.saturating_sub(region.origin_x));
+            .min(luma_width.saturating_sub(region.origin_x));
         let height = region
             .geometry
             .height
-            .min(self.geometry.height.saturating_sub(region.origin_y));
+            .min(luma_height.saturating_sub(region.origin_y));
         copy_vvc_plane_region(
             &mut self.luma,
             &previous.luma,
-            self.geometry.width,
+            luma_width,
             region.origin_x,
             region.origin_y,
             width,
@@ -106,8 +111,8 @@ impl VvcReconstructionFrame {
         );
         mark_vvc_plane_node_available(
             &mut self.luma_available,
-            self.geometry.width,
-            self.geometry.height,
+            luma_width,
+            luma_height,
             region.origin_x,
             region.origin_y,
             width,
@@ -160,12 +165,63 @@ impl VvcReconstructionFrame {
         );
     }
 
+    fn coded_geometry(&self) -> VvcVideoGeometry {
+        VvcVideoGeometry {
+            width: self.luma_width(),
+            height: self.luma_height(),
+        }
+    }
+
+    fn luma_width(&self) -> usize {
+        self.geometry.coded_width()
+    }
+
+    fn luma_height(&self) -> usize {
+        self.geometry.coded_height()
+    }
+
     fn chroma_width(&self) -> usize {
-        self.geometry.width / chroma_subsample_x(self.format.chroma_sampling)
+        self.luma_width() / chroma_subsample_x(self.format.chroma_sampling)
     }
 
     fn chroma_height(&self) -> usize {
+        self.luma_height() / chroma_subsample_y(self.format.chroma_sampling)
+    }
+
+    fn visible_chroma_width(&self) -> usize {
+        self.geometry.width / chroma_subsample_x(self.format.chroma_sampling)
+    }
+
+    fn visible_chroma_height(&self) -> usize {
         self.geometry.height / chroma_subsample_y(self.format.chroma_sampling)
+    }
+
+    fn to_sample_yuv(&self) -> Vec<VvcSample> {
+        let mut output = Vec::with_capacity(
+            self.geometry.luma_samples() + self.visible_chroma_width() * self.visible_chroma_height() * 2,
+        );
+        append_visible_plane_samples(
+            &mut output,
+            &self.luma,
+            self.luma_width(),
+            self.geometry.width,
+            self.geometry.height,
+        );
+        append_visible_plane_samples(
+            &mut output,
+            &self.cb,
+            self.chroma_width(),
+            self.visible_chroma_width(),
+            self.visible_chroma_height(),
+        );
+        append_visible_plane_samples(
+            &mut output,
+            &self.cr,
+            self.chroma_width(),
+            self.visible_chroma_width(),
+            self.visible_chroma_height(),
+        );
+        output
     }
 
     fn to_yuv(&self) -> Vec<u8> {
@@ -177,12 +233,36 @@ impl VvcReconstructionFrame {
         );
         let mut output = vec![0; layout.frame_len()];
         let (y_plane, cb_plane, cr_plane) = layout.plane_slices_mut(&mut output);
-        pack_planar_samples(&self.luma, y_plane, self.format.bit_depth);
-        pack_planar_samples(&self.cb, cb_plane, self.format.bit_depth);
-        pack_planar_samples(&self.cr, cr_plane, self.format.bit_depth);
+        let visible_samples = self.to_sample_yuv();
+        let y_len = self.geometry.luma_samples();
+        let chroma_len = self.visible_chroma_width() * self.visible_chroma_height();
+        pack_planar_samples(&visible_samples[..y_len], y_plane, self.format.bit_depth);
+        pack_planar_samples(
+            &visible_samples[y_len..y_len + chroma_len],
+            cb_plane,
+            self.format.bit_depth,
+        );
+        pack_planar_samples(
+            &visible_samples[y_len + chroma_len..],
+            cr_plane,
+            self.format.bit_depth,
+        );
         output
     }
 
+}
+
+fn append_visible_plane_samples(
+    output: &mut Vec<VvcSample>,
+    plane: &[VvcSample],
+    stride: usize,
+    visible_width: usize,
+    visible_height: usize,
+) {
+    for y in 0..visible_height {
+        let row = y * stride;
+        output.extend_from_slice(&plane[row..row + visible_width]);
+    }
 }
 
 fn copy_vvc_plane_region(

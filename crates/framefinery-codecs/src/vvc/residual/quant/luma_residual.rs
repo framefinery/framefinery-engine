@@ -132,6 +132,7 @@ fn finalize_vvc_luma_tu(
     stats.add_luma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
     let residual = selected_residual.block;
     let mts_index = selected_residual.mts_index;
+    let coded_geometry = frame_recon.coded_geometry();
     if exact_transform_skip_qp
         && vvc_luma_transform_skip_score_is_exact(
             residual,
@@ -143,7 +144,7 @@ fn finalize_vvc_luma_tu(
     {
         #[cfg(feature = "vvc-stats")]
         let fill_start = StageStart::now();
-        copy_source_luma_node_into_reconstruction(&mut frame_recon.luma, source_frame, node);
+        copy_source_luma_node_into_reconstruction(frame_recon, source_frame, node);
         #[cfg(feature = "vvc-stats")]
         stats.add_luma_fill_nanos(vvc_elapsed_nanos(fill_start));
     } else if residual.transform_skip {
@@ -151,7 +152,7 @@ fn finalize_vvc_luma_tu(
         let fill_start = StageStart::now();
         fill_visible_luma_transform_skip_node(
             &mut frame_recon.luma,
-            source_frame.geometry,
+            coded_geometry,
             node,
             predicted_luma,
             residual,
@@ -180,7 +181,7 @@ fn finalize_vvc_luma_tu(
         let fill_start = StageStart::now();
         fill_visible_luma_node(
             &mut frame_recon.luma,
-            source_frame.geometry,
+            coded_geometry,
             node,
             predicted_luma,
             reconstructed_residual,
@@ -219,6 +220,9 @@ fn fill_visible_luma_transform_skip_node(
     let start_y = usize::from(node.y);
     let visible_width = node_width.min(geometry.width.saturating_sub(start_x));
     let visible_height = node_height.min(geometry.height.saturating_sub(start_y));
+    if visible_width == 0 || visible_height == 0 {
+        return;
+    }
     let (active_width, active_height) =
         vvc_luma_transform_skip_active_extent(node_width, node_height);
     if residual.bdpcm_mode.is_enabled() {
@@ -326,22 +330,34 @@ fn fill_visible_luma_bdpcm_transform_skip_node(
 }
 
 fn copy_source_luma_node_into_reconstruction(
-    luma: &mut [VvcSample],
+    frame_recon: &mut VvcReconstructionFrame,
     source_frame: &VvcSampledFrame,
     node: VvcCodingTreeNode,
 ) {
     let start_x = usize::from(node.x);
     let start_y = usize::from(node.y);
+    if source_frame.geometry.width == 0 || source_frame.geometry.height == 0 {
+        return;
+    }
+    let dst_width = frame_recon.luma_width();
+    let dst_height = frame_recon.luma_height();
+    if start_x >= dst_width || start_y >= dst_height {
+        return;
+    }
     let end_x = start_x
         .saturating_add(usize::from(node.width))
-        .min(source_frame.geometry.width);
+        .min(dst_width);
     let end_y = start_y
         .saturating_add(usize::from(node.height))
-        .min(source_frame.geometry.height);
+        .min(dst_height);
     for y in start_y..end_y {
-        let row = y * source_frame.geometry.width;
-        luma[row + start_x..row + end_x]
-            .copy_from_slice(&source_frame.luma[row + start_x..row + end_x]);
+        let dst_row = y * dst_width;
+        let src_y = y.min(source_frame.geometry.height - 1);
+        let src_row = src_y * source_frame.geometry.width;
+        for x in start_x..end_x {
+            let src_x = x.min(source_frame.geometry.width - 1);
+            frame_recon.luma[dst_row + x] = source_frame.luma[src_row + src_x];
+        }
     }
 }
 

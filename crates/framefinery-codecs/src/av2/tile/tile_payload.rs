@@ -1213,7 +1213,7 @@ impl Av2Black444TilePlan {
         );
         assert!(
             region.width % 8 == 0 && region.height % 8 == 0,
-            "AV2 MVP tile plan expects visible dimensions in 8-pixel units"
+            "AV2 MVP tile plan expects coded tile dimensions in 8-pixel units"
         );
         let geometry = region.geometry();
         let visible_rows_mi = geometry.height / MI_SIZE;

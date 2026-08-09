@@ -180,7 +180,6 @@ struct VvcValidatedEncodeRequest {
 
 impl VvcEncodeRequest {
     fn validate(self) -> Result<VvcValidatedEncodeRequest, String> {
-        self.geometry.validate_against(self.limits)?;
         let frame_limit = FrameLimit::from_frame_count(self.params.frames);
         let format = Picture::validate_format_shape(
             self.geometry.width,
@@ -188,6 +187,7 @@ impl VvcEncodeRequest {
             self.format,
             validate_vvc_input_format,
         )?;
+        self.geometry.validate_against_format(self.limits, format)?;
         Ok(VvcValidatedEncodeRequest {
             frame_limit,
             geometry: self.geometry,

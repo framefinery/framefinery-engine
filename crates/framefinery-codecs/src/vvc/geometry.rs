@@ -1,8 +1,9 @@
 /// Luma coded-picture dimensions are rounded to this granularity before SPS/PPS
 /// signaling and crop-offset derivation.
 ///
-/// This is a deliberately narrow property of the current VVC validation path,
-/// not a claim about all legal VVC profiles or future FrameFinery codec paths.
+/// The visible picture dimensions remain the caller-provided size. The padded
+/// coded canvas is an internal encoder representation for the current VVC
+/// residual path and is removed with conformance-window crop signaling.
 pub const VVC_CODED_DIMENSION_GRANULARITY: usize = 8;
 const VVC_CTU_SIZE: usize = 64;
 const VVC_CURRENT_MIN_LUMA_CB_SIZE: u16 = 4;
@@ -71,15 +72,32 @@ impl VvcVideoGeometry {
         Ok(())
     }
 
+    fn validate_against_format(
+        self,
+        limits: VvcVideoLimits,
+        format: VvcPictureFormat,
+    ) -> Result<(), String> {
+        self.validate_against(limits)?;
+        let crop_width = self.coded_width() - self.width;
+        let crop_height = self.coded_height() - self.height;
+        let crop_unit_x = chroma_subsample_x(format.chroma_sampling);
+        let crop_unit_y = chroma_subsample_y(format.chroma_sampling);
+        if !crop_width.is_multiple_of(crop_unit_x) || !crop_height.is_multiple_of(crop_unit_y) {
+            return Err(format!(
+                "VVC {:?} visible geometry {}x{} cannot be represented by the current {}x{} coded canvas crop units",
+                format.chroma_sampling,
+                self.width,
+                self.height,
+                crop_unit_x,
+                crop_unit_y
+            ));
+        }
+        Ok(())
+    }
+
     fn validate_shape(self) -> Result<(), String> {
         if self.width == 0 || self.height == 0 {
             return Err("VVC geometry expects non-zero width and height".to_string());
-        }
-        if !self.width.is_multiple_of(2) || !self.height.is_multiple_of(2) {
-            return Err(format!(
-                "VVC geometry currently requires even dimensions for the emitted 4:2:0 stream; got {}x{}",
-                self.width, self.height
-            ));
         }
         Ok(())
     }

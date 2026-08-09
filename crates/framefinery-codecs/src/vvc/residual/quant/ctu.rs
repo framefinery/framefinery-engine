@@ -22,14 +22,9 @@ pub(in crate::vvc) fn quantize_vvc_frame_with_reconstruction(
         region,
         VvcResidualCodingMode::Lossy,
     );
-    let mut reconstruction_yuv =
-        Vec::with_capacity(frame.geometry.luma_samples() + frame.chroma_len * 2);
-    reconstruction_yuv.extend_from_slice(&reconstruction.luma);
-    reconstruction_yuv.extend_from_slice(&reconstruction.cb);
-    reconstruction_yuv.extend_from_slice(&reconstruction.cr);
     VvcQuantizedResidualFrame {
         quantized,
-        reconstruction_yuv,
+        reconstruction_yuv: reconstruction.to_sample_yuv(),
     }
 }
 
@@ -341,7 +336,7 @@ fn finalize_vvc_luma_tu_with_temporal_mode_hint(
             prediction_scratch,
             hint.bdpcm_mode,
             &frame_recon.luma,
-            source_frame.geometry,
+            frame_recon.coded_geometry(),
             node,
             source_frame.format.bit_depth,
             Some(frame_recon.luma_availability()),
@@ -396,7 +391,7 @@ fn finalize_vvc_luma_tu_with_temporal_mode_hint(
                 prediction_scratch,
                 hint.mode,
                 &frame_recon.luma,
-                source_frame.geometry,
+                frame_recon.coded_geometry(),
                 node,
                 source_frame.format.bit_depth,
                 Some(frame_recon.luma_availability()),
@@ -407,7 +402,7 @@ fn finalize_vvc_luma_tu_with_temporal_mode_hint(
                 prediction_scratch,
                 hint.mode,
                 &frame_recon.luma,
-                source_frame.geometry,
+                frame_recon.coded_geometry(),
                 node,
                 source_frame.format.bit_depth,
                 coding_decision.mrl_index,
@@ -487,7 +482,7 @@ fn finalize_vvc_chroma_tu_with_temporal_mode_hint(
             prediction_scratch,
             hint.bdpcm_mode,
             &frame_recon.cb,
-            source_frame.geometry,
+            frame_recon.coded_geometry(),
             node,
             source_frame.format.chroma_sampling,
             source_frame.format.bit_depth,
@@ -498,7 +493,7 @@ fn finalize_vvc_chroma_tu_with_temporal_mode_hint(
             prediction_scratch,
             hint.bdpcm_mode,
             &frame_recon.cr,
-            source_frame.geometry,
+            frame_recon.coded_geometry(),
             node,
             source_frame.format.chroma_sampling,
             source_frame.format.bit_depth,
@@ -586,7 +581,7 @@ fn finalize_vvc_chroma_tu_with_temporal_mode_hint(
             &frame_recon.cb,
             &frame_recon.cr,
             &frame_recon.luma,
-            source_frame.geometry,
+            frame_recon.coded_geometry(),
             node,
             source_frame.format.chroma_sampling,
             source_frame.format.bit_depth,
@@ -780,7 +775,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 luma_tu_bdpcm_modes[luma_tu_count] = hint.bdpcm_mode;
                 luma_mode_search_state.mark_node(node, hint.mode);
             }
-            copy_source_luma_node_into_reconstruction(&mut frame_recon.luma, source_frame, node);
+            copy_source_luma_node_into_reconstruction(frame_recon, source_frame, node);
             frame_recon.mark_luma_node_available(node);
             luma_tu_count += 1;
             continue;
@@ -861,7 +856,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 &mut prediction_scratch,
                 VvcIntraPredictionMode::Dc,
                 &frame_recon.luma,
-                source_frame.geometry,
+                frame_recon.coded_geometry(),
                 node,
                 source_frame.format.bit_depth,
                 Some(frame_recon.luma_availability()),
@@ -935,7 +930,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                     &mut prediction_scratch,
                     mode,
                     &frame_recon.luma,
-                    source_frame.geometry,
+                    frame_recon.coded_geometry(),
                     node,
                     source_frame.format.bit_depth,
                     Some(frame_recon.luma_availability()),
@@ -997,7 +992,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                         &mut prediction_scratch,
                         mode,
                         &frame_recon.luma,
-                        source_frame.geometry,
+                        frame_recon.coded_geometry(),
                         node,
                         source_frame.format.bit_depth,
                         Some(frame_recon.luma_availability()),
@@ -1237,10 +1232,12 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 chroma_tu_intra_modes[chroma_tu_count] = hint.mode;
                 chroma_tu_bdpcm_modes[chroma_tu_count] = hint.bdpcm_mode;
             }
+            let coded_geometry = frame_recon.coded_geometry();
             copy_source_chroma_node_into_reconstruction(
                 &mut frame_recon.cb,
                 &source_frame.cb,
                 source_frame.geometry,
+                coded_geometry,
                 source_frame.format,
                 node,
             );
@@ -1248,6 +1245,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 &mut frame_recon.cr,
                 &source_frame.cr,
                 source_frame.geometry,
+                coded_geometry,
                 source_frame.format,
                 node,
             );
@@ -1347,7 +1345,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             &frame_recon.cb,
             &frame_recon.cr,
             &frame_recon.luma,
-            source_frame.geometry,
+            frame_recon.coded_geometry(),
             node,
             source_frame.format.chroma_sampling,
             source_frame.format.bit_depth,
@@ -1422,7 +1420,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                             &frame_recon.cb,
                             &frame_recon.cr,
                             &frame_recon.luma,
-                            source_frame.geometry,
+                            frame_recon.coded_geometry(),
                             node,
                             source_frame.format.chroma_sampling,
                             source_frame.format.bit_depth,
@@ -1504,7 +1502,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                             &frame_recon.cb,
                             &frame_recon.cr,
                             &frame_recon.luma,
-                            source_frame.geometry,
+                            frame_recon.coded_geometry(),
                             node,
                             source_frame.format.chroma_sampling,
                             source_frame.format.bit_depth,
@@ -1836,7 +1834,7 @@ fn score_vvc_luma_planar_candidate(
         prediction_scratch,
         VvcIntraPredictionMode::Planar,
         &frame_recon.luma,
-        source_frame.geometry,
+        frame_recon.coded_geometry(),
         node,
         source_frame.format.bit_depth,
         Some(frame_recon.luma_availability()),

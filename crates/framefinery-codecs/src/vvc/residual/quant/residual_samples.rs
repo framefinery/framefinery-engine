@@ -26,22 +26,22 @@ pub(in crate::vvc) fn residual_luma_tu_at_into(
         debug_assert_eq!(residuals.len(), predicted.len());
         return;
     }
-    residuals.extend(
-        predicted
-            .iter()
-            .map(|predicted| vvc_sample_delta_i16(0, *predicted)),
-    );
-    for y in 0..copy_height {
-        let src = (origin_y + y) * frame.geometry.width + origin_x;
+    residuals.reserve(predicted.len());
+    let max_x = frame.geometry.width - 1;
+    let max_y = frame.geometry.height - 1;
+    for y in 0..height {
+        let src_y = (origin_y + y).min(max_y);
+        let src_row = src_y * frame.geometry.width;
         let dst = y * width;
-        for ((residual, sample), predicted) in residuals[dst..dst + copy_width]
-            .iter_mut()
-            .zip(&frame.luma[src..src + copy_width])
-            .zip(&predicted[dst..dst + copy_width])
-        {
-            *residual = vvc_sample_delta_i16(*sample, *predicted);
+        for x in 0..width {
+            let src_x = (origin_x + x).min(max_x);
+            residuals.push(vvc_sample_delta_i16(
+                frame.luma[src_row + src_x],
+                predicted[dst + x],
+            ));
         }
     }
+    debug_assert_eq!(residuals.len(), predicted.len());
 }
 
 pub(in crate::vvc) fn residual_chroma_tu_at_into(
@@ -58,7 +58,6 @@ pub(in crate::vvc) fn residual_chroma_tu_at_into(
     debug_assert_eq!(predicted.len(), width * height);
     let chroma_width = geometry.width / chroma_subsample_x(format.chroma_sampling);
     let chroma_height = geometry.height / chroma_subsample_y(format.chroma_sampling);
-    let neutral = vvc_neutral_sample(format.bit_depth);
     let copy_width = width.min(chroma_width.saturating_sub(origin_x));
     let copy_height = height.min(chroma_height.saturating_sub(origin_y));
     residuals.clear();
@@ -77,22 +76,22 @@ pub(in crate::vvc) fn residual_chroma_tu_at_into(
         debug_assert_eq!(residuals.len(), predicted.len());
         return;
     }
-    residuals.extend(
-        predicted
-            .iter()
-            .map(|predicted| vvc_sample_delta_i16(neutral, *predicted)),
-    );
-    for y in 0..copy_height {
-        let src = (origin_y + y) * chroma_width + origin_x;
+    residuals.reserve(predicted.len());
+    let max_x = chroma_width - 1;
+    let max_y = chroma_height - 1;
+    for y in 0..height {
+        let src_y = (origin_y + y).min(max_y);
+        let src_row = src_y * chroma_width;
         let dst = y * width;
-        for ((residual, sample), predicted) in residuals[dst..dst + copy_width]
-            .iter_mut()
-            .zip(&samples[src..src + copy_width])
-            .zip(&predicted[dst..dst + copy_width])
-        {
-            *residual = vvc_sample_delta_i16(*sample, *predicted);
+        for x in 0..width {
+            let src_x = (origin_x + x).min(max_x);
+            residuals.push(vvc_sample_delta_i16(
+                samples[src_row + src_x],
+                predicted[dst + x],
+            ));
         }
     }
+    debug_assert_eq!(residuals.len(), predicted.len());
 }
 
 fn vvc_sample_delta_i16(sample: VvcSample, predicted: VvcSample) -> i16 {

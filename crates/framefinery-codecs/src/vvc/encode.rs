@@ -1057,6 +1057,7 @@ fn vvc_predictive_lossy_region_within_reconstruction_delta(
         &current_source.luma,
         &previous_reconstruction.luma,
         current_source.geometry.width,
+        previous_reconstruction.luma_width(),
         region.origin_x,
         region.origin_y,
         width,
@@ -1073,10 +1074,12 @@ fn vvc_predictive_lossy_region_within_reconstruction_delta(
     let chroma_width = width / subsample_x;
     let chroma_height = height / subsample_y;
     let chroma_stride = current_source.geometry.width / subsample_x;
+    let reference_chroma_stride = previous_reconstruction.chroma_width();
     vvc_predictive_plane_region_within_delta(
         &current_source.cb,
         &previous_reconstruction.cb,
         chroma_stride,
+        reference_chroma_stride,
         chroma_x,
         chroma_y,
         chroma_width,
@@ -1086,6 +1089,7 @@ fn vvc_predictive_lossy_region_within_reconstruction_delta(
         &current_source.cr,
         &previous_reconstruction.cr,
         chroma_stride,
+        reference_chroma_stride,
         chroma_x,
         chroma_y,
         chroma_width,
@@ -1097,7 +1101,8 @@ fn vvc_predictive_lossy_region_within_reconstruction_delta(
 fn vvc_predictive_plane_region_within_delta(
     current: &[VvcSample],
     reference: &[VvcSample],
-    stride: usize,
+    current_stride: usize,
+    reference_stride: usize,
     origin_x: usize,
     origin_y: usize,
     width: usize,
@@ -1105,9 +1110,10 @@ fn vvc_predictive_plane_region_within_delta(
     max_abs_delta: u16,
 ) -> bool {
     for y in origin_y..origin_y + height {
-        let row = y * stride;
+        let current_row = y * current_stride;
+        let reference_row = y * reference_stride;
         for x in origin_x..origin_x + width {
-            if current[row + x].abs_diff(reference[row + x]) > max_abs_delta {
+            if current[current_row + x].abs_diff(reference[reference_row + x]) > max_abs_delta {
                 return false;
             }
         }

@@ -1,5 +1,5 @@
 # description=Local release validation set for existing AOM CTC A5 270p and B2 screen-content Y4M streams. Requires /media/gabriel/storage/YUV/aomctc; does not use or decompress b1_syn.zip.
-# Rows with dimensions that are not multiples of 8 cover both AV2 and VVC when the visible geometry is legal for the input format; AV2 pads its coded canvas and signals visible crop.
+# Rows with dimensions that are not multiples of 8 cover both AV2 and VVC when the visible geometry is legal for the input format; both codecs pad their coded canvas and signal visible crop.
 name,width,height,frames,format,pattern,fps,lossless,codecs,path
 aomctc_a5_SparksElevator_420_10bit,480,270,130,yuv420p10le,source_file,60000/1001,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/a5_270p/SparksElevator_480x270p_5994_10bit.y4m
 aomctc_a5_Vertical_Bayshore_420,270,480,130,yuv420p8,source_file,30000/1001,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/a5_270p/Vertical_Bayshore_270x480_2997.y4m

@@ -1119,12 +1119,12 @@ fn vvc_cabac_bits_generate_ctu_bodies_for_small_and_edge_geometries() {
 #[test]
 fn vvc_coded_geometry_does_not_square_promote_even_visible_shapes_at_or_under_32() {
     assert_eq!(VVC_CODED_DIMENSION_GRANULARITY, 8);
-    for height in (2..=32).step_by(2) {
-        for width in (2..=32).step_by(2) {
+    for height in 1..=32 {
+        for width in 1..=32 {
             let geometry = VvcVideoGeometry { width, height };
             geometry
                 .validate_against(VvcVideoLimits::max_64x64())
-                .expect("valid even small geometry");
+                .expect("valid small geometry");
             let coded = geometry.coded();
             assert_eq!(coded.width, coded_canvas_dimension(width));
             assert_eq!(coded.height, coded_canvas_dimension(height));
@@ -1153,6 +1153,24 @@ fn vvc_coded_geometry_does_not_square_promote_even_visible_shapes_at_or_under_32
             height: 24,
         }
     );
+}
+
+#[test]
+fn vvc_request_geometry_matches_pixel_format_chroma_constraints() {
+    let validate = |width, height, format| {
+        VvcEncodeRequest {
+            params: VvcEncodeParams { frames: 1 },
+            geometry: VvcVideoGeometry { width, height },
+            limits: VvcVideoLimits::unbounded(),
+            format,
+        }
+        .validate()
+    };
+
+    assert!(validate(37, 29, PixelFormat::Yuv444p8).is_ok());
+    assert!(validate(37, 29, PixelFormat::Gbrp8).is_ok());
+    assert!(validate(38, 29, PixelFormat::Yuv422p8).is_ok());
+    assert!(validate(38, 29, PixelFormat::Yuv420p8).is_err());
 }
 
 #[test]

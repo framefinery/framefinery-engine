@@ -1,8 +1,8 @@
 # description=Source-filter crops that exercise visible dimensions not aligned to codec coded-block granularity.
 name,width,height,frames,format,pattern,fps,lossless,codecs,filters
-crop_gbrp_5x7,16,16,1,gbrp8,color_blocks,30,true,av2,crop=x=2:y=3:w=5:h=7
-crop_444_37x29,48,40,1,yuv444p8,color_blocks,30,true,av2,crop=x=5:y=7:w=37:h=29
-crop_gbrp_37x29,48,40,1,gbrp8,color_blocks,30,true,av2,crop=x=3:y=5:w=37:h=29
+crop_gbrp_5x7,16,16,1,gbrp8,color_blocks,30,true,av2|vvc,crop=x=2:y=3:w=5:h=7
+crop_444_37x29,48,40,1,yuv444p8,color_blocks,30,true,av2|vvc,crop=x=5:y=7:w=37:h=29
+crop_gbrp_37x29,48,40,1,gbrp8,color_blocks,30,true,av2|vvc,crop=x=3:y=5:w=37:h=29
 crop_420_66x50,80,64,1,yuv420p8,checker,30,true,av2|vvc,crop=x=4:y=6:w=66:h=50
 crop_422_70x46,80,56,1,yuv422p8,color_blocks,30,true,av2|vvc,crop=x=2:y=5:w=70:h=46
 crop_444_62x38_2f,72,48,2,yuv444p8,gradient,30,true,av2|vvc,crop=x=5:y=3:w=62:h=38

@@ -103,6 +103,6 @@ streams under `/media/gabriel/storage/YUV/aomctc`. Use
 and `make release-performance-table` for the version performance table. Both
 release targets read source files directly and avoid raw source copies.
 Rows with dimensions that are not multiples of 8 may cover both AV2 and VVC when
-the visible geometry is legal for the input format. AV2 pads internally to its
-current 8-pixel coded canvas and signals the visible crop to the reference
-decoder.
+the visible geometry is legal for the input format. Both codecs pad internally
+to their current coded-canvas granularity and signal the visible crop to the
+reference decoder.

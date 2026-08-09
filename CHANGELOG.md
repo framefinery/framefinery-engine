@@ -25,8 +25,8 @@ behavior may change quickly while the public contract settles.
 - Add a compact raw input and codec support matrix covering tested format
   families, bit depths, lossless support, CLI fallback behavior, and current
   geometry limits.
-- Allow AV2 to encode visible frame sizes that are not aligned to its current
-  8-pixel coded-canvas granularity by padding internally and signaling the
+- Allow AV2 and VVC to encode legal visible frame sizes that are not aligned to
+  their current coded-canvas granularity by padding internally and signaling the
   visible crop to reference decoders.
 - Add a target-practice browser WASM artifact and local screen-capture/upload
   example, plus a `wasm32-unknown-unknown` CI check, without introducing a

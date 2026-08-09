@@ -8,9 +8,11 @@ use framefinery_api::{
 };
 
 use super::{
-    vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics, VvcEncodeFrameMetrics,
-    VvcEncodeOptions, VvcEncodeParams, VvcFastSearch, VvcProfile, VvcVideoGeometry, VvcVideoLimits,
+    validate_vvc_input_format, vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics,
+    VvcEncodeFrameMetrics, VvcEncodeOptions, VvcEncodeParams, VvcFastSearch, VvcProfile,
+    VvcVideoGeometry, VvcVideoLimits,
 };
+use crate::picture::Picture;
 use crate::session::{
     buffered_stream_session, encode_stream_from_source, StreamEncoderManifest,
     VideoEncodeStreamRequest,
@@ -181,7 +183,13 @@ fn encode_vvc_with_manifest(
         height: request.height,
     };
     let limits = VvcVideoLimits::unbounded();
-    geometry.validate_against(limits)?;
+    let format = Picture::validate_format_shape(
+        request.width,
+        request.height,
+        request.format,
+        validate_vvc_input_format,
+    )?;
+    geometry.validate_against_format(limits, format)?;
     let has_frame_metrics = frame_metrics.is_some();
     let mut frame_metrics = frame_metrics;
     let mut callback = |metrics: VvcEncodeFrameMetrics<'_>| {

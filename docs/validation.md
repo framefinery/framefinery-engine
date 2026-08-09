@@ -114,10 +114,9 @@ It intentionally ignores `b1_syn.zip`; release validation does not decompress
 anything. Each row points at an existing Y4M file and declares the local
 metadata up front so repository discovery does not require the media directory.
 Rows with dimensions that are not multiples of 8 can cover both AV2 and VVC
-when the visible geometry is legal for the input format. AV2 pads internally to
-its current 8-pixel coded canvas and signals the visible crop to the reference
-decoder; VVC currently requires even visible width and height at this entry
-point.
+when the visible geometry is legal for the input format. Both codecs pad
+internally to their current coded-canvas granularity and signal the visible crop
+to the reference decoder.
 
 Run the release crash/regression pass with:
 
