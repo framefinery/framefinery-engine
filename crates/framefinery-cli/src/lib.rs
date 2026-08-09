@@ -2,7 +2,7 @@
 //!
 //! The package also ships the `ff` command-line binary. Library users can depend
 //! on `framefinery` directly, while advanced users may depend on
-//! `framefinery-core` or `framefinery-codecs` for narrower APIs.
+//! `framefinery-api` or `framefinery-codecs` for narrower APIs.
 //!
 //! ```no_run
 //! use framefinery::{encoder, Frame, FrameInfo, PixelFormat};
@@ -29,14 +29,8 @@ mod options;
 use std::ffi::OsString;
 use std::process::ExitCode;
 
-#[cfg(feature = "video-encoders")]
-pub use framefinery_codecs::{
-    apply_encoder_settings, create_encoder, effective_encoder_settings, encode_frame,
-    encode_source, encoder, fetch_encoder_manifest, find_encoder_manifest, VideoEncoderBuilder,
-    ENCODERS,
-};
-pub use framefinery_core as core;
-pub use framefinery_core::{
+pub use framefinery_api as core;
+pub use framefinery_api::{
     build_filter_transform, build_raw_video_source_filter, build_source_filter,
     convert_frame_format, convert_planar_frame_bit_depth, filter_manifest, frame_psnr,
     generate_source_filter_stream, parse_filter_pipeline_specs, planar_sample_sse,
@@ -51,6 +45,12 @@ pub use framefinery_core::{
     VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeOutput,
     VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession, VideoEncoderSetting,
     VideoRateControl, VideoSettingValue, FILTERS,
+};
+#[cfg(feature = "video-encoders")]
+pub use framefinery_codecs::{
+    apply_encoder_settings, create_encoder, effective_encoder_settings, encode_frame,
+    encode_source, encoder, fetch_encoder_manifest, find_encoder_manifest, VideoEncoderBuilder,
+    ENCODERS,
 };
 pub use options::{
     cli_options, cli_options_for_scope, CliOptionManifest, CliOptionScope, CliOptionValue,

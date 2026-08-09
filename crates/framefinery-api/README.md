@@ -1,6 +1,6 @@
-# framefinery-core
+# framefinery-api
 
-`framefinery-core` contains the reusable media primitives behind FrameFinery.
+`framefinery-api` contains the reusable media primitives behind FrameFinery.
 It is intentionally codec-agnostic: codec crates and applications can share
 frame buffers, pixel-format handling, pipeline traits, and small reusable
 filters without depending on AV2, VVC, or the `ff` command-line frontend.
@@ -51,7 +51,7 @@ Filter manifests live in this crate so library users and the CLI discover the
 same compiled stages:
 
 ```rust
-use framefinery_core::{filter_manifest, FilterStageKind};
+use framefinery_api::{filter_manifest, FilterStageKind};
 
 let filter = filter_manifest("identity").expect("identity filter");
 assert_eq!(filter.stage, FilterStageKind::Transform);
@@ -62,7 +62,7 @@ Filter spec metadata is structured so applications can render their own help
 pages without copying CLI strings:
 
 ```rust
-use framefinery_core::filter_spec_manifest;
+use framefinery_api::filter_spec_manifest;
 
 let spec = filter_spec_manifest("pattern").expect("pattern spec");
 assert_eq!(spec.forms[0].syntax, "pattern=<name>");
@@ -72,13 +72,13 @@ assert_eq!(spec.forms[0].syntax, "pattern=<name>");
 of transforming an input stream:
 
 ```rust
-use framefinery_core::{FrameInfo, PatternKind, PatternSource, PixelFormat, Source};
+use framefinery_api::{FrameInfo, PatternKind, PatternSource, PixelFormat, Source};
 
 let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
 let mut source = PatternSource::new(info, PatternKind::Checker, 1)?;
 let frame = source.pull()?.expect("one generated frame");
 assert_eq!(frame.info(), info);
-# Ok::<(), framefinery_core::MediaError>(())
+# Ok::<(), framefinery_api::MediaError>(())
 ```
 
 Current pattern output supports planar YUV and gray formats from 8 through 16
@@ -94,7 +94,7 @@ pixel format and update frame geometry before encoder construction.
 ## Features
 
 The default `product-filters` feature enables the executable filter catalog for
-direct `framefinery-core` users:
+direct `framefinery-api` users:
 
 - `filter-pattern`
 - `filter-identity`
@@ -107,7 +107,7 @@ and enable individual filter implementations. `all-filters` is kept as a
 compatibility alias for the complete filter catalog:
 
 ```toml
-framefinery-core = {
+framefinery-api = {
   version = "0.0.3",
   default-features = false,
   features = ["filter-identity"]
@@ -140,7 +140,7 @@ WASM integrations.
 
 ## Errors
 
-Public fallible APIs return `framefinery_core::Result<T>`, an alias for
+Public fallible APIs return `framefinery_api::Result<T>`, an alias for
 `Result<T, MediaError>`. Buffer sizes and frame dimensions are validated before
 frame construction or pattern generation.
 

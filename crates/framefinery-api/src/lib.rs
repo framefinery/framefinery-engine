@@ -1,16 +1,16 @@
-//! Core media primitives for FrameFinery.
+//! Shared media pipeline APIs for FrameFinery.
 //!
 //! This crate is intentionally small at project bootstrap. It holds the stable
 //! concepts that codec crates and tools can share without forcing AV2, VVC, or
 //! future codecs into one internal design.
 //!
 //! ```
-//! use framefinery_core::{Frame, FrameInfo, PixelFormat};
+//! use framefinery_api::{Frame, FrameInfo, PixelFormat};
 //!
 //! let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
 //! let frame = Frame::blank(info);
 //! assert_eq!(frame.as_frame_ref().data().len(), info.expected_len());
-//! # Ok::<(), framefinery_core::MediaError>(())
+//! # Ok::<(), framefinery_api::MediaError>(())
 //! ```
 
 mod dpb;
@@ -69,5 +69,5 @@ pub use video::{
     VideoEncoderSessionFactory,
 };
 
-/// Version of the `framefinery-core` crate compiled into this build.
+/// Version of the `framefinery-api` crate compiled into this build.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use framefinery_core::{
+use framefinery_api::{
     setting_name, u8_setting, ChromaSampling, PixelFormat, RawVideoFrameSource, SettingManifest,
     VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeSourceRequest,
     VideoEncoderManifest, VideoEncoderManifestHooks,
@@ -37,8 +37,8 @@ pub(crate) const AV2_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManife
 };
 
 fn create_av2_session(
-    config: framefinery_core::VideoEncoderConfig,
-) -> framefinery_core::Result<Box<dyn framefinery_core::VideoEncoderSession>> {
+    config: framefinery_api::VideoEncoderConfig,
+) -> framefinery_api::Result<Box<dyn framefinery_api::VideoEncoderSession>> {
     buffered_stream_session(AV2_STREAM_ENCODER, config)
 }
 
@@ -48,7 +48,7 @@ fn encode_av2_source(
     recon: Option<&mut dyn Write>,
     request: VideoEncodeSourceRequest<'_>,
     frame_metrics: Option<VideoEncodeFrameMetricsCallback<'_>>,
-) -> framefinery_core::Result<()> {
+) -> framefinery_api::Result<()> {
     encode_stream_from_source(
         AV2_STREAM_ENCODER,
         source,
@@ -138,7 +138,7 @@ fn av2_options_from_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use framefinery_core::{
+    use framefinery_api::{
         CodecId, FrameInfo, MediaError, ReconstructionMode, VideoEncoderConfig, VideoRateControl,
     };
 

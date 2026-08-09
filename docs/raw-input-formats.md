@@ -84,7 +84,7 @@ GBR identity planes before encoding and packs reconstruction bytes back to
 
 ## Rust API
 
-`framefinery-core` represents bit depth as checked numeric data:
+`framefinery-api` represents bit depth as checked numeric data:
 
 ```rust
 SampleBitDepth::new(10)

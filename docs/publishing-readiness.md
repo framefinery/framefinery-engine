@@ -1,6 +1,6 @@
 # Publishing Readiness Notes
 
-Last updated: 2026-08-07.
+Last updated: 2026-08-09.
 
 These notes track work to finish before the next crates.io publish and before
 each later versioned release.
@@ -9,9 +9,12 @@ each later versioned release.
 
 - Workspace packages are set to version `0.0.3`.
 - Publishable crate names are:
-  - `framefinery-core`
+  - `framefinery-api`
   - `framefinery-codecs`
   - `framefinery`
+- The shared media/API package was renamed from `framefinery-core` to
+  `framefinery-api` before the `0.0.3` publish to avoid colliding with an
+  existing project name.
 - The installed binary name remains `ff`.
 - `make ci` exists and is the shared local/GitHub Actions quality gate. It now
   includes a `wasm32-unknown-unknown` type-check for the local browser target
@@ -37,7 +40,7 @@ each later versioned release.
   this note update.
 - A small release performance-table smoke run passed locally before this note
   update.
-- `framefinery-core` and `framefinery-codecs` use package-specific categories
+- `framefinery-api` and `framefinery-codecs` use package-specific categories
   and README files; the user-facing `framefinery` package keeps the workspace
   README and command-line category.
 - `cargo package --list` should show small package contents and no generated
@@ -54,10 +57,10 @@ version:
 ```sh
 make ci
 
-cargo publish --dry-run -p framefinery-core
-cargo publish -p framefinery-core
+cargo publish --dry-run -p framefinery-api
+cargo publish -p framefinery-api
 
-# wait until framefinery-core appears in the crates.io index
+# wait until framefinery-api appears in the crates.io index
 cargo publish --dry-run -p framefinery-codecs
 cargo publish -p framefinery-codecs
 
@@ -86,7 +89,7 @@ Before a manual publish:
   warn because AGPL is a standard SPDX license.
 - Keep `CHANGELOG.md` current. Cargo releases are permanent; each public
   version should have a curated note and a git tag.
-- Keep package-specific README files current for `framefinery-core` and
+- Keep package-specific README files current for `framefinery-api` and
   `framefinery-codecs`. The root README remains the README for the user-facing
   `framefinery` package and `ff` CLI.
 - Keep public API stability expectations visible. Version `0.0.x` can move
@@ -140,7 +143,7 @@ Before a manual publish:
 Final package inspection should verify the archives are small and intentional:
 
 ```sh
-cargo package --list -p framefinery-core
+cargo package --list -p framefinery-api
 cargo package --list -p framefinery-codecs
 cargo package --list -p framefinery
 ```
@@ -148,7 +151,7 @@ cargo package --list -p framefinery
 Current observations:
 
 - `README.md` is included in the `framefinery` package.
-- `framefinery-core` and `framefinery-codecs` use package-specific README
+- `framefinery-api` and `framefinery-codecs` use package-specific README
   files.
 - `LICENSE` and `COMMERCIAL-LICENSE.md` are root repository files; member crate
   package archives do not include them with the current SPDX-only manifest

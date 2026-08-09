@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/framefinery-core",
+  "crates/framefinery-api",
   "crates/framefinery-codecs",
   "crates/framefinery-cli",
 ]

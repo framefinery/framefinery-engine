@@ -1,6 +1,6 @@
 use std::io::{ErrorKind, Read};
 
-pub(crate) use framefinery_core::{ChromaSampling, PixelFormat, SampleBitDepth};
+pub(crate) use framefinery_api::{ChromaSampling, PixelFormat, SampleBitDepth};
 
 pub(crate) struct Picture;
 

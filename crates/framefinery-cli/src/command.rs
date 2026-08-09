@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-use framefinery_core::{
+use framefinery_api::{
     boolean_setting_enabled, build_filter_transform, build_raw_video_source_filter,
     convert_frame_format, frame_psnr, FilterPipelineBuilder, FilterStageSpec,
     FilteredRawVideoFrameSource, FrameInfo, FramePsnr, FrameRate, PixelFormat,
@@ -22,9 +22,9 @@ use crate::catalog::{
 };
 
 #[cfg(test)]
-use framefinery_core::Frame;
+use framefinery_api::Frame;
 #[cfg(test)]
-use framefinery_core::RawVideoFrameSourceReadAdapter;
+use framefinery_api::RawVideoFrameSourceReadAdapter;
 
 pub fn run<I>(raw_args: I) -> ExitCode
 where
@@ -402,7 +402,7 @@ fn open_job_source(job: &EncodeJob) -> Result<Box<dyn RawVideoFrameSource>, Stri
         .transform_filters
         .iter()
         .map(build_filter_transform)
-        .collect::<framefinery_core::Result<Vec<_>>>()
+        .collect::<framefinery_api::Result<Vec<_>>>()
         .map_err(|err| err.to_string())?;
     let mut source = source;
     Ok(Box::new(FilteredRawVideoFrameSource::new(
@@ -1532,7 +1532,7 @@ mod tests {
         TEST_CODEC_SETTINGS,
         test_codec_accepts_format,
         test_codec_accepts_format,
-        framefinery_core::VideoEncoderManifestHooks {
+        framefinery_api::VideoEncoderManifestHooks {
             create_session: test_create_session,
             encode_source: test_encode_source,
         },
@@ -1545,7 +1545,7 @@ mod tests {
         TEST_CODEC_SETTINGS,
         test_gbrp_codec_accepts_format,
         test_gbrp_codec_accepts_format,
-        framefinery_core::VideoEncoderManifestHooks {
+        framefinery_api::VideoEncoderManifestHooks {
             create_session: test_create_session,
             encode_source: test_encode_source,
         },
@@ -1555,8 +1555,8 @@ mod tests {
         config: VideoEncoderConfig,
     }
 
-    impl framefinery_core::VideoEncoderSession for TestSession {
-        fn codec(&self) -> &framefinery_core::CodecId {
+    impl framefinery_api::VideoEncoderSession for TestSession {
+        fn codec(&self) -> &framefinery_api::CodecId {
             &self.config.codec
         }
 
@@ -1567,8 +1567,8 @@ mod tests {
         fn encode_frame(
             &mut self,
             _frame: Frame,
-        ) -> framefinery_core::Result<framefinery_core::VideoEncodeOutput> {
-            Ok(framefinery_core::VideoEncodeOutput::default())
+        ) -> framefinery_api::Result<framefinery_api::VideoEncodeOutput> {
+            Ok(framefinery_api::VideoEncodeOutput::default())
         }
     }
 
@@ -1584,17 +1584,17 @@ mod tests {
 
     fn test_create_session(
         config: VideoEncoderConfig,
-    ) -> framefinery_core::Result<Box<dyn framefinery_core::VideoEncoderSession>> {
+    ) -> framefinery_api::Result<Box<dyn framefinery_api::VideoEncoderSession>> {
         Ok(Box::new(TestSession { config }))
     }
 
     fn test_encode_source(
-        _source: &mut dyn framefinery_core::RawVideoFrameSource,
+        _source: &mut dyn framefinery_api::RawVideoFrameSource,
         _output: &mut dyn Write,
         _recon: Option<&mut dyn Write>,
-        _request: framefinery_core::VideoEncodeSourceRequest<'_>,
+        _request: framefinery_api::VideoEncodeSourceRequest<'_>,
         _frame_metrics: Option<VideoEncodeFrameMetricsCallback<'_>>,
-    ) -> framefinery_core::Result<()> {
+    ) -> framefinery_api::Result<()> {
         Ok(())
     }
 

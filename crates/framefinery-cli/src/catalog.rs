@@ -1,4 +1,4 @@
-pub use framefinery_core::{
+pub use framefinery_api::{
     filter_manifest as filter, setting_values_label, FilterManifest, FilterSpecValue,
     FilterStageKind, SettingManifest, FILTERS, GLOBAL_SETTINGS,
 };
@@ -10,7 +10,7 @@ pub use framefinery_codecs::{encode_source, find_encoder_manifest, ENCODERS};
 use std::io::Write;
 
 #[cfg(not(feature = "video-encoders"))]
-use framefinery_core::{
+use framefinery_api::{
     MediaError, RawVideoFrameSource, Result, VideoEncodeFrameMetricsCallback, VideoEncoderConfig,
     VideoEncoderManifest,
 };

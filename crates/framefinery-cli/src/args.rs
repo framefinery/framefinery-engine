@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::path::Path;
 
-use framefinery_core::PixelFormat;
+use framefinery_api::PixelFormat;
 
 use crate::options::{self, CliOptionManifest, CliOptionScope};
 

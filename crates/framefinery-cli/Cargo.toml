@@ -21,7 +21,7 @@ name = "ff"
 path = "src/main.rs"
 
 [dependencies]
-framefinery-core = { path = "../framefinery-core", version = "0.0.3", default-features = false }
+framefinery-api = { path = "../framefinery-api", version = "0.0.3", default-features = false }
 framefinery-codecs = { path = "../framefinery-codecs", version = "0.0.3", optional = true, default-features = false }
 
 [features]
@@ -34,10 +34,10 @@ vvc = ["codec-vvc"]
 video-encoders = ["dep:framefinery-codecs"]
 codec-av2 = ["video-encoders", "framefinery-codecs/av2"]
 codec-vvc = ["video-encoders", "framefinery-codecs/vvc"]
-filter-pattern = ["framefinery-core/filter-pattern"]
-filter-identity = ["framefinery-core/filter-identity"]
-filter-crop = ["framefinery-core/filter-crop"]
-filter-scale = ["framefinery-core/filter-scale"]
+filter-pattern = ["framefinery-api/filter-pattern"]
+filter-identity = ["framefinery-api/filter-identity"]
+filter-crop = ["framefinery-api/filter-crop"]
+filter-scale = ["framefinery-api/filter-scale"]
 
 [lints]
 workspace = true

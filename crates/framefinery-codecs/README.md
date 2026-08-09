@@ -1,7 +1,7 @@
 # framefinery-codecs
 
 `framefinery-codecs` contains the experimental software encoder
-implementations used by FrameFinery. It depends on `framefinery-core` for the
+implementations used by FrameFinery. It depends on `framefinery-api` for the
 codec-neutral frame, config, source, metrics, and manifest types.
 
 The crate currently provides local AV2 and VVC encoder models. These
@@ -47,7 +47,7 @@ codec crate.
 
 ## API Stability
 
-FrameFinery is still in the `0.0.x` line. Registry helpers and core media types
+FrameFinery is still in the `0.0.x` line. Registry helpers and shared media types
 are the intended integration surface, but names and behavior may still break
 before `0.1.0`. Codec modules and hidden benchmark exports should be treated as
 implementation details.

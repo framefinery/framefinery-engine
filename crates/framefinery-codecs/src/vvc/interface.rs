@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use framefinery_core::{
+use framefinery_api::{
     setting_name, u8_setting, ChromaSampling, PixelFormat, RawVideoFrameSource, SettingManifest,
     SettingSpecExample, SettingSpecForm, SettingSpecManifest, SettingValue,
     VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeSourceRequest,
@@ -71,8 +71,8 @@ pub(crate) const VVC_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManife
 };
 
 fn create_vvc_session(
-    config: framefinery_core::VideoEncoderConfig,
-) -> framefinery_core::Result<Box<dyn framefinery_core::VideoEncoderSession>> {
+    config: framefinery_api::VideoEncoderConfig,
+) -> framefinery_api::Result<Box<dyn framefinery_api::VideoEncoderSession>> {
     buffered_stream_session(VVC_STREAM_ENCODER, config)
 }
 
@@ -82,7 +82,7 @@ fn encode_vvc_source(
     recon: Option<&mut dyn Write>,
     request: VideoEncodeSourceRequest<'_>,
     frame_metrics: Option<VideoEncodeFrameMetricsCallback<'_>>,
-) -> framefinery_core::Result<()> {
+) -> framefinery_api::Result<()> {
     encode_stream_from_source(
         VVC_STREAM_ENCODER,
         source,
@@ -200,7 +200,7 @@ fn vvc_fast_search_setting(settings: &[String]) -> Result<VvcFastSearch, String>
         if setting_name(spec) != "fast-search" {
             continue;
         }
-        let value = framefinery_core::setting_value(spec).unwrap_or("true");
+        let value = framefinery_api::setting_value(spec).unwrap_or("true");
         return value.parse::<VvcFastSearch>();
     }
     Ok(VvcFastSearch::default())
@@ -209,7 +209,7 @@ fn vvc_fast_search_setting(settings: &[String]) -> Result<VvcFastSearch, String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use framefinery_core::{
+    use framefinery_api::{
         CodecId, FrameInfo, MediaError, ReconstructionMode, VideoEncoderConfig, VideoRateControl,
     };
 

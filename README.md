@@ -260,7 +260,7 @@ make build CARGO_FEATURES=
 and `vvc` features, plus the compatibility `codec-av2` and `codec-vvc`
 features, enable the local experimental software encoders. The `filter-*`
 features map to reusable filter manifests and implementations in
-`framefinery-core`. The default `product-filters` feature enables executable
+`framefinery-api`. The default `product-filters` feature enables executable
 `pattern`, `identity`, `crop`, and `scale` stages; `all-filters` is kept as a
 compatibility alias for the complete filter catalog. Custom builds can disable
 default features and re-enable only the filters they want. Analysis-only
@@ -339,7 +339,7 @@ because there is no filename to infer dimensions or pixel format from. The
 `identity` transform filter is executable for file inputs and source-filter
 inputs. `crop` extracts rectangular regions and `scale` performs deterministic
 nearest-neighbor resizing.
-The reusable filter catalog and implementations live in `framefinery-core`; the
+The reusable filter catalog and implementations live in `framefinery-api`; the
 `ff` CLI reads that manifest and maps command-line strings onto the core
 pipeline API. Each filter manifest also points at a typed spec manifest, so
 `ff --help filters <name>` can print the accepted forms, parameters, examples,
@@ -379,7 +379,7 @@ The initial molten Rust/API contract is documented in
 ```text
 crates/
   framefinery-cli/   Published as package `framefinery`; library facade plus `ff`.
-  framefinery-core/  Shared frame, packet, pipeline, source, and filter APIs.
+  framefinery-api/  Shared frame, packet, pipeline, source, and filter APIs.
   framefinery-codecs/  Local experimental AV2/VVC software encoders.
 docs/                     Architecture and validation notes.
 tests/                    Future shared integration tests and fixtures.

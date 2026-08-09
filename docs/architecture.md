@@ -6,7 +6,7 @@ FrameFinery Engine is organized around a media pipeline:
 input -> decode -> filter -> encode -> output
 ```
 
-The shared crate, `framefinery-core`, intentionally contains only stable
+The shared crate, `framefinery-api`, intentionally contains only stable
 infrastructure:
 
 - frame metadata and owned frame buffers;

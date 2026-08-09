@@ -929,21 +929,21 @@ fn av2_mvp_444_accepts_high_bit_depth_yuv444_without_downscaling() {
             let y_sample = if (x + y) % 2 == 0 { 0 } else { max_sample - 3 };
             let u_sample = mid_sample + ((x * 3 + y) % 8) as u16;
             let v_sample = (max_sample / 8) + ((x + y * 5) % 16) as u16;
-            framefinery_core::write_planar_sample(
+            framefinery_api::write_planar_sample(
                 &mut input,
                 sample_index,
                 y_sample,
                 format.bit_depth(),
             )
             .expect("write Y sample");
-            framefinery_core::write_planar_sample(
+            framefinery_api::write_planar_sample(
                 &mut input,
                 plane_len + sample_index,
                 u_sample,
                 format.bit_depth(),
             )
             .expect("write U sample");
-            framefinery_core::write_planar_sample(
+            framefinery_api::write_planar_sample(
                 &mut input,
                 2 * plane_len + sample_index,
                 v_sample,
@@ -1280,7 +1280,7 @@ fn av2_yuv420_accepts_high_bit_depth_without_downscaling() {
         let max_sample = format.bit_depth().max_sample();
         let mut input = vec![0; Picture::expected_len(geometry.width, geometry.height, format)];
         for sample_index in 0..sample_count {
-            framefinery_core::write_planar_sample(
+            framefinery_api::write_planar_sample(
                 &mut input,
                 sample_index,
                 max_sample,
@@ -1298,7 +1298,7 @@ fn av2_yuv420_accepts_high_bit_depth_without_downscaling() {
         assert!(!output.is_empty());
         assert_eq!(recon.len(), input.len());
         assert!(
-            framefinery_core::read_planar_sample(&recon, 0, format.bit_depth())
+            framefinery_api::read_planar_sample(&recon, 0, format.bit_depth())
                 .expect("read reconstructed sample")
                 > u16::from(u8::MAX),
             "high-depth 4:2:0 reconstruction should not be downscaled to 8-bit"
@@ -1337,7 +1337,7 @@ fn av2_yuv420_lossless_preserves_high_bit_depth_samples() {
     let mut input = vec![0; Picture::expected_len(geometry.width, geometry.height, format)];
     for sample_index in 0..sample_count {
         let sample = ((sample_index * 37 + 11) as u16) & max_sample;
-        framefinery_core::write_planar_sample(&mut input, sample_index, sample, format.bit_depth())
+        framefinery_api::write_planar_sample(&mut input, sample_index, sample, format.bit_depth())
             .expect("write high-depth 4:2:0 lossless sample");
     }
     let mut source = input.as_slice();
@@ -1416,7 +1416,7 @@ fn av2_yuv422_lossless_preserves_high_bit_depth_samples() {
     let mut input = vec![0; Picture::expected_len(geometry.width, geometry.height, format)];
     for sample_index in 0..sample_count {
         let sample = ((sample_index * 53 + 7) as u16) & max_sample;
-        framefinery_core::write_planar_sample(&mut input, sample_index, sample, format.bit_depth())
+        framefinery_api::write_planar_sample(&mut input, sample_index, sample, format.bit_depth())
             .expect("write high-depth 4:2:2 lossless sample");
     }
     let mut source = input.as_slice();

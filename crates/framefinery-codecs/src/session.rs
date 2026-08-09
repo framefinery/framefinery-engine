@@ -1,7 +1,7 @@
 use std::io::{Cursor, Read, Write};
 use std::time::Duration;
 
-use framefinery_core::{
+use framefinery_api::{
     frame_psnr, CodecId, EncodedVideoChunk, Frame, FrameEncodeMetrics, MediaError,
     RawVideoFrameSource, RawVideoFrameSourceReadAdapter, ReconstructionMode, Result,
     VideoChunkKind, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeOutput,
@@ -29,7 +29,7 @@ pub(crate) struct VideoEncodeStreamRequest<'a> {
     pub frame_limit: Option<usize>,
     pub width: usize,
     pub height: usize,
-    pub format: framefinery_core::PixelFormat,
+    pub format: framefinery_api::PixelFormat,
     pub lossless: bool,
     pub settings: &'a [String],
 }
@@ -258,7 +258,7 @@ fn split_reconstructions(config: &VideoEncoderConfig, recon: Vec<u8>) -> Result<
 mod tests {
     use super::*;
     use crate::picture::{read_input_frame, FrameLimit};
-    use framefinery_core::{FrameInfo, PixelFormat, VideoEncoderSetting};
+    use framefinery_api::{FrameInfo, PixelFormat, VideoEncoderSetting};
 
     const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
         "test",
@@ -267,7 +267,7 @@ mod tests {
         &[],
         test_accepts_format,
         test_accepts_format,
-        framefinery_core::VideoEncoderManifestHooks {
+        framefinery_api::VideoEncoderManifestHooks {
             create_session: test_create_session,
             encode_source: test_encode_source,
         },

@@ -41,14 +41,14 @@ pub mod bench {
 
 use std::io::Write;
 
-use framefinery_core::{
+use framefinery_api::{
     Frame, MediaError, RawVideoFrameSource, Result, VideoEncodeFrameMetricsCallback,
     VideoEncodeOutput, VideoEncodeSourceRequest, VideoEncoderConfig, VideoEncoderManifest,
     VideoEncoderSession,
 };
 
 pub use builder::{encoder, VideoEncoderBuilder};
-pub use framefinery_core::{ChromaSampling, PixelFormat, SampleBitDepth};
+pub use framefinery_api::{ChromaSampling, PixelFormat, SampleBitDepth};
 
 /// Video encoder manifests compiled into this build.
 pub const ENCODERS: &[VideoEncoderManifest] = &[
@@ -151,7 +151,7 @@ pub(crate) fn unsupported_codec(codec: &str) -> MediaError {
 #[cfg(all(test, feature = "av2"))]
 mod tests {
     use super::*;
-    use framefinery_core::{
+    use framefinery_api::{
         CodecId, Frame, FrameInfo, PixelFormat, ReconstructionMode, VideoEncoderConfig,
         VideoRateControl,
     };

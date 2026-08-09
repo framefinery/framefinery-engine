@@ -176,21 +176,21 @@ checksum = "9e5e8f6c15a24b9a3ee5efec809ccd006d3b30e8b3bb63c39af737c7f87daa1d"
 name = "framefinery"
 version = "0.0.3"
 dependencies = [
+ "framefinery-api",
  "framefinery-codecs",
- "framefinery-core",
 ]
+
+[[package]]
+name = "framefinery-api"
+version = "0.0.3"
 
 [[package]]
 name = "framefinery-codecs"
 version = "0.0.3"
 dependencies = [
  "criterion",
- "framefinery-core",
+ "framefinery-api",
 ]
-
-[[package]]
-name = "framefinery-core"
-version = "0.0.3"
 
 [[package]]
 name = "futures-core"

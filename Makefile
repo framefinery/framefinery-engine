@@ -398,12 +398,12 @@ api-docs:
 	$(CARGO) doc --workspace --features "$(PRODUCT_FEATURES)" --no-deps
 
 api-docs-strict:
-	$(CARGO) rustdoc -p framefinery-core --features "filter-pattern filter-identity filter-crop filter-scale" -- -D missing_docs
+	$(CARGO) rustdoc -p framefinery-api --features "filter-pattern filter-identity filter-crop filter-scale" -- -D missing_docs
 	$(CARGO) rustdoc -p framefinery-codecs --features "av2 vvc" -- -D missing_docs
 	$(CARGO) rustdoc -p framefinery --lib --features "$(PRODUCT_FEATURES)" -- -D missing_docs
 
 package-list:
-	$(CARGO) package --allow-dirty --list -p framefinery-core
+	$(CARGO) package --allow-dirty --list -p framefinery-api
 	$(CARGO) package --allow-dirty --list -p framefinery-codecs
 	$(CARGO) package --allow-dirty --list -p framefinery
 

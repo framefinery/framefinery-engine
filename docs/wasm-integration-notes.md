@@ -31,7 +31,7 @@ frontends over the same encoder/session model.
 Proposed native layering:
 
 ```text
-framefinery-core
+framefinery-api
   Frame, PixelFormat, timestamps, settings, metrics
   VideoEncoderSession trait
   EncodedVideoChunk
@@ -158,7 +158,7 @@ chunks and metadata. The frontend chooses the sink.
 
 Before this is viable as a direct web package:
 
-- make `framefinery-core` and the intended codec subset compile for
+- make `framefinery-api` and the intended codec subset compile for
   `wasm32-unknown-unknown`;
 - gate filesystem, environment-variable, stderr, and thread assumptions in
   codec instrumentation;
@@ -191,7 +191,7 @@ That makes the browser package a direct encoder SDK instead of a CLI emulator.
 
 ## Immediate Cleanup Path
 
-1. Define the public video encoder session trait in `framefinery-core`.
+1. Define the public video encoder session trait in `framefinery-api`.
 2. Define stable config, settings, chunk, reconstruction, and metrics types.
 3. Expose AV2/VVC encoder structs in `framefinery-codecs`.
 4. Rework the CLI to consume those encoder structs through the shared API.

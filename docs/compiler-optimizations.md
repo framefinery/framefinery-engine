@@ -615,7 +615,7 @@ Based on the current repository layout, likely optimization targets are:
   IntraBC search kernels.
 - `crates/framefinery-codecs/src/vvc/residual/`: transform, quantization,
   prediction, and reconstruction.
-- `crates/framefinery-core/src/frame.rs` and
+- `crates/framefinery-api/src/frame.rs` and
   `crates/framefinery-codecs/src/picture.rs`: frame length, bit-depth
   conversion, and planar sample access.
 
@@ -1688,7 +1688,7 @@ cargo check --workspace \
   --features "codec-av2 codec-vvc filter-pattern filter-identity filter-crop filter-scale"
 cargo check --workspace \
   --features "codec-av2 codec-vvc filter-pattern filter-identity filter-crop filter-scale framefinery-codecs/vvc-stats"
-cargo test -p framefinery-core --features ""
+cargo test -p framefinery-api --features ""
 cargo test -p framefinery encode_job \
   --features "codec-av2 codec-vvc filter-pattern filter-identity filter-crop filter-scale"
 cargo test -p framefinery-codecs vvc --features "vvc"

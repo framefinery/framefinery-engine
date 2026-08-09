@@ -28,6 +28,8 @@ behavior may change quickly while the public contract settles.
 - Add a target-practice browser WASM artifact and local screen-capture/upload
   example, plus a `wasm32-unknown-unknown` CI check, without introducing a
   published WASM package yet.
+- Rename the shared media/API package from `framefinery-core` to
+  `framefinery-api` to avoid colliding with an existing project name.
 - Keep generated package/profiling artifacts out of release preparation; final
   dry-runs should start from a clean generated-artifact state.
 

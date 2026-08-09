@@ -1,5 +1,5 @@
 [package]
-name = "framefinery-core"
+name = "framefinery-api"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,8 +8,8 @@ repository.workspace = true
 readme = "README.md"
 keywords.workspace = true
 categories = ["multimedia::video", "multimedia::encoding", "encoding"]
-description = "Core media primitives for FrameFinery."
-documentation = "https://docs.rs/framefinery-core"
+description = "Shared media pipeline APIs for FrameFinery."
+documentation = "https://docs.rs/framefinery-api"
 
 [features]
 default = ["product-filters"]
@@ -21,7 +21,7 @@ filter-crop = []
 filter-scale = []
 
 [lib]
-name = "framefinery_core"
+name = "framefinery_api"
 path = "src/lib.rs"
 
 [lints]

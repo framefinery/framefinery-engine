@@ -43,7 +43,7 @@ codec must share a given helper implementation.
 
 ## Crate Roles
 
-`framefinery-core` owns the common contract:
+`framefinery-api` owns the common contract:
 
 - `FrameInfo`
 - `Frame`
@@ -85,7 +85,7 @@ Benchmark-only internals may be exposed under hidden feature-gated paths, but
 normal applications should treat the registry as the codec boundary.
 
 `framefinery` is the user-facing package and CLI facade. Its root Rust API
-should prefer generic concepts from `framefinery-core` plus the generic encoder
+should prefer generic concepts from `framefinery-api` plus the generic encoder
 registry from `framefinery-codecs`.
 
 `framefinery-cli` maps command-line arguments and files onto the same generic
@@ -405,7 +405,7 @@ assert_eq!(pipeline.source.unwrap().name, "pattern");
 # Ok::<(), framefinery::MediaError>(())
 ```
 
-The CLI should pass filter strings into `framefinery-core` and let the core
+The CLI should pass filter strings into `framefinery-api` and let the core
 filter registry validate and build stages. The CLI should not know whether
 `identity`, `pattern`, `crop`, or future filters have concrete Rust types.
 

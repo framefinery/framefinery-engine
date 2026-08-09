@@ -1,4 +1,4 @@
-use framefinery_core::{
+use framefinery_api::{
     i32_setting, SettingManifest, SettingSpecExample, SettingSpecForm, SettingSpecManifest,
     SettingValue,
 };

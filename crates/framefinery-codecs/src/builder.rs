@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use framefinery_core::{
+use framefinery_api::{
     CodecId, Frame, FrameInfo, FrameRate, MediaError, RawVideoFrameSource, ReconstructionMode,
     Result, VideoEncodeFrameMetricsCallback, VideoEncodeOutput, VideoEncoderConfig,
     VideoEncoderSession, VideoEncoderSetting, VideoRateControl, VideoSettingValue,
