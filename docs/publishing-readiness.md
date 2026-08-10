@@ -242,7 +242,7 @@ Run the AOM CTC A5/B2 release set with required references:
 ```sh
 make validate-release-aomctc \
   RELEASE_AOMCTC_REFERENCE_MODE=required \
-  RELEASE_AOMCTC_FRAMES=1
+  RELEASE_AOMCTC_FRAMES=50
 ```
 
 For the six-vector screen-content scoreboard, run the encode matrix against

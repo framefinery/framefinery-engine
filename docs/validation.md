@@ -124,12 +124,12 @@ Run the release crash/regression pass with:
 make validate-release-aomctc
 ```
 
-The default release pass uses `RELEASE_AOMCTC_FRAMES=1` so every A5/B2 stream
-is touched quickly for AV2 and VVC, lossy and lossless. It reads source files
-directly, writes reconstruction only long enough to validate it, removes
-successful bitstreams and reconstructions, and prints filesystem usage before
-and after the run. Override `RELEASE_AOMCTC_FRAMES=50` or set it to `130` for a
-longer local release candidate pass.
+The default release pass uses `RELEASE_AOMCTC_FRAMES=50` so every A5/B2 stream
+gets a short multi-frame predictive check for AV2 and VVC, lossy and lossless.
+It reads source files directly, writes reconstruction only long enough to
+validate it, removes successful bitstreams and reconstructions, and prints
+filesystem usage before and after the run. Set `RELEASE_AOMCTC_FRAMES=130` for
+the full declared local release-candidate pass.
 
 For version-to-version performance tracking, run:
 

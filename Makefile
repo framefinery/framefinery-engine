@@ -94,7 +94,7 @@ VALIDATION_CLEANUP_RECON ?= 0
 VALIDATION_CLEANUP_OUTPUT ?= 0
 CI_ENCODE_SET ?= ci-smoke
 RELEASE_AOMCTC_SET ?= release-aomctc
-RELEASE_AOMCTC_FRAMES ?= 1
+RELEASE_AOMCTC_FRAMES ?= 50
 RELEASE_AOMCTC_REFERENCE_MODE ?= auto
 RELEASE_AOMCTC_AV2_LOSSY_QP ?= 24
 RELEASE_AOMCTC_VVC_LOSSY_QP ?= 19
@@ -300,7 +300,7 @@ help:
 		'                         Pass extra --set values with VALIDATION_SETTINGS="key ..."' \
 		'  make validate-release-aomctc' \
 		'                         Validate AV2/VVC lossy/lossless on AOM CTC A5/B2 Y4M streams' \
-		'                         Uses RELEASE_AOMCTC_FRAMES=1 by default and cleans artifacts' \
+		'                         Uses RELEASE_AOMCTC_FRAMES=50 by default and cleans artifacts' \
 		'  make compare-compression' \
 		'                         Compare FrameFinery and reference encoder sizes' \
 		'                         Uses CODEC=av2 COMPRESSION_SET=$(VALIDATION_SET)' \
