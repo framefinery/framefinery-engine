@@ -78,6 +78,11 @@ filters to the `ff encode` command. The committed `pipeline-smoke` set covers
 when all filters are source-preserving; mutating filters still require
 non-empty encoded output and internal reconstruction, plus optional reference
 decoder agreement.
+`pattern=source_y4m_convert` rows are generated from an external Y4M `path`
+while changing only chroma sampling, not bit depth. Release benchmarks use this
+for derived 4:2:2 and 4:4:4 rows so the scripts create and clean the raw
+temporary clips instead of depending on persistent files under
+`verification/generated`.
 For `rgb24` lossless vectors, FrameFinery Engine writes packed RGB reconstruction bytes
 while reference raw decoder output may be planar identity GBR. The validation
 runner normalizes that reference output back to packed `rgb24` before comparing
@@ -104,10 +109,11 @@ than source-byte equality.
 ## Release AOM CTC Set
 
 The committed `release-aomctc` manifest covers the existing AOM CTC A5 270p
-and B2 screen-content Y4M streams under:
+and B2 screen-content Y4M streams. Set `AOMCTC_ROOT` to the local `aomctc`
+directory before running targets that read those streams:
 
 ```text
-/media/gabriel/storage/YUV/aomctc
+AOMCTC_ROOT=/path/to/aomctc
 ```
 
 It intentionally ignores `b1_syn.zip`; release validation does not decompress
@@ -121,7 +127,7 @@ to the reference decoder.
 Run the release crash/regression pass with:
 
 ```sh
-make validate-release-aomctc
+make validate-release-aomctc AOMCTC_ROOT=/path/to/aomctc
 ```
 
 The default release pass uses `RELEASE_AOMCTC_FRAMES=50` so every A5/B2 stream
@@ -131,17 +137,36 @@ validate it, removes successful bitstreams and reconstructions, and prints
 filesystem usage before and after the run. Set `RELEASE_AOMCTC_FRAMES=130` for
 the full declared local release-candidate pass.
 
+The full local pre-release checkpoint is:
+
+```sh
+make pre-release-validation AOMCTC_ROOT=/path/to/aomctc
+```
+
+That target uses predictive GOP (`gop=-1`) for AV2 and VVC, required reference
+decoding by default, the full geometry sweep, unusual geometry,
+`regression`, `multictu-regression`, the full AOM CTC A5/B2 streams, and the
+full six-vector screen-content matrix. It cleans successful encoded streams,
+reconstruction outputs, and generated raw source vectors, while leaving logs and
+the combined Markdown checkpoint under
+`verification/generated/pre_release_validation/<run>/pre-release-validation.md`.
+The six-vector matrix keeps the native 4:2:0 AOM CTC rows as direct Y4M input,
+materializes derived 4:2:2/4:4:4 rows through `source_y4m_convert`, reuses them
+within the matrix run, and encodes the full-length RGB row through the CLI
+`pattern=color_blocks` source filter to avoid a multi-GB raw RGB temporary.
+
 For version-to-version performance tracking, run:
 
 ```sh
-make release-performance-table
+make release-performance-table AOMCTC_ROOT=/path/to/aomctc
 ```
 
 This wraps `scripts/release_performance_table.py`, which uses the same
 `release-aomctc` manifest, reports FPS, bytes, bitrate-compatible bitstream
 size, and PSNR through the encode matrix markdown/JSON output, and removes
-successful encoded bitstreams by default. It defaults to 50 frames per stream
-to exercise inter prediction without materializing raw reconstructions.
+successful encoded bitstreams and generated raw source vectors by default. It
+defaults to 50 frames per stream to exercise inter prediction without
+materializing raw reconstructions.
 
 `scripts/generate_predictive_sweep.py` creates that local ignored manifest and
 384 local Y4M crops: six AOM CTC B2 screen-content variants, 64 geometries from

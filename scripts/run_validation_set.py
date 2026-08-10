@@ -37,6 +37,13 @@ class ValidationResult:
     reference_sha256: str
 
 
+@dataclass(frozen=True)
+class FileCase:
+    vector: generate_test_vectors.TestVector
+    path: Path
+    cleanup_path: Path | None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("set", nargs="?", default="smoke", help="test vector set name")
@@ -66,6 +73,11 @@ def main() -> int:
         help="do not pass --set lossless even when the manifest row is lossless",
     )
     parser.add_argument(
+        "--force-lossless",
+        action="store_true",
+        help="pass --set lossless and enable source comparison for every row without qp",
+    )
+    parser.add_argument(
         "--source-filters",
         action="store_true",
         help="run manifest patterns directly through --filter pattern=... without input files",
@@ -92,10 +104,19 @@ def main() -> int:
         action="store_true",
         help="delete successful encoded bitstreams after validation metrics/checksums are collected",
     )
+    parser.add_argument(
+        "--cleanup-vectors",
+        action="store_true",
+        help="delete generated raw source vectors after each case; direct source_file inputs are never removed",
+    )
     parser.add_argument("--stop-on-fail", action="store_true")
     args = parser.parse_args()
     args.qp_setting = qp_setting(args.setting)
     args.frames = args.frames or None
+    if args.force_lossy and args.force_lossless:
+        parser.error("--force-lossy and --force-lossless are mutually exclusive")
+    if args.force_lossless and args.qp_setting is not None:
+        parser.error("--force-lossless cannot be combined with qp=<1..255>")
     if args.qp_setting is not None and args.codec.lower() not in ("av2", "vvc"):
         parser.error("qp is currently supported for AV2 and VVC validation only")
 
@@ -106,14 +127,17 @@ def main() -> int:
 
     vector_set = load_vector_set(args.set, args.set_dir)
     if args.source_filters:
-        cases = [(override_vector_frames(vector, args.frames), None) for vector in vector_set.vectors]
+        cases = [
+            FileCase(override_vector_frames(vector, args.frames), Path(), None)
+            for vector in vector_set.vectors
+        ]
     else:
         cases = file_cases(vector_set, args)
     skipped_by_codec = [
-        vector for vector, _ in cases if not vector_enabled_for_codec(vector, args.codec)
+        case.vector for case in cases if not vector_enabled_for_codec(case.vector, args.codec)
     ]
     cases = [
-        (vector, path) for vector, path in cases if vector_enabled_for_codec(vector, args.codec)
+        case for case in cases if vector_enabled_for_codec(case.vector, args.codec)
     ]
     if args.limit:
         cases = cases[: args.limit]
@@ -124,14 +148,20 @@ def main() -> int:
         )
 
     results: list[ValidationResult] = []
-    for index, (vector, vector_path) in enumerate(cases, start=1):
+    for index, case in enumerate(cases, start=1):
+        vector = case.vector
+        vector_path = case.path
         name = vector.filename if args.source_filters else vector.name
         print(f"[{index:03d}/{len(cases):03d}] {name}", flush=True)
-        if args.source_filters:
-            result = run_source_case(vector, args)
-        else:
-            assert vector_path is not None
-            result = run_file_case(vector, vector_path, args)
+        try:
+            if args.source_filters:
+                result = run_source_case(vector, args)
+            else:
+                if case.cleanup_path is not None:
+                    materialize_vector(vector_set, vector, args.vector_dir)
+                result = run_file_case(vector, vector_path, args)
+        finally:
+            cleanup_vector_artifact(args, case.cleanup_path)
         results.append(result)
         size = "n/a" if result.bytes_written is None else str(result.bytes_written)
         print(f"  {result.status}: {result.reason} ({size} byte(s))", flush=True)
@@ -196,22 +226,21 @@ def override_vector_frames(
 def file_cases(
     vector_set: generate_test_vectors.TestVectorSet,
     args: argparse.Namespace,
-) -> list[tuple[generate_test_vectors.TestVector, Path]]:
+) -> list[FileCase]:
     cases = []
     for original in vector_set.vectors:
         vector = override_vector_frames(original, args.frames)
         if args.direct_source_files and vector.pattern == "source_file" and vector.source_path:
-            cases.append((vector, source_file_path(vector)))
+            cases.append(FileCase(vector, source_file_path(vector), None))
         else:
-            cases.append((vector, materialize_vector(vector_set, vector, args.vector_dir)))
+            path = args.vector_dir / vector.filename
+            cases.append(FileCase(vector, path, path))
     return cases
 
 
 def source_file_path(vector: generate_test_vectors.TestVector) -> Path:
     assert vector.source_path is not None
-    if vector.source_path.is_absolute():
-        return vector.source_path
-    return (REPO_ROOT / vector.source_path).resolve(strict=False)
+    return generate_test_vectors.resolve_manifest_path(vector.source_path, vector.name)
 
 
 def materialize_vector(
@@ -219,9 +248,8 @@ def materialize_vector(
     vector: generate_test_vectors.TestVector,
     vector_dir: Path,
 ) -> Path:
-    vector_dir.mkdir(parents=True, exist_ok=True)
     path = vector_dir / vector.filename
-    path.write_bytes(generate_test_vectors.generate_yuv(vector, vector_set.sources))
+    generate_test_vectors.write_vector_file(vector, vector_set.sources, path)
     return path
 
 
@@ -301,7 +329,11 @@ def run_source_case(vector: generate_test_vectors.TestVector, args: argparse.Nam
 
 
 def effective_lossless(vector: generate_test_vectors.TestVector, args: argparse.Namespace) -> bool:
-    return vector.lossless and not args.force_lossy and args.qp_setting is None
+    return (
+        (vector.lossless or args.force_lossless)
+        and not args.force_lossy
+        and args.qp_setting is None
+    )
 
 
 def append_vector_filters(command: list[str], vector: generate_test_vectors.TestVector) -> None:
@@ -660,6 +692,11 @@ def cleanup_success_artifacts(
     if args.cleanup_output:
         output.unlink(missing_ok=True)
     cleanup_recon_artifacts(args, recon, reference_recon)
+
+
+def cleanup_vector_artifact(args: argparse.Namespace, path: Path | None) -> None:
+    if args.cleanup_vectors and path is not None:
+        path.unlink(missing_ok=True)
 
 
 def codec_extension(codec: str) -> str:

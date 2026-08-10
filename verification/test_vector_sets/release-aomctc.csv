@@ -1,18 +1,18 @@
-# description=Local release validation set for existing AOM CTC A5 270p and B2 screen-content Y4M streams. Requires /media/gabriel/storage/YUV/aomctc; does not use or decompress b1_syn.zip.
+# description=Local release validation set for existing AOM CTC A5 270p and B2 screen-content Y4M streams. Requires AOMCTC_ROOT to point at the local aomctc directory; does not use or decompress b1_syn.zip.
 # Rows with dimensions that are not multiples of 8 cover both AV2 and VVC when the visible geometry is legal for the input format; both codecs pad their coded canvas and signal visible crop.
 name,width,height,frames,format,pattern,fps,lossless,codecs,path
-aomctc_a5_SparksElevator_420_10bit,480,270,130,yuv420p10le,source_file,60000/1001,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/a5_270p/SparksElevator_480x270p_5994_10bit.y4m
-aomctc_a5_Vertical_Bayshore_420,270,480,130,yuv420p8,source_file,30000/1001,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/a5_270p/Vertical_Bayshore_270x480_2997.y4m
-aomctc_a5_ParkJoy_420,480,270,130,yuv420p8,source_file,50,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/a5_270p/ParkJoy_480x270_50.y4m
-aomctc_a5_FourPeople_420,480,270,130,yuv420p8,source_file,60,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/a5_270p/FourPeople_480x270_60.y4m
-aomctc_b2_Debugging_420,1920,1080,130,yuv420p8,source_file,30,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/b2_scc/Debugging_1920x1080_30fps_8bit_420.y4m
-aomctc_b2_BigBuckBunnyStudio1_420_10bit,1920,1080,130,yuv420p10le,source_file,60,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/b2_scc/BigBuckBunnyStudio1_1920x1080_60fps_10bit_420_020_0149.y4m
-aomctc_b2_Spreadsheet_420,1920,1080,130,yuv420p8,source_file,30,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/b2_scc/Spreadsheet_1920x1080_30fps_8bit_420_130f.y4m
-aomctc_b2_MissionControlClip3_420,1920,1080,130,yuv420p8,source_file,60,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/b2_scc/MissionControlClip3_1920x1080_60_420.y4m
-aomctc_b2_SceneComposition_1_420,1920,1080,130,yuv420p8,source_file,15,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/b2_scc/SceneComposition_1.y4m
-aomctc_b2_MissionControlClip1_420_10bit,1920,1080,130,yuv420p10le,source_file,60,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/b2_scc/MissionControlClip1_1920x1080_60fps_10bit_420_0450_0579.y4m
-aomctc_b2_Slides2r_420,1920,1080,130,yuv420p8,source_file,30,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/b2_scc/Slides2r_1920x1080_30fps_8bit_420.y4m
-aomctc_b2_Slides1_420,1920,1080,130,yuv420p8,source_file,30,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/b2_scc/Slides1_1920x1080_30fps_8bit_420.y4m
-aomctc_b2_SceneComposition_2_420,1920,1080,130,yuv420p8,source_file,15,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/b2_scc/SceneComposition_2.y4m
-aomctc_b2_Wikipedia_420,1920,1080,130,yuv420p8,source_file,30,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/b2_scc/Wikipedia_1920x1080p30.y4m
-aomctc_b2_MobileDeviceScreenSharing_420,1078,2220,130,yuv420p8,source_file,15,true,av2|vvc,/media/gabriel/storage/YUV/aomctc/b2_scc/MobileDeviceScreenSharing.y4m
+aomctc_a5_SparksElevator_420_10bit,480,270,130,yuv420p10le,source_file,60000/1001,true,av2|vvc,${AOMCTC_ROOT}/a5_270p/SparksElevator_480x270p_5994_10bit.y4m
+aomctc_a5_Vertical_Bayshore_420,270,480,130,yuv420p8,source_file,30000/1001,true,av2|vvc,${AOMCTC_ROOT}/a5_270p/Vertical_Bayshore_270x480_2997.y4m
+aomctc_a5_ParkJoy_420,480,270,130,yuv420p8,source_file,50,true,av2|vvc,${AOMCTC_ROOT}/a5_270p/ParkJoy_480x270_50.y4m
+aomctc_a5_FourPeople_420,480,270,130,yuv420p8,source_file,60,true,av2|vvc,${AOMCTC_ROOT}/a5_270p/FourPeople_480x270_60.y4m
+aomctc_b2_Debugging_420,1920,1080,130,yuv420p8,source_file,30,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/Debugging_1920x1080_30fps_8bit_420.y4m
+aomctc_b2_BigBuckBunnyStudio1_420_10bit,1920,1080,130,yuv420p10le,source_file,60,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/BigBuckBunnyStudio1_1920x1080_60fps_10bit_420_020_0149.y4m
+aomctc_b2_Spreadsheet_420,1920,1080,130,yuv420p8,source_file,30,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/Spreadsheet_1920x1080_30fps_8bit_420_130f.y4m
+aomctc_b2_MissionControlClip3_420,1920,1080,130,yuv420p8,source_file,60,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/MissionControlClip3_1920x1080_60_420.y4m
+aomctc_b2_SceneComposition_1_420,1920,1080,130,yuv420p8,source_file,15,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/SceneComposition_1.y4m
+aomctc_b2_MissionControlClip1_420_10bit,1920,1080,130,yuv420p10le,source_file,60,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/MissionControlClip1_1920x1080_60fps_10bit_420_0450_0579.y4m
+aomctc_b2_Slides2r_420,1920,1080,130,yuv420p8,source_file,30,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/Slides2r_1920x1080_30fps_8bit_420.y4m
+aomctc_b2_Slides1_420,1920,1080,130,yuv420p8,source_file,30,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/Slides1_1920x1080_30fps_8bit_420.y4m
+aomctc_b2_SceneComposition_2_420,1920,1080,130,yuv420p8,source_file,15,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/SceneComposition_2.y4m
+aomctc_b2_Wikipedia_420,1920,1080,130,yuv420p8,source_file,30,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/Wikipedia_1920x1080p30.y4m
+aomctc_b2_MobileDeviceScreenSharing_420,1078,2220,130,yuv420p8,source_file,15,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/MobileDeviceScreenSharing.y4m

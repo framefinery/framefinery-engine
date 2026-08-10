@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -98,6 +99,7 @@ def benchmark_command(args: argparse.Namespace) -> list[str]:
         command.extend(["--limit", str(args.limit)])
     command.extend(["--av2-gop", str(args.av2_gop)])
     command.extend(["--vvc-gop", str(args.vvc_gop)])
+    command.append("--cleanup-vectors")
     if not args.keep_bitstreams:
         command.append("--cleanup-output")
     if args.write_recon:
@@ -113,7 +115,10 @@ def workspace_version() -> str:
 
 
 def disk_paths(args: argparse.Namespace) -> list[Path]:
-    paths = [REPO_ROOT, Path("/media/gabriel/storage")]
+    paths = [REPO_ROOT]
+    aomctc_root = os.environ.get("AOMCTC_ROOT")
+    if aomctc_root:
+        paths.append(Path(aomctc_root))
     paths.extend(args.df_path)
     unique = []
     seen = set()

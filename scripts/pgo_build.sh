@@ -131,7 +131,8 @@ training_ff="$ROOT/$PGO_TARGET_DIR/$HOST_TARGET/$artifact_profile/ff"
     "${codec_flags[@]}" \
     "${mode_flags[@]}" \
     "${frame_flags[@]}" \
-    "$direct_source_flag"
+    "$direct_source_flag" \
+    --cleanup-vectors
 
 mapfile -d '' profraw_files < <(find "$raw_dir_abs" -name '*.profraw' -print0)
 if [[ "${#profraw_files[@]}" -eq 0 ]]; then

@@ -1223,7 +1223,7 @@ This change also adds compile-gated VVC stage timing:
 ```sh
 make build VVC_STATS=1
 FRAMEFINERY_VVC_STATS=verification/generated/profiling/vvc_stage_scene420_lossless_1f.jsonl \
-  ./ff encode /media/gabriel/storage/YUV/aomctc/b2_scc/SceneComposition_1.y4m \
+  ./ff encode "$AOMCTC_ROOT/b2_scc/SceneComposition_1.y4m" \
   --frames 1 \
   --encode vvc:verification/generated/profiling/vvc_stage_scene420_lossless_1f.vvc \
   --recon verification/generated/profiling/vvc_stage_scene420_lossless_1f_recon.yuv \

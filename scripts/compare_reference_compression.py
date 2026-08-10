@@ -293,10 +293,7 @@ def comparison_cases(args: argparse.Namespace) -> list[tuple[generate_test_vecto
 
 def source_file_path(vector: generate_test_vectors.TestVector) -> Path:
     assert vector.source_path is not None
-    path = vector.source_path
-    if path.is_absolute():
-        return path
-    return (REPO_ROOT / path).resolve(strict=False)
+    return generate_test_vectors.resolve_manifest_path(vector.source_path, vector.name)
 
 
 def effective_framefinery_lossless(

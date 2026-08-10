@@ -205,13 +205,14 @@ Release candidates should also run the local AOM CTC release manifest and save
 a performance table for version-to-version comparison:
 
 ```sh
-make validate-release-aomctc
-make release-performance-table
+make validate-release-aomctc AOMCTC_ROOT=/path/to/aomctc
+make release-performance-table AOMCTC_ROOT=/path/to/aomctc
+make pre-release-validation AOMCTC_ROOT=/path/to/aomctc
 ```
 
-Those targets read the local A5/B2 Y4M files under
-`/media/gabriel/storage/YUV/aomctc` directly, avoid decompression, and clean
-encoded/reconstruction artifacts after metrics are collected.
+Those targets require `AOMCTC_ROOT` to point at the local A5/B2 Y4M tree, read
+the source files directly, avoid decompression, and clean encoded,
+reconstruction, and generated raw-vector artifacts after metrics are collected.
 
 Generate and run the current software encode fixtures:
 

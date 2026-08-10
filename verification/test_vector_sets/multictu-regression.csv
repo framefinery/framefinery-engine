@@ -1,0 +1,6 @@
+# description=Generated multi-CTU/superblock regression rows for pre-release geometry coverage.
+name,width,height,frames,format,pattern,fps,lossless,codecs
+multictu_420_130x130_3f,130,130,3,yuv420p8,checker,30,true,av2|vvc
+multictu_422_194x130_3f,194,130,3,yuv422p8,color_blocks,30,true,av2|vvc
+multictu_444_129x67_3f,129,67,3,yuv444p8,gradient,30,true,av2|vvc
+multictu_444_257x129_2f_10bit,257,129,2,yuv444p10le,bitdepth_canary,30,true,av2|vvc

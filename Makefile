@@ -22,7 +22,7 @@ GPROF_TARGET_DIR ?= target/gprof
 GPROF_SAMPLE_RUNS ?= 200
 GPROF_PROFILE_CODEC ?= av2
 GPROF_PROFILE_NAME ?= scenecomposition_1_420_i_lossless_1f
-GPROF_PROFILE_INPUT ?= /media/gabriel/storage/YUV/aomctc/b2_scc/SceneComposition_1.y4m
+GPROF_PROFILE_INPUT ?= $(AOMCTC_ROOT)/b2_scc/SceneComposition_1.y4m
 GPROF_PROFILE_FRAMES ?= 1
 GPROF_PROFILE_SETTINGS ?= lossless
 GPROF_PROFILE_OUT_DIR ?= verification/generated/profiling
@@ -76,6 +76,7 @@ $(error unsupported PROFILE '$(PROFILE)'; expected PROFILE=gprof or PROFILE=opti
 endif
 ARGS ?=
 CODEC ?= av2
+AOMCTC_ROOT ?=
 TEST_VECTOR_SET ?= smoke
 VALIDATION_SET ?= $(TEST_VECTOR_SET)
 VALIDATION_STOP_ON_FAIL ?= 1
@@ -92,6 +93,7 @@ VALIDATION_FRAMES ?=
 VALIDATION_FORCE_LOSSY ?= 0
 VALIDATION_CLEANUP_RECON ?= 0
 VALIDATION_CLEANUP_OUTPUT ?= 0
+VALIDATION_CLEANUP_VECTORS ?= 0
 CI_ENCODE_SET ?= ci-smoke
 RELEASE_AOMCTC_SET ?= release-aomctc
 RELEASE_AOMCTC_FRAMES ?= 50
@@ -99,6 +101,11 @@ RELEASE_AOMCTC_REFERENCE_MODE ?= auto
 RELEASE_AOMCTC_AV2_LOSSY_QP ?= 24
 RELEASE_AOMCTC_VVC_LOSSY_QP ?= 19
 RELEASE_AOMCTC_VVC_SETTINGS ?= fast-search=lossless-speed
+PRE_RELEASE_OUT_DIR ?= verification/generated/pre_release_validation
+PRE_RELEASE_RUN ?=
+PRE_RELEASE_REFERENCE_MODE ?= required
+PRE_RELEASE_SIX_VECTOR_SET ?= release-six-vectors-full
+PRE_RELEASE_SIX_VECTOR_BASELINE ?=
 RELEASE_PERFORMANCE_SET ?= release-aomctc
 RELEASE_PERFORMANCE_OUT_DIR ?= verification/generated/release_performance
 RELEASE_PERFORMANCE_RUN ?=
@@ -139,6 +146,7 @@ ENCODE_MATRIX_DIRECT_SOURCE_FILES ?= 1
 ENCODE_MATRIX_WRITE_RECON ?= 0
 ENCODE_MATRIX_CLEANUP_RECON ?= 0
 ENCODE_MATRIX_CLEANUP_OUTPUT ?= 0
+ENCODE_MATRIX_CLEANUP_VECTORS ?= 0
 EXTERNAL_BENCHMARK_SET ?= local-aomctc-b2-scc-1080p-lossless-50f
 EXTERNAL_BENCHMARK_OUT_DIR ?= verification/generated/market_encoder_compare
 EXTERNAL_BENCHMARK_RUNNER ?= external-drivers/benchmark_external_encoders.py
@@ -199,6 +207,7 @@ VALIDATION_FRAMES_FLAG := $(if $(strip $(VALIDATION_FRAMES)),--frames "$(VALIDAT
 VALIDATION_FORCE_LOSSY_FLAG := $(if $(filter 1 true yes,$(VALIDATION_FORCE_LOSSY)),--force-lossy,)
 VALIDATION_CLEANUP_RECON_FLAG := $(if $(filter 1 true yes,$(VALIDATION_CLEANUP_RECON)),--cleanup-recon,)
 VALIDATION_CLEANUP_OUTPUT_FLAG := $(if $(filter 1 true yes,$(VALIDATION_CLEANUP_OUTPUT)),--cleanup-output,)
+VALIDATION_CLEANUP_VECTORS_FLAG := $(if $(filter 1 true yes,$(VALIDATION_CLEANUP_VECTORS)),--cleanup-vectors,)
 COMPRESSION_LIMIT_FLAG := $(if $(strip $(COMPRESSION_LIMIT)),--limit "$(COMPRESSION_LIMIT)",)
 COMPRESSION_REFERENCE_BACKEND_FLAG := --reference-backend "$(COMPRESSION_REFERENCE_BACKEND)"
 COMPRESSION_REFERENCE_PRESET_FLAG := --reference-preset "$(COMPRESSION_REFERENCE_PRESET)"
@@ -223,6 +232,9 @@ ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATR
 ENCODE_MATRIX_WRITE_RECON_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_WRITE_RECON)),--write-recon,)
 ENCODE_MATRIX_CLEANUP_RECON_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_CLEANUP_RECON)),--cleanup-recon,)
 ENCODE_MATRIX_CLEANUP_OUTPUT_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_CLEANUP_OUTPUT)),--cleanup-output,)
+ENCODE_MATRIX_CLEANUP_VECTORS_FLAG := $(if $(filter 1 true yes,$(ENCODE_MATRIX_CLEANUP_VECTORS)),--cleanup-vectors,)
+PRE_RELEASE_RUN_FLAG := $(if $(strip $(PRE_RELEASE_RUN)),--run-name "$(PRE_RELEASE_RUN)",)
+PRE_RELEASE_SIX_VECTOR_BASELINE_FLAG := $(if $(strip $(PRE_RELEASE_SIX_VECTOR_BASELINE)),--six-vector-baseline-json "$(PRE_RELEASE_SIX_VECTOR_BASELINE)",)
 RELEASE_PERFORMANCE_RUN_FLAG := $(if $(strip $(RELEASE_PERFORMANCE_RUN)),--run-name "$(RELEASE_PERFORMANCE_RUN)",)
 RELEASE_PERFORMANCE_FRAMES_FLAG := $(if $(filter 1 true yes,$(RELEASE_PERFORMANCE_FULL_STREAM)),--full-stream,--frames "$(RELEASE_PERFORMANCE_FRAMES)")
 RELEASE_PERFORMANCE_CODECS_FLAG := $(foreach codec,$(RELEASE_PERFORMANCE_CODECS),--codec "$(codec)")
@@ -250,7 +262,7 @@ CODE_BROWSER_PROFILE_FLAG := $(if $(strip $(CODE_BROWSER_PROFILE_JSON)),--profil
 GEOMETRY_SWEEP_AV2_SETTINGS_FLAG := $(foreach setting,$(GEOMETRY_SWEEP_AV2_SETTINGS),--setting $(setting))
 GPROF_PROFILE_SETTINGS_FLAG := $(foreach setting,$(GPROF_PROFILE_SETTINGS),--set "$(setting)")
 
-.PHONY: help check-tools fmt fmt-check check feature-matrix dead-code-audit clippy-perf test doc api-docs api-docs-strict package-list build debug run code-browser wasm-check wasm-build wasm-screen-demo reference-list reference-setup test-vector-sets test-vectors validate-set validate-release-aomctc release-performance-table compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check ci ci-encode-smoke
+.PHONY: help check-tools fmt fmt-check check feature-matrix dead-code-audit clippy-perf test doc api-docs api-docs-strict package-list build debug run code-browser wasm-check wasm-build wasm-screen-demo reference-list reference-setup test-vector-sets test-vectors validate-set validate-release-aomctc pre-release-validation release-performance-table compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check ci ci-encode-smoke
 
 help:
 	@printf '%s\n' \
@@ -296,11 +308,15 @@ help:
 		'                         Add VALIDATION_SOURCE_FILTERS=1 to skip input files' \
 		'                         Add VALIDATION_DIRECT_SOURCE_FILES=1 for source_file rows' \
 		'                         Add VALIDATION_CLEANUP_OUTPUT=1 to remove successful bitstreams' \
+		'                         Add VALIDATION_CLEANUP_VECTORS=1 to remove generated input vectors' \
 		'                         Use VALIDATION_REFERENCE_MODE=auto|required|off' \
 		'                         Pass extra --set values with VALIDATION_SETTINGS="key ..."' \
 		'  make validate-release-aomctc' \
 		'                         Validate AV2/VVC lossy/lossless on AOM CTC A5/B2 Y4M streams' \
+		'                         Requires AOMCTC_ROOT=/path/to/aomctc' \
 		'                         Uses RELEASE_AOMCTC_FRAMES=50 by default and cleans artifacts' \
+		'  make pre-release-validation AOMCTC_ROOT=/path/to/aomctc' \
+		'                         Run full predictive pre-release validation and write one Markdown checkpoint' \
 		'  make compare-compression' \
 		'                         Compare FrameFinery and reference encoder sizes' \
 		'                         Uses CODEC=av2 COMPRESSION_SET=$(VALIDATION_SET)' \
@@ -320,6 +336,7 @@ help:
 		'                         Time AV2/VVC lossy/lossless encodes over ENCODE_MATRIX_SET' \
 		'                         Set ENCODE_MATRIX_FRAMES=1 for first-frame checks' \
 		'                         Set ENCODE_MATRIX_CLEANUP_OUTPUT=1 to remove successful bitstreams' \
+		'                         Set ENCODE_MATRIX_CLEANUP_VECTORS=1 to remove generated input vectors' \
 		'                         Set ENCODE_MATRIX_WRITE_RECON=1 to keep raw recon artifacts/checksums' \
 		'  make release-performance-table' \
 		'                         Generate the versioned release fps/bitrate/PSNR table' \
@@ -445,24 +462,30 @@ test-vectors:
 	$(PYTHON) scripts/generate_test_vectors.py "$(TEST_VECTOR_SET)" --set-dir "$(VALIDATION_SET_DIR)" --out-dir "$(VALIDATION_OUT_DIR)"
 
 validate-set: build
-	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec "$(CODEC)" "$(VALIDATION_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(VALIDATION_REFERENCE_MODE)" $(VALIDATION_SOURCE_FLAG) $(VALIDATION_DIRECT_SOURCE_FLAG) $(VALIDATION_STOP_FLAG) $(VALIDATION_LIMIT_FLAG) $(VALIDATION_FRAMES_FLAG) $(VALIDATION_FORCE_LOSSY_FLAG) $(VALIDATION_SETTINGS_FLAG) $(VALIDATION_CLEANUP_RECON_FLAG) $(VALIDATION_CLEANUP_OUTPUT_FLAG)
+	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec "$(CODEC)" "$(VALIDATION_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(VALIDATION_REFERENCE_MODE)" $(VALIDATION_SOURCE_FLAG) $(VALIDATION_DIRECT_SOURCE_FLAG) $(VALIDATION_STOP_FLAG) $(VALIDATION_LIMIT_FLAG) $(VALIDATION_FRAMES_FLAG) $(VALIDATION_FORCE_LOSSY_FLAG) $(VALIDATION_SETTINGS_FLAG) $(VALIDATION_CLEANUP_RECON_FLAG) $(VALIDATION_CLEANUP_OUTPUT_FLAG) $(VALIDATION_CLEANUP_VECTORS_FLAG)
 
 validate-release-aomctc: build
-	@df -h . /media/gabriel/storage
-	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" --cleanup-recon --cleanup-output --stop-on-fail
-	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" --force-lossy --setting "qp=$(RELEASE_AOMCTC_AV2_LOSSY_QP)" --cleanup-recon --cleanup-output --stop-on-fail
-	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" $(foreach setting,$(RELEASE_AOMCTC_VVC_SETTINGS),--setting "$(setting)") --cleanup-recon --cleanup-output --stop-on-fail
-	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" --force-lossy --setting "qp=$(RELEASE_AOMCTC_VVC_LOSSY_QP)" $(foreach setting,$(RELEASE_AOMCTC_VVC_SETTINGS),--setting "$(setting)") --cleanup-recon --cleanup-output --stop-on-fail
-	@df -h . /media/gabriel/storage
+	@test -n "$(AOMCTC_ROOT)" || { printf '%s\n' 'error: AOMCTC_ROOT=/path/to/aomctc is required'; exit 2; }
+	@df -h . "$(AOMCTC_ROOT)"
+	AOMCTC_ROOT="$(AOMCTC_ROOT)" $(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" --cleanup-recon --cleanup-output --stop-on-fail
+	AOMCTC_ROOT="$(AOMCTC_ROOT)" $(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" --force-lossy --setting "qp=$(RELEASE_AOMCTC_AV2_LOSSY_QP)" --cleanup-recon --cleanup-output --stop-on-fail
+	AOMCTC_ROOT="$(AOMCTC_ROOT)" $(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" $(foreach setting,$(RELEASE_AOMCTC_VVC_SETTINGS),--setting "$(setting)") --cleanup-recon --cleanup-output --stop-on-fail
+	AOMCTC_ROOT="$(AOMCTC_ROOT)" $(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc "$(RELEASE_AOMCTC_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode "$(RELEASE_AOMCTC_REFERENCE_MODE)" --direct-source-files --frames "$(RELEASE_AOMCTC_FRAMES)" --force-lossy --setting "qp=$(RELEASE_AOMCTC_VVC_LOSSY_QP)" $(foreach setting,$(RELEASE_AOMCTC_VVC_SETTINGS),--setting "$(setting)") --cleanup-recon --cleanup-output --stop-on-fail
+	@df -h . "$(AOMCTC_ROOT)"
+
+pre-release-validation: build
+	@test -n "$(AOMCTC_ROOT)" || { printf '%s\n' 'error: AOMCTC_ROOT=/path/to/aomctc is required'; exit 2; }
+	AOMCTC_ROOT="$(AOMCTC_ROOT)" $(PYTHON) scripts/prerelease_validation.py --ff "$(abspath $(BUILD_BINARY))" --aomctc-root "$(AOMCTC_ROOT)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --validation-log-dir "$(VALIDATION_LOG_DIR)" --out-dir "$(PRE_RELEASE_OUT_DIR)" --reference-mode "$(PRE_RELEASE_REFERENCE_MODE)" --av2-lossy-qp "$(RELEASE_AOMCTC_AV2_LOSSY_QP)" --vvc-lossy-qp "$(RELEASE_AOMCTC_VVC_LOSSY_QP)" --vvc-fast-search "$(ENCODE_MATRIX_VVC_FAST_SEARCH)" --six-vector-set "$(PRE_RELEASE_SIX_VECTOR_SET)" $(PRE_RELEASE_RUN_FLAG) $(PRE_RELEASE_SIX_VECTOR_BASELINE_FLAG)
 
 compare-compression: build
 	$(REFERENCE_ENV) $(PYTHON) scripts/compare_reference_compression.py --ff "$(abspath $(BUILD_BINARY))" --codec "$(CODEC)" "$(COMPRESSION_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(COMPRESSION_OUT_DIR)" --log-dir "$(COMPRESSION_LOG_DIR)" $(COMPRESSION_LIMIT_FLAG) $(COMPRESSION_REFERENCE_BACKEND_FLAG) $(COMPRESSION_REFERENCE_PRESET_FLAG) $(COMPRESSION_REFERENCE_THREADS_FLAG) $(COMPRESSION_AVM_TILE_COLUMNS_FLAG) $(COMPRESSION_AVM_TILE_ROWS_FLAG) $(COMPRESSION_REFERENCE_ARGS_FLAG) $(COMPRESSION_SETTINGS_FLAG) $(COMPRESSION_QP_FLAG) $(COMPRESSION_REFRESH_REFERENCE_FLAG) $(COMPRESSION_DIRECT_SOURCE_FILES_FLAG)
 
 benchmark-encode-matrix: build
-	$(PYTHON) scripts/benchmark_encode_matrix.py "$(ENCODE_MATRIX_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(ENCODE_MATRIX_OUT_DIR)" --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(ENCODE_MATRIX_RUN_FLAG) $(ENCODE_MATRIX_CODECS_FLAG) $(ENCODE_MATRIX_MODES_FLAG) $(ENCODE_MATRIX_BASELINE_FLAG) $(ENCODE_MATRIX_LIMIT_FLAG) $(ENCODE_MATRIX_FRAMES_FLAG) $(ENCODE_MATRIX_AV2_GOP_FLAG) $(ENCODE_MATRIX_VVC_GOP_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_OUTPUT_FLAG)
+	$(PYTHON) scripts/benchmark_encode_matrix.py "$(ENCODE_MATRIX_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(ENCODE_MATRIX_OUT_DIR)" --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(ENCODE_MATRIX_RUN_FLAG) $(ENCODE_MATRIX_CODECS_FLAG) $(ENCODE_MATRIX_MODES_FLAG) $(ENCODE_MATRIX_BASELINE_FLAG) $(ENCODE_MATRIX_LIMIT_FLAG) $(ENCODE_MATRIX_FRAMES_FLAG) $(ENCODE_MATRIX_AV2_GOP_FLAG) $(ENCODE_MATRIX_VVC_GOP_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_OUTPUT_FLAG) $(ENCODE_MATRIX_CLEANUP_VECTORS_FLAG)
 
 release-performance-table: build
-	$(PYTHON) scripts/release_performance_table.py "$(RELEASE_PERFORMANCE_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(RELEASE_PERFORMANCE_OUT_DIR)" $(RELEASE_PERFORMANCE_RUN_FLAG) $(RELEASE_PERFORMANCE_FRAMES_FLAG) $(RELEASE_PERFORMANCE_CODECS_FLAG) $(RELEASE_PERFORMANCE_MODES_FLAG) $(RELEASE_PERFORMANCE_LIMIT_FLAG) $(RELEASE_PERFORMANCE_KEEP_BITSTREAMS_FLAG)
+	@test -n "$(AOMCTC_ROOT)" || { printf '%s\n' 'error: AOMCTC_ROOT=/path/to/aomctc is required'; exit 2; }
+	AOMCTC_ROOT="$(AOMCTC_ROOT)" $(PYTHON) scripts/release_performance_table.py "$(RELEASE_PERFORMANCE_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(RELEASE_PERFORMANCE_OUT_DIR)" $(RELEASE_PERFORMANCE_RUN_FLAG) $(RELEASE_PERFORMANCE_FRAMES_FLAG) $(RELEASE_PERFORMANCE_CODECS_FLAG) $(RELEASE_PERFORMANCE_MODES_FLAG) $(RELEASE_PERFORMANCE_LIMIT_FLAG) $(RELEASE_PERFORMANCE_KEEP_BITSTREAMS_FLAG)
 
 benchmark-external-encoders: build
 	@test -f "$(EXTERNAL_BENCHMARK_RUNNER)" || { printf '%s\n' "missing local external-driver runner: $(EXTERNAL_BENCHMARK_RUNNER)" "Place local comparison drivers under external-drivers/; that directory is gitignored."; exit 1; }
@@ -503,7 +526,7 @@ llvm-vector-remarks:
 
 profile-hotspots:
 	$(MAKE) build AV2_STATS=$(HOTSPOT_BUILD_AV2_STATS) VVC_STATS=$(HOTSPOT_BUILD_VVC_STATS)
-	$(PYTHON) scripts/benchmark_encode_matrix.py "$(HOTSPOT_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(HOTSPOT_MATRIX_DIR)" --run-name "$(HOTSPOT_RUN)" $(HOTSPOT_CODECS_FLAG) $(HOTSPOT_MODES_FLAG) --frames 1 --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(HOTSPOT_AV2_STATS_FLAG) $(HOTSPOT_VVC_STATS_FLAG) $(HOTSPOT_BASELINE_FLAG) $(HOTSPOT_LIMIT_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG)
+	$(PYTHON) scripts/benchmark_encode_matrix.py "$(HOTSPOT_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(HOTSPOT_MATRIX_DIR)" --run-name "$(HOTSPOT_RUN)" $(HOTSPOT_CODECS_FLAG) $(HOTSPOT_MODES_FLAG) --frames 1 --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(HOTSPOT_AV2_STATS_FLAG) $(HOTSPOT_VVC_STATS_FLAG) $(HOTSPOT_BASELINE_FLAG) $(HOTSPOT_LIMIT_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG) --cleanup-vectors
 	$(PYTHON) scripts/summarize_hotspots.py "$(HOTSPOT_RUN_DIR)" --encode-matrix-json "$(HOTSPOT_MATRIX_DIR)/$(HOTSPOT_RUN).json" $(HOTSPOT_CODECS_FLAG)
 	@if [ "$(HOTSPOT_VISUALIZE)" = "1" ] || [ "$(HOTSPOT_VISUALIZE)" = "true" ] || [ "$(HOTSPOT_VISUALIZE)" = "yes" ]; then \
 		$(PYTHON) scripts/generate_rust_code_browser.py --root . --output "$(HOTSPOT_BROWSER_OUT)" --title "FrameFinery Engine Hotspots: $(HOTSPOT_RUN)" --profile-json "$(HOTSPOT_RUN_DIR)/hotspots_profile.json"; \

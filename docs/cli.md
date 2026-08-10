@@ -128,10 +128,11 @@ Local release-oriented checks are driven by Makefile targets:
 
 ```sh
 make release-check
-make validate-release-aomctc
+make validate-release-aomctc AOMCTC_ROOT=/path/to/aomctc
+make pre-release-validation AOMCTC_ROOT=/path/to/aomctc
 make release-performance-table
 ```
 
 `validate-release-aomctc` reads the local AOM CTC A5/B2 Y4M files directly
-from `/media/gabriel/storage/YUV/aomctc` when available. It does not decompress
-the optional B1 archive and does not create raw source copies.
+from `AOMCTC_ROOT`. It does not decompress the optional B1 archive and does not
+create raw source copies.

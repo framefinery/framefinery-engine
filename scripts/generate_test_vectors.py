@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
+import re
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -39,6 +41,7 @@ MANIFEST_COLUMNS = frozenset(
     }
 )
 BOOLEAN_HEADER_HINTS = frozenset({"1", "0", "true", "false", "yes", "no", "on", "off"})
+MANIFEST_ENV_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 @dataclass(frozen=True)
@@ -122,9 +125,21 @@ def generate_vectors(set_name: str, out_dir: Path, set_dir: Path = DEFAULT_SET_D
     paths = []
     for vector in vector_set.vectors:
         path = out_dir / vector.filename
-        path.write_bytes(generate_yuv(vector, vector_set.sources))
+        write_vector_file(vector, vector_set.sources, path)
         paths.append(path)
     return paths
+
+
+def write_vector_file(vector: TestVector, sources: dict[str, TestVectorSource], path: Path) -> None:
+    """Write a vector to disk without requiring large generated clips in memory."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    validate_vector(vector)
+    if vector.pattern == "source_y4m_convert":
+        write_y4m_converted_clip(vector, path)
+    elif vector.fmt in {"gbrp8", "rgb24"} and vector.pattern != "source_file":
+        write_rgb_pattern_clip(vector, path)
+    else:
+        path.write_bytes(generate_yuv(vector, sources))
 
 
 def vector_sets(set_dir: Path = DEFAULT_SET_DIR) -> dict[str, TestVectorSet]:
@@ -407,6 +422,28 @@ def parse_optional_path(value: str | None) -> Path | None:
     return Path(stripped)
 
 
+def resolve_manifest_path(path: Path, context: str) -> Path:
+    raw = str(path)
+
+    def replace_env(match: re.Match[str]) -> str:
+        name = match.group(1)
+        value = os.environ.get(name)
+        if value is None:
+            raise ValueError(
+                f"{context} path requires environment variable {name}; "
+                f"set {name}=<directory> before running this target"
+            )
+        if not value:
+            raise ValueError(f"{context} path requires non-empty environment variable {name}")
+        return value
+
+    expanded = MANIFEST_ENV_RE.sub(replace_env, raw)
+    resolved = Path(expanded)
+    if resolved.is_absolute():
+        return resolved
+    return (REPO_ROOT / resolved).resolve(strict=False)
+
+
 def parse_optional_fps(value: str | None, field: str) -> str | None:
     stripped = optional_field(value)
     if stripped is None:
@@ -445,6 +482,7 @@ def fps_matches(declared: str, actual: str) -> bool:
 
 
 def read_y4m_metadata(path: Path, context: str) -> Y4mMetadata:
+    path = resolve_manifest_path(path, context)
     if not path.exists():
         raise ValueError(f"{context} source file does not exist: {path}")
     with path.open("rb") as source:
@@ -460,6 +498,12 @@ def generate_yuv(vector: TestVector, sources: dict[str, TestVectorSource]) -> by
         return generate_source_crop(vector, sources)
     if vector.pattern == "source_file":
         return generate_source_file_clip(vector)
+    if vector.pattern == "source_y4m_convert":
+        return generate_y4m_converted_clip(vector)
+    if vector.fmt == "gbrp8":
+        return generate_gbrp8(vector)
+    if vector.fmt == "rgb24":
+        return generate_rgb24(vector)
     bit_depth = yuv420_bit_depth(vector.fmt)
     if bit_depth is not None:
         return generate_yuv420p(vector, bit_depth)
@@ -481,24 +525,21 @@ def validate_vector(vector: TestVector) -> None:
         raise ValueError(f"{vector.name} {vector.fmt} dimensions must be even")
     if yuv422_bit_depth(vector.fmt) is not None and vector.width % 2 != 0:
         raise ValueError(f"{vector.name} {vector.fmt} width must be even")
-    if yuv444_bit_depth(vector.fmt) is not None and (
-        vector.width % 8 != 0 or vector.height % 8 != 0
-    ):
-        raise ValueError(
-            f"{vector.name} {vector.fmt} fixtures use 8-pixel geometry for current codecs"
-        )
+    if vector.pattern == "source_y4m_convert" and vector.source_path is None:
+        raise ValueError(f"{vector.name} uses source_y4m_convert but has no path")
 
 
 def generate_source_file_clip(vector: TestVector) -> bytes:
     if vector.source_path is None:
         raise ValueError(f"{vector.name} uses source_file but has no path")
-    if not vector.source_path.exists():
-        raise ValueError(f"{vector.name} source file does not exist: {vector.source_path}")
-    if vector.source_path.suffix.lower() == ".y4m":
-        return generate_y4m_source_file_clip(vector)
+    source_path = resolve_manifest_path(vector.source_path, vector.name)
+    if not source_path.exists():
+        raise ValueError(f"{vector.name} source file does not exist: {source_path}")
+    if source_path.suffix.lower() == ".y4m":
+        return generate_y4m_source_file_clip(vector, source_path)
     frame_len = raw_frame_len(vector)
     byte_len = frame_len * vector.frames
-    with vector.source_path.open("rb") as source:
+    with source_path.open("rb") as source:
         data = source.read(byte_len)
     if len(data) != byte_len:
         raise ValueError(
@@ -507,13 +548,13 @@ def generate_source_file_clip(vector: TestVector) -> bytes:
     return data
 
 
-def generate_y4m_source_file_clip(vector: TestVector) -> bytes:
+def generate_y4m_source_file_clip(vector: TestVector, source_path: Path) -> bytes:
     frame_len = raw_frame_len(vector)
     out = bytearray()
-    with vector.source_path.open("rb") as source:
+    with source_path.open("rb") as source:
         header = source.readline()
         if not header.startswith(b"YUV4MPEG2 "):
-            raise ValueError(f"{vector.name} source is not a Y4M stream: {vector.source_path}")
+            raise ValueError(f"{vector.name} source is not a Y4M stream: {source_path}")
         metadata = parse_y4m_metadata(
             header.decode("ascii", errors="replace").strip(),
             vector.name,
@@ -536,6 +577,167 @@ def generate_y4m_source_file_clip(vector: TestVector) -> bytes:
                     f"for frame {frame_index + 1}, got {len(frame)}"
                 )
             out.extend(frame)
+    return bytes(out)
+
+
+def generate_y4m_converted_clip(vector: TestVector) -> bytes:
+    if vector.source_path is None:
+        raise ValueError(f"{vector.name} uses source_y4m_convert but has no path")
+    source_path = resolve_manifest_path(vector.source_path, vector.name)
+    out = bytearray()
+    for frame in converted_y4m_frames(vector, source_path):
+        out.extend(frame)
+    return bytes(out)
+
+
+def write_y4m_converted_clip(vector: TestVector, output: Path) -> None:
+    if vector.source_path is None:
+        raise ValueError(f"{vector.name} uses source_y4m_convert but has no path")
+    source_path = resolve_manifest_path(vector.source_path, vector.name)
+    with output.open("wb") as out:
+        for frame in converted_y4m_frames(vector, source_path):
+            out.write(frame)
+
+
+def converted_y4m_frames(vector: TestVector, source_path: Path):
+    source_metadata: Y4mMetadata | None = None
+    target_depth = yuv_bit_depth(vector.fmt)
+    if target_depth is None:
+        raise ValueError(f"{vector.name} source_y4m_convert target must be planar YUV")
+
+    with source_path.open("rb") as source:
+        header = source.readline()
+        if not header.startswith(b"YUV4MPEG2 "):
+            raise ValueError(f"{vector.name} source is not a Y4M stream: {source_path}")
+        source_metadata = parse_y4m_metadata(
+            header.decode("ascii", errors="replace").strip(),
+            vector.name,
+        )
+        if source_metadata.width != vector.width or source_metadata.height != vector.height:
+            raise ValueError(
+                f"{vector.name} cannot convert {source_metadata.width}x{source_metadata.height} "
+                f"Y4M source to {vector.width}x{vector.height}"
+            )
+        source_depth = yuv_bit_depth(source_metadata.fmt)
+        if source_depth != target_depth:
+            raise ValueError(
+                f"{vector.name} cannot convert {source_metadata.fmt} to {vector.fmt}; "
+                "bit-depth conversion is intentionally not implemented"
+            )
+        if (
+            vector.fps is not None
+            and source_metadata.fps is not None
+            and not fps_matches(vector.fps, source_metadata.fps)
+        ):
+            raise ValueError(
+                f"{vector.name} declares {vector.fps} fps, but Y4M source is {source_metadata.fps}"
+            )
+        frame_len = raw_frame_len_for_format(vector.width, vector.height, source_metadata.fmt)
+        for frame_index in range(vector.frames):
+            frame_header = source.readline()
+            if not frame_header:
+                raise ValueError(
+                    f"{vector.name} Y4M source is too short: missing frame {frame_index + 1}"
+                )
+            if not frame_header.startswith(b"FRAME"):
+                raise ValueError(
+                    f"{vector.name} Y4M source has invalid frame marker at frame {frame_index + 1}"
+                )
+            frame = source.read(frame_len)
+            if len(frame) != frame_len:
+                raise ValueError(
+                    f"{vector.name} Y4M source is too short: expected {frame_len} byte(s) "
+                    f"for frame {frame_index + 1}, got {len(frame)}"
+                )
+            yield convert_planar_yuv_frame(
+                frame,
+                vector.width,
+                vector.height,
+                source_metadata.fmt,
+                vector.fmt,
+            )
+
+
+def convert_planar_yuv_frame(
+    frame: bytes,
+    width: int,
+    height: int,
+    source_fmt: str,
+    target_fmt: str,
+) -> bytes:
+    if source_fmt == target_fmt:
+        return frame
+    source_depth = yuv_bit_depth(source_fmt)
+    target_depth = yuv_bit_depth(target_fmt)
+    if source_depth is None or target_depth is None:
+        raise ValueError(f"Y4M conversion expects planar YUV, got {source_fmt}->{target_fmt}")
+    if source_depth != target_depth:
+        raise ValueError(f"Y4M conversion cannot change bit depth: {source_fmt}->{target_fmt}")
+
+    bps = bytes_per_sample(source_depth)
+    source_luma, source_chroma = planar_yuv_plane_sizes(width, height, source_fmt)
+    target_luma, target_chroma = planar_yuv_plane_sizes(width, height, target_fmt)
+    source_y, source_u, source_v = split_planar_yuv_frame(frame, source_luma, source_chroma, bps)
+    target_chroma_width, target_chroma_height = target_chroma
+
+    out = bytearray()
+    out.extend(source_y)
+    out.extend(
+        resample_chroma_nearest(
+            source_u,
+            source_chroma[0],
+            source_chroma[1],
+            target_chroma_width,
+            target_chroma_height,
+            bps,
+        )
+    )
+    out.extend(
+        resample_chroma_nearest(
+            source_v,
+            source_chroma[0],
+            source_chroma[1],
+            target_chroma_width,
+            target_chroma_height,
+            bps,
+        )
+    )
+    expected = (target_luma[0] * target_luma[1] + 2 * target_chroma_width * target_chroma_height) * bps
+    if len(out) != expected:
+        raise ValueError(f"internal Y4M conversion length mismatch: {len(out)} != {expected}")
+    return bytes(out)
+
+
+def split_planar_yuv_frame(
+    frame: bytes,
+    luma_size: tuple[int, int],
+    chroma_size: tuple[int, int],
+    bytes_per_sample_value: int,
+) -> tuple[bytes, bytes, bytes]:
+    y_len = luma_size[0] * luma_size[1] * bytes_per_sample_value
+    uv_len = chroma_size[0] * chroma_size[1] * bytes_per_sample_value
+    return frame[:y_len], frame[y_len : y_len + uv_len], frame[y_len + uv_len : y_len + uv_len * 2]
+
+
+def resample_chroma_nearest(
+    source: bytes,
+    source_width: int,
+    source_height: int,
+    target_width: int,
+    target_height: int,
+    bytes_per_sample_value: int,
+) -> bytes:
+    out = bytearray(target_width * target_height * bytes_per_sample_value)
+    offset = 0
+    for y in range(target_height):
+        source_y = min(source_height - 1, y * source_height // target_height)
+        for x in range(target_width):
+            source_x = min(source_width - 1, x * source_width // target_width)
+            source_offset = (source_y * source_width + source_x) * bytes_per_sample_value
+            out[offset : offset + bytes_per_sample_value] = source[
+                source_offset : source_offset + bytes_per_sample_value
+            ]
+            offset += bytes_per_sample_value
     return bytes(out)
 
 
@@ -815,20 +1017,84 @@ def pad_planar8_planes_to_le(
     return bytes(out)
 
 
+def generate_gbrp8(vector: TestVector) -> bytes:
+    out = bytearray()
+    for frame in range(vector.frames):
+        green, blue, red = render_frame(vector, frame)
+        out.extend(green)
+        out.extend(blue)
+        out.extend(red)
+    return bytes(out)
+
+
+def generate_rgb24(vector: TestVector) -> bytes:
+    out = bytearray()
+    for frame in range(vector.frames):
+        green, blue, red = render_frame(vector, frame)
+        for index in range(vector.width * vector.height):
+            out.append(red[index])
+            out.append(green[index])
+            out.append(blue[index])
+    return bytes(out)
+
+
+def write_rgb_pattern_clip(vector: TestVector, output: Path) -> None:
+    with output.open("wb") as out:
+        for frame in range(vector.frames):
+            green, blue, red = render_frame(vector, frame)
+            if vector.fmt == "gbrp8":
+                out.write(green)
+                out.write(blue)
+                out.write(red)
+            elif vector.fmt == "rgb24":
+                interleaved = bytearray(vector.width * vector.height * 3)
+                offset = 0
+                for index in range(vector.width * vector.height):
+                    interleaved[offset] = red[index]
+                    interleaved[offset + 1] = green[index]
+                    interleaved[offset + 2] = blue[index]
+                    offset += 3
+                out.write(interleaved)
+            else:
+                raise ValueError(f"unsupported RGB generated format: {vector.fmt}")
+
+
 def raw_frame_len(vector: TestVector) -> int:
-    luma = vector.width * vector.height
-    if vector.fmt in {"gbrp8", "rgb24"}:
+    return raw_frame_len_for_format(vector.width, vector.height, vector.fmt)
+
+
+def raw_frame_len_for_format(width: int, height: int, fmt: str) -> int:
+    luma = width * height
+    if fmt in {"gbrp8", "rgb24"}:
         return luma * 3
-    bit_depth = yuv420_bit_depth(vector.fmt)
+    bit_depth = yuv420_bit_depth(fmt)
     if bit_depth is not None:
         return luma * 3 // 2 * bytes_per_sample(bit_depth)
-    bit_depth = yuv422_bit_depth(vector.fmt)
+    bit_depth = yuv422_bit_depth(fmt)
     if bit_depth is not None:
         return luma * 2 * bytes_per_sample(bit_depth)
-    bit_depth = yuv444_bit_depth(vector.fmt)
+    bit_depth = yuv444_bit_depth(fmt)
     if bit_depth is not None:
         return luma * 3 * bytes_per_sample(bit_depth)
-    raise ValueError(f"unsupported source_file format: {vector.fmt}")
+    raise ValueError(f"unsupported source_file format: {fmt}")
+
+
+def planar_yuv_plane_sizes(width: int, height: int, fmt: str) -> tuple[tuple[int, int], tuple[int, int]]:
+    if yuv420_bit_depth(fmt) is not None:
+        return (width, height), (width // 2, height // 2)
+    if yuv422_bit_depth(fmt) is not None:
+        return (width, height), (width // 2, height)
+    if yuv444_bit_depth(fmt) is not None:
+        return (width, height), (width, height)
+    raise ValueError(f"unsupported planar YUV format: {fmt}")
+
+
+def yuv_bit_depth(fmt: str) -> int | None:
+    for parser in (yuv420_bit_depth, yuv422_bit_depth, yuv444_bit_depth):
+        bit_depth = parser(fmt)
+        if bit_depth is not None:
+            return bit_depth
+    return None
 
 
 def yuv444_bit_depth(fmt: str) -> int | None:

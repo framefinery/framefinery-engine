@@ -40,6 +40,10 @@ from the Y4M header and strips the Y4M container markers when writing raw
 generated fixtures. Source-file generation supports planar 4:2:0, 4:2:2, and
 4:4:4 rows with the same 8-through-16-bit format spelling accepted by the
 fixture generator, plus `gbrp8` planar RGB rows.
+Rows may also use `pattern=source_y4m_convert` with a Y4M `path` to materialize
+a raw planar YUV clip at a different chroma sampling while preserving bit
+depth. This is intended for release fixtures that need 4:2:2 or 4:4:4 coverage
+from an external 4:2:0 Y4M source without keeping derived raw files on disk.
 Committed source-file manifests should declare width, height, format, and fps
 explicitly so `make test-vector-sets` can list manifests on machines where the
 local media corpus is not mounted. Validation and benchmark targets still need
@@ -55,7 +59,7 @@ Supported generated formats:
 - `yuv420p8` through `yuv420p16le`
 - `yuv422p8` through `yuv422p16le`
 - `yuv444p8` through `yuv444p16le`
-- `gbrp8` source-file clips
+- `gbrp8` generated patterns and source-file clips
 
 Supported patterns:
 
@@ -64,6 +68,7 @@ Supported patterns:
 - `gradient`
 - `color_blocks`
 - `bitdepth_canary`
+- `source_y4m_convert` for external Y4M-backed chroma conversion fixtures
 - `source_crop_canary` for local high-depth PNG-backed crop fixtures
 
 `bitdepth_canary` is a high-depth smoke pattern that writes deterministic
@@ -98,10 +103,19 @@ make validate-set CODEC=av2 VALIDATION_SET=smoke VALIDATION_SOURCE_FILTERS=1
 ```
 
 The committed `release-aomctc` manifest points at the local AOM CTC A5/B2 Y4M
-streams under `/media/gabriel/storage/YUV/aomctc`. Use
-`make validate-release-aomctc` for the recurring release crash/regression pass
-and `make release-performance-table` for the version performance table. Both
-release targets read source files directly and avoid raw source copies.
+streams through `${AOMCTC_ROOT}`. Use
+`make validate-release-aomctc AOMCTC_ROOT=/path/to/aomctc` for the recurring
+release crash/regression pass. The full checkpoint target is
+`make pre-release-validation AOMCTC_ROOT=/path/to/aomctc`. Release targets read
+source files directly when possible and clean generated raw source copies before
+the script exits.
+The `release-six-vectors-full` set uses direct AOM CTC Y4M input only for the
+native 4:2:0 rows. Its 4:2:2 and 4:4:4 rows are generated and cleaned by the
+benchmark script, and its full-length RGB row is encoded through the CLI pattern
+source filter so no multi-GB temporary RGB fixture is produced.
+`multictu-regression` is the committed small generated set for rows that cross
+VVC CTU / AV2 superblock boundaries, including visible sizes that are not
+multiples of 8 where the pixel format allows them.
 Rows with dimensions that are not multiples of 8 may cover both AV2 and VVC when
 the visible geometry is legal for the input format. Both codecs pad internally
 to their current coded-canvas granularity and signal the visible crop to the

@@ -45,9 +45,10 @@ each later versioned release.
   README and command-line category.
 - `cargo package --list` should show small package contents and no generated
   media/reference trees in the archives.
-- `verification/generated` is ignored but currently large locally, about 17G
-  after cleaning profiling/comparison outputs and preserving the Wayland
-  `gbrp8` capture files.
+- `verification/generated` is ignored. Release validation should leave only
+  logs/reports by default; generated raw vectors, reconstructions, and
+  bitstreams should be cleaned by the validation scripts after successful
+  cases.
 
 ## Publish Runbook
 
@@ -99,9 +100,9 @@ Before a manual publish:
   was cleaned during 0.0.3 preparation and should be empty before the final
   package inspection starts.
 - Optionally clean old ignored benchmark artifacts under `verification/generated`
-  before longer release validation runs to reduce disk pressure. Keep the local
-  Wayland `gbrp8` capture files under `verification/generated/test_vectors/`
-  unless replacing them intentionally.
+  before longer release validation runs to reduce disk pressure. Do not depend
+  on persistent source fixtures inside `verification/generated`; release scripts
+  should create and remove generated raw vectors themselves.
 
 ## Post-0.0.3 TODOs
 
@@ -241,15 +242,25 @@ Run the AOM CTC A5/B2 release set with required references:
 
 ```sh
 make validate-release-aomctc \
+  AOMCTC_ROOT=/path/to/aomctc \
   RELEASE_AOMCTC_REFERENCE_MODE=required \
   RELEASE_AOMCTC_FRAMES=50
 ```
 
-For the six-vector screen-content scoreboard, run the encode matrix against
-the last recorded baseline and inspect byte, FPS, and PSNR deltas:
+For the full pre-release checkpoint, including full-length predictive streams,
+geometry sweep, unusual geometry, `regression`, `multictu-regression`, AOM CTC
+A5/B2, and the six-vector scoreboard, run:
 
 ```sh
-python3 scripts/benchmark_encode_matrix.py local-aomctc-b2-scc-1080p-lossless-50f \
+make pre-release-validation \
+  AOMCTC_ROOT=/path/to/aomctc
+```
+
+For a standalone six-vector screen-content scoreboard, run the encode matrix
+against the last recorded baseline and inspect byte, FPS, and PSNR deltas:
+
+```sh
+python3 scripts/benchmark_encode_matrix.py release-six-vectors-full \
   --ff ./ff \
   --set-dir verification/test_vector_sets \
   --vector-dir verification/generated/test_vectors \
@@ -258,9 +269,14 @@ python3 scripts/benchmark_encode_matrix.py local-aomctc-b2-scc-1080p-lossless-50
   --av2-lossy-qp 24 \
   --vvc-lossy-qp 19 \
   --vvc-fast-search lossless-speed \
-  --baseline-json verification/generated/encode_matrix/current-six-vectors-50f.json \
-  --cleanup-output
+  --cleanup-output \
+  --cleanup-vectors
 ```
+
+The native AOM CTC rows are read directly from `AOMCTC_ROOT`. The derived
+4:2:2/4:4:4 rows are materialized with `source_y4m_convert`, reused within the
+matrix run, and cleaned by `--cleanup-vectors`; the RGB row uses a CLI source
+filter and does not create a raw RGB temporary.
 
 Treat reference-decoder mismatches, lossless byte changes, and PSNR drops as
 release blockers unless they are explained and intentionally accepted. Timing

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import random
 import shlex
 import subprocess
@@ -29,6 +30,13 @@ DEFAULT_MANIFEST = (
     / "local-aomctc-b2-scc-predictive-sweep-3f.csv"
 )
 DEFAULT_SEED = 0xA02C_3F42
+
+
+def aomctc_path(relative: str) -> Path:
+    root = os.environ.get("AOMCTC_ROOT")
+    if root:
+        return Path(root) / relative
+    return Path("${AOMCTC_ROOT}") / relative
 
 
 @dataclass(frozen=True)
@@ -62,7 +70,7 @@ class CropCase:
 SOURCE_VARIANTS = (
     SourceVariant(
         "scene_420_8",
-        Path("/media/gabriel/storage/YUV/aomctc/b2_scc/SceneComposition_1.y4m"),
+        aomctc_path("b2_scc/SceneComposition_1.y4m"),
         "yuv420p8",
     ),
     SourceVariant(
@@ -79,9 +87,7 @@ SOURCE_VARIANTS = (
     ),
     SourceVariant(
         "mission_420_10",
-        Path(
-            "/media/gabriel/storage/YUV/aomctc/b2_scc/MissionControlClip1_1920x1080_60fps_10bit_420_0450_0579.y4m"
-        ),
+        aomctc_path("b2_scc/MissionControlClip1_1920x1080_60fps_10bit_420_0450_0579.y4m"),
         "yuv420p10le",
     ),
     SourceVariant(

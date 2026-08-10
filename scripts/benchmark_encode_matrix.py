@@ -26,6 +26,7 @@ DEFAULT_SET = "local-aomctc-b2-scc-1080p-lossless-50f"
 DEFAULT_VECTOR_DIR = REPO_ROOT / "verification" / "generated" / "test_vectors"
 DEFAULT_OUT_DIR = REPO_ROOT / "verification" / "generated" / "encode_matrix"
 PSNR_ALL_RE = re.compile(r"\bpsnr_all=(inf|[-+]?[0-9]*\.?[0-9]+)")
+CLI_SOURCE_FILTER_PATTERNS = frozenset(("black", "checker", "gradient", "color_blocks"))
 TRADEOFF_FPS_LOG2_WEIGHT = 10.0
 TRADEOFF_BYTES_LOG2_WEIGHT = 4.0
 TRADEOFF_PSNR_DB_WEIGHT = 8.0
@@ -80,6 +81,11 @@ def main() -> int:
         "--cleanup-output",
         action="store_true",
         help="delete each encoded bitstream after size and checksum are collected",
+    )
+    parser.add_argument(
+        "--cleanup-vectors",
+        action="store_true",
+        help="delete generated raw source vectors before exit; direct source_file inputs are never removed",
     )
     parser.add_argument(
         "--write-recon",
@@ -139,26 +145,39 @@ def main() -> int:
         cases = cases[: args.limit]
     total_cases = len(cases)
 
-    for codec, mode, vector in cases:
-        case_index = len(results) + 1
-        print(
-            f"[{case_index:03d}/{total_cases:03d}] {codec} {mode} {vector.name}",
-            flush=True,
-        )
-        result = run_case(vector_set, vector, codec, mode, run_dir, log_dir, args)
-        apply_baseline_delta(result, baseline)
-        results.append(result)
-        delta = delta_label(result)
-        print(
-            "  bytes={bytes} bitrate_kbps={bitrate} fps={fps:.2f} psnr={psnr}{delta}".format(
-                bytes=result["bytes"],
-                bitrate=format_optional_one_decimal(result.get("bitrate_kbps")),
-                fps=result["fps"],
-                psnr=format_optional_float(result.get("psnr_all_mean")),
-                delta=delta,
-            ),
-            flush=True,
-        )
+    generated_source_cache: dict[tuple[Any, ...], Path] = {}
+    try:
+        for codec, mode, vector in cases:
+            case_index = len(results) + 1
+            print(
+                f"[{case_index:03d}/{total_cases:03d}] {codec} {mode} {vector.name}",
+                flush=True,
+            )
+            result = run_case(
+                vector_set,
+                vector,
+                codec,
+                mode,
+                run_dir,
+                log_dir,
+                args,
+                generated_source_cache,
+            )
+            apply_baseline_delta(result, baseline)
+            results.append(result)
+            delta = delta_label(result)
+            print(
+                "  bytes={bytes} bitrate_kbps={bitrate} fps={fps:.2f} psnr={psnr}{delta}".format(
+                    bytes=result["bytes"],
+                    bitrate=format_optional_one_decimal(result.get("bitrate_kbps")),
+                    fps=result["fps"],
+                    psnr=format_optional_float(result.get("psnr_all_mean")),
+                    delta=delta,
+                ),
+                flush=True,
+            )
+    finally:
+        cleanup_cached_vector_artifacts(args, generated_source_cache)
     skipped = count_skipped(vector_set, codecs, modes, args.limit)
     apply_av2_parity_gaps(results)
 
@@ -173,6 +192,7 @@ def main() -> int:
         "vvc_fast_search": args.vvc_fast_search,
         "cleanup_recon": args.cleanup_recon,
         "cleanup_output": args.cleanup_output,
+        "cleanup_vectors": args.cleanup_vectors,
         "write_recon": args.write_recon,
         "skipped": skipped,
         "results": results,
@@ -194,6 +214,7 @@ def rerender_report(args: argparse.Namespace) -> int:
     report.setdefault("vvc_fast_search", args.vvc_fast_search)
     report.setdefault("cleanup_recon", False)
     report.setdefault("cleanup_output", False)
+    report.setdefault("cleanup_vectors", False)
     report.setdefault("write_recon", True)
     results = report.get("results", [])
     baseline = load_baseline(args.baseline_json)
@@ -269,10 +290,19 @@ def run_case(
     run_dir: Path,
     log_dir: Path,
     args: argparse.Namespace,
+    generated_source_cache: dict[tuple[Any, ...], Path],
 ) -> dict[str, Any]:
     if args.frames is not None and args.frames != vector.frames:
         vector = replace(vector, frames=args.frames)
-    source_path = source_path_for_vector(vector_set, vector, args)
+    use_source_filter = should_use_source_filter(vector)
+    source_path: Path | None = None
+    if not use_source_filter:
+        source_path = source_path_for_vector(
+            vector_set,
+            vector,
+            args,
+            generated_source_cache,
+        )
     case_dir = run_dir / codec / mode
     case_dir.mkdir(parents=True, exist_ok=True)
     stem = Path(vector.filename).stem
@@ -288,26 +318,32 @@ def run_case(
     if vvc_stats_path is not None:
         vvc_stats_path.unlink(missing_ok=True)
 
-    command = [
-        str(args.ff),
-        "encode",
-        str(source_path),
-        "--video",
-        f"{vector.width}x{vector.height}:{vector.fmt}",
-        "--frames",
-        str(vector.frames),
-    ]
+    command = [str(args.ff), "encode"]
+    if use_source_filter:
+        command.extend(["--filter", f"pattern={vector.pattern}"])
+    else:
+        assert source_path is not None
+        command.append(str(source_path))
+    command.extend(
+        [
+            "--video",
+            f"{vector.width}x{vector.height}:{vector.fmt}",
+            "--frames",
+            str(vector.frames),
+        ]
+    )
     if vector.fps is not None:
         command.extend(["--fps", vector.fps])
+    append_vector_filters(command, vector)
     command.extend(["--encode", f"{codec}:{output}", "--psnr"])
     if args.write_recon:
         command.extend(["--recon", str(recon)])
     settings: list[str] = []
     if mode == "lossless":
         settings.append("lossless")
-    if codec == "av2" and args.av2_gop != -1:
+    if codec == "av2":
         settings.append(f"gop={args.av2_gop}")
-    if codec == "vvc" and args.vvc_gop != -1:
+    if codec == "vvc":
         settings.append(f"gop={args.vvc_gop}")
     if codec == "vvc" and args.vvc_fast_search != "off":
         settings.append(f"fast-search={args.vvc_fast_search}")
@@ -339,7 +375,9 @@ def run_case(
     log.write_text(f"$ {shlex.join(command)}\n\n{process.stdout}")
     if process.returncode != 0:
         print(process.stdout, file=sys.stderr, end="")
-        raise SystemExit(f"encode failed for {codec} {mode} {vector.filename}; see {relpath(log)}")
+        raise SystemExit(
+            f"encode failed for {codec} {mode} {vector.filename}; see {relpath(log)}"
+        )
     require_non_empty(output, "bitstream", vector.filename, log)
     if args.write_recon:
         require_non_empty(recon, "reconstruction", vector.filename, log)
@@ -412,20 +450,50 @@ def source_path_for_vector(
     vector_set: generate_test_vectors.TestVectorSet,
     vector: generate_test_vectors.TestVector,
     args: argparse.Namespace,
+    generated_source_cache: dict[tuple[Any, ...], Path],
 ) -> Path:
     if args.direct_source_files and vector.pattern == "source_file" and vector.source_path:
         return source_file_path(vector)
-    args.vector_dir.mkdir(parents=True, exist_ok=True)
+    cache_key = source_cache_key(vector)
+    if cache_key in generated_source_cache and generated_source_cache[cache_key].exists():
+        return generated_source_cache[cache_key]
     path = args.vector_dir / vector.filename
-    path.write_bytes(generate_test_vectors.generate_yuv(vector, vector_set.sources))
+    generated_source_cache[cache_key] = path
+    try:
+        generate_test_vectors.write_vector_file(vector, vector_set.sources, path)
+    except BaseException:
+        cleanup_vector_artifact(args, path)
+        generated_source_cache.pop(cache_key, None)
+        raise
     return path
+
+
+def source_cache_key(vector: generate_test_vectors.TestVector) -> tuple[Any, ...]:
+    return (
+        vector.filename,
+        vector.width,
+        vector.height,
+        vector.frames,
+        vector.fmt,
+        vector.fps,
+        vector.pattern,
+        vector.source_path,
+        tuple(vector.filters),
+    )
+
+
+def should_use_source_filter(vector: generate_test_vectors.TestVector) -> bool:
+    return vector.source_path is None and vector.pattern in CLI_SOURCE_FILTER_PATTERNS
+
+
+def append_vector_filters(command: list[str], vector: generate_test_vectors.TestVector) -> None:
+    for filter_spec in vector.filters:
+        command.extend(["--filter", filter_spec])
 
 
 def source_file_path(vector: generate_test_vectors.TestVector) -> Path:
     assert vector.source_path is not None
-    if vector.source_path.is_absolute():
-        return vector.source_path
-    return (REPO_ROOT / vector.source_path).resolve(strict=False)
+    return generate_test_vectors.resolve_manifest_path(vector.source_path, vector.name)
 
 
 def cleanup_recon_artifact(args: argparse.Namespace, recon: Path) -> None:
@@ -439,6 +507,19 @@ def cleanup_success_artifacts(args: argparse.Namespace, output: Path, recon: Pat
     cleanup_recon_artifact(args, recon)
 
 
+def cleanup_vector_artifact(args: argparse.Namespace, path: Path | None) -> None:
+    if args.cleanup_vectors and path is not None:
+        path.unlink(missing_ok=True)
+
+
+def cleanup_cached_vector_artifacts(
+    args: argparse.Namespace,
+    generated_source_cache: dict[tuple[Any, ...], Path],
+) -> None:
+    for path in generated_source_cache.values():
+        cleanup_vector_artifact(args, path)
+
+
 def mean_psnr_all(output: str) -> float | None:
     values = []
     for match in PSNR_ALL_RE.finditer(output):
@@ -450,7 +531,10 @@ def mean_psnr_all(output: str) -> float | None:
     if not values:
         return None
     if any(math.isinf(value) for value in values):
-        return math.inf if all(math.isinf(value) for value in values) else None
+        finite_values = [value for value in values if math.isfinite(value)]
+        if finite_values:
+            return sum(finite_values) / len(finite_values)
+        return math.inf
     return sum(values) / len(values)
 
 
@@ -581,6 +665,7 @@ def markdown_report(report: dict[str, Any], skipped: int) -> str:
         f"- Write recon: `{report.get('write_recon', True)}`",
         f"- Cleanup recon: `{report.get('cleanup_recon', False)}`",
         f"- Cleanup output: `{report.get('cleanup_output', False)}`",
+        f"- Cleanup vectors: `{report.get('cleanup_vectors', False)}`",
         f"- Skipped combinations: `{skipped}`",
         "",
     ]
