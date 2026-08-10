@@ -140,6 +140,133 @@ Before a manual publish:
   reconstruction artifacts. The release validation/performance targets should
   continue cleaning successful outputs by default.
 
+### 0.0.3 Release-Candidate Validation Profile
+
+Use this profile before the `0.0.3` publish, and as the starting point for the
+next release-candidate gate when geometry, reference compatibility, or
+lossy-quality-sensitive codec work changes:
+
+```sh
+make validate-geometry-sweep GEOMETRY_SWEEP_REFERENCE_MODE=required
+```
+
+Then run the source-filter unusual geometry set in both codec modes. Keep AV2
+lossless intra-only for this pass so geometry behavior is isolated from
+temporal prediction:
+
+```sh
+python3 scripts/run_validation_set.py --ff ./ff --codec av2 unusual-geometry-smoke \
+  --set-dir verification/test_vector_sets \
+  --vector-dir verification/generated/test_vectors \
+  --encoded-dir verification/generated/encoded \
+  --log-dir verification/generated/validation_logs \
+  --reference-mode required --source-filters --setting gop=0 \
+  --cleanup-recon --cleanup-output --stop-on-fail
+
+python3 scripts/run_validation_set.py --ff ./ff --codec av2 unusual-geometry-smoke \
+  --set-dir verification/test_vector_sets \
+  --vector-dir verification/generated/test_vectors \
+  --encoded-dir verification/generated/encoded \
+  --log-dir verification/generated/validation_logs \
+  --reference-mode required --source-filters --force-lossy --setting qp=24 \
+  --cleanup-recon --cleanup-output --stop-on-fail
+
+python3 scripts/run_validation_set.py --ff ./ff --codec vvc unusual-geometry-smoke \
+  --set-dir verification/test_vector_sets \
+  --vector-dir verification/generated/test_vectors \
+  --encoded-dir verification/generated/encoded \
+  --log-dir verification/generated/validation_logs \
+  --reference-mode required --source-filters \
+  --cleanup-recon --cleanup-output --stop-on-fail
+
+python3 scripts/run_validation_set.py --ff ./ff --codec vvc unusual-geometry-smoke \
+  --set-dir verification/test_vector_sets \
+  --vector-dir verification/generated/test_vectors \
+  --encoded-dir verification/generated/encoded \
+  --log-dir verification/generated/validation_logs \
+  --reference-mode required --source-filters --force-lossy \
+  --setting qp=19 --setting fast-search=lossless-speed \
+  --cleanup-recon --cleanup-output --stop-on-fail
+```
+
+Run the small regression/multi-CTU manifest in both codec modes:
+
+```sh
+python3 scripts/run_validation_set.py --ff ./ff --codec av2 regression \
+  --set-dir verification/test_vector_sets \
+  --vector-dir verification/generated/test_vectors \
+  --encoded-dir verification/generated/encoded \
+  --log-dir verification/generated/validation_logs \
+  --reference-mode required --setting gop=0 \
+  --cleanup-recon --cleanup-output --stop-on-fail
+
+python3 scripts/run_validation_set.py --ff ./ff --codec av2 regression \
+  --set-dir verification/test_vector_sets \
+  --vector-dir verification/generated/test_vectors \
+  --encoded-dir verification/generated/encoded \
+  --log-dir verification/generated/validation_logs \
+  --reference-mode required --force-lossy --setting qp=24 \
+  --cleanup-recon --cleanup-output --stop-on-fail
+
+python3 scripts/run_validation_set.py --ff ./ff --codec vvc regression \
+  --set-dir verification/test_vector_sets \
+  --vector-dir verification/generated/test_vectors \
+  --encoded-dir verification/generated/encoded \
+  --log-dir verification/generated/validation_logs \
+  --reference-mode required \
+  --cleanup-recon --cleanup-output --stop-on-fail
+
+python3 scripts/run_validation_set.py --ff ./ff --codec vvc regression \
+  --set-dir verification/test_vector_sets \
+  --vector-dir verification/generated/test_vectors \
+  --encoded-dir verification/generated/encoded \
+  --log-dir verification/generated/validation_logs \
+  --reference-mode required --force-lossy \
+  --setting qp=19 --setting fast-search=lossless-speed \
+  --cleanup-recon --cleanup-output --stop-on-fail
+```
+
+Run the AOM CTC A5/B2 release set with required references:
+
+```sh
+make validate-release-aomctc \
+  RELEASE_AOMCTC_REFERENCE_MODE=required \
+  RELEASE_AOMCTC_FRAMES=1
+```
+
+For the six-vector screen-content scoreboard, run the encode matrix against
+the last recorded baseline and inspect byte, FPS, and PSNR deltas:
+
+```sh
+python3 scripts/benchmark_encode_matrix.py local-aomctc-b2-scc-1080p-lossless-50f \
+  --ff ./ff \
+  --set-dir verification/test_vector_sets \
+  --vector-dir verification/generated/test_vectors \
+  --out-dir verification/generated/encode_matrix \
+  --run-name release-0.0.3-six-vectors-50f \
+  --av2-lossy-qp 24 \
+  --vvc-lossy-qp 19 \
+  --vvc-fast-search lossless-speed \
+  --baseline-json verification/generated/encode_matrix/current-six-vectors-50f.json \
+  --cleanup-output
+```
+
+Treat reference-decoder mismatches, lossless byte changes, and PSNR drops as
+release blockers unless they are explained and intentionally accepted. Timing
+rows are useful but should be interpreted as noisy unless the same regression
+repeats across clean runs.
+
+Future release-candidate streams worth adding deliberately:
+
+- a source-filter crop set with odd visible 4:4:4/GBRP dimensions and both
+  one-frame and multi-frame cases;
+- 4:2:0 and 4:2:2 visible geometries whose coded canvas requires right/bottom
+  padding, including one case that exercises AV2 `TX_4X8` chroma residuals;
+- 10-bit 4:2:0, 4:2:2, and 4:4:4 source-filter crops for both AV2 and VVC;
+- at least one longer predictive screen-content source with non-repeated
+  consecutive frames once block-level inter prediction is mature enough for
+  it to be a normal release criterion.
+
 ## Packaging Checks
 
 Final package inspection should verify the archives are small and intentional:

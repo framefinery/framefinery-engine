@@ -6,6 +6,13 @@ const PARTITION_CONTEXT_DIM: usize = MVP_SUPERBLOCK_SIZE / MI_SIZE;
 const TX4X4_SIZE: usize = 4;
 const TX4X4_SAMPLES: usize = TX4X4_SIZE * TX4X4_SIZE;
 const TX4X4_SCAN: [usize; TX4X4_SAMPLES] = [0, 4, 1, 8, 5, 2, 12, 9, 6, 3, 13, 10, 7, 14, 11, 15];
+const TX4X8_WIDTH: usize = 4;
+const TX4X8_HEIGHT: usize = 8;
+const TX4X8_SAMPLES: usize = TX4X8_WIDTH * TX4X8_HEIGHT;
+const TX4X8_SCAN: [usize; TX4X8_SAMPLES] = [
+    0, 4, 1, 8, 5, 2, 12, 9, 6, 3, 16, 13, 10, 7, 20, 17, 14, 11, 24, 21, 18, 15, 28, 25, 22,
+    19, 29, 26, 23, 30, 27, 31,
+];
 const TX8X8_SIZE: usize = 8;
 const TX8X8_SAMPLES: usize = TX8X8_SIZE * TX8X8_SIZE;
 const TX8X8_SCAN: [usize; TX8X8_SAMPLES] = [
@@ -676,6 +683,8 @@ const DEFAULT_EOB_MULTI16_Y_CTX0_CDF: [u16; 9] = avm_cdf5(1946, 3059, 6834, 1512
 const DEFAULT_EOB_MULTI16_Y_INTER_CTX0_CDF: [u16; 9] =
     avm_cdf5(558, 835, 2739, 6534, -1, 0, 0);
 const DEFAULT_EOB_MULTI16_UV_CTX2_CDF: [u16; 9] = avm_cdf5(8000, 10366, 14466, 19569, -1, -1, -1);
+const DEFAULT_EOB_MULTI32_UV_CTX2_CDF: [u16; 10] =
+    avm_cdf6(11670, 14271, 19287, 23919, 27084, -1, -1, -1);
 const DEFAULT_EOB_MULTI64_UV_CTX2_CDF: [u16; 11] =
     avm_cdf7(13125, 16136, 21482, 26341, 29681, 31034, -1, -1, -1);
 const DEFAULT_COEFF_BASE_LF_EOB_Y_TX4X4_CTX0_CDF: [u16; 9] =

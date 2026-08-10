@@ -613,6 +613,28 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         }
     }
 
+    fn fill_chroma_422_tx4x8_leaf(
+        &mut self,
+        plane: Av2LossyPlane,
+        analysis: &Av2LossyTx8x8Analysis,
+        residual: &[i32; TX4X8_SAMPLES],
+    ) {
+        let max_sample = i32::from(self.bit_depth.max_sample());
+        debug_assert!(analysis.visible_width <= TX4X8_WIDTH);
+        debug_assert!(analysis.visible_height <= TX4X8_HEIGHT);
+        for local_y in 0..analysis.visible_height {
+            let y = analysis.leaf_y0 + local_y;
+            for local_x in 0..analysis.visible_width {
+                let x = analysis.leaf_x0 + local_x;
+                let analysis_index = local_y * TX8X8_SIZE + local_x;
+                let residual_index = local_y * TX4X8_WIDTH + local_x;
+                let predictor = i32::from(analysis.predictor[analysis_index]);
+                let sample = (predictor + residual[residual_index]).clamp(0, max_sample) as Av2Sample;
+                self.set_recon_sample(plane, x, y, sample);
+            }
+        }
+    }
+
     fn chroma_444_intra_predictor_plan(
         &self,
         plane: Av2LossyPlane,
@@ -819,6 +841,28 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         Av2LossyTx8x8QuantizedResidualCandidate {
             coefficients: av2_regular_quantized_level_coefficients_tx8x8(&qcoeff),
             residual: av2_idct8x8(&dqcoeff, self.bit_depth),
+        }
+    }
+
+    fn regular_dct_quantized_tx4x8_residual_candidate(
+        &self,
+        analysis: &Av2LossyTx8x8Analysis,
+    ) -> Av2LossyTx4x8QuantizedResidualCandidate {
+        debug_assert!(analysis.visible_width <= TX4X8_WIDTH);
+        debug_assert!(analysis.visible_height <= TX4X8_HEIGHT);
+        let mut residual = [0i32; TX4X8_SAMPLES];
+        for local_y in 0..TX4X8_HEIGHT {
+            for local_x in 0..TX4X8_WIDTH {
+                residual[local_y * TX4X8_WIDTH + local_x] =
+                    analysis.residual[local_y * TX8X8_SIZE + local_x];
+            }
+        }
+        let coefficients = av2_fdct4x8(&residual);
+        let (qcoeff, dqcoeff) =
+            av2_regular_quantize_dct4x8(&coefficients, self.base_qindex, self.bit_depth);
+        Av2LossyTx4x8QuantizedResidualCandidate {
+            coefficients: av2_regular_quantized_level_coefficients_tx4x8(&qcoeff),
+            residual: av2_idct4x8(&dqcoeff, self.bit_depth),
         }
     }
 
@@ -2848,6 +2892,12 @@ struct Av2LossyTx8x8Analysis {
 struct Av2LossyTx8x8QuantizedResidualCandidate {
     coefficients: [i32; TX8X8_SAMPLES],
     residual: [i32; TX8X8_SAMPLES],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Av2LossyTx4x8QuantizedResidualCandidate {
+    coefficients: [i32; TX4X8_SAMPLES],
+    residual: [i32; TX4X8_SAMPLES],
 }
 
 #[derive(Debug, Clone, Copy)]

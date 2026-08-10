@@ -27,6 +27,7 @@ const AV2_STATIC_CDF_INTER_EXT_TX_DCT_IDTX_4X4_BASE: usize = 601;
 const AV2_STATIC_CDF_TXB_SKIP_U_TX8X8_BASE: usize = 620;
 const AV2_STATIC_CDF_TXB_SKIP_U_INTER_TX8X8_BASE: usize = 630;
 const AV2_STATIC_CDF_EOB_UV_TX8X8: usize = 640;
+const AV2_STATIC_CDF_EOB_UV_TX4X8: usize = 641;
 
 fn y_txb_skip_static_cdf_key(skip_ctx: u8) -> usize {
     AV2_STATIC_CDF_TXB_SKIP_Y_BASE + usize::from(skip_ctx)
@@ -191,6 +192,9 @@ const AV2_COSPI_16_64: i32 = 11585;
 const AV2_COSPI_20_64: i32 = 9102;
 const AV2_COSPI_24_64: i32 = 6270;
 const AV2_COSPI_28_64: i32 = 3196;
+const AV2_NEW_SQRT2: i32 = 5793;
+const AV2_NEW_INV_SQRT2: i32 = 2896;
+const AV2_NEW_SQRT2_BITS: u8 = 12;
 const AV2_DCT4_KERNEL: [[i32; TX4X4_SIZE]; TX4X4_SIZE] = [
     [64, 64, 64, 64],
     [83, 35, -35, -83],
@@ -260,6 +264,20 @@ fn av2_regular_quantize_dct8x8(
     (qcoeff, dqcoeff)
 }
 
+fn av2_regular_quantize_dct4x8(
+    coefficients: &[i32; TX4X8_SAMPLES],
+    qindex: u16,
+    bit_depth: SampleBitDepth,
+) -> ([i32; TX4X8_SAMPLES], [i32; TX4X8_SAMPLES]) {
+    let mut qcoeff = [0i32; TX4X8_SAMPLES];
+    for pos in 0..TX4X8_SAMPLES {
+        qcoeff[pos] =
+            av2_regular_quantize_coefficient(coefficients[pos], qindex, bit_depth, pos != 0);
+    }
+    let dqcoeff = av2_regular_dequantize_dct4x8(&qcoeff, qindex, bit_depth);
+    (qcoeff, dqcoeff)
+}
+
 fn av2_regular_quantize_coefficient(
     coefficient: i32,
     qindex: u16,
@@ -317,6 +335,24 @@ fn av2_regular_dequantize_dct8x8(
     dqcoeff
 }
 
+fn av2_regular_dequantize_dct4x8(
+    qcoeff: &[i32; TX4X8_SAMPLES],
+    qindex: u16,
+    bit_depth: SampleBitDepth,
+) -> [i32; TX4X8_SAMPLES] {
+    let dequant = av2_regular_dequant_qtx(qindex, bit_depth);
+    let mut dqcoeff = [0i32; TX4X8_SAMPLES];
+    for (pos, (&level, dst)) in qcoeff.iter().zip(dqcoeff.iter_mut()).enumerate() {
+        let rc01 = usize::from(pos != 0);
+        let abs_dqcoeff = round_power_of_two_i64(
+            i64::from(level.abs()) * i64::from(dequant[rc01]),
+            AV2_QUANT_TABLE_BITS,
+        ) as i32;
+        *dst = if level < 0 { -abs_dqcoeff } else { abs_dqcoeff };
+    }
+    dqcoeff
+}
+
 fn av2_regular_quantized_level_coefficients(
     qcoeff: &[i32; TX4X4_SAMPLES],
 ) -> [i32; TX4X4_SAMPLES] {
@@ -331,6 +367,16 @@ fn av2_regular_quantized_level_coefficients_tx8x8(
     qcoeff: &[i32; TX8X8_SAMPLES],
 ) -> [i32; TX8X8_SAMPLES] {
     let mut coefficients = [0i32; TX8X8_SAMPLES];
+    for (dst, &level) in coefficients.iter_mut().zip(qcoeff.iter()) {
+        *dst = level * 8;
+    }
+    coefficients
+}
+
+fn av2_regular_quantized_level_coefficients_tx4x8(
+    qcoeff: &[i32; TX4X8_SAMPLES],
+) -> [i32; TX4X8_SAMPLES] {
+    let mut coefficients = [0i32; TX4X8_SAMPLES];
     for (dst, &level) in coefficients.iter_mut().zip(qcoeff.iter()) {
         *dst = level * 8;
     }
@@ -405,6 +451,108 @@ fn av2_fdct8x8(input: &[i32; TX8X8_SAMPLES]) -> [i32; TX8X8_SAMPLES] {
         *coefficient /= 2;
     }
     output
+}
+
+fn av2_fdct4x8(input: &[i32; TX4X8_SAMPLES]) -> [i32; TX4X8_SAMPLES] {
+    // Mirrors AVM's generic DCT_DCT/TX_4X8 transform:
+    // vertical size-8 pass with fwd shift 1, horizontal size-4 pass with
+    // fwd shift 11, then the rectangular sqrt2 normalization.
+    let mut intermediate = [0i32; TX4X8_SAMPLES];
+    for col in 0..TX4X8_WIDTH {
+        let src = [
+            input[col],
+            input[TX4X8_WIDTH + col],
+            input[2 * TX4X8_WIDTH + col],
+            input[3 * TX4X8_WIDTH + col],
+            input[4 * TX4X8_WIDTH + col],
+            input[5 * TX4X8_WIDTH + col],
+            input[6 * TX4X8_WIDTH + col],
+            input[7 * TX4X8_WIDTH + col],
+        ];
+        let dst = fwd_dct8_shifted(&src, 1);
+        for row in 0..TX4X8_HEIGHT {
+            intermediate[col * TX4X8_HEIGHT + row] = dst[row];
+        }
+    }
+
+    let mut output = [0i32; TX4X8_SAMPLES];
+    for row in 0..TX4X8_HEIGHT {
+        let src = [
+            intermediate[row],
+            intermediate[TX4X8_HEIGHT + row],
+            intermediate[2 * TX4X8_HEIGHT + row],
+            intermediate[3 * TX4X8_HEIGHT + row],
+        ];
+        let dst = fwd_dct4_shifted(&src, 11);
+        for col in 0..TX4X8_WIDTH {
+            output[row * TX4X8_WIDTH + col] = dst[col];
+        }
+    }
+
+    for coefficient in &mut output {
+        *coefficient = round_power_of_two_i64(
+            i64::from(*coefficient) * i64::from(AV2_NEW_SQRT2),
+            AV2_NEW_SQRT2_BITS,
+        ) as i32;
+    }
+    output
+}
+
+fn fwd_dct4_shifted(input: &[i32; TX4X4_SIZE], shift: u8) -> [i32; TX4X4_SIZE] {
+    let step0 = input[0] + input[3];
+    let step1 = input[1] + input[2];
+    let step2 = input[1] - input[2];
+    let step3 = input[0] - input[3];
+    let add = if shift > 0 { 1i64 << (shift - 1) } else { 0 };
+    [
+        ((i64::from(AV2_DCT4_KERNEL[0][0]) * i64::from(step0)
+            + i64::from(AV2_DCT4_KERNEL[0][1]) * i64::from(step1)
+            + add)
+            >> shift) as i32,
+        ((i64::from(AV2_DCT4_KERNEL[1][0]) * i64::from(step3)
+            + i64::from(AV2_DCT4_KERNEL[1][1]) * i64::from(step2)
+            + add)
+            >> shift) as i32,
+        ((i64::from(AV2_DCT4_KERNEL[2][0]) * i64::from(step0)
+            + i64::from(AV2_DCT4_KERNEL[2][1]) * i64::from(step1)
+            + add)
+            >> shift) as i32,
+        ((i64::from(AV2_DCT4_KERNEL[3][0]) * i64::from(step3)
+            + i64::from(AV2_DCT4_KERNEL[3][1]) * i64::from(step2)
+            + add)
+            >> shift) as i32,
+    ]
+}
+
+fn fwd_dct8_shifted(input: &[i32; TX8X8_SIZE], shift: u8) -> [i32; TX8X8_SIZE] {
+    let mut a = [0i32; 4];
+    let mut b = [0i32; 4];
+    for k in 0..4 {
+        a[k] = input[k] + input[TX8X8_SIZE - 1 - k];
+        b[k] = input[k] - input[TX8X8_SIZE - 1 - k];
+    }
+    let c0 = a[0] + a[3];
+    let d0 = a[0] - a[3];
+    let c1 = a[1] + a[2];
+    let d1 = a[1] - a[2];
+    let add = if shift > 0 { 1i64 << (shift - 1) } else { 0 };
+    let mut output = [0i32; TX8X8_SIZE];
+    output[0] = shifted_kernel_sum(&AV2_DCT8_KERNEL[0][..2], &[c0, c1], add, shift);
+    output[4] = shifted_kernel_sum(&AV2_DCT8_KERNEL[4][..2], &[c0, c1], add, shift);
+    output[2] = shifted_kernel_sum(&AV2_DCT8_KERNEL[2][..2], &[d0, d1], add, shift);
+    output[6] = shifted_kernel_sum(&AV2_DCT8_KERNEL[6][..2], &[d0, d1], add, shift);
+    for &index in &[1usize, 3, 5, 7] {
+        output[index] = shifted_kernel_sum(&AV2_DCT8_KERNEL[index][..4], &b, add, shift);
+    }
+    output
+}
+
+fn shifted_kernel_sum(kernel: &[i32], values: &[i32], add: i64, shift: u8) -> i32 {
+    let mut sum = add;
+    for (&kernel, &value) in kernel.iter().zip(values.iter()) {
+        sum += i64::from(kernel) * i64::from(value);
+    }
+    (sum >> shift) as i32
 }
 
 fn fdct8x8_pass(input: &[i32; TX8X8_SIZE], output: &mut [i32]) {
@@ -509,6 +657,104 @@ fn av2_idct8x8(input: &[i32; TX8X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32;
 
     let tmp = inv_dct8_pass(&block, 7, TX8X8_SIZE, rng_min, rng_max);
     inv_dct8_pass(&tmp, 11, TX8X8_SIZE, col_rng_min, col_rng_max)
+}
+
+fn av2_idct4x8(input: &[i32; TX4X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32; TX4X8_SAMPLES] {
+    let intermediate_bitdepth = i32::from(bit_depth.bits()) + 8;
+    let rng_min = -(1 << (intermediate_bitdepth - 1));
+    let rng_max = (1 << (intermediate_bitdepth - 1)) - 1;
+    let col_rng_min = -(1 << bit_depth.bits());
+    let col_rng_max = (1 << bit_depth.bits()) - 1;
+
+    let mut block = *input;
+    for coeff in &mut block {
+        *coeff = round_power_of_two_i64(
+            i64::from(*coeff) * i64::from(AV2_NEW_INV_SQRT2),
+            AV2_NEW_SQRT2_BITS,
+        ) as i32;
+        *coeff = (*coeff).clamp(rng_min, rng_max);
+    }
+
+    let mut intermediate = [0i32; TX4X8_SAMPLES];
+    for row in 0..TX4X8_HEIGHT {
+        let src = [
+            block[row * TX4X8_WIDTH],
+            block[row * TX4X8_WIDTH + 1],
+            block[row * TX4X8_WIDTH + 2],
+            block[row * TX4X8_WIDTH + 3],
+        ];
+        let dst = inv_dct4_shifted(&src, 7, rng_min, rng_max);
+        for col in 0..TX4X8_WIDTH {
+            intermediate[col * TX4X8_HEIGHT + row] = dst[col];
+        }
+    }
+
+    let mut output = [0i32; TX4X8_SAMPLES];
+    for col in 0..TX4X8_WIDTH {
+        let src = [
+            intermediate[col * TX4X8_HEIGHT],
+            intermediate[col * TX4X8_HEIGHT + 1],
+            intermediate[col * TX4X8_HEIGHT + 2],
+            intermediate[col * TX4X8_HEIGHT + 3],
+            intermediate[col * TX4X8_HEIGHT + 4],
+            intermediate[col * TX4X8_HEIGHT + 5],
+            intermediate[col * TX4X8_HEIGHT + 6],
+            intermediate[col * TX4X8_HEIGHT + 7],
+        ];
+        let dst = inv_dct8_shifted(&src, 10, col_rng_min, col_rng_max);
+        for row in 0..TX4X8_HEIGHT {
+            output[row * TX4X8_WIDTH + col] = dst[row];
+        }
+    }
+    output
+}
+
+fn inv_dct4_shifted(
+    input: &[i32; TX4X4_SIZE],
+    shift: u8,
+    min: i32,
+    max: i32,
+) -> [i32; TX4X4_SIZE] {
+    let add = 1 << (shift - 1);
+    let b0 = AV2_DCT4_KERNEL[1][0] * input[1] + AV2_DCT4_KERNEL[3][0] * input[3];
+    let b1 = AV2_DCT4_KERNEL[1][1] * input[1] + AV2_DCT4_KERNEL[3][1] * input[3];
+    let a0 = AV2_DCT4_KERNEL[0][0] * input[0] + AV2_DCT4_KERNEL[2][0] * input[2];
+    let a1 = AV2_DCT4_KERNEL[0][1] * input[0] + AV2_DCT4_KERNEL[2][1] * input[2];
+    [
+        ((a0 + b0 + add) >> shift).clamp(min, max),
+        ((a1 + b1 + add) >> shift).clamp(min, max),
+        ((a1 - b1 + add) >> shift).clamp(min, max),
+        ((a0 - b0 + add) >> shift).clamp(min, max),
+    ]
+}
+
+fn inv_dct8_shifted(
+    input: &[i32; TX8X8_SIZE],
+    shift: u8,
+    min: i32,
+    max: i32,
+) -> [i32; TX8X8_SIZE] {
+    let add = 1 << (shift - 1);
+    let mut b = [0i32; 4];
+    for k in 0..4 {
+        b[k] = AV2_DCT8_KERNEL[1][k] * input[1]
+            + AV2_DCT8_KERNEL[3][k] * input[3]
+            + AV2_DCT8_KERNEL[5][k] * input[5]
+            + AV2_DCT8_KERNEL[7][k] * input[7];
+    }
+
+    let d0 = AV2_DCT8_KERNEL[2][0] * input[2] + AV2_DCT8_KERNEL[6][0] * input[6];
+    let d1 = AV2_DCT8_KERNEL[2][1] * input[2] + AV2_DCT8_KERNEL[6][1] * input[6];
+    let c0 = AV2_DCT8_KERNEL[0][0] * input[0] + AV2_DCT8_KERNEL[4][0] * input[4];
+    let c1 = AV2_DCT8_KERNEL[0][1] * input[0] + AV2_DCT8_KERNEL[4][1] * input[4];
+
+    let a = [c0 + d0, c1 + d1, c1 - d1, c0 - d0];
+    let mut output = [0i32; TX8X8_SIZE];
+    for k in 0..4 {
+        output[k] = ((a[k] + b[k] + add) >> shift).clamp(min, max);
+        output[k + 4] = ((a[3 - k] - b[3 - k] + add) >> shift).clamp(min, max);
+    }
+    output
 }
 
 fn inv_dct8_pass(
@@ -911,6 +1157,78 @@ fn write_chroma_tx8x8_txb(
     (lossless_entropy_context(cul_level, dc_val), true)
 }
 
+fn write_chroma_tx4x8_txb(
+    writer: &mut Av2EntropyWriter,
+    plane: Av2ChromaPlane,
+    skip_ctx: u8,
+    coefficients: &[i32; TX4X8_SAMPLES],
+    use_inter_contexts: bool,
+) -> (u8, bool) {
+    let (levels, bounds) = tx4x8_coefficient_levels_and_bounds(coefficients);
+    let Some((_, eob)) = bounds else {
+        match plane {
+            Av2ChromaPlane::U => write_u_txb_all_zero_tx8x8(writer, skip_ctx, use_inter_contexts),
+            Av2ChromaPlane::V => write_v_txb_all_zero(writer, skip_ctx),
+        }
+        return (0, false);
+    };
+
+    match plane {
+        Av2ChromaPlane::U => write_u_txb_nonzero_tx8x8(writer, skip_ctx, use_inter_contexts),
+        Av2ChromaPlane::V => write_v_txb_nonzero(writer, skip_ctx),
+    }
+    write_eob_uv_tx4x8(writer, eob);
+
+    for scan_index in (1..eob).rev() {
+        let pos = TX4X8_SCAN[scan_index];
+        let level = levels[pos];
+        let coeff_ctx =
+            chroma_tx4x8_nz_map_context(&levels, pos, scan_index, scan_index + 1 == eob, plane);
+        write_chroma_tx4x8_coefficient_level(
+            writer,
+            &levels,
+            pos,
+            scan_index + 1 == eob,
+            coeff_ctx,
+            level,
+        );
+    }
+
+    let dc_level = levels[0];
+    let dc_ctx = chroma_tx4x8_nz_map_context(&levels, 0, 0, eob == 1, plane);
+    write_chroma_tx4x8_coefficient_level(writer, &levels, 0, eob == 1, dc_ctx, dc_level);
+
+    let mut cul_level = 0u32;
+    let mut dc_val = 0i32;
+    let mut hr_level_avg = 0u32;
+    for scan_index in (0..eob).rev() {
+        let pos = TX4X8_SCAN[scan_index];
+        let level = levels[pos];
+        if level == 0 {
+            continue;
+        }
+        let negative = coefficients[pos] < 0;
+        let sign_name = match plane {
+            Av2ChromaPlane::U if scan_index == 0 => "tile.coeff.u.dc_sign_negative_tx4x8",
+            Av2ChromaPlane::V if scan_index == 0 => "tile.coeff.v.dc_sign_negative_tx4x8",
+            Av2ChromaPlane::U => "tile.coeff.u.ac_sign_negative_tx4x8",
+            Av2ChromaPlane::V => "tile.coeff.v.ac_sign_negative_tx4x8",
+        };
+        writer.write_literal_bit(sign_name, negative);
+        write_chroma_high_range(writer, plane, pos, level, &mut hr_level_avg);
+        if scan_index == 0 {
+            dc_val = if negative {
+                -(level as i32)
+            } else {
+                level as i32
+            };
+        }
+        cul_level += level;
+    }
+
+    (lossless_entropy_context(cul_level, dc_val), true)
+}
+
 fn lossless_coefficient_levels_and_bounds(
     coefficients: &[i32; TX4X4_SAMPLES],
 ) -> ([u32; TX4X4_SAMPLES], Option<(usize, usize)>) {
@@ -941,6 +1259,29 @@ fn tx8x8_coefficient_levels_and_bounds(
     let mut first = None;
     let mut eob = 0usize;
     for (scan_index, &index) in TX8X8_SCAN.iter().enumerate() {
+        let coefficient = coefficients[index];
+        debug_assert_eq!(
+            coefficient % 8,
+            0,
+            "AV2 quantized DCT coefficient must be scaled by UNIT_QUANT_FACTOR"
+        );
+        let level = coefficient.unsigned_abs() / 8;
+        levels[index] = level;
+        if level != 0 {
+            first.get_or_insert(scan_index);
+            eob = scan_index + 1;
+        }
+    }
+    (levels, first.map(|first| (first, eob)))
+}
+
+fn tx4x8_coefficient_levels_and_bounds(
+    coefficients: &[i32; TX4X8_SAMPLES],
+) -> ([u32; TX4X8_SAMPLES], Option<(usize, usize)>) {
+    let mut levels = [0u32; TX4X8_SAMPLES];
+    let mut first = None;
+    let mut eob = 0usize;
+    for (scan_index, &index) in TX4X8_SCAN.iter().enumerate() {
         let coefficient = coefficients[index];
         debug_assert_eq!(
             coefficient % 8,
@@ -1107,6 +1448,36 @@ fn write_eob_uv_tx8x8(writer: &mut Av2EntropyWriter, eob: usize) {
     }
 }
 
+fn write_eob_uv_tx4x8(writer: &mut Av2EntropyWriter, eob: usize) {
+    let (eob_pt, eob_extra) = eob_pos_token(eob);
+    let mut cdf = DEFAULT_EOB_MULTI32_UV_CTX2_CDF;
+    writer.write_symbol_with_static_cdf_key(
+        "tile.coeff.uv.eob_pt_tx4x8",
+        AV2_STATIC_CDF_EOB_UV_TX4X8,
+        eob_pt - 1,
+        &mut cdf,
+        6,
+        false,
+    );
+
+    let eob_offset_bits = eob_offset_bits(eob_pt);
+    if eob_offset_bits > 0 {
+        let eob_shift = eob_offset_bits - 1;
+        let bit = (eob_extra & (1 << eob_shift)) != 0;
+        let mut extra_cdf = DEFAULT_EOB_EXTRA_CDF;
+        writer.write_symbol_with_static_cdf_key(
+            "tile.coeff.eob_extra_bit",
+            AV2_STATIC_CDF_EOB_EXTRA,
+            usize::from(bit),
+            &mut extra_cdf,
+            2,
+            false,
+        );
+        let low_bits = eob_extra & ((1 << eob_shift) - 1);
+        writer.write_literal("tile.coeff.uv.eob_extra_tx4x8", low_bits as u32, eob_shift as u8);
+    }
+}
+
 fn eob_pos_token(eob: usize) -> (usize, usize) {
     const EOB_TO_POS_SMALL: [usize; 33] = [
         0, 1, 2, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
@@ -1249,6 +1620,67 @@ fn write_chroma_tx8x8_coefficient_level(
     }
 }
 
+fn write_chroma_tx4x8_coefficient_level(
+    writer: &mut Av2EntropyWriter,
+    levels: &[u32; TX4X8_SAMPLES],
+    pos: usize,
+    is_eob_coefficient: bool,
+    coeff_ctx: usize,
+    level: u32,
+) {
+    let limits = chroma_tx4x8_lf_limits(pos);
+    if is_eob_coefficient {
+        assert!(level > 0, "AV2 EOB coefficient must be non-zero");
+        if limits {
+            let mut cdf = DEFAULT_COEFF_BASE_LF_EOB_UV_CDFS[coeff_ctx];
+            writer.write_symbol_with_static_cdf_key(
+                "tile.coeff.uv.base_lf_eob_tx4x8",
+                AV2_STATIC_CDF_COEFF_UV_BASE_LF_EOB_BASE + coeff_ctx,
+                level.min(5) as usize - 1,
+                &mut cdf,
+                5,
+                false,
+            );
+        } else {
+            let mut cdf = DEFAULT_COEFF_BASE_EOB_UV_CDFS[coeff_ctx];
+            writer.write_symbol_with_static_cdf_key(
+                "tile.coeff.uv.base_eob_tx4x8",
+                AV2_STATIC_CDF_COEFF_UV_BASE_EOB_BASE + coeff_ctx,
+                level.min(3) as usize - 1,
+                &mut cdf,
+                3,
+                false,
+            );
+            if level > 2 {
+                write_chroma_tx4x8_low_range(writer, levels, pos, level - 3);
+            }
+        }
+    } else if limits {
+        let mut cdf = DEFAULT_COEFF_BASE_LF_UV_CDFS[coeff_ctx];
+        writer.write_symbol_with_static_cdf_key(
+            "tile.coeff.uv.base_lf_tx4x8",
+            AV2_STATIC_CDF_COEFF_UV_BASE_LF_BASE + coeff_ctx,
+            level.min(5) as usize,
+            &mut cdf,
+            6,
+            false,
+        );
+    } else {
+        let mut cdf = DEFAULT_COEFF_BASE_UV_CDFS[coeff_ctx];
+        writer.write_symbol_with_static_cdf_key(
+            "tile.coeff.uv.base_tx4x8",
+            AV2_STATIC_CDF_COEFF_UV_BASE_BASE + coeff_ctx,
+            level.min(3) as usize,
+            &mut cdf,
+            4,
+            false,
+        );
+        if level > 2 {
+            write_chroma_tx4x8_low_range(writer, levels, pos, level - 3);
+        }
+    }
+}
+
 fn write_luma_coefficient_level(
     writer: &mut Av2EntropyWriter,
     levels: &[u32; TX4X4_SAMPLES],
@@ -1384,6 +1816,24 @@ fn write_chroma_tx8x8_low_range(
     );
 }
 
+fn write_chroma_tx4x8_low_range(
+    writer: &mut Av2EntropyWriter,
+    levels: &[u32; TX4X8_SAMPLES],
+    pos: usize,
+    base_range: u32,
+) {
+    let br_ctx = chroma_tx4x8_br_context(levels, pos);
+    let mut cdf = DEFAULT_COEFF_BR_UV_CDFS[br_ctx];
+    writer.write_symbol_with_static_cdf_key(
+        "tile.coeff.uv.low_range_tx4x8",
+        AV2_STATIC_CDF_COEFF_UV_BR_BASE + br_ctx,
+        base_range.min(3) as usize,
+        &mut cdf,
+        4,
+        false,
+    );
+}
+
 fn write_idtx_low_range(
     writer: &mut Av2EntropyWriter,
     levels: &[u32; TX4X4_SAMPLES],
@@ -1489,6 +1939,22 @@ fn chroma_tx8x8_nz_map_context(
         return chroma_tx8x8_lower_levels_lf_context(levels, pos, plane);
     }
     chroma_tx8x8_lower_levels_context(levels, pos, plane)
+}
+
+fn chroma_tx4x8_nz_map_context(
+    levels: &[u32; TX4X8_SAMPLES],
+    pos: usize,
+    scan_index: usize,
+    is_eob_coefficient: bool,
+    plane: Av2ChromaPlane,
+) -> usize {
+    if is_eob_coefficient {
+        return get_lower_levels_ctx_eob_for_txb(scan_index, TX4X8_SAMPLES);
+    }
+    if chroma_tx4x8_lf_limits(pos) {
+        return chroma_tx4x8_lower_levels_lf_context(levels, pos, plane);
+    }
+    chroma_tx4x8_lower_levels_context(levels, pos, plane)
 }
 
 fn luma_nz_map_context(
@@ -1609,6 +2075,30 @@ fn chroma_tx8x8_lower_levels_context(
     chroma_context_with_plane_offset(ctx, plane)
 }
 
+fn chroma_tx4x8_lower_levels_lf_context(
+    levels: &[u32; TX4X8_SAMPLES],
+    pos: usize,
+    plane: Av2ChromaPlane,
+) -> usize {
+    let mag = tx4x8_level_at(levels, pos, 0, 1).min(5)
+        + tx4x8_level_at(levels, pos, 1, 0).min(5)
+        + tx4x8_level_at(levels, pos, 1, 1).min(5);
+    let ctx = ((mag + 1) >> 1).min(3) as usize;
+    chroma_context_with_plane_offset(ctx, plane)
+}
+
+fn chroma_tx4x8_lower_levels_context(
+    levels: &[u32; TX4X8_SAMPLES],
+    pos: usize,
+    plane: Av2ChromaPlane,
+) -> usize {
+    let mag = tx4x8_level_at(levels, pos, 0, 1).min(3)
+        + tx4x8_level_at(levels, pos, 1, 0).min(3)
+        + tx4x8_level_at(levels, pos, 1, 1).min(3);
+    let ctx = ((mag + 1) >> 1).min(3) as usize;
+    chroma_context_with_plane_offset(ctx, plane)
+}
+
 fn chroma_context_with_plane_offset(ctx: usize, plane: Av2ChromaPlane) -> usize {
     match plane {
         Av2ChromaPlane::U => ctx,
@@ -1627,6 +2117,13 @@ fn chroma_tx8x8_br_context(levels: &[u32; TX8X8_SAMPLES], pos: usize) -> usize {
     let mag = tx8x8_level_at(levels, pos, 0, 1)
         + tx8x8_level_at(levels, pos, 1, 0)
         + tx8x8_level_at(levels, pos, 1, 1);
+    ((mag + 1) >> 1).min(3) as usize
+}
+
+fn chroma_tx4x8_br_context(levels: &[u32; TX4X8_SAMPLES], pos: usize) -> usize {
+    let mag = tx4x8_level_at(levels, pos, 0, 1)
+        + tx4x8_level_at(levels, pos, 1, 0)
+        + tx4x8_level_at(levels, pos, 1, 1);
     ((mag + 1) >> 1).min(3) as usize
 }
 
@@ -1772,6 +2269,21 @@ fn tx8x8_level_at(
     }
 }
 
+fn tx4x8_level_at(
+    levels: &[u32; TX4X8_SAMPLES],
+    pos: usize,
+    row_delta: usize,
+    col_delta: usize,
+) -> u32 {
+    let row = pos / TX4X8_WIDTH + row_delta;
+    let col = pos % TX4X8_WIDTH + col_delta;
+    if row < TX4X8_HEIGHT && col < TX4X8_WIDTH {
+        levels[row * TX4X8_WIDTH + col].min(127)
+    } else {
+        0
+    }
+}
+
 fn chroma_lf_limits(pos: usize) -> bool {
     let row = pos / TX4X4_SIZE;
     let col = pos % TX4X4_SIZE;
@@ -1781,6 +2293,12 @@ fn chroma_lf_limits(pos: usize) -> bool {
 fn chroma_tx8x8_lf_limits(pos: usize) -> bool {
     let row = pos / TX8X8_SIZE;
     let col = pos % TX8X8_SIZE;
+    row + col < 1
+}
+
+fn chroma_tx4x8_lf_limits(pos: usize) -> bool {
+    let row = pos / TX4X8_WIDTH;
+    let col = pos % TX4X8_WIDTH;
     row + col < 1
 }
 
