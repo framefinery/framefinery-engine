@@ -103,6 +103,17 @@ Before a manual publish:
   Wayland `gbrp8` capture files under `verification/generated/test_vectors/`
   unless replacing them intentionally.
 
+## Post-0.0.3 TODOs
+
+- Revisit AV2 lossy bitrate-quality tuning for non-4:2:0 formats. The
+  reference-valid 4:2:2 `TX_4X8` path and current 4:4:4/RGB-family chroma
+  residual behavior spend materially more bytes than the previous
+  six-vector baseline while improving PSNR. Correctness/reference
+  compatibility is not the concern; the open issue is that the byte increase
+  is too large for lossy screen-content use. Investigate chroma QP weighting,
+  transform skip/FSC decisions, and RD selection so 4:2:2 stays close to
+  4:2:0 bitrate unless the extra bytes buy clearly intentional quality.
+
 ## Validation Before Release Claims
 
 - Run the local CI gate:
