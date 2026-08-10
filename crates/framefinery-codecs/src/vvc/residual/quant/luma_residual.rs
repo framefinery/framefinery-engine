@@ -562,6 +562,9 @@ fn select_vvc_scored_luma_residual_block_with_mts(
                 transform_scratch,
                 reconstructed_residual,
             );
+            if !vvc_luma_explicit_mts_candidate_is_signalable(candidate) {
+                return best;
+            }
             let candidate = VvcScoredLumaResidualBlock::new(
                 residuals,
                 width,
@@ -593,7 +596,7 @@ fn select_vvc_scored_luma_residual_block_with_mts(
                     transform_scratch,
                     reconstructed_residual,
                 );
-                if !candidate.has_ac && candidate.dc_level == 0 {
+                if !vvc_luma_explicit_mts_candidate_is_signalable(candidate) {
                     continue;
                 }
                 let candidate = VvcScoredLumaResidualBlock::new(
@@ -616,6 +619,16 @@ fn select_vvc_scored_luma_residual_block_with_mts(
     }
 
     best
+}
+
+fn vvc_luma_explicit_mts_candidate_is_signalable(
+    candidate: VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU>,
+) -> bool {
+    // VTM only parses/writes mts_idx when CUCtx::mtsLastScanPos is true, which
+    // is derived from scanPosLast() >= 1. A DC-only TU therefore cannot carry
+    // a non-default explicit MTS index; selecting one would make the encoder's
+    // internal reconstruction use MTS while a reference decoder infers DCT-II.
+    candidate.has_ac
 }
 
 #[derive(Debug, Clone, Copy)]

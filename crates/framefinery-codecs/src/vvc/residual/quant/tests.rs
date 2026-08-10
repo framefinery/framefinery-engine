@@ -1140,6 +1140,79 @@ fn vvc_chroma_quality_gate_can_spend_bits_for_lower_distortion() {
 }
 
 #[test]
+fn vvc_luma_mts_selection_rejects_dc_only_explicit_candidate() {
+    let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
+    let qp = 19;
+    let residuals = [
+        0, 0, -1, -1, -1, -1, -1, -1, //
+        0, -1, -1, -1, -1, -1, -1, -1, //
+        -1, -1, -1, -1, -1, -1, -1, -1, //
+        -1, -1, -1, -1, -1, -1, -2, -2, //
+        -1, -1, -1, -1, -1, -2, -2, -2, //
+        -1, -1, -1, -1, -2, -2, -2, -2, //
+        -1, -1, -1, -1, -2, -2, -2, -2, //
+        -1, -1, -1, -2, -2, -2, -2, -2,
+    ];
+    let quant_table = VvcTransformSkipQuantTable::new(bit_depth, qp);
+    #[cfg(feature = "vvc-stats")]
+    let mut stats = VvcIntraSearchStats::default();
+    #[cfg(not(feature = "vvc-stats"))]
+    let mut stats = VvcIntraSearchStats;
+    let mut scratch = VvcInverseTransformScratch::default();
+    let mut reconstructed = Vec::new();
+
+    let base = finalize_vvc_luma_residual_block(
+        VvcTuResidualCodingMode::Transformed,
+        0,
+        &residuals,
+        8,
+        8,
+        bit_depth,
+        qp,
+        &quant_table,
+        VvcLumaResidualQuantizationSearch::Full,
+        &mut stats,
+        &mut scratch,
+        &mut reconstructed,
+    );
+    let explicit_mts = finalize_vvc_luma_residual_block(
+        VvcTuResidualCodingMode::Transformed,
+        2,
+        &residuals,
+        8,
+        8,
+        bit_depth,
+        qp,
+        &quant_table,
+        VvcLumaResidualQuantizationSearch::Full,
+        &mut stats,
+        &mut scratch,
+        &mut reconstructed,
+    );
+    assert!(base.has_ac);
+    assert_ne!(explicit_mts.dc_level, 0);
+    assert!(!explicit_mts.has_ac);
+    assert!(!vvc_luma_explicit_mts_candidate_is_signalable(explicit_mts));
+
+    let selected = select_vvc_scored_luma_residual_block_with_mts(
+        VvcTuResidualCodingMode::Transformed,
+        2,
+        &residuals,
+        8,
+        8,
+        bit_depth,
+        qp,
+        &quant_table,
+        true,
+        VvcLumaResidualQuantizationSearch::Full,
+        &mut stats,
+        &mut scratch,
+        &mut reconstructed,
+    );
+    assert_eq!(selected.mts_index, 0);
+}
+
+#[test]
 fn vvc_luma_mts_search_is_gated_to_supported_lossy_blocks() {
     assert!(vvc_luma_mts_selection_allowed(
         VvcTuResidualCodingMode::Transformed,
