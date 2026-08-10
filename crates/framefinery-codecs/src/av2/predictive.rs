@@ -228,8 +228,21 @@ fn av2_lossless_subsampled_regular_inter_tiles_bitstream_and_reconstruction_for_
         stream_format.bit_depth,
     )
     .ok()?;
-    let tile_layout = Av2TileLayout::lossless_subsampled_fast_for_geometry(geometry);
+    let tile_layout = Av2TileLayout::lossless_subsampled_regular_inter_for_geometry(geometry);
     if tile_layout.is_single_tile() {
+        return None;
+    }
+    if tile_layout.has_four_or_more_tile_columns() {
+        // Four-column 1920-wide lossless regular-inter layouts currently
+        // desynchronize AVM's tile entropy reader on mixed inter frames.
+        // Fallback to a predictive closed-loop key frame until that entropy
+        // context issue is fixed directly.
+        return None;
+    }
+    if tile_layout.has_lossless_regular_inter_wide_tile() {
+        // Uneven two-column layouts with a tile wider than 512 pixels hit the
+        // same lossless inter entropy mismatch in AVM. Keep those streams
+        // predictive by falling back to closed-loop keys for now.
         return None;
     }
 

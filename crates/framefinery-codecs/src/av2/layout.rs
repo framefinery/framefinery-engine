@@ -212,6 +212,20 @@ impl Av2TileLayout {
         }
     }
 
+    fn lossless_subsampled_regular_inter_for_geometry(geometry: Av2VideoGeometry) -> Self {
+        Self::lossless_subsampled_fast_for_geometry(geometry)
+    }
+
+    fn has_four_or_more_tile_columns(&self) -> bool {
+        self.log2_cols >= 2
+    }
+
+    fn has_lossless_regular_inter_wide_tile(&self) -> bool {
+        self.regions
+            .iter()
+            .any(|region| region.width > AV2_MVP_SUPERBLOCK_SIZE * 8)
+    }
+
     fn lossy_subsampled_for_geometry(geometry: Av2VideoGeometry) -> Self {
         Self::lossless_subsampled_fast_for_geometry(geometry)
     }

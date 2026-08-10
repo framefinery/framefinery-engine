@@ -285,7 +285,9 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
             previous_predictive_cache = None;
         }
         let predictive_frame = options.gop.is_predictive_frame(frame_idx);
-        let repeated_predictive_cache = if predictive_frame {
+        let repeated_predictive_cache = if predictive_frame
+            && vvc_predictive_inter_skip_enabled_for_reference_clean_release()
+        {
             previous_predictive_cache
                 .as_ref()
                 .filter(|cache| cache.source.as_slice() == frame_buf.as_slice())
@@ -370,7 +372,9 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 for region in vvc_ctu_regions(geometry) {
                     #[cfg(feature = "vvc-stats")]
                     let stage_start = StageStart::now();
-                    let cached_exact_ctu = if predictive_frame {
+                    let cached_exact_ctu = if predictive_frame
+                        && vvc_predictive_intra_ctu_reuse_enabled_for_mode(residual_mode)
+                    {
                         previous_predictive_cache.as_ref().and_then(|cache| {
                             cache.matching_decision(&frame_buf, stream_frame_layout, region)
                         })
@@ -378,7 +382,8 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         None
                     };
                     let cached_exact_ctu_available = cached_exact_ctu.is_some();
-                    let cached_lossy_skip_ctu = if !predictive_frame
+                    let cached_lossy_skip_ctu = if !vvc_predictive_inter_skip_enabled_for_reference_clean_release()
+                        || !predictive_frame
                         || cached_exact_ctu_available
                         || !lossy_near_skip_enabled
                     {
@@ -390,8 +395,14 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     };
                     let cached_inter_skip_ctu = cached_exact_ctu.or(cached_lossy_skip_ctu);
                     let cached_inter_skip_ctu_available = cached_inter_skip_ctu.is_some();
-                    let inter_skip_ctu =
-                        cached_inter_skip_ctu_available && vvc_predictive_inter_skip_region(region);
+                    // VVC InterSkip emission is intentionally disabled for the
+                    // release path. Both lossless and lossy predictive skip
+                    // streams have produced VTM failures on repeated
+                    // screen-content frames, while the predictive GOP and
+                    // intra-decision reuse path remains reference-clean.
+                    let inter_skip_ctu = cached_inter_skip_ctu_available
+                        && vvc_predictive_inter_skip_enabled_for_reference_clean_release()
+                        && vvc_predictive_inter_skip_region(region);
                     let intra_reuse_allowed = cached_exact_ctu_available
                         && vvc_predictive_ctu_dependencies_reused(
                             region,
@@ -913,7 +924,34 @@ fn vvc_predictive_ctu_dependencies_reused(
 }
 
 fn vvc_lossless_speed_luma_leaf_inter_skip_allowed(format: VvcPictureFormat) -> bool {
-    format.bit_depth.bits() >= 8
+    let _format = format;
+    // Leaf-level predictive skip currently copies source samples into the
+    // encoder reconstruction while the surrounding slice is still emitted as
+    // an I-slice unless a whole-CTU InterSkip is also present. Promoting those
+    // frames to P-slices is not enough; VTM rejects the current mixed
+    // leaf-skip syntax. Keep the release path reference-clean by limiting VVC
+    // predictive reuse to complete CTUs until the mixed CU/leaf P-slice syntax
+    // is implemented and reference-validated.
+    false
+}
+
+fn vvc_predictive_intra_ctu_reuse_enabled_for_mode(mode: VvcResidualCodingMode) -> bool {
+    // Exact-source CTU reuse is reference-clean for lossless streams because
+    // the reconstructed CTU equals the source CTU. For lossy streams, reusing
+    // a previous frame's quantized intra decisions can drift from VTM once
+    // the same source CTU is coded in a later predictive picture; keep lossy
+    // predictive GOP syntax enabled but re-quantize each CTU until that path
+    // is modelled and covered.
+    mode.is_lossless()
+}
+
+fn vvc_predictive_inter_skip_enabled_for_reference_clean_release() -> bool {
+    // The encoder keeps predictive GOP syntax and safe intra-decision reuse
+    // enabled, but whole-frame/whole-CTU InterSkip is not yet reference-clean
+    // across the release validation corpus. Re-enable this only with VTM
+    // coverage for repeated full-frame, mixed-CTU, 4:2:0/4:4:4, lossy, and
+    // lossless streams.
+    false
 }
 
 fn vvc_predictive_luma_leaf_inter_skip_mask(
