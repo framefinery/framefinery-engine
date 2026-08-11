@@ -654,8 +654,14 @@ fn select_vvc_scored_chroma_residual_block_with_transform_skip(
 }
 
 fn vvc_chroma_fast_search_uses_transform_skip_candidate(policy: VvcResidualCodingPolicy) -> bool {
+    // Chroma transform skip remains available as a candidate, but lossy fast
+    // search must compare it against transformed residual coding for 8-bit
+    // 4:4:4 screen content. For flat 4:4:4/RGB blocks, forcing transform skip
+    // emits many AC coefficients where transformed coding can collapse the
+    // block to DC-only. Other formats keep the prior shortcut for throughput.
     policy.residual_mode() == VvcResidualCodingMode::Lossy
         && policy.fast_search() == VvcFastSearch::LosslessSpeed
+        && (policy.chroma_sampling() != ChromaSampling::Cs444 || policy.bit_depth().bits() != 8)
 }
 
 fn select_vvc_chroma_residual_block_with_transform_skip(

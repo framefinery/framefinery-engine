@@ -1875,7 +1875,14 @@ fn vvc_chroma_lossless_speed_skips_near_exact_explicit_search(
 }
 
 fn vvc_chroma_fast_search_uses_derived_only(policy: VvcResidualCodingPolicy) -> bool {
+    // Derived-only chroma is a lossless-speed shortcut. Lossy 8-bit 4:4:4/RGB still
+    // needs explicit and CCLM candidates; otherwise screen-content rows fall
+    // back to AC-heavy residuals instead of the shared RD-selected path.
+    // Other lossy formats keep the shortcut in this fast-search mode.
     policy.fast_search() == VvcFastSearch::LosslessSpeed
+        && (policy.residual_mode() == VvcResidualCodingMode::Lossless
+            || policy.chroma_sampling() != ChromaSampling::Cs444
+            || policy.bit_depth().bits() != 8)
 }
 
 fn vvc_luma_lossless_speed_skips_directional_refinement(

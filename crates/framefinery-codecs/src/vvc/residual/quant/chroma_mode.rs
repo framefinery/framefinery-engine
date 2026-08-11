@@ -290,6 +290,59 @@ fn select_vvc_chroma_bdpcm_prediction(
         return None;
     }
 
+    let baseline_decision = policy.select_chroma_tu_coding_decision(node, selected_mode);
+    let baseline_residual = selected_residual.unwrap_or_else(|| {
+        #[cfg(feature = "vvc-stats")]
+        let score_start = StageStart::now();
+        let residual = VvcSelectedChromaResidual {
+            cb: finalize_vvc_chroma_residual_block(
+                baseline_decision.residual_coding,
+                selected_cb_residuals,
+                chroma_width,
+                chroma_height,
+                source_frame.format.bit_depth,
+                chroma_qp,
+                chroma_ts_quant,
+                stats,
+                transform_scratch,
+                reconstructed_residual,
+            ),
+            cr: finalize_vvc_chroma_residual_block(
+                baseline_decision.residual_coding,
+                selected_cr_residuals,
+                chroma_width,
+                chroma_height,
+                source_frame.format.bit_depth,
+                chroma_qp,
+                chroma_ts_quant,
+                stats,
+                transform_scratch,
+                reconstructed_residual,
+            ),
+        };
+        let residual = VvcScoredSelectedChromaResidual::new(
+            selected_cb_residuals,
+            selected_cr_residuals,
+            chroma_width,
+            chroma_height,
+            source_frame.format.bit_depth,
+            chroma_qp,
+            chroma_ts_quant,
+            residual,
+            transform_scratch,
+            reconstructed_residual,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
+        residual
+    });
+    let mut best_score = vvc_scored_chroma_quantized_residual_score(
+        baseline_residual,
+        u64::from(vvc_bdpcm_mode_syntax_bin_count(VvcBdpcmMode::None)).saturating_add(u64::from(
+            vvc_chroma_intra_mode_syntax_bin_count(selected_mode, cclm_syntax_enabled),
+        )),
+    );
+
     for bdpcm_mode in vvc_chroma_lossy_speed_direct_bdpcm_candidate_modes(
         policy,
         source_frame.format.chroma_sampling,
@@ -363,85 +416,27 @@ fn select_vvc_chroma_bdpcm_prediction(
         );
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-        if vvc_chroma_direct_bdpcm_residual_is_safe(
-            selected_cb_residuals,
-            selected_cr_residuals,
-            candidate_cb_residuals,
-            candidate_cr_residuals,
-        ) {
-            std::mem::swap(selected_cb_prediction, candidate_cb_prediction);
-            std::mem::swap(selected_cr_prediction, candidate_cr_prediction);
-            std::mem::swap(selected_cb_residuals, candidate_cb_residuals);
-            std::mem::swap(selected_cr_residuals, candidate_cr_residuals);
-            let residual = VvcSelectedChromaResidual {
-                cb: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
-                    selected_cb_residuals,
-                    chroma_width,
-                    chroma_height,
-                    chroma_ts_quant,
-                    bdpcm_mode,
-                ),
-                cr: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
-                    selected_cr_residuals,
-                    chroma_width,
-                    chroma_height,
-                    chroma_ts_quant,
-                    bdpcm_mode,
-                ),
-            };
-            let mode = VvcChromaIntraPredictionMode::Explicit(
-                bdpcm_mode
-                    .inferred_intra_mode()
-                    .expect("enabled BDPCM mode has an inferred intra mode"),
-            );
-            return Some(VvcSelectedChromaBdpcm {
-                mode,
-                residual: VvcScoredSelectedChromaResidual {
-                    residual,
-                    // The direct path has already selected BDPCM; finalization
-                    // only consumes the residual payload from this wrapper.
-                    score: VvcResidualBlockScore {
-                        distortion: 0,
-                        rate_cost: 0,
-                    },
-                },
-            });
-        }
-    }
-
-    let baseline_decision = policy.select_chroma_tu_coding_decision(node, selected_mode);
-    let baseline_residual = selected_residual.unwrap_or_else(|| {
         #[cfg(feature = "vvc-stats")]
         let score_start = StageStart::now();
         let residual = VvcSelectedChromaResidual {
-            cb: finalize_vvc_chroma_residual_block(
-                baseline_decision.residual_coding,
-                selected_cb_residuals,
+            cb: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
+                candidate_cb_residuals,
                 chroma_width,
                 chroma_height,
-                source_frame.format.bit_depth,
-                chroma_qp,
                 chroma_ts_quant,
-                stats,
-                transform_scratch,
-                reconstructed_residual,
+                bdpcm_mode,
             ),
-            cr: finalize_vvc_chroma_residual_block(
-                baseline_decision.residual_coding,
-                selected_cr_residuals,
+            cr: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
+                candidate_cr_residuals,
                 chroma_width,
                 chroma_height,
-                source_frame.format.bit_depth,
-                chroma_qp,
                 chroma_ts_quant,
-                stats,
-                transform_scratch,
-                reconstructed_residual,
+                bdpcm_mode,
             ),
         };
         let residual = VvcScoredSelectedChromaResidual::new(
-            selected_cb_residuals,
-            selected_cr_residuals,
+            candidate_cb_residuals,
+            candidate_cr_residuals,
             chroma_width,
             chroma_height,
             source_frame.format.bit_depth,
@@ -451,16 +446,32 @@ fn select_vvc_chroma_bdpcm_prediction(
             transform_scratch,
             reconstructed_residual,
         );
+        let candidate_score = vvc_scored_chroma_quantized_residual_score(
+            residual,
+            u64::from(vvc_bdpcm_mode_syntax_bin_count(bdpcm_mode)),
+        );
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
-        residual
-    });
-    let mut best_score = vvc_scored_chroma_quantized_residual_score(
-        baseline_residual,
-        u64::from(vvc_bdpcm_mode_syntax_bin_count(VvcBdpcmMode::None)).saturating_add(u64::from(
-            vvc_chroma_intra_mode_syntax_bin_count(selected_mode, cclm_syntax_enabled),
-        )),
-    );
+        if vvc_chroma_direct_bdpcm_residual_is_safe(
+            selected_cb_residuals,
+            selected_cr_residuals,
+            candidate_cb_residuals,
+            candidate_cr_residuals,
+        ) && candidate_score.selects_over(best_score)
+        {
+            std::mem::swap(selected_cb_prediction, candidate_cb_prediction);
+            std::mem::swap(selected_cr_prediction, candidate_cr_prediction);
+            std::mem::swap(selected_cb_residuals, candidate_cb_residuals);
+            std::mem::swap(selected_cr_residuals, candidate_cr_residuals);
+            let mode = VvcChromaIntraPredictionMode::Explicit(
+                bdpcm_mode
+                    .inferred_intra_mode()
+                    .expect("enabled BDPCM mode has an inferred intra mode"),
+            );
+            return Some(VvcSelectedChromaBdpcm { mode, residual });
+        }
+    }
+
     let mut best = None;
 
     for bdpcm_mode in vvc_chroma_bdpcm_candidate_modes(policy, co_located_luma_mode)
@@ -1090,9 +1101,8 @@ fn vvc_chroma_mode_rd_shortlist_limit(policy: VvcResidualCodingPolicy) -> usize 
     match policy.residual_mode() {
         VvcResidualCodingMode::Lossless => VVC_CHROMA_INTRA_CANDIDATE_CAPACITY,
         VvcResidualCodingMode::Lossy => match policy.fast_search() {
-            VvcFastSearch::Off | VvcFastSearch::Conservative | VvcFastSearch::LosslessSpeed => {
-                VVC_LOSSY_CHROMA_RD_WINNER_CANDIDATES
-            }
+            VvcFastSearch::Off | VvcFastSearch::Conservative => VVC_LOSSY_CHROMA_RD_WINNER_CANDIDATES,
+            VvcFastSearch::LosslessSpeed => 1,
             VvcFastSearch::Moderate => 3,
             VvcFastSearch::Aggressive => 2,
         },

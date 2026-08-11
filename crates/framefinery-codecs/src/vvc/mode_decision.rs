@@ -416,6 +416,14 @@ impl VvcResidualCodingPolicy {
         self.context.residual_mode()
     }
 
+    pub(in crate::vvc) const fn chroma_sampling(self) -> ChromaSampling {
+        self.context.chroma_sampling()
+    }
+
+    pub(in crate::vvc) const fn bit_depth(self) -> SampleBitDepth {
+        self.context.bit_depth()
+    }
+
     pub(in crate::vvc) fn select_luma_intra_mode(
         self,
         node: VvcCodingTreeNode,
