@@ -20,6 +20,9 @@ except ImportError:  # pragma: no cover - only needed for PNG-backed local manif
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SET_DIR = REPO_ROOT / "verification" / "test_vector_sets"
 DEFAULT_OUT_DIR = REPO_ROOT / "verification" / "generated" / "test_vectors"
+PERSISTENT_GENERATED_SOURCE_DIRS = (
+    DEFAULT_OUT_DIR / "screen_capture",
+)
 LOCAL_SET_DIR = "local"
 
 MANIFEST_COLUMNS = frozenset(
@@ -442,6 +445,17 @@ def resolve_manifest_path(path: Path, context: str) -> Path:
     if resolved.is_absolute():
         return resolved
     return (REPO_ROOT / resolved).resolve(strict=False)
+
+
+def is_persistent_generated_source_path(path: Path) -> bool:
+    """Return true for generated media sources that cleanup helpers must preserve."""
+    candidate = path if path.is_absolute() else REPO_ROOT / path
+    resolved = candidate.resolve(strict=False)
+    for source_dir in PERSISTENT_GENERATED_SOURCE_DIRS:
+        source_root = source_dir.resolve(strict=False)
+        if resolved == source_root or source_root in resolved.parents:
+            return True
+    return False
 
 
 def parse_optional_fps(value: str | None, field: str) -> str | None:

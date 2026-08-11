@@ -275,8 +275,10 @@ python3 scripts/benchmark_encode_matrix.py release-six-vectors-full \
 
 The native AOM CTC rows are read directly from `AOMCTC_ROOT`. The derived
 4:2:2/4:4:4 rows are materialized with `source_y4m_convert`, reused within the
-matrix run, and cleaned by `--cleanup-vectors`; the RGB row uses a CLI source
-filter and does not create a raw RGB temporary.
+matrix run, and cleaned by `--cleanup-vectors`; the RGB row reads the
+persistent Wayland capture at
+`verification/generated/test_vectors/screen_capture/current_screen_wayland_activity_2560x1440_30_500f_gbrp8.rgb`.
+Cleanup helpers preserve the `screen_capture/` source directory.
 
 Treat reference-decoder mismatches, lossless byte changes, and PSNR drops as
 release blockers unless they are explained and intentionally accepted. Timing

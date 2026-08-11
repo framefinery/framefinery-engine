@@ -1,8 +1,8 @@
-# description=Full six-vector screen-content release matrix. Native AOM CTC rows require AOMCTC_ROOT; derivative 4:2:2/4:4:4 rows are generated per case from those Y4M sources; the RGB row uses the CLI color-block source filter.
+# description=Full six-vector screen-content release matrix. Native AOM CTC rows require AOMCTC_ROOT; derivative 4:2:2/4:4:4 rows are generated per case from those Y4M sources; the RGB row uses the persistent local Wayland screen capture under verification/generated/test_vectors/screen_capture/.
 name,width,height,frames,format,pattern,fps,lossless,codecs,path
 aomctc_b2_SceneComposition_1_420,1920,1080,130,yuv420p8,source_file,15,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/SceneComposition_1.y4m
 aomctc_b2_SceneComposition_1_422,1920,1080,130,yuv422p8,source_y4m_convert,15,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/SceneComposition_1.y4m
-screen_wayland_activity_rgb,2560,1440,500,gbrp8,color_blocks,30,true,av2|vvc,
+screen_wayland_activity_rgb,2560,1440,500,gbrp8,source_file,30,true,av2|vvc,verification/generated/test_vectors/screen_capture/current_screen_wayland_activity_2560x1440_30_500f_gbrp8.rgb
 aomctc_b2_MissionControlClip1_420,1920,1080,130,yuv420p10le,source_file,60,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/MissionControlClip1_1920x1080_60fps_10bit_420_0450_0579.y4m
 aomctc_b2_MissionControlClip1_422,1920,1080,130,yuv422p10le,source_y4m_convert,60,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/MissionControlClip1_1920x1080_60fps_10bit_420_0450_0579.y4m
 aomctc_b2_MissionControlClip1_444,1920,1080,130,yuv444p10le,source_y4m_convert,60,true,av2|vvc,${AOMCTC_ROOT}/b2_scc/MissionControlClip1_1920x1080_60fps_10bit_420_0450_0579.y4m

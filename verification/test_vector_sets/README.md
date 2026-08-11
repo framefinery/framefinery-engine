@@ -111,8 +111,12 @@ source files directly when possible and clean generated raw source copies before
 the script exits.
 The `release-six-vectors-full` set uses direct AOM CTC Y4M input only for the
 native 4:2:0 rows. Its 4:2:2 and 4:4:4 rows are generated and cleaned by the
-benchmark script, and its full-length RGB row is encoded through the CLI pattern
-source filter so no multi-GB temporary RGB fixture is produced.
+benchmark script. Its full-length RGB row uses the persistent local Wayland
+screen capture at
+`verification/generated/test_vectors/screen_capture/current_screen_wayland_activity_2560x1440_30_500f_gbrp8.rgb`.
+The validation and matrix cleanup helpers preserve files under
+`verification/generated/test_vectors/screen_capture/` even when
+`--cleanup-vectors` is enabled.
 `multictu-regression` is the committed small generated set for rows that cross
 VVC CTU / AV2 superblock boundaries, including visible sizes that are not
 multiples of 8 where the pixel format allows them.

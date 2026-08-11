@@ -278,6 +278,20 @@ VVC/VTM debugging notes:
   at least 2, and picture-header RPL/QP fields only when the PPS says those
   fields are carried in the picture header.
 
+Persistent local validation source:
+
+- The six-vector RGB/screen-content row uses the regenerated Wayland capture at
+  `verification/generated/test_vectors/screen_capture/current_screen_wayland_activity_2560x1440_30_500f_gbrp8.rgb`.
+  This file is intentionally generated and uncommitted because it is about
+  5.2 GiB, but it should be treated as a persistent local source fixture.
+- Cleanup helpers should not delete files under
+  `verification/generated/test_vectors/screen_capture/`; generated derivative
+  vectors, encoded bitstreams, reconstructions, logs, and matrix reports may
+  still be cleaned normally.
+- Playback command:
+  `ffplay -f rawvideo -pixel_format gbrp -video_size 2560x1440 -framerate 30
+  verification/generated/test_vectors/screen_capture/current_screen_wayland_activity_2560x1440_30_500f_gbrp8.rgb`.
+
 ## Useful Commands
 
 Common local quality gates:

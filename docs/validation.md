@@ -152,8 +152,11 @@ the combined Markdown checkpoint under
 `verification/generated/pre_release_validation/<run>/pre-release-validation.md`.
 The six-vector matrix keeps the native 4:2:0 AOM CTC rows as direct Y4M input,
 materializes derived 4:2:2/4:4:4 rows through `source_y4m_convert`, reuses them
-within the matrix run, and encodes the full-length RGB row through the CLI
-`pattern=color_blocks` source filter to avoid a multi-GB raw RGB temporary.
+within the matrix run, and encodes the full-length RGB row from the persistent
+local Wayland screen capture under
+`verification/generated/test_vectors/screen_capture/`. The matrix and
+validation cleanup helpers preserve that screen-capture source directory even
+when `--cleanup-vectors` is enabled.
 
 For version-to-version performance tracking, run:
 

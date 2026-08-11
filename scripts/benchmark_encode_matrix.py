@@ -509,6 +509,9 @@ def cleanup_success_artifacts(args: argparse.Namespace, output: Path, recon: Pat
 
 def cleanup_vector_artifact(args: argparse.Namespace, path: Path | None) -> None:
     if args.cleanup_vectors and path is not None:
+        if generate_test_vectors.is_persistent_generated_source_path(path):
+            print(f"  preserved persistent source vector: {relpath(path)}", flush=True)
+            return
         path.unlink(missing_ok=True)
 
 
