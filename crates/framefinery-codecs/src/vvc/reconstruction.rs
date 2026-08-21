@@ -44,6 +44,12 @@ impl VvcReconstructionFrame {
         VvcPlaneAvailability::new(&self.cr_available, self.chroma_width())
     }
 
+    fn clear_availability(&mut self) {
+        self.luma_available.fill(false);
+        self.cb_available.fill(false);
+        self.cr_available.fill(false);
+    }
+
     fn mark_luma_node_available(&mut self, node: VvcCodingTreeNode) {
         let luma_width = self.luma_width();
         let luma_height = self.luma_height();

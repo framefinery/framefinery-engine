@@ -111,6 +111,10 @@ impl VvcLumaModeSearchState {
         }
     }
 
+    pub(in crate::vvc) fn clear(&mut self) {
+        self.valid.fill(false);
+    }
+
     fn left_of(&self, node: VvcCodingTreeNode) -> Option<VvcIntraPredictionMode> {
         let x = node.x.checked_sub(1)?;
         let y = node.y.saturating_add(node.height).saturating_sub(1);

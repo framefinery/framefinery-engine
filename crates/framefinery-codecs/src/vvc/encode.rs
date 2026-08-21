@@ -2,7 +2,9 @@ pub fn eos_annex_b() -> Vec<u8> {
     write_annex_b(&[VvcNalUnit::eos()]).expect("hard-coded EOS NAL should be valid")
 }
 
-const VVC_PREDICTIVE_FRAME_SKIP_PPS_ID: u8 = 1;
+const VVC_PREDICTIVE_SINGLE_SLICE_PPS_ID: u8 = 1;
+#[cfg(test)]
+const VVC_PREDICTIVE_FRAME_SKIP_PPS_ID: u8 = VVC_PREDICTIVE_SINGLE_SLICE_PPS_ID;
 const VVC_LOSSY_PREDICTIVE_SKIP_MAX_ABS_8BIT: u16 = 2;
 
 pub fn vvc_black_yuv420p8_annex_b(params: VvcEncodeParams) -> Result<Vec<u8>, String> {
@@ -215,13 +217,10 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     };
     if predictive_enabled {
         slice_config = slice_config.with_inter_enabled();
-        if picture_partitioning == VvcPicturePartitioning::OneSlicePerCtu && ctu_count > 1 {
-            slice_config = slice_config.with_picture_header_slice_state();
-        }
     }
-    let predictive_frame_skip_slice_config = predictive_enabled.then(|| {
+    let predictive_single_slice_config = predictive_enabled.then(|| {
         slice_config
-            .with_picture_parameter_set_id(VVC_PREDICTIVE_FRAME_SKIP_PPS_ID)
+            .with_picture_parameter_set_id(VVC_PREDICTIVE_SINGLE_SLICE_PPS_ID)
             .without_picture_header_slice_state()
     });
     let luma_qp = slice_config.slice_qp;
@@ -243,11 +242,11 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         picture_partitioning,
         slice_config,
     ));
-    if let Some(skip_slice_config) = predictive_frame_skip_slice_config {
+    if let Some(single_slice_config) = predictive_single_slice_config {
         parameter_sets.push(vvc_pps_unit_with_partitioning_and_config(
             geometry,
             VvcPicturePartitioning::SingleSlice,
-            skip_slice_config,
+            single_slice_config,
         ));
     }
     let mut total_bitstream_bytes = write_annex_b_to(bitstream, &parameter_sets)?;
@@ -259,7 +258,6 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
 
     let mut frame_buf = vec![0; frame_len];
     let mut previous_predictive_cache: Option<std::sync::Arc<VvcPredictiveFrameCache>> = None;
-    let mut frame_skip_payload_cache = VvcFrameSkipPayloadCache::default();
     let mut frame_idx = 0usize;
     while frame_limit.should_read(frame_idx) {
         #[cfg(feature = "vvc-stats")]
@@ -302,29 +300,26 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 let stage_start = StageStart::now();
                 #[cfg(feature = "vvc-stats")]
                 let entropy_build_start = StageStart::now();
-                let skip_slice_config = predictive_frame_skip_slice_config
-                    .expect("predictive single-slice config is available in predictive mode");
-                let inter_skip_payload =
-                    frame_skip_payload_cache.payload_for(geometry, skip_slice_config);
-                let frame_slice_units = vec![
-                    vvc_predictive_frame_skip_slice_unit_with_cached_payload(
+                let frame_ctus: Vec<_> = vvc_ctu_regions(geometry)
+                    .map(|region| VvcQuantizedCtu {
+                        slice_address: region.slice_address,
+                        geometry: region.geometry,
+                        payload: VvcQuantizedCtuPayload::InterSkip,
+                    })
+                    .collect();
+                let frame_slice_units = vvc_predictive_ctu_slice_units(
                         frame_idx,
                         geometry,
-                        skip_slice_config,
-                        inter_skip_payload,
-                    )?,
-                ];
+                    &frame_ctus,
+                    slice_config,
+                )?;
                 #[cfg(feature = "vvc-stats")]
                 {
                     frame_stats.add_counter("predictive_reused_ctu_count", ctu_count as u64);
                     frame_stats.add_counter("predictive_exact_ctu_count", ctu_count as u64);
                     frame_stats.add_counter("predictive_inter_skip_ctu_count", ctu_count as u64);
-                    frame_stats.add_counter("predictive_frame_skip_slice_count", 1);
+                    frame_stats.add_counter("predictive_ctu_slice_frame_count", 1);
                     frame_stats.add_counter("slice_count", frame_slice_units.len() as u64);
-                    frame_stats.add_counter(
-                        "single_slice_frame",
-                        u64::from(frame_slice_units.len() == 1),
-                    );
                     frame_stats.add_counter(
                         "frame_entropy_build_nanos",
                         entropy_build_start.elapsed().as_nanos() as u64,
@@ -357,6 +352,18 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
             sample_vvc_yuv_frame(&frame_buf, VvcEncodeParams { frames: 1 }, geometry, format)?;
         #[cfg(feature = "vvc-stats")]
         frame_stats.add_elapsed("sample_frame", stage_start);
+        let predictive_ctu_inter_skip_enabled =
+            predictive_frame && vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release();
+        let predictive_ctu_slice_frame = predictive_ctu_inter_skip_enabled
+            && vvc_predictive_frame_has_ctu_inter_skip_candidate(
+                previous_predictive_cache.as_deref(),
+                &frame_buf,
+                stream_frame_layout,
+                &source_frame,
+                geometry,
+                residual_mode,
+                lossy_near_skip_enabled,
+            );
         {
             let mut frame_bitstream = CountingWriter::new(bitstream);
             let (frame_recon_yuv, next_predictive_cache) = {
@@ -382,7 +389,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         None
                     };
                     let cached_exact_ctu_available = cached_exact_ctu.is_some();
-                    let cached_lossy_skip_ctu = if !vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release()
+                    let cached_lossy_skip_ctu = if !predictive_ctu_inter_skip_enabled
                         || !predictive_frame
                         || cached_exact_ctu_available
                         || !lossy_near_skip_enabled
@@ -395,12 +402,8 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     };
                     let cached_inter_skip_ctu = cached_exact_ctu.or(cached_lossy_skip_ctu);
                     let cached_inter_skip_ctu_available = cached_inter_skip_ctu.is_some();
-                    // VVC InterSkip emission is intentionally disabled for the
-                    // mixed-CTU release path until P-slice intra context
-                    // initialization is implemented and covered. Full-frame
-                    // all-skip uses a separate reference-clean path.
                     let inter_skip_ctu = cached_inter_skip_ctu_available
-                        && vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release()
+                        && predictive_ctu_slice_frame
                         && vvc_predictive_inter_skip_region(region);
                     let intra_reuse_allowed = cached_exact_ctu_available
                         && vvc_predictive_ctu_dependencies_reused(
@@ -473,6 +476,10 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             )?
                         }
                     } else {
+                        if predictive_ctu_slice_frame {
+                            frame_recon.clear_availability();
+                            luma_mode_search_state.clear();
+                        }
                         let luma_max_leaf_size = select_vvc_luma_max_leaf_size_for_ctu(
                             residual_policy,
                             &source_frame,
@@ -645,34 +652,30 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         .all(|ctu| matches!(ctu.payload, VvcQuantizedCtuPayload::InterSkip));
                 #[cfg(feature = "vvc-stats")]
                 if predictive_frame_skip {
-                    frame_stats.add_counter("predictive_frame_skip_slice_count", 1);
+                    frame_stats.add_counter("predictive_ctu_slice_frame_count", 1);
                 }
                 let frame_slice_units = if predictive_enabled && !predictive_frame {
                     vec![vvc_predictive_frame_slice_unit(
                         frame_idx,
                         geometry,
                         &frame_ctus,
-                        predictive_frame_skip_slice_config
+                        predictive_single_slice_config
                             .expect("predictive single-slice config is available in predictive mode"),
                     )?]
                 } else if predictive_frame_skip {
-                    let skip_slice_config = predictive_frame_skip_slice_config
-                        .expect("predictive single-slice config is available in predictive mode");
-                    let inter_skip_payload =
-                        frame_skip_payload_cache.payload_for(geometry, skip_slice_config);
-                    vec![vvc_predictive_frame_skip_slice_unit_with_payload(
-                        frame_idx,
-                        geometry,
-                        &frame_ctus,
-                        skip_slice_config,
-                        inter_skip_payload,
-                    )?]
+                    // Keep all-skip pictures on the CTU-sliced path until the
+                    // specialized cached single-slice skip payload is proven
+                    // against VTM. VTM rejects that multi-CTU payload today at
+                    // CABAC stream termination, while per-CTU slices validate.
+                    vvc_predictive_ctu_slice_units(frame_idx, geometry, &frame_ctus, slice_config)?
+                } else if predictive_ctu_slice_frame {
+                    vvc_predictive_ctu_slice_units(frame_idx, geometry, &frame_ctus, slice_config)?
                 } else if predictive_enabled {
                     vec![vvc_predictive_frame_slice_unit(
                         frame_idx,
                         geometry,
                         &frame_ctus,
-                        predictive_frame_skip_slice_config
+                        predictive_single_slice_config
                             .expect("predictive single-slice config is available in predictive mode"),
                     )?]
                 } else {
@@ -900,6 +903,36 @@ impl VvcPredictiveFrameCache {
     }
 }
 
+fn vvc_predictive_frame_has_ctu_inter_skip_candidate(
+    previous_cache: Option<&VvcPredictiveFrameCache>,
+    current_source: &[u8],
+    layout: PlanarYuvFrameLayout,
+    current_frame: &VvcSampledFrame,
+    geometry: VvcVideoGeometry,
+    residual_mode: VvcResidualCodingMode,
+    lossy_near_skip_enabled: bool,
+) -> bool {
+    let Some(cache) = previous_cache else {
+        return false;
+    };
+    vvc_ctu_regions(geometry).any(|region| {
+        if !vvc_predictive_inter_skip_region(region) {
+            return false;
+        }
+        if residual_mode.is_lossless()
+            && cache
+                .matching_decision(current_source, layout, region)
+                .is_some()
+        {
+            return true;
+        }
+        lossy_near_skip_enabled
+            && cache
+                .lossy_near_reconstruction_decision(current_frame, region)
+                .is_some()
+    })
+}
+
 fn vvc_predictive_ctu_dependencies_reused(
     region: VvcCtuRegion,
     ctu_cols: usize,
@@ -953,12 +986,12 @@ fn vvc_predictive_frame_inter_skip_enabled_for_reference_clean_release() -> bool
 }
 
 fn vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release() -> bool {
-    // Mixed inter/intra P slices need either a single-tree P-slice intra
-    // residual path or CTU-sliced pictures whose reconstruction decisions are
-    // constrained to slice boundaries. The P-slice CABAC context rows are
-    // staged, but the dual-tree I-slice CTU body must not be inserted into a
-    // mixed P slice.
-    false
+    // CTU-level InterSkip is emitted only in CTU-sliced predictive pictures:
+    // skipped CTUs are P slices, non-skipped CTUs remain I slices, and intra
+    // quantization is constrained to CTU-local availability before entropy
+    // emission. Do not insert the dual-tree I-slice CTU body into a mixed P
+    // slice.
+    true
 }
 
 fn vvc_predictive_luma_leaf_inter_skip_mask(

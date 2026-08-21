@@ -56,6 +56,36 @@ fn vvc_frame_inter_skip_cabac_payload(
     cabac.finish_payload()
 }
 
+fn vvc_ctu_cabac_payload(
+    picture_geometry: VvcVideoGeometry,
+    ctu: &VvcQuantizedCtu,
+    slice_config: VvcSliceSyntaxConfig,
+    inter_slice: bool,
+) -> VvcCabacPayload {
+    let mut cabac = VvcCabacEncoder::new_with_payload_capacity(
+        ctu.geometry
+            .coded_width()
+            .saturating_mul(ctu.geometry.coded_height()),
+    );
+    let mut frame_state = VvcFrameCtuCabacState::new(picture_geometry, slice_config, inter_slice);
+    cabac.start();
+    match &ctu.payload {
+        VvcQuantizedCtuPayload::Intra(params) => {
+            frame_state.encode_ctu(&mut cabac, ctu.slice_address, params, slice_config);
+        }
+        VvcQuantizedCtuPayload::InterSkip => {
+            frame_state.encode_inter_skip_ctu(
+                &mut cabac,
+                ctu.slice_address,
+                ctu.geometry,
+                slice_config,
+            );
+        }
+    }
+    cabac.encode_bin_trm(true);
+    cabac.finish_payload()
+}
+
 fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
     geometry: VvcVideoGeometry,
     color: VvcQuantizedColor,

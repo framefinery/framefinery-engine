@@ -3105,7 +3105,7 @@ fn vvc_predictive_repeated_frame_matches_nonpredictive_output() {
 }
 
 #[test]
-fn vvc_predictive_full_repeated_frame_uses_one_trailing_slice() {
+fn vvc_predictive_full_repeated_frame_uses_ctu_sliced_trailing_picture() {
     let geometry = VvcVideoGeometry {
         width: 128,
         height: 64,
@@ -3152,15 +3152,23 @@ fn vvc_predictive_full_repeated_frame_uses_one_trailing_slice() {
             .filter(|info| info.nal_unit_type == VvcNalUnitType::Pps as u8)
             .count(),
         2,
-        "predictive streams should carry the CTU-sliced PPS and the frame-skip PPS"
+        "predictive streams should carry the CTU-sliced PPS and the single-slice PPS"
+    );
+    assert_eq!(
+        predictive_nals
+            .iter()
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::PictureHeader as u8)
+            .count(),
+        1,
+        "the repeated predictive frame should carry one picture header for CTU-sliced output"
     );
     assert_eq!(
         predictive_nals
             .iter()
             .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
             .count(),
-        1,
-        "the repeated predictive frame should be encoded as one trailing slice"
+        2,
+        "the repeated predictive frame should be encoded as one trailing slice per CTU"
     );
 }
 
@@ -3203,14 +3211,16 @@ fn vvc_predictive_skips_repeated_right_ctu_when_left_ctu_changes() {
             .iter()
             .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
             .count(),
-        1,
-        "the mixed lossless predictive frame should be encoded as one trailing slice"
+        2,
+        "the mixed lossless predictive frame should be encoded as one trailing slice per CTU"
     );
-    assert!(
+    assert_eq!(
         predictive_nals
             .iter()
-            .all(|info| info.nal_unit_type != VvcNalUnitType::PictureHeader as u8),
-        "mixed lossless predictive frames should carry picture headers in the single-slice header"
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::PictureHeader as u8)
+            .count(),
+        1,
+        "mixed lossless predictive frames should carry one picture header for CTU-sliced output"
     );
 }
 
@@ -3321,14 +3331,16 @@ fn vvc_lossy_predictive_mixed_frame_uses_reference_clean_trailing_slice() {
             .iter()
             .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
             .count(),
-        1,
-        "the mixed lossy predictive frame should be encoded as one trailing slice"
+        2,
+        "the mixed lossy predictive frame should be encoded as one trailing slice per CTU"
     );
-    assert!(
+    assert_eq!(
         predictive_nals
             .iter()
-            .all(|info| info.nal_unit_type != VvcNalUnitType::PictureHeader as u8),
-        "mixed lossy predictive frames should carry picture headers in the single-slice header"
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::PictureHeader as u8)
+            .count(),
+        1,
+        "mixed lossy predictive frames should carry one picture header for CTU-sliced output"
     );
 }
 

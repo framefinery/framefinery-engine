@@ -3,8 +3,8 @@ use crate::picture::{ChromaSampling, SampleBitDepth};
 #[cfg(test)]
 use super::vvc_cabac_bits_with_luma_max_leaf_size;
 use super::{
-    vvc_frame_cabac_payload, vvc_frame_inter_skip_cabac_payload, VvcCabacPayload,
-    VvcCodingTreeConfig, VvcNalUnit, VvcNalUnitType, VvcProfile, VvcQuantizedCtu,
+    vvc_ctu_cabac_payload, vvc_frame_cabac_payload, vvc_frame_inter_skip_cabac_payload,
+    VvcCabacPayload, VvcCodingTreeConfig, VvcNalUnit, VvcNalUnitType, VvcProfile, VvcQuantizedCtu,
     VvcQuantizedCtuPayload, VvcSliceSyntaxConfig, VvcSyntaxRbsp, VvcSyntaxWriter, VvcVideoGeometry,
     VvcVuiSignal, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
 };
@@ -166,6 +166,43 @@ pub(in crate::vvc) fn vvc_predictive_frame_slice_unit(
             slice_config,
         ),
     })
+}
+
+pub(in crate::vvc) fn vvc_predictive_ctu_slice_units(
+    frame_idx: usize,
+    picture_geometry: VvcVideoGeometry,
+    ctus: &[VvcQuantizedCtu],
+    slice_config: VvcSliceSyntaxConfig,
+) -> Result<Vec<VvcNalUnit>, String> {
+    let picture_kind = vvc_picture_kind_for_frame_idx(frame_idx, true);
+    if picture_kind.is_irap() {
+        return Err("VVC predictive CTU-slice path requires a non-IRAP picture".to_string());
+    }
+    let poc_lsb = vvc_poc_lsb_for_frame_idx(frame_idx);
+    let expected_ctus = vvc_picture_ctu_count(picture_geometry);
+    if ctus.len() != expected_ctus {
+        return Err(format!(
+            "VVC predictive CTU-slice frame expected {expected_ctus} CTU payload(s), got {}",
+            ctus.len()
+        ));
+    }
+
+    let mut units = Vec::with_capacity(ctus.len() + 1);
+    units.push(vvc_picture_header_unit_with_poc(
+        picture_kind,
+        poc_lsb,
+        slice_config,
+    ));
+    for ctu in ctus {
+        units.push(vvc_ctu_slice_unit_with_poc(
+            picture_kind,
+            poc_lsb,
+            picture_geometry,
+            ctu,
+            slice_config,
+        ));
+    }
+    Ok(units)
 }
 
 #[cfg(test)]
@@ -888,6 +925,114 @@ fn vvc_frame_slice_payload_with_poc(
     vvc_frame_slice_rbsp_with_poc(picture_kind, poc_lsb, picture_geometry, ctus, slice_config).bytes
 }
 
+fn vvc_picture_header_unit_with_poc(
+    picture_kind: VvcPictureKind,
+    poc_lsb: u32,
+    slice_config: VvcSliceSyntaxConfig,
+) -> VvcNalUnit {
+    VvcNalUnit {
+        nal_unit_type: VvcNalUnitType::PictureHeader,
+        layer_id: 0,
+        temporal_id: 0,
+        rbsp_payload: vvc_picture_header_payload_with_poc(picture_kind, poc_lsb, slice_config),
+    }
+}
+
+fn vvc_picture_header_payload_with_poc(
+    picture_kind: VvcPictureKind,
+    poc_lsb: u32,
+    slice_config: VvcSliceSyntaxConfig,
+) -> Vec<u8> {
+    let mut writer = VvcSyntaxWriter::without_fields();
+    write_vvc_picture_header(&mut writer, picture_kind, poc_lsb, slice_config);
+    writer.rbsp_trailing_bits();
+    debug_assert!(writer.is_byte_aligned());
+    writer.into_bytes()
+}
+
+fn vvc_ctu_slice_unit_with_poc(
+    picture_kind: VvcPictureKind,
+    poc_lsb: u32,
+    picture_geometry: VvcVideoGeometry,
+    ctu: &VvcQuantizedCtu,
+    slice_config: VvcSliceSyntaxConfig,
+) -> VvcNalUnit {
+    VvcNalUnit {
+        nal_unit_type: picture_kind.nal_unit_type(),
+        layer_id: 0,
+        temporal_id: 0,
+        rbsp_payload: vvc_ctu_slice_payload_with_poc(
+            picture_kind,
+            poc_lsb,
+            picture_geometry,
+            ctu,
+            slice_config,
+        ),
+    }
+}
+
+fn vvc_ctu_slice_payload_with_poc(
+    picture_kind: VvcPictureKind,
+    poc_lsb: u32,
+    picture_geometry: VvcVideoGeometry,
+    ctu: &VvcQuantizedCtu,
+    slice_config: VvcSliceSyntaxConfig,
+) -> Vec<u8> {
+    let mut writer = VvcSyntaxWriter::without_fields();
+    let slice_type = vvc_slice_type_for_ctu(picture_kind, ctu);
+    let tool_flags = slice_config.tools;
+    let slice_count = vvc_picture_ctu_count(picture_geometry);
+    let include_picture_header = slice_count == 1;
+    writer.write_flag(
+        "sh_picture_header_in_slice_header_flag",
+        include_picture_header,
+    );
+    if include_picture_header {
+        write_vvc_picture_header(&mut writer, picture_kind, poc_lsb, slice_config);
+    }
+    if slice_count > 1 {
+        writer.write_u(
+            "sh_slice_address",
+            ctu.slice_address as u64,
+            vvc_slice_address_bits(picture_geometry),
+        );
+    }
+    if slice_config.inter_enabled && !picture_kind.is_irap() {
+        writer.write_ue("sh_slice_type", slice_type.code());
+    }
+    if picture_kind.is_irap() {
+        writer.write_flag("sh_no_output_of_prior_pics_flag", false);
+    }
+    if !vvc_picture_header_carries_slice_state(slice_config) {
+        write_vvc_slice_header_ref_pic_lists(&mut writer, picture_kind);
+        writer.write_se("sh_qp_delta", slice_config.slice_qp - VVC_PPS_INIT_QP);
+    }
+    if tool_flags.dependent_quantization_enabled {
+        writer.write_flag("sh_dep_quant_used_flag", true);
+    }
+    if tool_flags.sign_data_hiding_enabled && !tool_flags.dependent_quantization_enabled {
+        writer.write_flag("sh_sign_data_hiding_used_flag", true);
+    }
+    if tool_flags.transform_skip_enabled
+        && !tool_flags.dependent_quantization_enabled
+        && !tool_flags.sign_data_hiding_enabled
+    {
+        writer.write_flag("sh_ts_residual_coding_disabled_flag", true);
+    }
+    write_vvc_slice_header_byte_alignment(&mut writer);
+    let inter_slice =
+        slice_config.inter_enabled && !picture_kind.is_irap() && slice_type.is_inter();
+    let payload = vvc_ctu_cabac_payload(picture_geometry, ctu, slice_config, inter_slice);
+    writer.write_packed_cabac_bits(
+        "cabac_vvc_ctu_quantized_residual_bits",
+        &payload.bytes,
+        payload.bit_len,
+    );
+    writer.rbsp_trailing_bits();
+    debug_assert!(writer.is_byte_aligned());
+    writer.into_bytes()
+}
+
 #[cfg(test)]
 pub(in crate::vvc) fn vvc_slice_rbsp(
     picture_kind: VvcPictureKind,
@@ -1134,6 +1279,14 @@ pub(in crate::vvc) fn vvc_slice_type_for_ctus(
     }
 }
 
+fn vvc_slice_type_for_ctu(picture_kind: VvcPictureKind, ctu: &VvcQuantizedCtu) -> VvcSliceType {
+    if !picture_kind.is_irap() && matches!(ctu.payload, VvcQuantizedCtuPayload::InterSkip) {
+        VvcSliceType::P
+    } else {
+        VvcSliceType::I
+    }
+}
+
 pub(in crate::vvc) fn vvc_picture_ctu_cols(geometry: VvcVideoGeometry) -> usize {
     geometry.coded_width().div_ceil(crate::vvc::VVC_CTU_SIZE)
 }
@@ -1146,12 +1299,10 @@ pub(in crate::vvc) fn vvc_picture_ctu_count(geometry: VvcVideoGeometry) -> usize
     vvc_picture_ctu_cols(geometry) * vvc_picture_ctu_rows(geometry)
 }
 
-#[cfg(test)]
 pub(in crate::vvc) fn vvc_slice_address_bits(geometry: VvcVideoGeometry) -> u8 {
     ceil_log2_usize(vvc_picture_ctu_count(geometry).max(1))
 }
 
-#[cfg(test)]
 fn ceil_log2_usize(value: usize) -> u8 {
     if value <= 1 {
         0
