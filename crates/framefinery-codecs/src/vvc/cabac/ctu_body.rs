@@ -1,4 +1,4 @@
-use super::context::VvcCabacProbModel;
+use super::context::{VvcCabacInitType, VvcCabacProbModel};
 use super::ctu_split::{
     vvc_chroma_height, vvc_chroma_split_availability, vvc_chroma_width, VvcChromaSplitAvailability,
     VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams, VvcCtuPartitionShape,
@@ -39,16 +39,7 @@ fn encode_inter_skip_ctu_body_with_contexts(
     contexts: &mut VvcCabacContexts,
     ctu_geometry: VvcVideoGeometry,
     slice_config: VvcSliceSyntaxConfig,
-    skip_ctx: u8,
 ) {
-    if ctu_geometry.coded_width() == VVC_CTU_SIZE && ctu_geometry.coded_height() == VVC_CTU_SIZE {
-        // Root 64x64 inter skip CU. MaxNumMergeCand is one in predictive SPS,
-        // so merge_idx and residual syntax are both absent.
-        contexts.encode_split_flag(cabac, 0, false);
-        contexts.encode_cu_skip_flag(cabac, skip_ctx, true);
-        return;
-    }
-
     let shape = VvcCtuPartitionShape {
         root_width: VVC_CTU_SIZE as u16,
         root_height: VVC_CTU_SIZE as u16,
@@ -61,7 +52,7 @@ fn encode_inter_skip_ctu_body_with_contexts(
         VvcLumaNeighbourState::new(shape.visible_width, shape.visible_height);
     let mut skip_neighbours =
         VvcInterSkipNeighbourState::new(shape.visible_width, shape.visible_height);
-    VvcCtuCabacOp::visit_intra_ctu_partition_with_luma_neighbours(
+    VvcCtuCabacOp::visit_inter_skip_ctu_partition_with_luma_neighbours(
         &mut split_neighbours,
         shape,
         0,
@@ -303,10 +294,17 @@ fn encode_vvc_trunc_bin_code_ep(cabac: &mut VvcCabacEncoder, symbol: u32, num_sy
 pub(in crate::vvc) fn initial_vvc_cabac_contexts(
     slice_config: VvcSliceSyntaxConfig,
 ) -> VvcCabacContexts {
+    initial_vvc_cabac_contexts_for_init_type(slice_config, VvcCabacInitType::I)
+}
+
+pub(in crate::vvc) fn initial_vvc_cabac_contexts_for_init_type(
+    slice_config: VvcSliceSyntaxConfig,
+    init_type: VvcCabacInitType,
+) -> VvcCabacContexts {
     if slice_config.tools.transform_skip_enabled {
-        VvcCabacContexts::with_slice_qp(slice_config.slice_qp)
+        VvcCabacContexts::with_slice_qp_and_init_type(slice_config.slice_qp, init_type)
     } else {
-        VvcCabacContexts::new()
+        VvcCabacContexts::with_slice_qp_and_init_type(VvcCabacContexts::DEFAULT_SLICE_QP, init_type)
     }
 }
 
@@ -358,8 +356,13 @@ impl VvcFrameCtuCabacState {
     ) -> Self {
         let picture_width = picture_geometry.coded_width() as u16;
         let picture_height = picture_geometry.coded_height() as u16;
+        let init_type = if inter_slice {
+            VvcCabacInitType::P
+        } else {
+            VvcCabacInitType::I
+        };
         Self {
-            contexts: initial_vvc_cabac_contexts(slice_config),
+            contexts: initial_vvc_cabac_contexts_for_init_type(slice_config, init_type),
             luma_neighbours: VvcLumaNeighbourState::new(picture_width, picture_height),
             luma_mode_neighbours: VvcLumaModeNeighbourState::new(picture_width, picture_height),
             chroma_neighbours: VvcChromaNeighbourState::new(
@@ -440,20 +443,12 @@ impl VvcFrameCtuCabacState {
         ctu_geometry: VvcVideoGeometry,
         slice_config: VvcSliceSyntaxConfig,
     ) {
-        let skip_ctx = self.skip_ctx(slice_address);
-        if ctu_geometry.coded_width() == VVC_CTU_SIZE && ctu_geometry.coded_height() == VVC_CTU_SIZE
-        {
-            self.contexts.encode_split_flag(cabac, 0, false);
-            self.contexts.encode_cu_skip_flag(cabac, skip_ctx, true);
-        } else {
-            encode_inter_skip_ctu_body_with_contexts(
-                cabac,
-                &mut self.contexts,
-                ctu_geometry,
-                slice_config,
-                skip_ctx,
-            );
-        }
+        encode_inter_skip_ctu_body_with_contexts(
+            cabac,
+            &mut self.contexts,
+            ctu_geometry,
+            slice_config,
+        );
         if slice_address < self.skip_neighbours.len() {
             self.skip_neighbours[slice_address] = true;
         }
@@ -827,7 +822,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         skip_neighbours: Option<&'a mut VvcInterSkipNeighbourState>,
     ) -> Self {
         self.inter_slice = inter_slice;
-        self.inter_skip_ctx = skip_ctx.min(8);
+        self.inter_skip_ctx = skip_ctx.min(2);
         self.inter_pred_mode_contexts = pred_mode_contexts;
         self.inter_skip_neighbours = skip_neighbours;
         self
@@ -1056,7 +1051,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             .as_ref()
             .map(|neighbours| neighbours.skip_ctx(node))
             .unwrap_or(self.inter_skip_ctx)
-            .min(8)
+            .min(2)
     }
 
     fn emit_luma_intra_prediction_mode(

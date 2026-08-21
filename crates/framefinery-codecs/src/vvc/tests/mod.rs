@@ -1764,6 +1764,28 @@ fn vvc_split_cu_flag_context_uses_spec_ctx_set_formula() {
 }
 
 #[test]
+fn vvc_inter_skip_64x64_root_uses_inter_split_context() {
+    let shape = VvcCtuPartitionShape {
+        root_width: 64,
+        root_height: 64,
+        visible_width: 64,
+        visible_height: 64,
+        chroma_sampling: ChromaSampling::Cs420,
+        dual_tree_intra: false,
+    };
+    let ops = VvcCtuCabacOp::inter_skip_ctu_partition(shape, VVC_CTU_SIZE as u16);
+
+    assert_eq!(
+        ops,
+        vec![VvcCtuCabacOp::LumaLeafWithSplitCtx {
+            node: VvcCodingTreeNode::root(64, 64, VvcTreeType::SingleTree),
+            write_split_flag: true,
+            split_ctx: 6,
+        }]
+    );
+}
+
+#[test]
 fn vvc_mtt_binary_flag_context_uses_table_132_formula() {
     // ITU-T H.266 (V4) clause 9.3.4.2.1, Table 132:
     // ctxInc = (2 * mtt_split_cu_vertical_flag) + (mttDepth <= 1 ? 1 : 0).

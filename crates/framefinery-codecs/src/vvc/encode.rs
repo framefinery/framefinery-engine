@@ -286,7 +286,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         }
         let predictive_frame = options.gop.is_predictive_frame(frame_idx);
         let repeated_predictive_cache = if predictive_frame
-            && vvc_predictive_inter_skip_enabled_for_reference_clean_release()
+            && vvc_predictive_frame_inter_skip_enabled_for_reference_clean_release()
         {
             previous_predictive_cache
                 .as_ref()
@@ -382,7 +382,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         None
                     };
                     let cached_exact_ctu_available = cached_exact_ctu.is_some();
-                    let cached_lossy_skip_ctu = if !vvc_predictive_inter_skip_enabled_for_reference_clean_release()
+                    let cached_lossy_skip_ctu = if !vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release()
                         || !predictive_frame
                         || cached_exact_ctu_available
                         || !lossy_near_skip_enabled
@@ -396,12 +396,11 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     let cached_inter_skip_ctu = cached_exact_ctu.or(cached_lossy_skip_ctu);
                     let cached_inter_skip_ctu_available = cached_inter_skip_ctu.is_some();
                     // VVC InterSkip emission is intentionally disabled for the
-                    // release path. Both lossless and lossy predictive skip
-                    // streams have produced VTM failures on repeated
-                    // screen-content frames, while the predictive GOP and
-                    // intra-decision reuse path remains reference-clean.
+                    // mixed-CTU release path until P-slice intra context
+                    // initialization is implemented and covered. Full-frame
+                    // all-skip uses a separate reference-clean path.
                     let inter_skip_ctu = cached_inter_skip_ctu_available
-                        && vvc_predictive_inter_skip_enabled_for_reference_clean_release()
+                        && vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release()
                         && vvc_predictive_inter_skip_region(region);
                     let intra_reuse_allowed = cached_exact_ctu_available
                         && vvc_predictive_ctu_dependencies_reused(
@@ -945,12 +944,18 @@ fn vvc_predictive_intra_ctu_reuse_enabled_for_mode(mode: VvcResidualCodingMode) 
     mode.is_lossless()
 }
 
-fn vvc_predictive_inter_skip_enabled_for_reference_clean_release() -> bool {
-    // The encoder keeps predictive GOP syntax and safe intra-decision reuse
-    // enabled, but whole-frame/whole-CTU InterSkip is not yet reference-clean
-    // across the release validation corpus. Re-enable this only with VTM
-    // coverage for repeated full-frame, mixed-CTU, 4:2:0/4:4:4, lossy, and
-    // lossless streams.
+fn vvc_predictive_frame_inter_skip_enabled_for_reference_clean_release() -> bool {
+    // Full-frame repeated P pictures use a single all-skip slice and now
+    // initialize the CABAC state as a P slice before emitting split/skip
+    // syntax. Keep this separate from mixed CTU skip so reference validation can
+    // cover the smaller, spec-clean path first.
+    true
+}
+
+fn vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release() -> bool {
+    // Mixed inter/intra P slices need the full P-slice context initialization
+    // set for intra/residual contexts. Leave per-CTU skip gated until those
+    // contexts are implemented and VTM-covered.
     false
 }
 

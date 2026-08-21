@@ -1035,6 +1035,12 @@ impl VvcQtSplitCtxInput {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VvcLumaSplitAvailabilityKind {
+    Intra,
+    Inter,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::vvc) enum VvcCtuCabacOp {
     QtSplit {
         node: VvcCodingTreeNode,
@@ -1093,6 +1099,26 @@ impl VvcCtuCabacOp {
         ops
     }
 
+    #[cfg(test)]
+    pub(in crate::vvc) fn inter_skip_ctu_partition(
+        shape: VvcCtuPartitionShape,
+        max_leaf_size: u16,
+    ) -> Vec<Self> {
+        let mut ops = Vec::new();
+        let mut neighbours = VvcLumaNeighbourState::new(shape.visible_width, shape.visible_height);
+        Self::visit_inter_skip_ctu_partition_with_luma_neighbours(
+            &mut neighbours,
+            shape,
+            0,
+            0,
+            shape.visible_width,
+            shape.visible_height,
+            max_leaf_size,
+            |op| ops.push(op),
+        );
+        ops
+    }
+
     pub(in crate::vvc) fn append_intra_ctu_partition_with_luma_neighbours(
         ops: &mut Vec<Self>,
         neighbours: &mut VvcLumaNeighbourState,
@@ -1141,6 +1167,7 @@ impl VvcCtuCabacOp {
             picture_visible_width,
             picture_visible_height,
             max_leaf_size,
+            VvcLumaSplitAvailabilityKind::Intra,
             &mut emit_op,
         );
         if shape.dual_tree_intra && shape.chroma_sampling != ChromaSampling::Monochrome {
@@ -1158,12 +1185,44 @@ impl VvcCtuCabacOp {
         }
     }
 
+    pub(in crate::vvc) fn visit_inter_skip_ctu_partition_with_luma_neighbours<F>(
+        neighbours: &mut VvcLumaNeighbourState,
+        shape: VvcCtuPartitionShape,
+        origin_x: u16,
+        origin_y: u16,
+        picture_visible_width: u16,
+        picture_visible_height: u16,
+        max_leaf_size: u16,
+        mut emit_op: F,
+    ) where
+        F: FnMut(Self),
+    {
+        let tree_type = vvc_luma_tree_type(shape);
+        let root = VvcCodingTreeNode::root_at(
+            origin_x,
+            origin_y,
+            shape.root_width,
+            shape.root_height,
+            tree_type,
+        );
+        Self::visit_visible_luma_subtree(
+            neighbours,
+            root,
+            picture_visible_width,
+            picture_visible_height,
+            max_leaf_size,
+            VvcLumaSplitAvailabilityKind::Inter,
+            &mut emit_op,
+        );
+    }
+
     fn visit_visible_luma_subtree<F>(
         neighbours: &mut VvcLumaNeighbourState,
         node: VvcCodingTreeNode,
         visible_width: u16,
         visible_height: u16,
         max_leaf_size: u16,
+        split_kind: VvcLumaSplitAvailabilityKind,
         emit_op: &mut F,
     ) where
         F: FnMut(Self),
@@ -1174,7 +1233,12 @@ impl VvcCtuCabacOp {
         if node.fits_visible(visible_width, visible_height)
             && Self::luma_leaf_allowed(node, max_leaf_size)
         {
-            let split = Self::luma_split_availability(node, visible_width, visible_height);
+            let split = Self::luma_split_availability_for_kind(
+                node,
+                visible_width,
+                visible_height,
+                split_kind,
+            );
             let write_split_flag = split.has_mtt() || split.allow_qt;
             emit_op(Self::LumaLeafWithSplitCtx {
                 node,
@@ -1196,6 +1260,7 @@ impl VvcCtuCabacOp {
                 visible_width,
                 visible_height,
                 max_leaf_size,
+                split_kind,
                 emit_op,
             );
             return;
@@ -1209,11 +1274,13 @@ impl VvcCtuCabacOp {
                 visible_width,
                 visible_height,
                 max_leaf_size,
+                split_kind,
                 emit_op,
             );
             return;
         }
-        let split = Self::luma_split_availability(node, visible_width, visible_height);
+        let split =
+            Self::luma_split_availability_for_kind(node, visible_width, visible_height, split_kind);
         if !split.allow_qt {
             Self::visit_visible_luma_mtt_subtree(
                 neighbours,
@@ -1221,6 +1288,7 @@ impl VvcCtuCabacOp {
                 visible_width,
                 visible_height,
                 max_leaf_size,
+                split_kind,
                 emit_op,
             );
             return;
@@ -1239,6 +1307,7 @@ impl VvcCtuCabacOp {
                 visible_width,
                 visible_height,
                 max_leaf_size,
+                split_kind,
                 emit_op,
             );
         }
@@ -1250,13 +1319,15 @@ impl VvcCtuCabacOp {
         visible_width: u16,
         visible_height: u16,
         max_leaf_size: u16,
+        split_kind: VvcLumaSplitAvailabilityKind,
         emit_op: &mut F,
     ) where
         F: FnMut(Self),
     {
         let vertical = node.width > max_leaf_size
             && (node.height <= max_leaf_size || node.width >= node.height);
-        let split = Self::luma_split_availability(node, visible_width, visible_height);
+        let split =
+            Self::luma_split_availability_for_kind(node, visible_width, visible_height, split_kind);
         let can_hor = split.allow_bt_horizontal || split.allow_tt_horizontal;
         let can_ver = split.allow_bt_vertical || split.allow_tt_vertical;
         let can_binary = if vertical {
@@ -1294,6 +1365,7 @@ impl VvcCtuCabacOp {
                 visible_width,
                 visible_height,
                 max_leaf_size,
+                split_kind,
                 emit_op,
             );
         }
@@ -1305,6 +1377,7 @@ impl VvcCtuCabacOp {
         visible_width: u16,
         visible_height: u16,
         max_leaf_size: u16,
+        split_kind: VvcLumaSplitAvailabilityKind,
         emit_op: &mut F,
     ) where
         F: FnMut(Self),
@@ -1312,7 +1385,8 @@ impl VvcCtuCabacOp {
         let bottom_left_in_pic =
             node.x < visible_width && node.y + node.height - 1 < visible_height;
         let top_right_in_pic = node.x + node.width - 1 < visible_width && node.y < visible_height;
-        let split = Self::luma_split_availability(node, visible_width, visible_height);
+        let split =
+            Self::luma_split_availability_for_kind(node, visible_width, visible_height, split_kind);
         if !bottom_left_in_pic && !top_right_in_pic {
             for child_idx in 0..4 {
                 Self::visit_visible_luma_subtree(
@@ -1321,6 +1395,7 @@ impl VvcCtuCabacOp {
                     visible_width,
                     visible_height,
                     max_leaf_size,
+                    split_kind,
                     emit_op,
                 );
             }
@@ -1342,6 +1417,7 @@ impl VvcCtuCabacOp {
                     visible_width,
                     visible_height,
                     max_leaf_size,
+                    split_kind,
                     emit_op,
                 );
             }
@@ -1373,6 +1449,7 @@ impl VvcCtuCabacOp {
                     visible_width,
                     visible_height,
                     max_leaf_size,
+                    split_kind,
                     emit_op,
                 );
             }
@@ -1404,6 +1481,7 @@ impl VvcCtuCabacOp {
                     visible_width,
                     visible_height,
                     max_leaf_size,
+                    split_kind,
                     emit_op,
                 );
             }
@@ -1415,6 +1493,7 @@ impl VvcCtuCabacOp {
                     visible_width,
                     visible_height,
                     max_leaf_size,
+                    split_kind,
                     emit_op,
                 );
             }
@@ -1526,6 +1605,78 @@ impl VvcCtuCabacOp {
         }
     }
 
+    fn luma_inter_split_availability(
+        node: VvcCodingTreeNode,
+        visible_width: u16,
+        visible_height: u16,
+    ) -> VvcSplitCtxInput {
+        // The SPS advertises inter max BT/TT sizes up to the CTU size. The
+        // intra encoder's smaller luma leaf/TU limits must not leak into
+        // P-slice split-context derivation for all-skip CUs.
+        let allow_qt = Self::qt_flag_can_be_signaled(node);
+        let max_mtt_depth = 3 + node.depth_offset;
+        let allow_bt_vertical = Self::allow_luma_bt_split_with_max_size(
+            node,
+            true,
+            visible_width,
+            visible_height,
+            max_mtt_depth,
+            VVC_CTU_SIZE as u16,
+        );
+        let allow_bt_horizontal = Self::allow_luma_bt_split_with_max_size(
+            node,
+            false,
+            visible_width,
+            visible_height,
+            max_mtt_depth,
+            VVC_CTU_SIZE as u16,
+        );
+        let allow_tt_vertical = Self::allow_luma_tt_split_with_max_size(
+            node,
+            true,
+            visible_width,
+            visible_height,
+            max_mtt_depth,
+            VVC_CTU_SIZE as u16,
+        );
+        let allow_tt_horizontal = Self::allow_luma_tt_split_with_max_size(
+            node,
+            false,
+            visible_width,
+            visible_height,
+            max_mtt_depth,
+            VVC_CTU_SIZE as u16,
+        );
+
+        VvcSplitCtxInput {
+            available_left: false,
+            available_above: false,
+            condition_left: false,
+            condition_above: false,
+            allow_bt_vertical,
+            allow_bt_horizontal,
+            allow_tt_vertical,
+            allow_tt_horizontal,
+            allow_qt,
+        }
+    }
+
+    fn luma_split_availability_for_kind(
+        node: VvcCodingTreeNode,
+        visible_width: u16,
+        visible_height: u16,
+        kind: VvcLumaSplitAvailabilityKind,
+    ) -> VvcSplitCtxInput {
+        match kind {
+            VvcLumaSplitAvailabilityKind::Intra => {
+                Self::luma_split_availability(node, visible_width, visible_height)
+            }
+            VvcLumaSplitAvailabilityKind::Inter => {
+                Self::luma_inter_split_availability(node, visible_width, visible_height)
+            }
+        }
+    }
+
     fn allow_luma_bt_split(
         node: VvcCodingTreeNode,
         vertical: bool,
@@ -1533,14 +1684,30 @@ impl VvcCtuCabacOp {
         visible_height: u16,
         max_mtt_depth: u8,
     ) -> bool {
+        Self::allow_luma_bt_split_with_max_size(
+            node,
+            vertical,
+            visible_width,
+            visible_height,
+            max_mtt_depth,
+            VVC_CURRENT_MAX_LUMA_BT_SIZE,
+        )
+    }
+
+    fn allow_luma_bt_split_with_max_size(
+        node: VvcCodingTreeNode,
+        vertical: bool,
+        visible_width: u16,
+        visible_height: u16,
+        max_mtt_depth: u8,
+        max_bt_size: u16,
+    ) -> bool {
         // H.266 6.4.2, luma intra subset. MinBtSizeY is MinCbSizeY.
         let cb_size = if vertical { node.width } else { node.height };
         if cb_size <= VVC_CURRENT_MIN_LUMA_CB_SIZE {
             return false;
         }
-        if node.width > VVC_CURRENT_MAX_LUMA_BT_SIZE
-            || node.height > VVC_CURRENT_MAX_LUMA_BT_SIZE
-            || node.mtt_depth >= max_mtt_depth
+        if node.width > max_bt_size || node.height > max_bt_size || node.mtt_depth >= max_mtt_depth
         {
             return false;
         }
@@ -1569,6 +1736,24 @@ impl VvcCtuCabacOp {
         visible_height: u16,
         max_mtt_depth: u8,
     ) -> bool {
+        Self::allow_luma_tt_split_with_max_size(
+            node,
+            vertical,
+            visible_width,
+            visible_height,
+            max_mtt_depth,
+            VVC_CURRENT_MAX_LUMA_TT_SIZE.min(64),
+        )
+    }
+
+    fn allow_luma_tt_split_with_max_size(
+        node: VvcCodingTreeNode,
+        vertical: bool,
+        visible_width: u16,
+        visible_height: u16,
+        max_mtt_depth: u8,
+        max_tt_size: u16,
+    ) -> bool {
         // H.266 6.4.3, luma intra subset. TT is not available for boundary
         // nodes, which is why boundary split syntax often infers the binary
         // flag rather than writing it.
@@ -1576,8 +1761,8 @@ impl VvcCtuCabacOp {
         if cb_size <= 2 * VVC_CURRENT_MIN_LUMA_CB_SIZE {
             return false;
         }
-        if node.width > VVC_CURRENT_MAX_LUMA_TT_SIZE.min(64)
-            || node.height > VVC_CURRENT_MAX_LUMA_TT_SIZE.min(64)
+        if node.width > max_tt_size
+            || node.height > max_tt_size
             || node.mtt_depth >= max_mtt_depth
             || node.x + node.width > visible_width
             || node.y + node.height > visible_height

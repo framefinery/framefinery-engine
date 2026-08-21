@@ -79,6 +79,12 @@ pub(in crate::vvc) enum VvcCabacContext {
     RunCopyFlag(u8),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::vvc) enum VvcCabacInitType {
+    I,
+    P,
+}
+
 impl VvcCabacContext {
     pub(in crate::vvc) fn rtl_context_id(self) -> Option<u16> {
         match self {
@@ -246,7 +252,7 @@ impl VvcCabacContext {
                 ];
                 missing_rtl_context_ordinal(ctx, 71, EXPLICIT).map(|ordinal| 247 + ordinal)
             }
-            VvcCabacContext::CuSkipFlag(ctx @ 0..=8) => Some(265 + u16::from(ctx)),
+            VvcCabacContext::CuSkipFlag(ctx @ 0..=2) => Some(265 + u16::from(ctx)),
             VvcCabacContext::PredModeIbcFlag(ctx @ 0..=8) => Some(274 + u16::from(ctx)),
             VvcCabacContext::GeneralMergeFlag(ctx @ 0..=2) => Some(283 + u16::from(ctx)),
             VvcCabacContext::AbsMvdGreater0Flag(ctx @ 0..=2) => Some(286 + u16::from(ctx)),
@@ -339,8 +345,8 @@ impl VvcCabacContext {
                 I_SLICE_INIT[ctx as usize]
             }
             VvcCabacContext::CuSkipFlag(ctx) => {
-                // H.266 Table 64, initType 0 / I-slice.
-                const I_SLICE_INIT: [u8; 9] = [0, 26, 28, 57, 59, 45, 57, 60, 46];
+                // H.266 Table 64, initType 2 / I-slice.
+                const I_SLICE_INIT: [u8; 3] = [0, 26, 28];
                 I_SLICE_INIT[ctx as usize]
             }
             VvcCabacContext::PredModeIbcFlag(ctx) => {
@@ -427,6 +433,44 @@ impl VvcCabacContext {
                 const I_SLICE_INIT: [u8; 8] = [50, 37, 45, 30, 46, 45, 38, 46];
                 I_SLICE_INIT[ctx as usize]
             }
+        }
+    }
+
+    pub(in crate::vvc) fn init_value_for(self, init_type: VvcCabacInitType) -> u8 {
+        if init_type == VvcCabacInitType::I {
+            return self.init_value();
+        }
+        match self {
+            VvcCabacContext::SplitFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 9] = [11, 35, 53, 12, 6, 30, 13, 15, 31];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::SplitQtFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 6] = [20, 14, 23, 18, 19, 6];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::MttSplitCuVerticalFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 15] =
+                    [43, 35, 37, 34, 52, 43, 35, 37, 34, 52, 43, 35, 37, 34, 52];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::MttSplitCuBinaryFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 12] = [43, 37, 21, 22, 43, 37, 21, 22, 43, 37, 21, 22];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::CuSkipFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 3] = [57, 59, 45];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::GeneralMergeFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 3] = [21, 21, 21];
+                P_SLICE_INIT[ctx as usize]
+            }
+            // Only all-skip P slices are currently enabled for reference-clean
+            // release encoding. Other context sets keep the I-slice
+            // initialization until mixed inter/intra P slices are enabled with
+            // VTM coverage.
+            other => other.init_value(),
         }
     }
 
@@ -604,7 +648,7 @@ pub(in crate::vvc) struct VvcCabacContexts {
     pub(in crate::vvc) bdpcm_mode: [VvcCabacProbModel; 4],
     pub(in crate::vvc) mts_idx: [VvcCabacProbModel; 4],
     pub(in crate::vvc) lfnst_idx: [VvcCabacProbModel; 3],
-    pub(in crate::vvc) cu_skip_flag: [VvcCabacProbModel; 9],
+    pub(in crate::vvc) cu_skip_flag: [VvcCabacProbModel; 3],
     pub(in crate::vvc) pred_mode_ibc_flag: [VvcCabacProbModel; 9],
     pub(in crate::vvc) general_merge_flag: [VvcCabacProbModel; 3],
     pub(in crate::vvc) abs_mvd_greater0_flag: [VvcCabacProbModel; 3],
@@ -624,253 +668,103 @@ pub(in crate::vvc) struct VvcCabacContexts {
 }
 
 impl VvcCabacContexts {
-    const DEFAULT_SLICE_QP: i32 = 32;
+    pub(in crate::vvc) const DEFAULT_SLICE_QP: i32 = 32;
 
     pub(in crate::vvc) fn new() -> Self {
         Self::with_slice_qp(Self::DEFAULT_SLICE_QP)
     }
 
     pub(in crate::vvc) fn with_slice_qp(slice_qp: i32) -> Self {
+        Self::with_slice_qp_and_init_type(slice_qp, VvcCabacInitType::I)
+    }
+
+    pub(in crate::vvc) fn with_slice_qp_and_init_type(
+        slice_qp: i32,
+        init_type: VvcCabacInitType,
+    ) -> Self {
+        let model = |ctx: VvcCabacContext| {
+            VvcCabacProbModel::from_init_value(
+                ctx.init_value_for(init_type),
+                slice_qp,
+                ctx.log2_window_size(),
+            )
+        };
         Self {
-            split_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::SplitFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::SplitFlag(idx as u8).log2_window_size(),
-                )
-            }),
+            split_flag: std::array::from_fn(|idx| model(VvcCabacContext::SplitFlag(idx as u8))),
             split_qt_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::SplitQtFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::SplitQtFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::SplitQtFlag(idx as u8))
             }),
             mtt_split_cu_vertical_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::MttSplitCuVerticalFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::MttSplitCuVerticalFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::MttSplitCuVerticalFlag(idx as u8))
             }),
             mtt_split_cu_binary_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::MttSplitCuBinaryFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::MttSplitCuBinaryFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::MttSplitCuBinaryFlag(idx as u8))
             }),
             multi_ref_line_idx: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::MultiRefLineIdx(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::MultiRefLineIdx(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::MultiRefLineIdx(idx as u8))
             }),
-            mip_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::MipFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::MipFlag(idx as u8).log2_window_size(),
-                )
-            }),
-            intra_luma_mpm_flag: VvcCabacProbModel::from_init_value(
-                VvcCabacContext::IntraLumaMpmFlag.init_value(),
-                slice_qp,
-                VvcCabacContext::IntraLumaMpmFlag.log2_window_size(),
-            ),
+            mip_flag: std::array::from_fn(|idx| model(VvcCabacContext::MipFlag(idx as u8))),
+            intra_luma_mpm_flag: model(VvcCabacContext::IntraLumaMpmFlag),
             intra_luma_planar_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::IntraLumaPlanarFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::IntraLumaPlanarFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::IntraLumaPlanarFlag(idx as u8))
             }),
-            isp_mode: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::IspMode(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::IspMode(idx as u8).log2_window_size(),
-                )
-            }),
-            cclm_mode_flag: VvcCabacProbModel::from_init_value(
-                VvcCabacContext::CclmModeFlag.init_value(),
-                slice_qp,
-                VvcCabacContext::CclmModeFlag.log2_window_size(),
-            ),
-            cclm_mode_idx: VvcCabacProbModel::from_init_value(
-                VvcCabacContext::CclmModeIdx.init_value(),
-                slice_qp,
-                VvcCabacContext::CclmModeIdx.log2_window_size(),
-            ),
+            isp_mode: std::array::from_fn(|idx| model(VvcCabacContext::IspMode(idx as u8))),
+            cclm_mode_flag: model(VvcCabacContext::CclmModeFlag),
+            cclm_mode_idx: model(VvcCabacContext::CclmModeIdx),
             intra_chroma_pred_mode: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::IntraChromaPredMode(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::IntraChromaPredMode(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::IntraChromaPredMode(idx as u8))
             }),
-            qt_cbf_y: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::QtCbfY(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::QtCbfY(idx as u8).log2_window_size(),
-                )
-            }),
-            qt_cbf_cb: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::QtCbfCb(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::QtCbfCb(idx as u8).log2_window_size(),
-                )
-            }),
-            qt_cbf_cr: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::QtCbfCr(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::QtCbfCr(idx as u8).log2_window_size(),
-                )
-            }),
+            qt_cbf_y: std::array::from_fn(|idx| model(VvcCabacContext::QtCbfY(idx as u8))),
+            qt_cbf_cb: std::array::from_fn(|idx| model(VvcCabacContext::QtCbfCb(idx as u8))),
+            qt_cbf_cr: std::array::from_fn(|idx| model(VvcCabacContext::QtCbfCr(idx as u8))),
             transform_skip_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::TransformSkipFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::TransformSkipFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::TransformSkipFlag(idx as u8))
             }),
-            bdpcm_mode: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::BdpcmMode(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::BdpcmMode(idx as u8).log2_window_size(),
-                )
-            }),
-            mts_idx: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::MtsIdx(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::MtsIdx(idx as u8).log2_window_size(),
-                )
-            }),
-            lfnst_idx: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::LfnstIdx(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::LfnstIdx(idx as u8).log2_window_size(),
-                )
-            }),
-            cu_skip_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::CuSkipFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::CuSkipFlag(idx as u8).log2_window_size(),
-                )
-            }),
+            bdpcm_mode: std::array::from_fn(|idx| model(VvcCabacContext::BdpcmMode(idx as u8))),
+            mts_idx: std::array::from_fn(|idx| model(VvcCabacContext::MtsIdx(idx as u8))),
+            lfnst_idx: std::array::from_fn(|idx| model(VvcCabacContext::LfnstIdx(idx as u8))),
+            cu_skip_flag: std::array::from_fn(|idx| model(VvcCabacContext::CuSkipFlag(idx as u8))),
             pred_mode_ibc_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::PredModeIbcFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::PredModeIbcFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::PredModeIbcFlag(idx as u8))
             }),
             general_merge_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::GeneralMergeFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::GeneralMergeFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::GeneralMergeFlag(idx as u8))
             }),
             abs_mvd_greater0_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::AbsMvdGreater0Flag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::AbsMvdGreater0Flag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::AbsMvdGreater0Flag(idx as u8))
             }),
             abs_mvd_greater1_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::AbsMvdGreater1Flag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::AbsMvdGreater1Flag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::AbsMvdGreater1Flag(idx as u8))
             }),
             cu_coded_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::CuCodedFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::CuCodedFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::CuCodedFlag(idx as u8))
             }),
             last_sig_coeff_x_prefix: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::LastSigCoeffXPrefix(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::LastSigCoeffXPrefix(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::LastSigCoeffXPrefix(idx as u8))
             }),
             last_sig_coeff_y_prefix: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::LastSigCoeffYPrefix(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::LastSigCoeffYPrefix(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::LastSigCoeffYPrefix(idx as u8))
             }),
             sb_coded_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::SbCodedFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::SbCodedFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::SbCodedFlag(idx as u8))
             }),
             sig_coeff_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::SigCoeffFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::SigCoeffFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::SigCoeffFlag(idx as u8))
             }),
             par_level_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::ParLevelFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::ParLevelFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::ParLevelFlag(idx as u8))
             }),
             abs_level_gtx_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::AbsLevelGtxFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::AbsLevelGtxFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::AbsLevelGtxFlag(idx as u8))
             }),
             coeff_sign_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::CoeffSignFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::CoeffSignFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::CoeffSignFlag(idx as u8))
             }),
-            pred_mode_plt_flag: VvcCabacProbModel::from_init_value(
-                VvcCabacContext::PredModePltFlag.init_value(),
-                slice_qp,
-                VvcCabacContext::PredModePltFlag.log2_window_size(),
-            ),
-            palette_transpose_flag: VvcCabacProbModel::from_init_value(
-                VvcCabacContext::PaletteTransposeFlag.init_value(),
-                slice_qp,
-                VvcCabacContext::PaletteTransposeFlag.log2_window_size(),
-            ),
-            copy_above_palette_indices_flag: VvcCabacProbModel::from_init_value(
-                VvcCabacContext::CopyAbovePaletteIndicesFlag.init_value(),
-                slice_qp,
-                VvcCabacContext::CopyAbovePaletteIndicesFlag.log2_window_size(),
-            ),
+            pred_mode_plt_flag: model(VvcCabacContext::PredModePltFlag),
+            palette_transpose_flag: model(VvcCabacContext::PaletteTransposeFlag),
+            copy_above_palette_indices_flag: model(VvcCabacContext::CopyAbovePaletteIndicesFlag),
             run_copy_flag: std::array::from_fn(|idx| {
-                VvcCabacProbModel::from_init_value(
-                    VvcCabacContext::RunCopyFlag(idx as u8).init_value(),
-                    slice_qp,
-                    VvcCabacContext::RunCopyFlag(idx as u8).log2_window_size(),
-                )
+                model(VvcCabacContext::RunCopyFlag(idx as u8))
             }),
         }
     }
@@ -1337,6 +1231,7 @@ impl VvcCabacContexts {
         idx: u8,
         bin: bool,
     ) {
+        let idx = idx.min(2);
         Self::encode_model(
             cabac,
             VvcCabacContext::CuSkipFlag(idx),
