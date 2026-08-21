@@ -1892,7 +1892,11 @@ fn vvc_luma_lossless_speed_skips_directional_refinement(
 }
 
 fn vvc_luma_lossless_speed_skips_dc(policy: VvcResidualCodingPolicy) -> bool {
+    // DC is cheap enough to keep for lossy fast search and improves the RD
+    // point on flat or near-flat TUs. Lossless-speed lossless still skips it
+    // because transform-skip/BDPCM candidates carry exact reconstruction.
     policy.fast_search() == VvcFastSearch::LosslessSpeed
+        && policy.residual_mode() == VvcResidualCodingMode::Lossless
 }
 
 fn vvc_luma_lossless_speed_evaluates_planar(

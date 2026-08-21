@@ -263,7 +263,7 @@ fn vvc_lossless_speed_luma_directional_search_uses_neighbor_index() {
 }
 
 #[test]
-fn vvc_lossless_speed_luma_search_prunes_dc_for_lossy() {
+fn vvc_lossless_speed_luma_search_keeps_dc_for_lossy() {
     let format = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs420,
         bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
@@ -274,7 +274,7 @@ fn vvc_lossless_speed_luma_search_prunes_dc_for_lossy() {
         .with_fast_search(VvcFastSearch::LosslessSpeed);
 
     assert!(!vvc_luma_lossless_speed_skips_dc(default_lossy));
-    assert!(vvc_luma_lossless_speed_skips_dc(fast_lossy));
+    assert!(!vvc_luma_lossless_speed_skips_dc(fast_lossy));
     assert!(vvc_luma_lossless_speed_skips_dc(fast_lossless));
 }
 

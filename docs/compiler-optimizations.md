@@ -4326,6 +4326,70 @@ AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
   ENCODE_MATRIX_CLEANUP_VECTORS=1
 ```
 
+### VVC Lossy DC Candidate In Lossless-Speed Search
+
+Checkpoint: `vvc-rd1-lossy-dc-q19-50f`.
+
+The release fast-search path skipped luma DC for both lossy and lossless modes.
+DC is cheap enough to keep in lossy mode, and the 50-frame six-vector matrix
+showed it improves both bytes and PSNR on every row after the RD and RGB
+transform-skip checkpoints. Lossless `fast-search=lossless-speed` still skips
+DC because transform-skip/BDPCM candidates carry exact reconstruction there.
+
+50-frame six-vector VVC lossy matrix versus the current committed baseline
+after `vvc-rd1-luma-rgb-ts-compare-q19-50f-limit3`:
+
+| Vector | Previous bytes | Current bytes | Byte delta | Previous PSNR | Current PSNR | PSNR delta |
+|---|---:|---:|---:|---:|---:|---:|
+| SceneComposition_1_420 | 9,946,191 | 9,937,207 | -8,984 | 50.106 | 50.149 | +0.043 |
+| SceneComposition_1_422 | 10,788,378 | 10,778,273 | -10,105 | 50.237 | 50.273 | +0.036 |
+| screen_wayland_activity_rgb | 7,728,447 | 7,722,473 | -5,974 | 58.377 | 58.403 | +0.026 |
+| MissionControlClip1_420 | 24,955,084 | 24,902,127 | -52,957 | 51.500 | 51.572 | +0.073 |
+| MissionControlClip1_422 | 27,927,103 | 27,836,145 | -90,958 | 51.588 | 51.655 | +0.067 |
+| MissionControlClip1_444 | 31,848,733 | 31,820,412 | -28,321 | 52.807 | 52.844 | +0.037 |
+
+Aggregate after this checkpoint:
+
+| Metric | Value |
+|---|---:|
+| Bytes | 112,996,637 |
+| Mean FPS | 1.315 |
+| Mean PSNR | 52.483 |
+
+Validation:
+
+```sh
+cargo fmt
+cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=high-depth-smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=unusual-geometry-smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_SETTINGS="lossless fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Command:
+
+```sh
+AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=release-six-vectors-full \
+  ENCODE_MATRIX_RUN=vvc-rd1-lossy-dc-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc \
+  ENCODE_MATRIX_MODES=lossy \
+  ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 \
+  ENCODE_MATRIX_CLEANUP_OUTPUT=1 \
+  ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
 ## References
 
 - Cargo profile settings:
