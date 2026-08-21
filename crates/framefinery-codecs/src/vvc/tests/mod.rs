@@ -3291,7 +3291,7 @@ fn vvc_lossless_speed_leaf_inter_skip_is_computable_but_disabled_for_release() {
 }
 
 #[test]
-fn vvc_lossy_predictive_mixed_frame_uses_reference_clean_trailing_slice() {
+fn vvc_lossy_predictive_mixed_frame_stays_single_slice_until_skip_is_rd_gated() {
     let geometry = VvcVideoGeometry {
         width: 128,
         height: 64,
@@ -3331,16 +3331,14 @@ fn vvc_lossy_predictive_mixed_frame_uses_reference_clean_trailing_slice() {
             .iter()
             .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
             .count(),
-        2,
-        "the mixed lossy predictive frame should be encoded as one trailing slice per CTU"
+        1,
+        "lossy predictive frames should stay single-slice until CTU skip is RD-gated"
     );
-    assert_eq!(
+    assert!(
         predictive_nals
             .iter()
-            .filter(|info| info.nal_unit_type == VvcNalUnitType::PictureHeader as u8)
-            .count(),
-        1,
-        "mixed lossy predictive frames should carry one picture header for CTU-sliced output"
+            .all(|info| info.nal_unit_type != VvcNalUnitType::PictureHeader as u8),
+        "lossy predictive frames should carry picture headers in the single-slice header"
     );
 }
 

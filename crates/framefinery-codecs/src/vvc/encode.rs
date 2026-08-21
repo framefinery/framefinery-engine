@@ -201,7 +201,9 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     let residual_policy =
         VvcResidualCodingPolicy::new(stream_format, residual_mode).with_fast_search(options.fast_search);
     let predictive_enabled = options.gop.is_predictive();
-    let lossy_near_skip_enabled = predictive_enabled && !residual_mode.is_lossless();
+    let lossy_near_skip_enabled = predictive_enabled
+        && !residual_mode.is_lossless()
+        && vvc_lossy_predictive_ctu_inter_skip_enabled_for_reference_clean_release();
     let mut slice_config = vvc_slice_config_for_input_format(
         residual_mode.slice_config(stream_format, options.qp, options.fast_search),
         format,
@@ -992,6 +994,15 @@ fn vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release() -> bool {
     // emission. Do not insert the dual-tree I-slice CTU body into a mixed P
     // slice.
     true
+}
+
+fn vvc_lossy_predictive_ctu_inter_skip_enabled_for_reference_clean_release() -> bool {
+    // The bounded-delta lossy near-skip detector is syntax-clean, but it is not
+    // RD-gated yet. Enabling it can force a whole frame onto CTU-sliced output,
+    // increasing slice overhead and resetting intra context availability enough
+    // to regress natural lossy content. Keep lossy InterSkip off until the mode
+    // decision includes bit cost and distortion against normal intra coding.
+    false
 }
 
 fn vvc_predictive_luma_leaf_inter_skip_mask(
