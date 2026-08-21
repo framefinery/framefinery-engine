@@ -4390,6 +4390,69 @@ AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
   ENCODE_MATRIX_CLEANUP_VECTORS=1
 ```
 
+### VVC Lossy Planar Candidate In Lossless-Speed Search
+
+Checkpoint: `vvc-rd1-lossy-dc-planar-q19-50f`.
+
+After keeping DC in lossy fast-search, the next cheap luma candidate was
+Planar. The prior `lossless-speed` path only evaluated Planar when neighboring
+mode context suggested it. Lossy mode now keeps Planar unconditionally and lets
+the shared residual RD selector reject it when directional modes are better.
+Lossless fast-search keeps the neighbor-context pruning.
+
+50-frame six-vector VVC lossy matrix versus `vvc-rd1-lossy-dc-q19-50f`:
+
+| Vector | Previous bytes | Current bytes | Byte delta | Previous PSNR | Current PSNR | PSNR delta |
+|---|---:|---:|---:|---:|---:|---:|
+| SceneComposition_1_420 | 9,937,207 | 9,917,479 | -19,728 | 50.149 | 50.184 | +0.034 |
+| SceneComposition_1_422 | 10,778,273 | 10,753,173 | -25,100 | 50.273 | 50.316 | +0.042 |
+| screen_wayland_activity_rgb | 7,722,473 | 7,717,273 | -5,200 | 58.403 | 58.405 | +0.001 |
+| MissionControlClip1_420 | 24,902,127 | 24,813,791 | -88,336 | 51.572 | 51.581 | +0.008 |
+| MissionControlClip1_422 | 27,836,145 | 27,737,364 | -98,781 | 51.655 | 51.666 | +0.010 |
+| MissionControlClip1_444 | 31,820,412 | 31,717,430 | -102,982 | 52.844 | 52.879 | +0.036 |
+
+Aggregate after this checkpoint:
+
+| Metric | Value |
+|---|---:|
+| Bytes | 112,656,510 |
+| Mean FPS | 1.276 |
+| Mean PSNR | 52.505 |
+
+Validation:
+
+```sh
+cargo fmt
+cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=high-depth-smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=unusual-geometry-smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_SETTINGS="lossless fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Command:
+
+```sh
+AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=release-six-vectors-full \
+  ENCODE_MATRIX_RUN=vvc-rd1-lossy-dc-planar-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc \
+  ENCODE_MATRIX_MODES=lossy \
+  ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 \
+  ENCODE_MATRIX_CLEANUP_OUTPUT=1 \
+  ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
 ## References
 
 - Cargo profile settings:

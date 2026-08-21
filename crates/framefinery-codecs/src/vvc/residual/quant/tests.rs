@@ -279,7 +279,7 @@ fn vvc_lossless_speed_luma_search_keeps_dc_for_lossy() {
 }
 
 #[test]
-fn vvc_lossless_speed_luma_planar_search_uses_neighbor_context_for_lossy() {
+fn vvc_lossless_speed_luma_planar_search_keeps_lossy_candidate() {
     let format = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs420,
         bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
@@ -292,7 +292,7 @@ fn vvc_lossless_speed_luma_planar_search_uses_neighbor_context_for_lossy() {
         Some(VvcIntraPredictionMode::Horizontal),
         Some(VvcIntraPredictionMode::Vertical),
     ));
-    assert!(!vvc_luma_lossless_speed_evaluates_planar(
+    assert!(vvc_luma_lossless_speed_evaluates_planar(
         fast_lossy,
         Some(VvcIntraPredictionMode::Horizontal),
         Some(VvcIntraPredictionMode::Vertical),
@@ -304,6 +304,13 @@ fn vvc_lossless_speed_luma_planar_search_uses_neighbor_context_for_lossy() {
     ));
     assert!(vvc_luma_lossless_speed_evaluates_planar(
         fast_lossy, None, None,
+    ));
+    let fast_lossless = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossless)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+    assert!(!vvc_luma_lossless_speed_evaluates_planar(
+        fast_lossless,
+        Some(VvcIntraPredictionMode::Horizontal),
+        Some(VvcIntraPredictionMode::Vertical),
     ));
 }
 
