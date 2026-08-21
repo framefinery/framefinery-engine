@@ -4174,6 +4174,99 @@ make benchmark-encode-matrix \
   ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-bdpcm-residual-1f.json
 ```
 
+### VVC Lossy Residual RD Selection
+
+Checkpoint: `vvc-rd1-q19-50f`.
+
+The 0.0.3 pre-release VVC lossy path had regressed into a mostly
+distortion-first residual selector. That was reference-compliant, but it spent
+too many bits on transform-skip/BDPCM residuals for small PSNR gains. The shared
+luma/chroma residual candidate selector now uses a simple rate-distortion score
+for non-exact lossy candidates while preserving exact-zero distortion priority.
+This keeps the coding paths unified: luma mode, luma residual, chroma mode, and
+chroma residual scoring all use the same deepest-level selector instead of
+adding separate lossy/lossless implementations.
+
+Rejected first-frame probes:
+
+| Run | Bytes | Mean PSNR | Note |
+|---|---:|---:|---|
+| `vvc-rd64-q19-1f` | 2,111,133 | 51.965 | Too much PSNR loss for the first default. |
+| `vvc-rd32-q19-1f` | 2,111,183 | 51.975 | Same practical mode threshold as weight 64. |
+| `vvc-rd8-q19-1f` | 2,111,843 | 52.177 | Still too aggressive on quality. |
+| `vvc-rd2-q19-1f` | 2,115,354 | 52.571 | Better, but still not meaningfully safer than weight 1. |
+| `vvc-rd1-q19-1f` | 2,116,914 | 52.700 | Kept for validation. |
+
+50-frame six-vector VVC lossy matrix versus the 0.0.3 pre-release checkpoint
+`20260820T014839Z-six-vectors-full`:
+
+| Vector | Previous bytes | Current bytes | Byte delta | Previous PSNR | Current PSNR | PSNR delta |
+|---|---:|---:|---:|---:|---:|---:|
+| SceneComposition_1_420 | 33,137,216 | 9,946,191 | -69.98% | 50.191 | 50.106 | -0.085 |
+| SceneComposition_1_422 | 36,625,068 | 10,788,378 | -70.54% | 50.266 | 50.237 | -0.028 |
+| screen_wayland_activity_rgb | 103,525,730 | 7,750,724 | -92.51% | 60.287 | 57.961 | -2.325 |
+| MissionControlClip1_420 | 79,895,369 | 24,955,084 | -68.77% | 51.571 | 51.500 | -0.072 |
+| MissionControlClip1_422 | 89,387,522 | 27,927,103 | -68.76% | 51.605 | 51.588 | -0.017 |
+| MissionControlClip1_444 | 101,906,192 | 31,848,733 | -68.75% | 52.722 | 52.807 | +0.085 |
+
+Aggregate:
+
+| Metric | Previous | Current | Delta |
+|---|---:|---:|---:|
+| Bytes | 444,477,097 | 113,216,213 | -74.53% |
+| Mean FPS | 1.404 | 1.369 | -2.49% |
+| Mean PSNR | 52.774 | 52.367 | -0.407 |
+
+Validation:
+
+```sh
+cargo fmt
+cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_SETTINGS="lossless fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=high-depth-smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=high-depth-smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_SETTINGS="fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=unusual-geometry-smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=unusual-geometry-smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_SETTINGS="fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Command:
+
+```sh
+AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=release-six-vectors-full \
+  ENCODE_MATRIX_RUN=vvc-rd1-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc \
+  ENCODE_MATRIX_MODES=lossy \
+  ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 \
+  ENCODE_MATRIX_CLEANUP_OUTPUT=1 \
+  ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
+Follow-ups:
+
+- Calibrate the RD weight against QP, bit depth, and chroma format instead of a
+  fixed first-pass weight.
+- Investigate the RGB/Wayland PSNR drop separately; the byte reduction is large,
+  but it may be over-pruning visually important screen-content edges.
+- Re-profile after the next mode-decision pass; `ctu_quantize`,
+  residual scoring, and entropy build/write remain the primary VVC hotspots.
+
 ## References
 
 - Cargo profile settings:

@@ -749,7 +749,7 @@ struct VvcChromaModeRdCandidate {
 
 impl VvcChromaModeRdCandidate {
     fn selects_over(self, best: Self) -> bool {
-        vvc_quality_candidate_selects_over(
+        vvc_rd_candidate_selects_over(
             self.distortion,
             self.rate_cost,
             best.distortion,
@@ -1022,7 +1022,7 @@ struct VvcChromaQuantizedResidualScore {
 
 impl VvcChromaQuantizedResidualScore {
     fn selects_over(self, best: Self) -> bool {
-        vvc_quality_candidate_selects_over(
+        vvc_rd_candidate_selects_over(
             self.distortion,
             self.rate_cost,
             best.distortion,

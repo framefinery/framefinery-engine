@@ -804,12 +804,12 @@ fn vvc_luma_quality_gate_can_spend_bits_for_lower_distortion() {
         rate_cost: 20,
     };
 
-    assert!(candidate.selects_quality_over(best));
+    assert!(candidate.selects_over(best));
     assert!(!VvcResidualBlockScore {
         distortion: 1_100,
         rate_cost: 0,
     }
-    .selects_quality_over(best));
+    .selects_over(best));
 
     assert!(vvc_transform_skip_short_circuits_transformed(
         VvcResidualBlockScore {
@@ -1160,7 +1160,7 @@ fn residual_sse_for_test(source: &[i16], reconstructed: &[i16]) -> u64 {
 }
 
 #[test]
-fn vvc_luma_residual_tool_selection_is_quality_first() {
+fn vvc_luma_residual_tool_selection_is_rate_aware() {
     let best = VvcScoredLumaResidualBlock {
         block: VvcFinalizedResidualBlock {
             dc_level: 0,
@@ -1190,7 +1190,37 @@ fn vvc_luma_residual_tool_selection_is_quality_first() {
         },
     };
 
-    assert!(candidate.selects_over(best));
+    assert!(!candidate.selects_over(best));
+    assert!(VvcScoredLumaResidualBlock {
+        score: VvcResidualBlockScore {
+            distortion: 700,
+            rate_cost: 20,
+        },
+        ..candidate
+    }
+    .selects_over(best));
+    assert!(VvcScoredLumaResidualBlock {
+        score: VvcResidualBlockScore {
+            distortion: 0,
+            rate_cost: 1_000,
+        },
+        ..candidate
+    }
+    .selects_over(best));
+    assert!(!VvcScoredLumaResidualBlock {
+        score: VvcResidualBlockScore {
+            distortion: 1,
+            rate_cost: 0,
+        },
+        ..candidate
+    }
+    .selects_over(VvcScoredLumaResidualBlock {
+        score: VvcResidualBlockScore {
+            distortion: 0,
+            rate_cost: 1_000,
+        },
+        ..best
+    }));
     assert!(!VvcScoredLumaResidualBlock {
         score: VvcResidualBlockScore {
             distortion: 1_100,
@@ -1202,7 +1232,7 @@ fn vvc_luma_residual_tool_selection_is_quality_first() {
 }
 
 #[test]
-fn vvc_luma_mrl_selection_is_quality_first() {
+fn vvc_luma_mrl_selection_is_rate_aware() {
     let best = VvcLumaMrlCandidate {
         distortion: 1_000,
         rate_cost: 0,
@@ -1215,6 +1245,12 @@ fn vvc_luma_mrl_selection_is_quality_first() {
     };
 
     assert!(candidate.selects_over(best));
+    assert!(!VvcLumaMrlCandidate {
+        distortion: 700,
+        rate_cost: 1_000,
+        residual: None,
+    }
+    .selects_over(best));
     assert!(!VvcLumaMrlCandidate {
         distortion: 1_100,
         rate_cost: 0,

@@ -535,7 +535,7 @@ impl VvcScoredChromaResidualBlock {
     }
 
     fn selects_over(self, best: Self) -> bool {
-        self.score.selects_quality_over(best.score)
+        self.score.selects_over(best.score)
     }
 }
 
@@ -720,7 +720,7 @@ fn select_vvc_chroma_residual_block_with_transform_skip(
         transform_scratch,
         reconstructed_residual,
     );
-    if transform_skip_score.selects_quality_over(transformed_score) {
+    if transform_skip_score.selects_over(transformed_score) {
         transform_skip
     } else {
         transformed

@@ -671,7 +671,7 @@ impl VvcScoredLumaResidualBlock {
     }
 
     fn selects_over(self, best: Self) -> bool {
-        self.score.selects_quality_over(best.score)
+        self.score.selects_over(best.score)
     }
 }
 
@@ -819,8 +819,8 @@ struct VvcResidualBlockScore {
 }
 
 impl VvcResidualBlockScore {
-    fn selects_quality_over(self, best: Self) -> bool {
-        vvc_quality_candidate_selects_over(
+    fn selects_over(self, best: Self) -> bool {
+        vvc_rd_candidate_selects_over(
             self.distortion,
             self.rate_cost,
             best.distortion,

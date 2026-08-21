@@ -447,7 +447,7 @@ impl VvcLumaMrlCandidate {
     }
 
     fn selects_over(self, best: Self) -> bool {
-        vvc_quality_candidate_selects_over(
+        vvc_rd_candidate_selects_over(
             self.distortion,
             self.rate_cost,
             best.distortion,
@@ -519,7 +519,7 @@ struct VvcLumaQuantizedResidualScore {
 
 impl VvcLumaQuantizedResidualScore {
     fn selects_over(self, best: Self) -> bool {
-        vvc_quality_candidate_selects_over(
+        vvc_rd_candidate_selects_over(
             self.distortion,
             self.rate_cost,
             best.distortion,
@@ -528,13 +528,23 @@ impl VvcLumaQuantizedResidualScore {
     }
 }
 
-fn vvc_quality_candidate_selects_over(
+fn vvc_rd_candidate_selects_over(
     distortion: u64,
     rate_cost: u64,
     best_distortion: u64,
     best_rate_cost: u64,
 ) -> bool {
-    distortion < best_distortion || (distortion == best_distortion && rate_cost < best_rate_cost)
+    if best_distortion == 0 || distortion == 0 {
+        return distortion < best_distortion
+            || (distortion == best_distortion && rate_cost < best_rate_cost);
+    }
+    vvc_rate_distortion_cost(distortion, rate_cost)
+        < vvc_rate_distortion_cost(best_distortion, best_rate_cost)
+}
+
+fn vvc_rate_distortion_cost(distortion: u64, rate_cost: u64) -> u64 {
+    const RATE_COST_WEIGHT: u64 = 1;
+    distortion.saturating_add(rate_cost.saturating_mul(RATE_COST_WEIGHT))
 }
 
 fn luma_reconstructed_residual_sse(
