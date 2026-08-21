@@ -4267,6 +4267,65 @@ Follow-ups:
 - Re-profile after the next mode-decision pass; `ctu_quantize`,
   residual scoring, and entropy build/write remain the primary VVC hotspots.
 
+### VVC Lossy RGB Luma Transform-Skip Comparison
+
+Checkpoint: `vvc-rd1-luma-rgb-ts-compare-q19-50f-limit3`.
+
+The RD selector checkpoint still forced luma transform-skip immediately for all
+lossy `fast-search=lossless-speed` mode-decision probes. Chroma already had an
+8-bit 4:4:4/RGB exception because forcing transform-skip on screen content can
+preserve noisy edges at a worse rate-distortion point. The luma selector now
+uses the same scoped exception: lossy 8-bit 4:4:4/RGB compares transform-skip
+against transformed residual coding, while other fast-search formats keep the
+throughput shortcut.
+
+Rejected probe:
+
+- `vvc-rd1-luma-ts-compare-q19-1f` compared transformed residual coding for all
+  lossy fast-search luma TUs. It improved the first Wayland RGB frame, but it
+  reduced PSNR on the first SceneComposition 4:2:0/4:2:2 frames, so the final
+  change was narrowed to 8-bit 4:4:4/RGB only.
+
+50-frame limited matrix versus `vvc-rd1-q19-50f`:
+
+| Vector | Previous bytes | Current bytes | Byte delta | Previous PSNR | Current PSNR | PSNR delta |
+|---|---:|---:|---:|---:|---:|---:|
+| SceneComposition_1_420 | 9,946,191 | 9,946,191 | 0 | 50.106 | 50.106 | 0.000 |
+| SceneComposition_1_422 | 10,788,378 | 10,788,378 | 0 | 50.237 | 50.237 | 0.000 |
+| screen_wayland_activity_rgb | 7,750,724 | 7,728,447 | -22,277 | 57.961 | 58.377 | +0.416 |
+
+Validation:
+
+```sh
+cargo fmt
+cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=unusual-geometry-smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_SETTINGS="lossless fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Command:
+
+```sh
+AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=release-six-vectors-full \
+  ENCODE_MATRIX_RUN=vvc-rd1-luma-rgb-ts-compare-q19-50f-limit3 \
+  ENCODE_MATRIX_CODECS=vvc \
+  ENCODE_MATRIX_MODES=lossy \
+  ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_LIMIT=3 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 \
+  ENCODE_MATRIX_CLEANUP_OUTPUT=1 \
+  ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
 ## References
 
 - Cargo profile settings:

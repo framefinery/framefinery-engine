@@ -338,14 +338,26 @@ fn vvc_lossless_speed_chroma_keeps_lossy_screen_content_candidates() {
 }
 
 #[test]
-fn vvc_lossless_speed_luma_rd_prefers_transform_skip_for_lossy() {
-    let format = VvcPictureFormat {
+fn vvc_lossless_speed_luma_rd_compares_transform_skip_for_lossy_rgb() {
+    let yuv420 = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs420,
         bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
     };
-    let default_lossy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy);
+    let yuv444 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let yuv444_10 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
+    };
+    let default_lossy = VvcResidualCodingPolicy::new(yuv420, VvcResidualCodingMode::Lossy);
     let fast_lossy = default_lossy.with_fast_search(VvcFastSearch::LosslessSpeed);
-    let fast_lossless = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossless)
+    let fast_lossy_444 = VvcResidualCodingPolicy::new(yuv444, VvcResidualCodingMode::Lossy)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+    let fast_lossy_444_10 = VvcResidualCodingPolicy::new(yuv444_10, VvcResidualCodingMode::Lossy)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+    let fast_lossless = VvcResidualCodingPolicy::new(yuv420, VvcResidualCodingMode::Lossless)
         .with_fast_search(VvcFastSearch::LosslessSpeed);
 
     assert!(!vvc_luma_fast_search_prefers_transform_skip_candidate(
@@ -353,6 +365,12 @@ fn vvc_lossless_speed_luma_rd_prefers_transform_skip_for_lossy() {
     ));
     assert!(vvc_luma_fast_search_prefers_transform_skip_candidate(
         fast_lossy
+    ));
+    assert!(!vvc_luma_fast_search_prefers_transform_skip_candidate(
+        fast_lossy_444
+    ));
+    assert!(vvc_luma_fast_search_prefers_transform_skip_candidate(
+        fast_lossy_444_10
     ));
     assert!(!vvc_luma_fast_search_prefers_transform_skip_candidate(
         fast_lossless

@@ -406,8 +406,12 @@ fn score_vvc_luma_mode_rd_candidate(
 fn vvc_luma_fast_search_prefers_transform_skip_candidate(
     policy: VvcResidualCodingPolicy,
 ) -> bool {
+    // Lossy 8-bit 4:4:4/RGB screen content benefits from comparing transform
+    // skip against transformed residual coding; forcing transform skip there
+    // preserves noisy edges at a worse rate-distortion point.
     policy.residual_mode() == VvcResidualCodingMode::Lossy
         && policy.fast_search() == VvcFastSearch::LosslessSpeed
+        && (policy.chroma_sampling() != ChromaSampling::Cs444 || policy.bit_depth().bits() != 8)
 }
 
 #[derive(Debug, Clone, Copy)]
