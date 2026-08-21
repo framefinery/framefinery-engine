@@ -4590,6 +4590,58 @@ Follow-up:
   compare top-two against a conditional second candidate keyed by the raw-score
   gap, chroma format, and CCLM participation.
 
+### VVC Lossy Luma RD Top-Two Refinement
+
+Checkpoint: `vvc-rd1-lossy-luma-rd2-gated-chroma-rd2-q19-50f`.
+
+This checkpoint raises the luma RD shortlist from one raw winner to two raw
+winners for lossy `fast-search=lossless-speed`, except for 8-bit 4:4:4/RGB
+screen-content formats. The screen-content gate keeps the previous top-one
+behavior because the ungated probe (`vvc-rd1-lossy-luma-rd2-chroma-rd2-q19-50f`)
+regressed Wayland by 5,022 bytes and 0.012 dB. The selector remains unified:
+all formats still use the same luma mode search and RD refinement code, with
+only the shortlist depth selected by policy.
+
+50-frame six-vector VVC lossy matrix versus
+`vvc-rd1-lossy-chroma-rd2-q19-50f`:
+
+| Vector | Previous bytes | Current bytes | Byte delta | Byte delta % | Previous FPS | Current FPS | FPS delta | Previous PSNR | Current PSNR | PSNR delta |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| SceneComposition_1_420 | 9,591,552 | 9,588,482 | -3,070 | -0.03% | 1.487 | 1.574 | +5.9% | 50.259 | 50.284 | +0.025 |
+| SceneComposition_1_422 | 10,557,349 | 10,553,882 | -3,467 | -0.03% | 1.257 | 1.250 | -0.6% | 50.453 | 50.471 | +0.017 |
+| screen_wayland_activity_rgb | 7,498,778 | 7,498,778 | +0 | +0.00% | 0.692 | 0.674 | -2.5% | 58.997 | 58.997 | +0.000 |
+| MissionControlClip1_420 | 24,354,143 | 24,309,986 | -44,157 | -0.18% | 1.028 | 1.036 | +0.9% | 51.722 | 51.840 | +0.118 |
+| MissionControlClip1_422 | 27,235,225 | 27,199,189 | -36,036 | -0.13% | 0.770 | 0.761 | -1.2% | 51.887 | 51.979 | +0.091 |
+| MissionControlClip1_444 | 31,802,771 | 31,758,589 | -44,182 | -0.14% | 0.495 | 0.494 | -0.0% | 53.033 | 53.075 | +0.042 |
+
+Aggregate after this checkpoint:
+
+| Metric | Previous | Current | Delta |
+|---|---:|---:|---:|
+| Bytes | 111,039,818 | 110,908,906 | -130,912 (-0.12%) |
+| Mean FPS | 0.955 | 0.965 | +1.1% |
+| Mean PSNR | 52.725 | 52.774 | +0.049 |
+
+Command:
+
+```sh
+AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=release-six-vectors-full \
+  ENCODE_MATRIX_RUN=vvc-rd1-lossy-luma-rd2-gated-chroma-rd2-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc \
+  ENCODE_MATRIX_MODES=lossy \
+  ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 \
+  ENCODE_MATRIX_CLEANUP_OUTPUT=1 \
+  ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
+Follow-up:
+
+- The luma top-two gain is small but consistent outside 8-bit 4:4:4/RGB. A
+  later pass should test whether the second luma RD candidate can be selected by
+  a raw-score-gap threshold instead of by chroma format.
+
 ## References
 
 - Cargo profile settings:

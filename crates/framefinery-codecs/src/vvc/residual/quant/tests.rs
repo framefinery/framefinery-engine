@@ -461,9 +461,34 @@ fn vvc_lossy_luma_rd_shortlist_keeps_best_winners() {
 }
 
 #[test]
-fn vvc_lossless_speed_luma_rd_shortlist_keeps_best_winner() {
+fn vvc_lossless_speed_luma_rd_shortlist_keeps_top_two_lossy_winners() {
     let format = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let policy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
+    let costs = VvcLumaIntraCandidateCosts::new(1_000_000)
+        .with_candidate(VvcIntraPredictionMode::Planar, Some(200_000))
+        .with_candidate(VvcIntraPredictionMode::Horizontal, Some(50_000))
+        .with_candidate(VvcIntraPredictionMode::Vertical, Some(75_000))
+        .with_candidate(VvcIntraPredictionMode::Angular(34), Some(25_000))
+        .with_candidate(VvcIntraPredictionMode::Angular(66), Some(10_000));
+
+    let shortlist = VvcLumaModeRdShortlist::from_candidate_costs(policy, node, costs);
+    let indexes: Vec<_> = shortlist
+        .iter()
+        .map(|candidate| candidate.mode().luma_mode_index())
+        .collect();
+
+    assert_eq!(indexes, vec![66, 34]);
+}
+
+#[test]
+fn vvc_lossless_speed_luma_rd_shortlist_keeps_top_screen_content_winner() {
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
         bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
     };
     let policy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy)

@@ -483,9 +483,17 @@ fn vvc_luma_mode_rd_shortlist_limit(policy: VvcResidualCodingPolicy) -> usize {
         VvcResidualCodingMode::Lossless => VVC_LUMA_INTRA_CANDIDATE_CAPACITY,
         VvcResidualCodingMode::Lossy => match policy.fast_search() {
             VvcFastSearch::Off | VvcFastSearch::Conservative => VVC_LOSSY_LUMA_RD_WINNER_CANDIDATES,
-            VvcFastSearch::LosslessSpeed => 1,
+            VvcFastSearch::LosslessSpeed => vvc_luma_lossless_speed_rd_shortlist_limit(policy),
             VvcFastSearch::Moderate => 3,
             VvcFastSearch::Aggressive => 2,
         },
+    }
+}
+
+fn vvc_luma_lossless_speed_rd_shortlist_limit(policy: VvcResidualCodingPolicy) -> usize {
+    if policy.chroma_sampling() == ChromaSampling::Cs444 && policy.bit_depth().bits() == 8 {
+        1
+    } else {
+        2
     }
 }
