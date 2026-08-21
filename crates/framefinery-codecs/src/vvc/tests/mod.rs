@@ -1,3 +1,4 @@
+use super::cabac::VvcCabacInitType;
 use super::*;
 
 fn vvc_test_slice_config() -> VvcSliceSyntaxConfig {
@@ -1327,6 +1328,54 @@ fn vvc_contexts_include_residual_init_tables() {
     cabac.start();
     ctx.encode(&mut cabac, VvcCabacContext::TransformSkipFlag(0), false);
     assert_ne!(ctx.transform_skip_flag[0].state(), initial_state);
+}
+
+#[test]
+fn vvc_contexts_include_p_slice_intra_residual_init_rows() {
+    let p = VvcCabacInitType::P;
+
+    assert_eq!(VvcCabacContext::MultiRefLineIdx(1).init_value_for(p), 58);
+    assert_eq!(VvcCabacContext::MipFlag(2).init_value_for(p), 58);
+    assert_eq!(VvcCabacContext::IntraLumaMpmFlag.init_value_for(p), 36);
+    assert_eq!(
+        VvcCabacContext::IntraLumaPlanarFlag(1).init_value_for(p),
+        20
+    );
+    assert_eq!(VvcCabacContext::IspMode(1).init_value_for(p), 36);
+    assert_eq!(VvcCabacContext::CclmModeFlag.init_value_for(p), 34);
+    assert_eq!(
+        VvcCabacContext::IntraChromaPredMode(0).init_value_for(p),
+        25
+    );
+    assert_eq!(VvcCabacContext::QtCbfY(0).init_value_for(p), 23);
+    assert_eq!(VvcCabacContext::QtCbfCb(1).init_value_for(p), 28);
+    assert_eq!(VvcCabacContext::QtCbfCr(2).init_value_for(p), 45);
+    assert_eq!(VvcCabacContext::TransformSkipFlag(1).init_value_for(p), 9);
+    assert_eq!(VvcCabacContext::BdpcmMode(0).init_value_for(p), 40);
+    assert_eq!(VvcCabacContext::MtsIdx(1).init_value_for(p), 40);
+    assert_eq!(VvcCabacContext::LfnstIdx(1).init_value_for(p), 45);
+    assert_eq!(VvcCabacContext::PredModeIbcFlag(2).init_value_for(p), 44);
+    assert_eq!(VvcCabacContext::CuCodedFlag(0).init_value_for(p), 5);
+    assert_eq!(VvcCabacContext::AbsMvdGreater0Flag(0).init_value_for(p), 44);
+    assert_eq!(
+        VvcCabacContext::LastSigCoeffXPrefix(20).init_value_for(p),
+        12
+    );
+    assert_eq!(
+        VvcCabacContext::LastSigCoeffYPrefix(20).init_value_for(p),
+        11
+    );
+    assert_eq!(VvcCabacContext::SbCodedFlag(6).init_value_for(p), 29);
+    assert_eq!(VvcCabacContext::SigCoeffFlag(62).init_value_for(p), 44);
+    assert_eq!(VvcCabacContext::ParLevelFlag(32).init_value_for(p), 3);
+    assert_eq!(VvcCabacContext::AbsLevelGtxFlag(71).init_value_for(p), 3);
+    assert_eq!(VvcCabacContext::CoeffSignFlag(2).init_value_for(p), 53);
+    assert_eq!(VvcCabacContext::PredModePltFlag.init_value_for(p), 0);
+    assert_eq!(
+        VvcCabacContext::CopyAbovePaletteIndicesFlag.init_value_for(p),
+        59
+    );
+    assert_eq!(VvcCabacContext::RunCopyFlag(7).init_value_for(p), 46);
 }
 
 #[test]

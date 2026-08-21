@@ -458,18 +458,135 @@ impl VvcCabacContext {
                 const P_SLICE_INIT: [u8; 12] = [43, 37, 21, 22, 43, 37, 21, 22, 43, 37, 21, 22];
                 P_SLICE_INIT[ctx as usize]
             }
+            VvcCabacContext::MultiRefLineIdx(ctx) => {
+                const P_SLICE_INIT: [u8; 2] = [25, 58];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::MipFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 4] = [41, 57, 58, 26];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::IntraLumaMpmFlag => 36,
+            VvcCabacContext::IntraLumaPlanarFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 2] = [12, 20];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::IspMode(ctx) => {
+                const P_SLICE_INIT: [u8; 2] = [33, 36];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::CclmModeFlag => 34,
+            VvcCabacContext::CclmModeIdx => 27,
+            VvcCabacContext::IntraChromaPredMode(ctx) => {
+                const P_SLICE_INIT: [u8; 2] = [25, 25];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::QtCbfY(ctx) => {
+                const P_SLICE_INIT: [u8; 4] = [23, 5, 20, 7];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::QtCbfCb(ctx) => {
+                const P_SLICE_INIT: [u8; 2] = [25, 28];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::QtCbfCr(ctx) => {
+                const P_SLICE_INIT: [u8; 3] = [25, 29, 45];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::TransformSkipFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 2] = [25, 9];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::BdpcmMode(ctx) => {
+                const P_SLICE_INIT: [u8; 4] = [40, 36, 0, 13];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::MtsIdx(ctx) => {
+                const P_SLICE_INIT: [u8; 4] = [45, 40, 27, 0];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::LfnstIdx(ctx) => {
+                const P_SLICE_INIT: [u8; 3] = [37, 45, 27];
+                P_SLICE_INIT[ctx as usize]
+            }
             VvcCabacContext::CuSkipFlag(ctx) => {
                 const P_SLICE_INIT: [u8; 3] = [57, 59, 45];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::PredModeIbcFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 9] = [0, 57, 44, 0, 57, 44, 0, 57, 44];
                 P_SLICE_INIT[ctx as usize]
             }
             VvcCabacContext::GeneralMergeFlag(ctx) => {
                 const P_SLICE_INIT: [u8; 3] = [21, 21, 21];
                 P_SLICE_INIT[ctx as usize]
             }
-            // Only all-skip P slices are currently enabled for reference-clean
-            // release encoding. Other context sets keep the I-slice
-            // initialization until mixed inter/intra P slices are enabled with
-            // VTM coverage.
+            VvcCabacContext::CuCodedFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 3] = [5, 5, 5];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::AbsMvdGreater0Flag(ctx) => {
+                const P_SLICE_INIT: [u8; 3] = [44, 43, 43];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::AbsMvdGreater1Flag(ctx) => {
+                const P_SLICE_INIT: [u8; 3] = [43, 43, 43];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::LastSigCoeffXPrefix(ctx) => {
+                const P_SLICE_INIT: [u8; 23] = [
+                    6, 13, 12, 6, 6, 12, 14, 14, 13, 12, 29, 7, 6, 13, 36, 28, 14, 13, 5, 26, 12,
+                    4, 18,
+                ];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::LastSigCoeffYPrefix(ctx) => {
+                const P_SLICE_INIT: [u8; 23] = [
+                    5, 5, 12, 6, 6, 4, 6, 14, 5, 12, 14, 7, 13, 5, 13, 21, 14, 20, 12, 34, 11, 4,
+                    18,
+                ];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::SbCodedFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 7] = [25, 30, 25, 45, 18, 12, 29];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::SigCoeffFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 63] = [
+                    17, 41, 42, 29, 25, 49, 43, 37, 33, 58, 51, 30, 19, 38, 38, 46, 34, 54, 54, 39,
+                    6, 39, 39, 39, 19, 39, 54, 39, 19, 39, 39, 39, 56, 39, 39, 39, 17, 34, 35, 21,
+                    41, 59, 60, 38, 35, 45, 53, 54, 44, 39, 39, 39, 34, 38, 62, 39, 26, 39, 39, 39,
+                    40, 35, 44,
+                ];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::ParLevelFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 33] = [
+                    18, 17, 33, 18, 26, 42, 25, 33, 26, 42, 27, 25, 34, 42, 42, 35, 26, 27, 42, 20,
+                    20, 25, 25, 26, 11, 19, 27, 33, 42, 35, 35, 43, 3,
+                ];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::AbsLevelGtxFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 72] = [
+                    0, 17, 26, 19, 35, 21, 25, 34, 20, 28, 29, 33, 27, 28, 29, 22, 34, 28, 44, 37,
+                    38, 0, 25, 19, 20, 13, 14, 57, 44, 30, 30, 23, 17, 0, 1, 17, 25, 18, 0, 9, 25,
+                    33, 34, 9, 25, 18, 26, 20, 25, 18, 19, 27, 29, 17, 9, 25, 10, 18, 4, 17, 33,
+                    19, 20, 29, 18, 11, 4, 28, 2, 10, 3, 3,
+                ];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::CoeffSignFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 6] = [5, 10, 53, 43, 25, 46];
+                P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::PredModePltFlag => 0,
+            VvcCabacContext::PaletteTransposeFlag => 42,
+            VvcCabacContext::CopyAbovePaletteIndicesFlag => 59,
+            VvcCabacContext::RunCopyFlag(ctx) => {
+                const P_SLICE_INIT: [u8; 8] = [51, 30, 30, 38, 23, 38, 53, 46];
+                P_SLICE_INIT[ctx as usize]
+            }
             other => other.init_value(),
         }
     }

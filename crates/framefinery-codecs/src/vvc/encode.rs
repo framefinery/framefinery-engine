@@ -953,9 +953,11 @@ fn vvc_predictive_frame_inter_skip_enabled_for_reference_clean_release() -> bool
 }
 
 fn vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release() -> bool {
-    // Mixed inter/intra P slices need the full P-slice context initialization
-    // set for intra/residual contexts. Leave per-CTU skip gated until those
-    // contexts are implemented and VTM-covered.
+    // Mixed inter/intra P slices need either a single-tree P-slice intra
+    // residual path or CTU-sliced pictures whose reconstruction decisions are
+    // constrained to slice boundaries. The P-slice CABAC context rows are
+    // staged, but the dual-tree I-slice CTU body must not be inserted into a
+    // mixed P slice.
     false
 }
 

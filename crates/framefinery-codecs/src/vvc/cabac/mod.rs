@@ -3,6 +3,8 @@ mod ctu_body;
 mod ctu_split;
 mod writer;
 
+#[cfg(test)]
+pub(super) use context::VvcCabacInitType;
 pub(super) use context::{VvcCabacContext, VvcCabacContexts, VvcLastSigCoeffPrefixCtxInput};
 pub(super) use ctu_body::VvcFrameCtuCabacState;
 pub(super) use ctu_body::{
