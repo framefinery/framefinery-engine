@@ -315,7 +315,7 @@ fn vvc_lossless_speed_luma_planar_search_keeps_lossy_candidate() {
 }
 
 #[test]
-fn vvc_lossless_speed_chroma_keeps_lossy_screen_content_candidates() {
+fn vvc_lossless_speed_chroma_keeps_lossy_candidates() {
     let yuv444 = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs444,
         bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
@@ -339,8 +339,8 @@ fn vvc_lossless_speed_chroma_keeps_lossy_screen_content_candidates() {
 
     assert!(!vvc_chroma_fast_search_uses_derived_only(default_lossy));
     assert!(!vvc_chroma_fast_search_uses_derived_only(fast_lossy));
-    assert!(vvc_chroma_fast_search_uses_derived_only(fast_lossy_420));
-    assert!(vvc_chroma_fast_search_uses_derived_only(fast_lossy_444_10));
+    assert!(!vvc_chroma_fast_search_uses_derived_only(fast_lossy_420));
+    assert!(!vvc_chroma_fast_search_uses_derived_only(fast_lossy_444_10));
     assert!(vvc_chroma_fast_search_uses_derived_only(fast_lossless));
 }
 

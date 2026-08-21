@@ -4453,6 +4453,91 @@ AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
   ENCODE_MATRIX_CLEANUP_VECTORS=1
 ```
 
+### VVC Lossy Chroma Candidates In Lossless-Speed Search
+
+Checkpoint: `vvc-rd1-lossy-chroma-all-q19-50f`.
+
+The previous fast-search policy used the lossless derived-only chroma shortcut
+for lossy `fast-search=lossless-speed` as well. That kept throughput higher, but
+it removed explicit chroma and CCLM candidates before the shared residual RD
+selector could reject or accept them. The shortcut is now scoped to lossless
+mode only. Lossy chroma searches evaluate the same derived, explicit, and CCLM
+candidates and leave the final choice to the existing RD selector, so this does
+not create a separate lossy chroma path.
+
+50-frame six-vector VVC lossy matrix versus
+`vvc-rd1-lossy-dc-planar-q19-50f`:
+
+| Vector | Previous bytes | Current bytes | Byte delta | Byte delta % | Previous FPS | Current FPS | FPS delta | Previous PSNR | Current PSNR | PSNR delta |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| SceneComposition_1_420 | 9,917,479 | 9,637,494 | -279,985 | -2.82% | 1.870 | 1.628 | -12.9% | 50.184 | 50.233 | +0.049 |
+| SceneComposition_1_422 | 10,753,173 | 10,585,806 | -167,367 | -1.56% | 1.548 | 1.315 | -15.1% | 50.316 | 50.437 | +0.121 |
+| screen_wayland_activity_rgb | 7,717,273 | 7,717,273 | +0 | +0.00% | 0.668 | 0.689 | +3.2% | 58.405 | 58.405 | +0.000 |
+| MissionControlClip1_420 | 24,813,791 | 24,418,152 | -395,639 | -1.59% | 1.440 | 1.112 | -22.7% | 51.581 | 51.672 | +0.092 |
+| MissionControlClip1_422 | 27,737,364 | 27,373,987 | -363,377 | -1.31% | 1.249 | 0.805 | -35.5% | 51.666 | 51.783 | +0.118 |
+| MissionControlClip1_444 | 31,717,430 | 31,773,424 | +55,994 | +0.18% | 0.884 | 0.532 | -39.8% | 52.879 | 52.947 | +0.067 |
+
+Aggregate after this checkpoint:
+
+| Metric | Previous | Current | Delta |
+|---|---:|---:|---:|
+| Bytes | 112,656,510 | 111,506,136 | -1,150,374 (-1.02%) |
+| Mean FPS | 1.276 | 1.014 | -20.6% |
+| Mean PSNR | 52.505 | 52.579 | +0.075 |
+
+Rejected probes:
+
+- `vvc-rd1-lossy-chroma-threshold-q19-1f` added a residual-threshold gate for
+  explicit/CCLM candidates. It recovered some speed but lowered first-frame PSNR
+  on every affected row, including the RGB row, so the gate was removed.
+- `vvc-rd1-lossy-dc-planar-dirref-q19-1f` re-enabled directional refinement for
+  lossy fast-search. It helped some rows but hurt RGB, SceneComposition 4:2:2,
+  and MissionControl 4:4:4 first-frame quality, so it was left disabled.
+- `vvc-rd1-lossy-leaf-select-q19-1f` let lossy fast-search pick smaller luma
+  leaves locally instead of using the current 8x8 target. It increased bytes and
+  reduced first-frame PSNR on the 8-bit SceneComposition rows.
+
+Validation:
+
+```sh
+cargo fmt
+cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=high-depth-smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=unusual-geometry-smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_SETTINGS="lossless fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Command:
+
+```sh
+AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=release-six-vectors-full \
+  ENCODE_MATRIX_RUN=vvc-rd1-lossy-chroma-all-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc \
+  ENCODE_MATRIX_MODES=lossy \
+  ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 \
+  ENCODE_MATRIX_CLEANUP_OUTPUT=1 \
+  ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
+Follow-up:
+
+- The quality/bitrate gain is real but expensive. The next pass should keep the
+  unified chroma mode path and replace the crude derived-only shortcut with a
+  format-aware shortlist that can recover most of the chroma search speed without
+  reproducing the rejected threshold probe's PSNR loss.
+
 ## References
 
 - Cargo profile settings:
