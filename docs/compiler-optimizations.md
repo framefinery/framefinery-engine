@@ -4538,6 +4538,58 @@ Follow-up:
   format-aware shortlist that can recover most of the chroma search speed without
   reproducing the rejected threshold probe's PSNR loss.
 
+### VVC Lossy Chroma RD Top-Two Refinement
+
+Checkpoint: `vvc-rd1-lossy-chroma-rd2-q19-50f`.
+
+The previous chroma-all checkpoint selected the raw chroma predictor from the
+full derived/explicit/CCLM set, but `fast-search=lossless-speed` still let RD
+refinement inspect only that single raw winner. This checkpoint raises the
+lossy chroma RD shortlist from one candidate to two candidates. The raw
+candidate generation and final quantized-residual selector remain shared; only
+the existing RD shortlist limit changes.
+
+50-frame six-vector VVC lossy matrix versus
+`vvc-rd1-lossy-chroma-all-q19-50f`:
+
+| Vector | Previous bytes | Current bytes | Byte delta | Byte delta % | Previous FPS | Current FPS | FPS delta | Previous PSNR | Current PSNR | PSNR delta |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| SceneComposition_1_420 | 9,637,494 | 9,591,552 | -45,942 | -0.48% | 1.628 | 1.487 | -8.7% | 50.233 | 50.259 | +0.027 |
+| SceneComposition_1_422 | 10,585,806 | 10,557,349 | -28,457 | -0.27% | 1.315 | 1.257 | -4.4% | 50.437 | 50.453 | +0.016 |
+| screen_wayland_activity_rgb | 7,717,273 | 7,498,778 | -218,495 | -2.83% | 0.689 | 0.692 | +0.4% | 58.405 | 58.997 | +0.592 |
+| MissionControlClip1_420 | 24,418,152 | 24,354,143 | -64,009 | -0.26% | 1.112 | 1.028 | -7.6% | 51.672 | 51.722 | +0.050 |
+| MissionControlClip1_422 | 27,373,987 | 27,235,225 | -138,762 | -0.51% | 0.805 | 0.770 | -4.3% | 51.783 | 51.887 | +0.104 |
+| MissionControlClip1_444 | 31,773,424 | 31,802,771 | +29,347 | +0.09% | 0.532 | 0.495 | -7.1% | 52.947 | 53.033 | +0.087 |
+
+Aggregate after this checkpoint:
+
+| Metric | Previous | Current | Delta |
+|---|---:|---:|---:|
+| Bytes | 111,506,136 | 111,039,818 | -466,318 (-0.42%) |
+| Mean FPS | 1.014 | 0.955 | -5.8% |
+| Mean PSNR | 52.579 | 52.725 | +0.146 |
+
+Command:
+
+```sh
+AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=release-six-vectors-full \
+  ENCODE_MATRIX_RUN=vvc-rd1-lossy-chroma-rd2-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc \
+  ENCODE_MATRIX_MODES=lossy \
+  ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 \
+  ENCODE_MATRIX_CLEANUP_OUTPUT=1 \
+  ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
+Follow-up:
+
+- The second RD candidate is worth keeping on the release six-vector matrix, but
+  it increases already-expensive chroma scoring. A later speed pass should
+  compare top-two against a conditional second candidate keyed by the raw-score
+  gap, chroma format, and CCLM participation.
+
 ## References
 
 - Cargo profile settings:
