@@ -5052,6 +5052,111 @@ Follow-up:
   likely direction is grouped tile columns or a different slice map that stays
   under VVC/VTM tile limits while still keeping CABAC bodies reference-clean.
 
+### VVC Motion Search And Mode-Select Research Sweep
+
+Checkpoint: `vvc-motion-mode-research-2026-08`.
+
+The VVC speed gap is now primarily an encoder-search problem. Mature encoders
+do not rely on one exhaustive pass; they stage cheap signals before expensive
+RDO and only run the expensive path for plausible winners:
+
+- x265 exposes `--early-skip`, `--rskip`, `--splitrd-skip`, and `--fast-intra`.
+  The important pattern is early no-residual/skip testing, recursion exit from
+  skip or edge-density signals, and angular intra search by sparse scan plus
+  local refinement rather than all modes.
+- VTM carries analogous reference heuristics: `PBIntraFast` suppresses unlikely
+  intra checks in inter slices, `ContentBasedFastQtbt` gates split choices from
+  local texture gradients, and `checkEarlySkip()` marks no-residual merge/zero
+  MVD blocks for early skip handling.
+- AOM's AV1 speed features use the same structure in production code: reduced
+  MV search windows, zero-MV SSE thresholds that skip motion search, duplicate
+  starting-MV suppression, winner-mode limits, gradient/histogram-driven intra
+  pruning, and transform-search gates after skip becomes likely.
+- VVenC presets are explicitly documented as Pareto runtime/quality tradeoffs,
+  and the VVC partitioning papers around VTM/VVenC show why this matters: fast
+  partition strategies can save large runtime at small BD-rate cost when the
+  early decision is tied to texture and QP instead of a blind mode count.
+
+Useful primary references checked:
+
+- x265 CLI mode decision options:
+  <https://x265.readthedocs.io/en/stable/cli.html>
+- VVenC usage and preset model:
+  <https://github.com/fraunhoferhhi/vvenc/wiki/Usage>
+- AOM AV1 speed feature definitions:
+  <https://aomedia.googlesource.com/aom/+/6ad85e8ed9c5db196900bffa91161ea947606866/av1/encoder/speed_features.h>
+- Fast VVC partitioning in VTM, ICIP 2019:
+  <https://publica.fraunhofer.de/entities/publication/9210f1fb-90f8-4759-9bb6-d6fc72a9b731>
+- Fast VVC partitioning in VVenC, PCS 2021:
+  <https://publica.fraunhofer.de/entities/publication/a6ca1879-7d67-4286-af4f-158e06d60ce9>
+- Fast QTMT partition and intra mode decision, JVCIR 2023:
+  <https://www.sciencedirect.com/science/article/pii/S1047320323000822>
+
+Current FrameFinery implications:
+
+1. True VVC MV search is not implemented yet. The current predictive path is
+   skip/reuse-oriented, so the next inter feature should start with a bounded
+   zero/neighbor-MVP search, duplicate-start suppression, and adaptive small
+   search windows. Do not add an exhaustive full-frame search as the baseline.
+2. The biggest current FPS target is accepted-skip CTUs. The encoder often does
+   full intra quantization first, then replaces the CTU with InterSkip. A
+   high-confidence skip pre-gate can be valuable if it is tied to zero/previous
+   reconstruction SSE, local texture, and QP, and if validation proves the
+   byte/PSNR tradeoff row-by-row.
+3. The legal mixed P-slice intra+InterSkip path remains high value. It should
+   remove the need to switch eligible 1920-wide streams into one-slice-per-CTU
+   output while preserving cross-CTU intra context for non-skipped CTUs. The
+   previous single-slice mixed probe failed VTM, so this must be implemented
+   from the VVC coding-tree syntax rules rather than by changing PPS packaging
+   alone.
+4. More blind intra top-N pruning is not enough. Our existing gradient source
+   seed and spatial-neighbour families are the right shape, but additional
+   pruning must happen before residual materialization and must be tied to
+   stronger texture/gradient confidence. Raw score gap alone was not stable.
+5. The current fixed 8x8 residual tree avoids the full VVC QTMT explosion, but
+   it also leaves speed/compression opportunities on the table. The VTM/VVenC
+   partitioning literature suggests a future larger-leaf/flexible-split pass
+   should use texture and QP gates from the start, not exhaustive recursive RDO.
+
+Tradeoff scoring:
+
+`scripts/benchmark_encode_matrix.py` already projects per-row
+`[bytes, PSNR, FPS]` into a single score:
+
+```text
+10 * log2(current_fps / baseline_fps)
++ 4 * log2(baseline_bytes / current_bytes)
++ 8 * (current_psnr - baseline_psnr)
+```
+
+The classifier also hard-fails large regressions: FPS below 0.90x, bytes above
+1.20x, or PSNR below -1.0 dB. A clear accept currently requires score >= 2 and
+FPS >= 1.10x when FPS is present. That is the right default for FPS work
+because it lets us spend a little bitrate or PSNR only when speed improves
+enough to matter.
+
+Rejected probe: raw-score-gap RD shortlist collapse.
+
+A conservative gate was tested that collapsed lossy
+`fast-search=lossless-speed` luma/chroma top-two RD refinement to top-one when
+the best raw score was at least 2x better than the second raw score. This kept
+the selector unified but did not score well enough:
+
+- `vvc-confident-rd-gap-scene420-10f` initially looked promising on
+  `SceneComposition_1_420`: +0.20 FPS, +2,047 bytes, -0.006 dB, score
+  `+2.4:accept`.
+- `vvc-confident-rd-gap-q19-50f` rejected it on the six-vector 50-frame matrix:
+  average score `+0.1`, with 0 accepts, 2 watches, and 4 regressions. The
+  Wayland delta was not directly comparable because the baseline predated the
+  large-geometry PPS gate, but the comparable AOM rows were still too mixed:
+  the MissionControl rows regressed or failed to produce a meaningful speed
+  win.
+
+The code change was reverted. Do not repeat this exact raw 2x-gap top-one gate
+without adding a stronger signal, such as local gradient confidence, skip
+likelihood, QP-dependent tolerance, or per-format thresholds validated against
+the full six-vector matrix.
+
 ## References
 
 - Cargo profile settings:
