@@ -456,10 +456,19 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     } else {
                         None
                     };
+                    let preselected_lossy_inter_skip_ctu = cached_lossy_skip_ctu.filter(
+                        |(_, skip_distortion)| {
+                            predictive_ctu_slice_frame
+                                && vvc_predictive_inter_skip_region(region)
+                                && vvc_lossy_predictive_inter_skip_preselected(*skip_distortion)
+                        },
+                    );
                     let cached_inter_skip_ctu_available = cached_inter_skip_ctu.is_some();
-                    let mut inter_skip_ctu = cached_inter_skip_ctu_available
-                        && predictive_ctu_slice_frame
-                        && vvc_predictive_inter_skip_region(region);
+                    let mut inter_skip_ctu =
+                        (cached_inter_skip_ctu_available
+                            && predictive_ctu_slice_frame
+                            && vvc_predictive_inter_skip_region(region))
+                            || preselected_lossy_inter_skip_ctu.is_some();
                     let intra_reuse_allowed = cached_exact_ctu_available
                         && vvc_predictive_ctu_dependencies_reused(
                             region,
@@ -477,7 +486,9 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     } else {
                         None
                     };
-                    let reusable_ctu = if inter_skip_ctu {
+                    let reusable_ctu = if let Some((cached, _)) = preselected_lossy_inter_skip_ctu {
+                        Some(cached)
+                    } else if inter_skip_ctu {
                         cached_inter_skip_ctu
                     } else if intra_reuse_allowed {
                         cached_exact_ctu
@@ -700,6 +711,10 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     #[cfg(feature = "vvc-stats")]
                     if cached_lossy_skip_ctu.is_some() {
                         frame_stats.add_counter("predictive_lossy_near_skip_ctu_count", 1);
+                    }
+                    #[cfg(feature = "vvc-stats")]
+                    if preselected_lossy_inter_skip_ctu.is_some() {
+                        frame_stats.add_counter("predictive_lossy_zero_sse_preskip_ctu_count", 1);
                     }
                     #[cfg(feature = "vvc-stats")]
                     if temporal_mode_hint.is_some() && !reused_predictive_ctu {
@@ -1112,6 +1127,10 @@ fn vvc_lossy_predictive_inter_skip_selects_over_intra(
     let intra_distortion =
         vvc_region_sse_against_reconstruction(source_frame, intra_reconstruction, region);
     skip_distortion <= intra_distortion
+}
+
+fn vvc_lossy_predictive_inter_skip_preselected(skip_distortion: u64) -> bool {
+    skip_distortion == 0
 }
 
 fn vvc_region_sse_against_reconstruction(

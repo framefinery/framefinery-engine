@@ -3471,6 +3471,15 @@ fn vvc_lossy_predictive_near_skip_uses_bounded_sample_delta() {
 }
 
 #[test]
+fn vvc_lossy_predictive_preskip_requires_zero_distortion() {
+    assert!(vvc_lossy_predictive_inter_skip_preselected(0));
+    assert!(
+        !vvc_lossy_predictive_inter_skip_preselected(1),
+        "lossy pre-skip may only bypass intra quantization when RD would be a guaranteed skip"
+    );
+}
+
+#[test]
 fn vvc_input_stream_zero_frames_reads_until_eof() {
     let input = solid_yuv420p8(41, 128, 192, 2);
     let artifacts = vvc_yuv_encode_artifacts_from_input_with_limits(

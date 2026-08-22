@@ -5157,6 +5157,94 @@ without adding a stronger signal, such as local gradient confidence, skip
 likelihood, QP-dependent tolerance, or per-format thresholds validated against
 the full six-vector matrix.
 
+### VVC Lossy Zero-SSE CTU Pre-Skip
+
+Checkpoint: `vvc-zero-sse-preskip-q19-50f`.
+
+The lossy predictive CTU skip gate now preselects InterSkip before intra
+quantization when the cached skip reconstruction has exactly zero SSE against
+the current source CTU. This is deliberately stricter than the normal
+near-skip gate. The existing post-intra RD check selects InterSkip when
+`skip_distortion <= intra_distortion`; with zero skip distortion, the later RD
+gate would always choose the same InterSkip CTU. The shortcut therefore avoids
+known-wasted intra search/quantization work without changing the selected
+payload, reconstruction, or syntax path.
+
+The path remains unified:
+
+- normal lossy near-skip candidates still run through the existing post-intra
+  RD comparison;
+- the pre-skip branch only reuses the existing cached CTU decision and
+  reconstruction;
+- non-skipped CTUs still use the same intra quantization and mode-decision
+  implementation;
+- the shortcut is only active in the already reference-clean CTU-sliced
+  predictive path.
+
+Focused 10-frame two-row benchmark versus
+`vvc-zero-sse-preskip-baseline-10f-limit2`:
+
+| Vector | Bytes | Bitstream SHA | FPS before | FPS after | FPS delta | PSNR |
+|---|---:|---|---:|---:|---:|---:|
+| SceneComposition_1_420 | 759,800 | identical | 1.22 | 1.37 | +0.16 | 51.903 |
+| SceneComposition_1_422 | 871,662 | identical | 0.98 | 1.14 | +0.16 | 53.556 |
+
+The same two rows on the 50-frame matrix remained bitstream-identical to
+`vvc-qptune-probe-q19-50f` while improving measured FPS:
+
+| Vector | Bytes | Bitstream SHA | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---|---:|---:|---|
+| SceneComposition_1_420 | 2,716,281 | identical | +0.14 | +0.000 | `+1.6 watch` |
+| SceneComposition_1_422 | 3,256,957 | identical | +0.14 | +0.000 | `+2.1 accept` |
+
+The high-depth MissionControl rows were also bitstream-identical. Their FPS
+deltas were small negative samples (-0.04, -0.02, -0.01 FPS), so they are
+treated as measurement noise rather than a codec decision regression. The
+Wayland row is not comparable against `vvc-qptune-probe-q19-50f` because that
+baseline predates the large-geometry PPS gate that disables CTU-sliced skip for
+2560-wide frames.
+
+Stats probe `vvc-zero-sse-preskip-stats-10f-limit4` showed where the shortcut
+fires:
+
+| Row | CTUs | Near-skip candidates | Zero-SSE pre-skips | InterSkip CTUs |
+|---|---:|---:|---:|---:|
+| SceneComposition_1_420 | 5,100 | 3,593 | 1,012 | 3,479 |
+| SceneComposition_1_422 | 5,100 | 3,599 | 1,096 | 3,528 |
+| MissionControlClip1_420 | 5,100 | 3,561 | 161 | 3,245 |
+| screen_wayland_activity_rgb | 9,200 | 0 | 0 | 7,360 |
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo fmt
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_lossy_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp AOMCTC_ROOT=/path/to/aomctc \
+  make validate-set CODEC=vvc VALIDATION_SET=release-six-vectors-full \
+  VALIDATION_LIMIT=4 VALIDATION_FRAMES=3 VALIDATION_DIRECT_SOURCE_FILES=1 \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Follow-up:
+
+- This is a safe incremental FPS win, not the main catch-up. The next larger
+  speed step is still legal mixed P-slice intra+InterSkip or a stronger
+  high-confidence skip pre-gate that can skip intra for nonzero distortion
+  while proving the bitrate/PSNR tradeoff row-by-row.
+
 ## References
 
 - Cargo profile settings:
