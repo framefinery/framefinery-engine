@@ -5803,6 +5803,34 @@ The source diff was reverted. Do not re-add the direct luma-style chroma
 zero-coded RD early-out unless a later change makes the raw chroma residual
 score more predictive of the final chroma RD winner.
 
+Rejected probe: lossy chroma explicit directional search order.
+
+Selected chroma modes in the 5-frame stats run were dominated by horizontal and
+vertical, so a low-risk search-order probe tried evaluating explicit chroma
+horizontal/vertical before the syntax-table order under
+`lossy + fast-search=lossless-speed`. The syntax candidate table and entropy
+coding remained unchanged; only the order of candidate scoring changed.
+
+The probe was rejected:
+
+```text
+verification/generated/encode_matrix/vvc-chroma-explicit-order-stats-5f.md
+average score -0.4, 0 accept / 1 watch / 5 regress
+```
+
+Instrumentation confirmed the change did not reduce work:
+
+| Metric | Baseline | Probe |
+|---|---:|---:|
+| `ctu_quantize` | 13,562.1 ms | 14,002.3 ms |
+| `chroma_mode_search_nanos` | 4,137.2 ms | 4,360.2 ms |
+| `chroma_candidate_count` | 3,769,955 | 3,770,817 |
+| `chroma_candidate_explicit` | 1,727,200 | 1,727,489 |
+| `chroma_candidate_cclm` | 1,290,924 | 1,291,500 |
+
+The source diff was reverted. If chroma mode search order is revisited, it
+needs a stronger early-stop condition; reordering alone is noise or worse.
+
 ## References
 
 - Cargo profile settings:
