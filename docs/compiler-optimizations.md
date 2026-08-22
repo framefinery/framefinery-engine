@@ -4906,6 +4906,88 @@ Rejected probe:
   51.843 dB. The existing two-candidate cap remains the better speed/quality
   point for 4:2:0/4:2:2.
 
+### VVC Lossy Fast-Search QP Retune For High-Chroma Formats
+
+Checkpoint: `vvc-qptune-probe-q19-50f`.
+
+The lossy `fast-search=lossless-speed` QP tune was too conservative for the
+high-chroma rows in the six-vector release matrix. 8-bit 4:2:2 and high-depth
+4:2:2/4:4:4 were substantially below AV2 PSNR while still below, or close to,
+AV2 byte counts. Retuning only those formats closes the aggregate PSNR gap
+without touching the encoding syntax paths:
+
+- 8-bit 4:2:2: requested QP 19 now encodes at slice QP 17.
+- high-depth 4:2:2: requested QP 19 now encodes at slice QP 11.
+- high-depth 4:4:4: requested QP 19 now encodes at slice QP 10.
+- 8-bit 4:4:4 remains unchanged because the Wayland RGB row was already ahead
+  of AV2 on both bytes and PSNR.
+
+50-frame VVC lossy matrix versus `vvc-lossy-skip-cached-distortion-q19-50f`:
+
+| Vector | Bytes before | Bytes after | Bytes delta | PSNR before | PSNR after | PSNR delta |
+|---|---:|---:|---:|---:|---:|---:|
+| SceneComposition_1_420 | 2,716,281 | 2,716,281 | +0 | 50.239 | 50.239 | +0.000 |
+| SceneComposition_1_422 | 2,957,068 | 3,256,957 | +299,889 | 50.406 | 52.007 | +1.601 |
+| screen_wayland_activity_rgb | 959,945 | 959,945 | +0 | 58.842 | 58.842 | +0.000 |
+| MissionControlClip1_420 | 10,122,157 | 10,122,157 | +0 | 51.924 | 51.924 | +0.000 |
+| MissionControlClip1_422 | 11,275,575 | 12,204,087 | +928,512 | 52.055 | 53.686 | +1.631 |
+| MissionControlClip1_444 | 12,786,961 | 14,067,577 | +1,280,616 | 53.069 | 54.807 | +1.738 |
+
+Comparison with the current AV2 lossy q24 matrix:
+
+| Vector | VVC bytes | AV2 bytes | Bytes vs AV2 | VVC PSNR | AV2 PSNR | PSNR delta |
+|---|---:|---:|---:|---:|---:|---:|
+| SceneComposition_1_420 | 2,716,281 | 2,454,925 | +10.6% | 50.239 | 50.743 | -0.504 |
+| SceneComposition_1_422 | 3,256,957 | 3,182,499 | +2.3% | 52.007 | 52.245 | -0.238 |
+| screen_wayland_activity_rgb | 959,945 | 1,158,621 | -17.1% | 58.842 | 57.840 | +1.002 |
+| MissionControlClip1_420 | 10,122,157 | 9,734,853 | +4.0% | 51.924 | 51.115 | +0.809 |
+| MissionControlClip1_422 | 12,204,087 | 13,593,082 | -10.2% | 53.686 | 53.960 | -0.273 |
+| MissionControlClip1_444 | 14,067,577 | 17,609,567 | -20.1% | 54.807 | 55.537 | -0.730 |
+
+Aggregate after this checkpoint:
+
+| Metric | VVC previous | VVC current | AV2 current |
+|---|---:|---:|---:|
+| Bytes | 40,817,987 | 43,327,004 | 47,733,547 |
+| Mean PSNR | 52.756 | 53.584 | 53.573 |
+| Mean FPS | 0.86 | 0.87 | 5.13 |
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo fmt
+TMPDIR=verification/generated/agent_scratch/tmp cargo check -p framefinery-codecs --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_lossless_speed_tunes_lossy_slice_qp_by_format --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp AOMCTC_ROOT=/path/to/aomctc \
+  make validate-set CODEC=vvc VALIDATION_SET=release-six-vectors-full \
+  VALIDATION_LIMIT=2 VALIDATION_FRAMES=10 VALIDATION_DIRECT_SOURCE_FILES=1 \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+A scratch two-row manifest also validated the high-depth 4:2:2 and 4:4:4
+patched cases for three frames each with VTM-required reconstruction matching.
+
+Follow-ups:
+
+- The remaining gap is speed, not aggregate quality/bytes. VVC is still about
+  0.17x AV2 mean FPS on the six-vector lossy matrix.
+- `release-six-vectors-full` cannot currently be used as a one-command
+  VTM-required VVC gate because the 2560x1440 Wayland RGB row fails VTM PPS
+  parsing with `Number of explicit tile columns exceeds valid range`. That row
+  is unchanged by this QP retune and should be debugged separately as a
+  large-geometry/RGB partitioning issue.
+
 ## References
 
 - Cargo profile settings:

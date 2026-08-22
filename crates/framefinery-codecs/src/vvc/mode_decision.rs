@@ -719,11 +719,16 @@ fn vvc_lossy_slice_qp(
         stream_format.chroma_sampling,
         stream_format.bit_depth.bits() > 8,
     ) {
-        (ChromaSampling::Cs444, true) => requested_qp.saturating_sub(7),
+        (ChromaSampling::Cs444, true) => requested_qp.saturating_sub(9),
         (ChromaSampling::Cs420 | ChromaSampling::Cs422, true) => {
-            requested_qp.saturating_sub(6)
+            if stream_format.chroma_sampling == ChromaSampling::Cs422 {
+                requested_qp.saturating_sub(8)
+            } else {
+                requested_qp.saturating_sub(6)
+            }
         }
         (ChromaSampling::Cs444, false) => requested_qp.saturating_sub(1),
+        (ChromaSampling::Cs422, false) => requested_qp.saturating_sub(2),
         _ => requested_qp,
     };
     tuned_qp.clamp(1, 63)

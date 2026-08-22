@@ -89,6 +89,10 @@ fn vvc_lossless_speed_tunes_lossy_slice_qp_by_format() {
         chroma_sampling: ChromaSampling::Cs444,
         bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
     };
+    let yuv422_8 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs422,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
     let yuv422_10 = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs422,
         bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
@@ -107,12 +111,16 @@ fn vvc_lossless_speed_tunes_lossy_slice_qp_by_format() {
         18
     );
     assert_eq!(
+        vvc_lossy_slice_qp(yuv422_8, Some(19), VvcFastSearch::LosslessSpeed),
+        17
+    );
+    assert_eq!(
         vvc_lossy_slice_qp(yuv422_10, Some(19), VvcFastSearch::LosslessSpeed),
-        13
+        11
     );
     assert_eq!(
         vvc_lossy_slice_qp(yuv444_10, Some(19), VvcFastSearch::LosslessSpeed),
-        12
+        10
     );
     assert_eq!(
         vvc_lossy_slice_qp(yuv444_8, Some(19), VvcFastSearch::Off),
