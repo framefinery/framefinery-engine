@@ -5691,6 +5691,29 @@ verification/generated/encode_matrix/vvc-fused-mode-residual-score-q19-50f.md
 Do not retry this exact fused residual-score cleanup unless another change
 makes residual score calculation a measured hotspot again.
 
+Rejected probe: allocation-free RD-cache placeholder.
+
+`quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes_and_scratch_with_mode_hints()`
+temporarily moves the luma/chroma RD caches out of the CTU scratch object. A
+probe replaced the temporary `Vvc*ModeRdCache::new()` placeholders with
+allocation-free empty placeholders so the only allocated cache should be the
+one reused across CTUs. This was source-neutral and kept all six 50-frame rows
+byte/PSNR-identical, but the scorer did not show a speed win:
+
+| Vector summary | Bytes/PSNR | FPS signal | Tradeoff |
+|---|---|---:|---|
+| 6-row VVC lossy six-vector matrix | all rows identical | mixed `-0.18` to `+0.02` FPS | average `-0.1`, 0 accept / 3 watch / 3 regress |
+
+Benchmark artifact:
+
+```text
+verification/generated/encode_matrix/vvc-rd-cache-empty-placeholder-q19-50f.md
+```
+
+The source diff was reverted. Do not repeat this exact placeholder-only change;
+if allocation traffic becomes a proven bottleneck later, measure with an
+allocator/profile tool before changing the cache ownership shape.
+
 ## References
 
 - Cargo profile settings:
