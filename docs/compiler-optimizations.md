@@ -5863,6 +5863,36 @@ The source diff was reverted. CCLM cannot be cut down to Linear-only for the
 current lossy fast mode; MDLM-left/top matter enough on screen-content rows
 that the quality loss overwhelms the speed win.
 
+Rejected follow-up: CCLM Linear-only for 10-bit 4:2:0/4:2:2 only.
+
+A narrower variant kept full CCLM on 8-bit/RGB and 10-bit 4:4:4 while limiting
+only `lossy + fast-search=lossless-speed` 10-bit 4:2:0/4:2:2 rows to Linear
+CCLM. This avoided the worst Wayland/RGB failure from the broad Linear-only
+probe, but still failed the aggregate score:
+
+```text
+verification/generated/encode_matrix/vvc-cclm-linear-only-10bit-420-422-stats-5f.md
+average score -0.2, 0 accept / 2 watch / 4 regress
+```
+
+Affected rows still paid rate/quality for speed:
+
+- `MissionControl_420`: +3,402 bytes, -0.05 dB, +0.07 FPS, score +0.1.
+- `MissionControl_422`: +2,025 bytes, ~0 dB, +0.11 FPS, score +1.0.
+
+Instrumentation moved in the intended direction but not enough to overcome the
+tradeoff:
+
+| Metric | Baseline | Probe |
+|---|---:|---:|
+| `ctu_quantize` | 13,562.1 ms | 13,539.4 ms |
+| `chroma_mode_search_nanos` | 4,137.2 ms | 3,814.8 ms |
+| `chroma_cclm_prediction_nanos` | 1,191.0 ms | 869.7 ms |
+| `chroma_candidate_cclm` | 1,290,924 | 979,265 |
+
+The source diff was reverted. Any future CCLM pruning needs content-adaptive
+evidence stronger than format/bit-depth alone.
+
 ## References
 
 - Cargo profile settings:
