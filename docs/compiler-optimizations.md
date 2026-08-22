@@ -6395,6 +6395,42 @@ Actionable addendum from the 2026-08-22 external/source audit:
   output-changing, require positive aggregate score with no hard row
   regressions and then VTM-required validation.
 
+Rejected probe: exact CABAC-bit RD gate for lossy CTU InterSkip.
+
+The lossy predictive CTU skip selector was changed from distortion-only
+`skip_sse <= intra_sse` to a local RD score using actual CABAC body bit counts
+from `vvc_ctu_cabac_payload()`:
+
+```text
+cost = distortion + lambda(qp, bit_depth) * cabac_bits
+```
+
+The implementation reused the final CTU CABAC payload builder for both the
+P-slice InterSkip candidate and the I-slice intra candidate, so it did not add
+a parallel syntax estimator. Unit coverage for the selector and broad VVC
+tests passed, but the 50-frame six-vector scorer rejected the probe:
+
+```text
+verification/generated/encode_matrix/vvc-lossy-skip-rd-bitcost-q19-50f.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| SceneComposition_1_420 | +0 | +0.000 | -0.99 | `-2.8 regress` |
+| SceneComposition_1_422 | +0 | +0.000 | -0.56 | `-1.9 regress` |
+| screen_wayland_activity_rgb | +0 | +0.000 | -0.06 | `-0.4 regress` |
+| MissionControlClip1_420 | +0 | +0.000 | +0.05 | `+0.3 watch` |
+| MissionControlClip1_422 | +0 | +0.000 | +0.04 | `+0.3 watch` |
+| MissionControlClip1_444 | +0 | +0.000 | +0.03 | `+0.4 watch` |
+
+Aggregate score was `-0.7` with 0 accepts, 3 watches, and 3 regressions. The
+source change was reverted. The result means the existing bounded near-skip
+candidates did not expose additional RD-positive CTU skips on this matrix, and
+running exact CABAC bit estimation inside the hot skip decision adds too much
+overhead. If this idea is retried, first add a cheaper precondition or a cached
+per-CTU intra bit estimate so exact CABAC scoring only runs when it can change
+the decision.
+
 Tradeoff gate:
 
 Use `scripts/benchmark_encode_matrix.py` as the acceptance function. It already
