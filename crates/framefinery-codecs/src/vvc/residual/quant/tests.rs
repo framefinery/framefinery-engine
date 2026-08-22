@@ -829,6 +829,98 @@ fn vvc_direct_chroma_bdpcm_residual_gate_requires_sse_gain() {
 }
 
 #[test]
+fn vvc_lossy_temporal_mode_hints_are_tightly_gated() {
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let lossy_speed = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+    let lossy_off = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy);
+    let lossless_speed = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossless)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+
+    assert_eq!(
+        vvc_temporal_mode_hint_max_avg_abs_residual_8bit(lossy_speed),
+        Some(0)
+    );
+    assert_eq!(
+        vvc_temporal_mode_hint_max_avg_abs_residual_8bit(lossy_off),
+        None
+    );
+    assert_eq!(
+        vvc_temporal_mode_hint_max_avg_abs_residual_8bit(lossless_speed),
+        Some(16)
+    );
+    assert!(vvc_temporal_mode_hint_residual_is_cheap(
+        &[0; 16],
+        16,
+        format.bit_depth,
+        lossy_speed,
+    ));
+    assert!(!vvc_temporal_mode_hint_residual_is_cheap(
+        &[1; 16],
+        16,
+        format.bit_depth,
+        lossy_speed,
+    ));
+    assert!(vvc_temporal_mode_hint_residual_is_cheap(
+        &[16; 16],
+        16,
+        format.bit_depth,
+        lossless_speed,
+    ));
+    assert!(!vvc_temporal_mode_hint_residual_is_cheap(
+        &[17; 16],
+        16,
+        format.bit_depth,
+        lossless_speed,
+    ));
+    assert!(!vvc_temporal_mode_hint_residual_is_cheap(
+        &[1; 16],
+        16,
+        format.bit_depth,
+        lossy_off,
+    ));
+}
+
+#[test]
+fn vvc_temporal_chroma_explicit_hint_requires_current_candidate_index() {
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let policy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+    let geometry = VvcVideoGeometry {
+        width: 8,
+        height: 8,
+    };
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeChroma);
+
+    assert_eq!(
+        vvc_supported_temporal_chroma_mode_hint(
+            VvcChromaIntraPredictionMode::Explicit(VvcIntraPredictionMode::Vertical),
+            policy,
+            geometry,
+            node,
+            VvcIntraPredictionMode::Planar,
+        ),
+        VvcChromaIntraPredictionMode::Explicit(VvcIntraPredictionMode::Vertical)
+    );
+    assert_eq!(
+        vvc_supported_temporal_chroma_mode_hint(
+            VvcChromaIntraPredictionMode::Explicit(VvcIntraPredictionMode::Planar),
+            policy,
+            geometry,
+            node,
+            VvcIntraPredictionMode::Planar,
+        ),
+        VvcChromaIntraPredictionMode::Derived
+    );
+}
+
+#[test]
 fn vvc_luma_quality_gate_can_spend_bits_for_lower_distortion() {
     let best = VvcLumaQuantizedResidualScore {
         distortion: 1_000,

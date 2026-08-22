@@ -133,6 +133,7 @@ impl Default for VvcCtuQuantScratch {
 // The 50-frame screen-content sweep kept lossless PSNR exact and showed a
 // better speed/byte tradeoff at 16 than adjacent wider thresholds.
 const VVC_TEMPORAL_MODE_HINT_MAX_AVG_ABS_RESIDUAL_8BIT: u64 = 16;
+const VVC_LOSSY_TEMPORAL_MODE_HINT_MAX_AVG_ABS_RESIDUAL_8BIT: u64 = 0;
 
 #[cfg(feature = "bench-internals")]
 pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes(
@@ -206,8 +207,7 @@ fn vvc_luma_temporal_mode_hint(
     node: VvcCodingTreeNode,
 ) -> Option<VvcLumaTemporalModeHint> {
     let hints = hints?;
-    if policy.residual_mode() != VvcResidualCodingMode::Lossless
-        || policy.fast_search() != VvcFastSearch::LosslessSpeed
+    if !vvc_temporal_mode_hints_allowed(policy)
         || hints.luma_tu_count != expected_tu_count
         || tu_idx >= hints.luma_tu_count
     {
@@ -230,12 +230,12 @@ fn vvc_chroma_temporal_mode_hint(
     policy: VvcResidualCodingPolicy,
     source_geometry: VvcVideoGeometry,
     node: VvcCodingTreeNode,
+    co_located_luma_mode: VvcIntraPredictionMode,
     chroma_width: usize,
     chroma_height: usize,
 ) -> Option<VvcChromaTemporalModeHint> {
     let hints = hints?;
-    if policy.residual_mode() != VvcResidualCodingMode::Lossless
-        || policy.fast_search() != VvcFastSearch::LosslessSpeed
+    if !vvc_temporal_mode_hints_allowed(policy)
         || hints.chroma_tu_count != expected_tu_count
         || tu_idx >= hints.chroma_tu_count
     {
@@ -255,6 +255,7 @@ fn vvc_chroma_temporal_mode_hint(
             policy,
             source_geometry,
             node,
+            co_located_luma_mode,
         )
     };
     Some(VvcChromaTemporalModeHint { mode, bdpcm_mode })
@@ -265,6 +266,7 @@ fn vvc_supported_temporal_chroma_mode_hint(
     policy: VvcResidualCodingPolicy,
     source_geometry: VvcVideoGeometry,
     node: VvcCodingTreeNode,
+    co_located_luma_mode: VvcIntraPredictionMode,
 ) -> VvcChromaIntraPredictionMode {
     match mode {
         VvcChromaIntraPredictionMode::Cclm(_)
@@ -273,7 +275,8 @@ fn vvc_supported_temporal_chroma_mode_hint(
             VvcChromaIntraPredictionMode::Derived
         }
         VvcChromaIntraPredictionMode::Explicit(mode)
-            if !vvc_residual_chroma_explicit_candidate_allowed(mode) =>
+            if !vvc_chroma_explicit_candidate_allowed_for_search(policy, mode)
+                || vvc_chroma_explicit_candidate_index(mode, co_located_luma_mode).is_none() =>
         {
             VvcChromaIntraPredictionMode::Derived
         }
@@ -285,13 +288,18 @@ fn vvc_temporal_mode_hint_residual_is_cheap(
     residuals: &[i16],
     sample_count: usize,
     bit_depth: SampleBitDepth,
+    policy: VvcResidualCodingPolicy,
 ) -> bool {
     if sample_count == 0 || residuals.len() != sample_count {
         return false;
     }
+    let Some(max_avg_abs_residual_8bit) = vvc_temporal_mode_hint_max_avg_abs_residual_8bit(policy)
+    else {
+        return false;
+    };
     let scale = 1u64 << u32::from(bit_depth.bits().saturating_sub(8));
     let budget = (sample_count as u64)
-        .saturating_mul(VVC_TEMPORAL_MODE_HINT_MAX_AVG_ABS_RESIDUAL_8BIT)
+        .saturating_mul(max_avg_abs_residual_8bit)
         .saturating_mul(scale);
     residuals
         .iter()
@@ -301,6 +309,26 @@ fn vvc_temporal_mode_hint_residual_is_cheap(
             (sum <= budget).then_some(sum)
         })
         .is_some()
+}
+
+fn vvc_temporal_mode_hints_allowed(policy: VvcResidualCodingPolicy) -> bool {
+    vvc_temporal_mode_hint_max_avg_abs_residual_8bit(policy).is_some()
+}
+
+fn vvc_temporal_mode_hint_max_avg_abs_residual_8bit(
+    policy: VvcResidualCodingPolicy,
+) -> Option<u64> {
+    if policy.fast_search() != VvcFastSearch::LosslessSpeed {
+        return None;
+    }
+    match policy.residual_mode() {
+        VvcResidualCodingMode::Lossless => {
+            Some(VVC_TEMPORAL_MODE_HINT_MAX_AVG_ABS_RESIDUAL_8BIT)
+        }
+        VvcResidualCodingMode::Lossy => {
+            Some(VVC_LOSSY_TEMPORAL_MODE_HINT_MAX_AVG_ABS_RESIDUAL_8BIT)
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -363,6 +391,7 @@ fn finalize_vvc_luma_tu_with_temporal_mode_hint(
             luma_residuals,
             usize::from(node.width) * usize::from(node.height),
             source_frame.format.bit_depth,
+            policy,
         ) {
             return None;
         }
@@ -431,6 +460,7 @@ fn finalize_vvc_luma_tu_with_temporal_mode_hint(
             luma_residuals,
             usize::from(node.width) * usize::from(node.height),
             source_frame.format.bit_depth,
+            policy,
         ) {
             return None;
         }
@@ -540,10 +570,12 @@ fn finalize_vvc_chroma_tu_with_temporal_mode_hint(
             cb_residuals,
             chroma_width * chroma_height,
             source_frame.format.bit_depth,
+            policy,
         ) || !vvc_temporal_mode_hint_residual_is_cheap(
             cr_residuals,
             chroma_width * chroma_height,
             source_frame.format.bit_depth,
+            policy,
         ) {
             return None;
         }
@@ -630,10 +662,12 @@ fn finalize_vvc_chroma_tu_with_temporal_mode_hint(
             cb_residuals,
             chroma_width * chroma_height,
             source_frame.format.bit_depth,
+            policy,
         ) || !vvc_temporal_mode_hint_residual_is_cheap(
             cr_residuals,
             chroma_width * chroma_height,
             source_frame.format.bit_depth,
+            policy,
         ) {
             return None;
         }
@@ -1226,6 +1260,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 policy,
                 source_frame.geometry,
                 node,
+                co_located_luma_mode,
                 chroma_width,
                 chroma_height,
             ) {
@@ -1260,6 +1295,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             policy,
             source_frame.geometry,
             node,
+            co_located_luma_mode,
             chroma_width,
             chroma_height,
         ) {

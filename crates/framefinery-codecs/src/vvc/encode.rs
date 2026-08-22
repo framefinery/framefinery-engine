@@ -481,10 +481,9 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             &predictive_reused_ctus,
                         );
                     let mut reused_predictive_ctu = false;
-                    let temporal_mode_hint = if predictive_frame
-                        && residual_mode.is_lossless()
-                        && options.fast_search == VvcFastSearch::LosslessSpeed
-                    {
+                    let temporal_mode_hint_allowed =
+                        predictive_frame && options.fast_search == VvcFastSearch::LosslessSpeed;
+                    let temporal_mode_hint = if temporal_mode_hint_allowed {
                         previous_predictive_cache
                             .as_ref()
                             .and_then(|cache| cache.ctu_decision(region))

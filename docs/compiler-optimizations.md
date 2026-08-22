@@ -5714,6 +5714,68 @@ The source diff was reverted. Do not repeat this exact placeholder-only change;
 if allocation traffic becomes a proven bottleneck later, measure with an
 allocator/profile tool before changing the cache ownership shape.
 
+Accepted probe: lossy temporal mode hints, zero-residual only.
+
+The existing temporal intra-mode hint machinery was lossless-only. A lossy
+variant was tested for `fast-search=lossless-speed`: predictive frames may reuse
+the previous frame's luma/chroma TU mode only when that mode predicts the
+current TU with zero residual before quantization. This preserves the unified
+quantization/reconstruction path; only the candidate selection gate changes.
+
+An intermediate wider threshold, average absolute residual <= 2 at 8-bit scale,
+was rejected first. It completed the first frames but regressed row 1 before the
+matrix was stopped:
+
+```text
+vvc-lossy-temporal-mode-hints-active-fixed-avgabs2-q19-50f
+SceneComposition_1_420: +42,267 bytes, -1.09 dB PSNR, +0.09 FPS, score -8.6
+```
+
+The accepted zero-residual gate used the current syntax candidate table for
+chroma explicit hints before accepting a temporal explicit mode. This fixed a
+real caller-side hazard exposed by the wider probe: a previous chroma explicit
+mode can be legal in general but absent from the current co-located-luma
+candidate table, in which case entropy coding cannot signal it.
+
+50-frame scorer against `vvc-ctu-interskip-slice-cache-q19-50f`:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Score |
+|---|---:|---:|---:|---:|
+| SceneComposition_1_420 | +7,253 (+0.274%) | +0.463 (+8.7%) | -0.000260 dB | +1.19 |
+| SceneComposition_1_422 | +13,471 (+0.418%) | +0.363 (+8.5%) | +0.000480 dB | +1.15 |
+| screen_wayland_activity_rgb | +14,482 (+0.358%) | +0.928 (+74.7%) | +0.000040 dB | +8.03 |
+| MissionControl_420 | +5,578 (+0.059%) | +0.060 (+2.5%) | +0.002340 dB | +0.37 |
+| MissionControl_422 | +9,032 (+0.080%) | +0.018 (+1.0%) | +0.000160 dB | +0.14 |
+| MissionControl_444 | +15,997 (+0.122%) | -0.016 (-1.3%) | +0.000960 dB | -0.18 |
+
+Aggregate:
+
+```text
+verification/generated/encode_matrix/vvc-lossy-temporal-mode-hints-zero-q19-50f.md
+average score +1.8, 1 accept / 4 watch / 1 regress
+300 frames, 43,912,935 bytes, total FPS 2.28
+```
+
+Validation:
+
+```sh
+make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed"
+
+make validate-set CODEC=vvc VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed"
+
+AOMCTC_ROOT=/path/to/aomctc \
+make validate-set CODEC=vvc VALIDATION_SET=release-six-vectors-full \
+  VALIDATION_LIMIT=6 VALIDATION_FRAMES=3 VALIDATION_DIRECT_SOURCE_FILES=1 \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed"
+```
+
+Result: all listed validation runs passed reference reconstruction matching.
+
 ## References
 
 - Cargo profile settings:
