@@ -5776,6 +5776,33 @@ make validate-set CODEC=vvc VALIDATION_SET=release-six-vectors-full \
 
 Result: all listed validation runs passed reference reconstruction matching.
 
+Rejected probe: chroma zero-coded residual RD early-out.
+
+Luma RD refinement already skips the rest of its shortlist when the raw mode
+quantizes to a near-zero coded residual. The same rule was tested for chroma:
+after scoring the raw chroma mode, skip further chroma RD candidates when both
+Cb and Cr coded zero residual and combined distortion was at most one unit per
+chroma sample. This looked like a plausible way to reduce the current chroma RD
+hotspot, but the 5-frame stats scorer rejected it:
+
+```text
+verification/generated/encode_matrix/vvc-chroma-zero-rd-skip-stats-5f.md
+average score -0.1, 0 accept / 1 watch / 5 regress
+```
+
+Measured stats also showed no actual work reduction:
+
+| Metric | Baseline | Probe |
+|---|---:|---:|
+| `ctu_quantize` | 13,562.1 ms | 13,748.7 ms |
+| `chroma_rd_scoring_nanos` | 2,292.5 ms | 2,296.2 ms |
+| `chroma_rd_refinement_attempts` | 420,416 | 420,438 |
+| `chroma_mode_search_nanos` | 4,137.2 ms | 4,238.4 ms |
+
+The source diff was reverted. Do not re-add the direct luma-style chroma
+zero-coded RD early-out unless a later change makes the raw chroma residual
+score more predictive of the final chroma RD winner.
+
 ## References
 
 - Cargo profile settings:
