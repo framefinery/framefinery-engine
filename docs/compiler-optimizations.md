@@ -6742,6 +6742,57 @@ Tooling note: the encode-matrix tradeoff scorer is now centralized in
 that helper so release tables and local optimization probes use the same
 accept/watch/regress semantics.
 
+### VVC luma transform-skip-first lossy fast search
+
+The next profiling pass checked the current VVC encoder against the advanced
+mode-selection guidance already noted above: evaluate the cheapest likely
+winner first and prune expensive alternatives only when the local evidence says
+they are not paying for themselves. In the current implementation this maps to
+the luma residual selector, not to external motion search yet; VVC inter motion
+search is still not a general block-level encoder path.
+
+Two probes were run against the local generated 640x360 mode set at
+`qp=19 gop=-1 fast-search=lossless-speed`:
+
+- high-tail 8x8 luma DCT AC probing during fast mode selection;
+- transform-skip-first luma residual selection for lossy 8-bit 4:4:4, removing
+  the old exception that still compared transformed luma residuals before
+  selecting transform skip.
+
+The high-tail DCT AC probe was rejected. It evaluated the direct transformed
+AC candidate for high-tail-energy 8x8 luma residuals, but the 50-frame matrix
+showed no byte or PSNR change and a clear 4:4:4 speed loss:
+
+```text
+verification/generated/encode_matrix/vvc-fast-dct-tail-probe-50f-q19.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.000 | +0.01 | `+0.0 watch` |
+| probe_blocks_420 | +0 | +0.000 | +0.15 | `+0.2 watch` |
+| probe_checker_444 | +0 | +0.000 | -1.50 | `-3.0 regress` |
+| probe_blocks_444 | +0 | +0.000 | -0.63 | `-1.7 regress` |
+
+The accepted change is the narrower transform-skip-first luma gate for lossy
+`lossless-speed` mode. Instrumentation confirmed that it removes redundant
+4:4:4 luma transformed-quant work without changing the bitstream:
+
+```text
+verification/generated/profiling/vvc_444_transform_skip_first_stats_5f/
+verification/generated/encode_matrix/vvc-444-transform-skip-first-stats-5f-q19.md
+```
+
+| Probe | Bytes | Old luma transformed quant | New luma transformed quant | Old luma RD scoring ns | New luma RD scoring ns |
+|---|---:|---:|---:|---:|---:|
+| probe_blocks_444 | 250950 | 18000 | 0 | 106638253 | 58558684 |
+| probe_checker_444 | 234080 | 17795 | 0 | 110690378 | 55926164 |
+
+The normal 50-frame matrix is noisy at this size, but byte and PSNR results
+were unchanged in both reruns. The useful signal is the direct counter drop:
+this is a work-removal change, not a new coding path. It keeps lossless
+behavior unchanged and remains inside the shared luma residual selector.
+
 ## References
 
 - Cargo profile settings:

@@ -345,7 +345,7 @@ fn vvc_lossless_speed_chroma_keeps_lossy_candidates() {
 }
 
 #[test]
-fn vvc_lossless_speed_luma_rd_compares_transform_skip_for_lossy_rgb() {
+fn vvc_lossless_speed_luma_rd_prefers_transform_skip_first_for_lossy() {
     let yuv420 = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs420,
         bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
@@ -373,7 +373,7 @@ fn vvc_lossless_speed_luma_rd_compares_transform_skip_for_lossy_rgb() {
     assert!(vvc_luma_fast_search_prefers_transform_skip_candidate(
         fast_lossy
     ));
-    assert!(!vvc_luma_fast_search_prefers_transform_skip_candidate(
+    assert!(vvc_luma_fast_search_prefers_transform_skip_candidate(
         fast_lossy_444
     ));
     assert!(vvc_luma_fast_search_prefers_transform_skip_candidate(
