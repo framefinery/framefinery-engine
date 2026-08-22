@@ -783,7 +783,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         visible_width: region.geometry.coded_width() as u16,
         visible_height: region.geometry.coded_height() as u16,
         chroma_sampling: source_frame.format.chroma_sampling,
-        dual_tree_intra: true,
+        dual_tree_intra: policy.dual_tree_intra(),
     };
 
     let mut luma_tu_count = 0usize;
@@ -1233,7 +1233,12 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     }
 
     let mut chroma_tu_count = 0usize;
-    vvc_chroma_transform_nodes_into(&mut chroma_nodes, ctu_shape);
+    if ctu_shape.dual_tree_intra {
+        vvc_chroma_transform_nodes_into(&mut chroma_nodes, ctu_shape);
+    } else {
+        chroma_nodes.clear();
+        chroma_nodes.extend(luma_nodes.iter().copied());
+    }
     for local_node in chroma_nodes.iter().copied() {
         if chroma_tu_count >= MAX_VVC_CHROMA_TUS {
             break;

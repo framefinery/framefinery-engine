@@ -737,10 +737,8 @@ fn vvc_chroma_bdpcm_selection_allowed(
     chroma_height: usize,
 ) -> bool {
     VVC_ENABLE_BDPCM_SELECTION
-        && chroma_width <= usize::from(VVC_TRANSFORM_SKIP_MAX_SIZE)
-        && chroma_height <= usize::from(VVC_TRANSFORM_SKIP_MAX_SIZE)
-        && chroma_width >= 4
-        && chroma_height >= 4
+        && chroma_width == 4
+        && chroma_height == 4
         && matches!(
             policy.residual_mode(),
             VvcResidualCodingMode::Lossy | VvcResidualCodingMode::Lossless

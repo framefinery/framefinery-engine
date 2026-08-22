@@ -283,10 +283,12 @@ VVC/VTM debugging notes:
 - Use `scripts/benchmark_encode_matrix.py` for `[bytes, PSNR, FPS]` tradeoff
   scoring. The score is documented in `docs/validation.md`; correctness and
   reference-decoder validation still gate before the score matters.
-- Current VVC predictive mode limitation: mixed intra/InterSkip frames use
-  CTU-sliced output because FrameFinery's residual CTU body still emits
-  dual-tree intra syntax. A single mixed P-slice needs a real joint-tree
-  intra-CU syntax path, not just a PPS or slice-header change.
+- Current VVC predictive mode limitation: lossy 4:2:0 mixed intra/InterSkip
+  frames can use one P-slice. Lossless and high-chroma 4:2:2/4:4:4 mixed
+  frames intentionally remain on the CTU-slice fallback; the 4:2:2/4:4:4
+  single-tree path was made reference-clean in focused probes but rejected by
+  the six-vector score gate because rectangular chroma residual quality dropped
+  too much.
 - For VVC profiling, build with `VVC_STATS=1` or the `vvc-stats` feature and
   write `FRAMEFINERY_VVC_STATS` under `verification/generated/`; avoid `/tmp`
   for large probes.

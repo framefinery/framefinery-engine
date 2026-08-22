@@ -364,8 +364,8 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
             sample_vvc_yuv_frame(&frame_buf, VvcEncodeParams { frames: 1 }, geometry, format)?;
         #[cfg(feature = "vvc-stats")]
         frame_stats.add_elapsed("sample_frame", stage_start);
-        let lossy_mixed_single_p_slice_supported = !residual_mode.is_lossless()
-            && vvc_lossy_mixed_single_p_slice_supported(stream_format);
+        let lossy_mixed_single_p_slice_supported =
+            !residual_mode.is_lossless() && vvc_lossy_mixed_single_p_slice_supported(stream_format);
         let predictive_ctu_inter_skip_enabled = predictive_frame
             && (lossy_mixed_single_p_slice_supported || ctu_sliced_partitioning_supported)
             && vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release();
@@ -411,6 +411,8 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 ));
         let predictive_ctu_slice_frame =
             !lossy_mixed_single_p_slice_supported && predictive_ctu_inter_skip_frame;
+        let mixed_single_p_slice_frame =
+            lossy_mixed_single_p_slice_supported && predictive_ctu_inter_skip_frame;
         {
             let mut frame_bitstream = CountingWriter::new(bitstream);
             let (frame_recon_yuv, next_predictive_cache) = {
@@ -553,8 +555,10 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             frame_recon.clear_availability();
                             luma_mode_search_state.clear();
                         }
+                        let ctu_residual_policy = residual_policy
+                            .with_dual_tree_intra(!mixed_single_p_slice_frame);
                         let luma_max_leaf_size = select_vvc_luma_max_leaf_size_for_ctu(
-                            residual_policy,
+                            ctu_residual_policy,
                             &source_frame,
                             region,
                             luma_qp,
@@ -573,7 +577,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                     region,
                                     luma_max_leaf_size,
                                     stream_format.chroma_sampling,
-                                    slice_config.coding_tree.dual_tree_intra,
+                                    ctu_residual_policy.dual_tree_intra(),
                                 )
                             })
                         } else {
@@ -592,7 +596,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                     stream_frame_layout,
                                     region,
                                     stream_format.chroma_sampling,
-                                    slice_config.coding_tree.dual_tree_intra,
+                                    ctu_residual_policy.dual_tree_intra(),
                                 )
                             })
                         } else {
@@ -602,7 +606,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             &source_frame,
                             &mut frame_recon,
                             region,
-                            residual_policy,
+                            ctu_residual_policy,
                             luma_qp,
                             chroma_qp,
                             &mut luma_mode_search_state,
@@ -1063,10 +1067,10 @@ fn vvc_lossy_predictive_ctu_skip_candidate_count_allows_mixed_p_slice(
 }
 
 fn vvc_lossy_mixed_single_p_slice_supported(format: VvcPictureFormat) -> bool {
-    // The reference-clean single-tree transform_unit branch is currently
-    // validated for the 4:2:0 lossy CTU shape. 4:2:2/4:4:4 need the quantizer
-    // to use the same inter-slice partition plan as entropy before their
-    // chroma explicit-mode candidate tables are guaranteed to match.
+    // Mixed InterSkip/Intra P-slices use a single coding tree. The quantizer can
+    // follow that partition order, but the current rectangular high-chroma
+    // residual model is not good enough for 4:2:2/4:4:4 quality yet, so keep the
+    // release path narrowed to the reference-clean 4:2:0 shape.
     format.chroma_sampling == ChromaSampling::Cs420
 }
 

@@ -6300,10 +6300,7 @@ sha256(lossy_q19.vtm.yuv)   = fef53fa65db414b929185ee8356dfb76d8a942ac8294423ffe
 Lossless mixed CTU skip and lossy 4:2:2/4:4:4 mixed CTU skip intentionally
 remain on the CTU-slice fallback. The lossless path uses 4x4 luma leaves for
 4:2:0, where VTM infers local separate luma/chroma trees in inter slices. The
-4:2:2/4:4:4 lossy paths need quantization and entropy to share the same
-inter-slice partition plan before the chroma explicit-mode candidate tables are
-guaranteed to match. The focused lossless probe remains reference-clean through
-the fallback:
+focused lossless probe remains reference-clean through the fallback:
 
 ```text
 lossless.vvc: 550 bytes
@@ -6311,10 +6308,45 @@ sha256(lossless.recon.yuv) =
 sha256(lossless.vtm.yuv)   = 062e62b51aa375585ef2d2fae22c39f31d298da3689c25a1e1227af55eb0d808
 ```
 
+Follow-up probe: high-chroma mixed single P-slice packetization.
+
+The next attempt made quantization carry the active coding-tree policy and use
+the inter-slice single-tree transform partition order before entropy. This fixed
+the original 4:2:2 mismatch mechanism where dual-tree chroma produced a
+different TU count/order than single-tree entropy. Focused 128x64 two-frame
+4:2:2 and 4:4:4 QP 19 probes then decoded successfully with VTM, and the VTM
+reconstruction matched the encoder reconstruction byte-for-byte.
+
+That was still not sufficient for release enablement. Single-tree 4:2:2/4:4:4
+creates rectangular chroma TUs such as 4x8 and 8x8. The current chroma BDPCM and
+transform-skip coefficient storage is still fundamentally 4x4-oriented, so
+BDPCM had to be gated to 4x4 chroma TUs to keep focused probes
+reference-clean. The resulting all-chroma single-slice 50-frame six-vector
+matrix was rejected by the score gate:
+
+```text
+verification/generated/encode_matrix/vvc-mixed-p-slice-all-chroma-q19-50f.md
+average score: -42.2
+SceneComposition_1_422: bytes -283,500, FPS +1.35, PSNR -6.16 dB, score -44.9
+screen_wayland_activity_rgb: bytes -3,365,591, FPS +4.75, PSNR -13.36 dB, score -79.0
+MissionControlClip1_422: bytes +609,948, FPS +0.26, PSNR -6.50 dB, score -50.2
+MissionControlClip1_444: bytes +1,898,815, FPS +0.20, PSNR -10.22 dB, score -80.1
+```
+
+The release path was narrowed back to 4:2:0-only mixed single P-slices and now
+has explicit 4:2:2/4:4:4 fallback tests. The guarded matrix is byte/PSNR
+identical to the previous accepted baseline, with only FPS noise:
+
+```text
+verification/generated/encode_matrix/vvc-mixed-p-slice-chroma-gated-q19-50f.md
+average score: +0.0
+all six rows: bytes +0, PSNR +0.00 dB
+FPS deltas: -0.12, +0.12, -0.03, -0.07, +0.03, +0.04
+```
+
 Remaining TODO: implement the local-separate-tree branch for small 4:2:0
-inter-slice intra leaves and make quantization use the inter-slice single-tree
-partition plan for 4:2:2/4:4:4 before enabling those mixed single P-slices or
-leaf-level predictive skip.
+inter-slice intra leaves and add a real rectangular chroma residual/BDPCM model
+before enabling 4:2:2/4:4:4 mixed single P-slices or leaf-level predictive skip.
 
 ### VVC Motion Search And Mode-Selection Audit
 

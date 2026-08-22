@@ -3495,7 +3495,7 @@ fn vvc_lossy_predictive_mixed_yuv422_frame_uses_ctu_slice_fallback() {
             .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
             .count(),
         2,
-        "the mixed lossy 4:2:2 predictive frame should keep the CTU-slice fallback"
+        "mixed lossy 4:2:2 predictive output should stay on the CTU-slice fallback until rectangular chroma residual quality is fixed"
     );
     assert_eq!(
         predictive_nals
@@ -3504,6 +3504,49 @@ fn vvc_lossy_predictive_mixed_yuv422_frame_uses_ctu_slice_fallback() {
             .count(),
         1,
         "mixed lossy 4:2:2 predictive frames should carry one picture header for CTU-sliced output"
+    );
+}
+
+#[test]
+fn vvc_lossy_predictive_mixed_yuv444_frame_uses_ctu_slice_fallback() {
+    let geometry = VvcVideoGeometry {
+        width: 128,
+        height: 64,
+    };
+    let input = yuv444p8_two_frame_right_half_repeated(geometry.width, geometry.height);
+    let predictive = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        PixelFormat::Yuv444p8,
+        VvcEncodeOptions {
+            qp: Some(19),
+            gop: crate::settings::GopMode::Infinite,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("predictive 4:4:4 VVC encode should succeed");
+
+    assert_eq!(
+        predictive.reconstruction.len(),
+        Picture::expected_len(geometry.width, geometry.height, PixelFormat::Yuv444p8) * 2
+    );
+    let predictive_nals = parse_annex_b_nal_units(&predictive.bitstream).unwrap();
+    assert_eq!(
+        predictive_nals
+            .iter()
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
+            .count(),
+        2,
+        "mixed lossy 4:4:4 predictive output should stay on the CTU-slice fallback until rectangular chroma residual quality is fixed"
+    );
+    assert_eq!(
+        predictive_nals
+            .iter()
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::PictureHeader as u8)
+            .count(),
+        1,
+        "mixed lossy 4:4:4 predictive frames should carry one picture header for CTU-sliced output"
     );
 }
 
@@ -4692,6 +4735,16 @@ fn yuv422p8_two_frame_right_half_repeated(width: usize, height: usize) -> Vec<u8
     out
 }
 
+fn yuv444p8_two_frame_right_half_repeated(width: usize, height: usize) -> Vec<u8> {
+    assert_eq!(width, 128);
+    assert_eq!(height, 64);
+    let mut out =
+        Vec::with_capacity(Picture::expected_len(width, height, PixelFormat::Yuv444p8) * 2);
+    append_yuv444p8_split_luma_frame(&mut out, width, height, 72, 72, 128, 192);
+    append_yuv444p8_split_luma_frame(&mut out, width, height, 96, 72, 128, 192);
+    out
+}
+
 fn yuv420p8_two_frame_one_luma_block_changed(width: usize, height: usize) -> Vec<u8> {
     assert_eq!(width, 64);
     assert_eq!(height, 64);
@@ -4755,6 +4808,25 @@ fn append_yuv422p8_split_luma_frame(
         out.extend(std::iter::repeat_n(right_y, width - half_width));
     }
     let chroma = width * height / 2;
+    out.extend(std::iter::repeat_n(u, chroma));
+    out.extend(std::iter::repeat_n(v, chroma));
+}
+
+fn append_yuv444p8_split_luma_frame(
+    out: &mut Vec<u8>,
+    width: usize,
+    height: usize,
+    left_y: u8,
+    right_y: u8,
+    u: u8,
+    v: u8,
+) {
+    let half_width = width / 2;
+    for _ in 0..height {
+        out.extend(std::iter::repeat_n(left_y, half_width));
+        out.extend(std::iter::repeat_n(right_y, width - half_width));
+    }
+    let chroma = width * height;
     out.extend(std::iter::repeat_n(u, chroma));
     out.extend(std::iter::repeat_n(v, chroma));
 }
