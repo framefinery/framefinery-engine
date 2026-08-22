@@ -6988,6 +6988,58 @@ small memory-movement cleanup, not a rate/quality improvement. A full
 six-vector rerun still requires `AOMCTC_ROOT`, which remains intentionally
 mandatory for that manifest.
 
+### VVC non-predictive direct intra payload materialization
+
+The follow-up source/reference sweep confirmed the same shape seen in VTM and
+the fast-intra papers: robust speed work should stage cheap candidate signals
+before expensive RD, and accepted shortcuts should live in candidate selection
+or payload construction rather than as independent lossy/lossless encoders. The
+local encode loop had one exact-neutral instance of unnecessary work in the
+non-predictive path: it materialized an intra CTU payload from a borrowed
+decision, then discarded that payload and rebuilt it from the moved quantized
+decision when no predictive frame cache was being recorded.
+
+The retained cleanup only builds the borrowed-decision payload in predictive
+mode, where the CTU decision is still needed for the next frame. In
+non-predictive mode it directly moves the quantized CTU data into the emitted
+payload. Bitstream syntax and reconstruction stay unchanged.
+
+The 50-frame generated q19 non-predictive A/B used:
+
+```text
+verification/generated/encode_matrix/vvc-nonpredictive-payload-direct-q19-50f.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.000 | +0.21 | `+0.3 watch` |
+| probe_blocks_420 | +0 | +0.000 | -0.12 | `-0.1 regress` |
+| probe_checker_444 | +0 | +0.000 | +0.42 | `+0.8 watch` |
+| probe_blocks_444 | +0 | +0.000 | +0.26 | `+0.6 watch` |
+
+Aggregate score was `+0.4 watch`, with no hard regressions. Keep this as a
+small exact-neutral cleanup, not as a proven throughput optimization. It is
+useful because it removes a redundant construction from the non-predictive
+code path and keeps predictive/non-predictive payload handling in one shared
+branch.
+
+Validation:
+
+```text
+cargo test -p framefinery-codecs vvc --features vvc
+make validate-set CODEC=vvc VALIDATION_SET=smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_SETTINGS='qp=19 gop=0 fast-search=lossless-speed' \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1
+make validate-set CODEC=vvc VALIDATION_SET=smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_SETTINGS='qp=19 gop=-1 fast-search=lossless-speed' \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1
+```
+
+Both VTM smoke gates passed 3/3 with matching internal/reference
+reconstructions.
+
 ### Rejected VVC transform-skip RD-zero quantization probe
 
 A follow-up probe tried a greedy RD-zero rule inside transform-skip coefficient
@@ -7126,6 +7178,12 @@ prediction statistics rather than adding a separate source-plane scan.
   <https://www.sciencedirect.com/science/article/pii/S1051200425000430>
 - Low-complexity VVC intra mode selection paper:
   <https://doi.org/10.1016/j.icte.2021.08.018>
+- Novel fast VVC intra-mode decision paper:
+  <https://doi.org/10.1016/j.jvcir.2020.102849>
+- JVET VVC reference-software and common-test-condition index:
+  <https://jvet.hhi.fraunhofer.de/>
+- Adjustable fast decision method for VVC affine motion estimation:
+  <https://rc.signalprocessingsociety.org/conferences/icip-2023/spsicip23vid0574>
 - VTM random-access motion-search config:
   <https://jvet.hhi.fraunhofer.de/trac/vvc/attachment/ticket/74/encoder_randomaccess_vtm.cfg>
 - VTM inter-search implementation:

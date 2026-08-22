@@ -659,14 +659,14 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 slice_config,
                             )?;
                         }
-                        let mut payload = vvc_intra_ctu_payload_from_decision(
-                            region,
-                            &decision,
-                            slice_config,
-                            luma_inter_skip_mask.as_ref(),
-                            chroma_inter_skip_mask.as_ref(),
-                        )?;
                         if let Some(decisions) = frame_ctu_decisions.as_mut() {
+                            let mut payload = vvc_intra_ctu_payload_from_decision(
+                                region,
+                                &decision,
+                                slice_config,
+                                luma_inter_skip_mask.as_ref(),
+                                chroma_inter_skip_mask.as_ref(),
+                            )?;
                             if let Some((cached, skip_distortion)) = cached_lossy_skip_ctu {
                                 if predictive_ctu_inter_skip_frame
                                     && vvc_predictive_inter_skip_region(region)
@@ -699,8 +699,8 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 quantized,
                                 luma_max_leaf_size,
                                 slice_config,
-                                None,
-                                None,
+                                luma_inter_skip_mask.as_ref(),
+                                chroma_inter_skip_mask.as_ref(),
                             )?
                         }
                     };
