@@ -6102,6 +6102,31 @@ reverted. Do not skip full raw chroma search purely from luma horizontal/vertica
 alignment on 8-bit 4:4:4; if this area is revisited, require a byte-aware cheap
 predictor or an RD-preserving early stop rather than forcing Derived+BDPCM.
 
+Rejected probe: 8-bit 4:4:4 luma RD-refinement skip.
+
+The 10-frame Wayland stats run
+`vvc-wayland-stats-current-10f-q19` showed 11,617 luma RD-refinement attempts
+with zero luma RD switches, costing about 284 ms in the stats build. A scoped
+probe disabled luma RD refinement only for lossy `fast-search=lossless-speed`
+8-bit 4:4:4 streams. This did not change syntax decisions on the available
+Wayland row, but it still regressed runtime:
+
+```text
+verification/generated/encode_matrix/vvc-wayland-pre-bdpcm-raw-gate-q19-50f.md
+bytes=4,060,779 fps=2.04 psnr=58.997
+
+verification/generated/encode_matrix/vvc-wayland-luma-rd-skip-444-q19-50f.md
+bytes=4,060,779 fps=0.95 psnr=58.997
+delta: +0 bytes, -1.09 FPS, +0.000 dB, score -11.0:regress
+```
+
+The likely cause is that the current luma RD path computes and carries the
+selected residual into finalization. Skipping RD refinement avoids the shortlist
+comparison but also prevents finalization from reusing that scored residual, so
+the work moves rather than disappearing. The source diff was reverted. Revisit
+this area only by preserving residual reuse while avoiding redundant candidate
+scoring, not by bypassing luma RD wholesale.
+
 Rejected probe: lossy mixed single P-slice packetization.
 
 The CTU-sliced predictive path was briefly changed so a lossy mixed frame with
