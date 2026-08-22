@@ -6363,6 +6363,38 @@ Current priority order:
    flexible partition trees until the simple translational inter path is
    reference-clean and score-positive.
 
+Actionable addendum from the 2026-08-22 external/source audit:
+
+- VVC lossy predictive skip is currently selected with a distortion-only gate:
+  the previous reconstruction's CTU SSE must be no worse than the intra
+  reconstruction SSE. That is too conservative for a rate-distortion encoder
+  because InterSkip can legitimately spend fewer bits at a small distortion
+  cost. The next targeted probe should estimate actual CTU-slice bits using the
+  existing CABAC payload path and select skip by `distortion + lambda*bits`,
+  measured against the six-vector scorer. This must use the same CTU payload
+  builders as final emission; do not add a parallel syntax estimator.
+- IBC is the only current nonzero-vector-like VVC search path. It is intentionally
+  narrow: exact 8x8 hash matches from A1/B1/B0 plus the current BVP/HMVP syntax
+  subset. A future screen-content probe can broaden candidate discovery to
+  capped CTU-local hash matches or HMVP-directed candidates, but only after
+  adding candidate counters and reference validation. Do not turn IBC into an
+  uncapped CTU scan.
+- General translational inter ME is still future work. Start it as a staged
+  search, not as exhaustive ME: zero/merge, spatial MVP, temporal/cached MVP,
+  duplicate suppression, small diamond/TZ full-pel search, then optional
+  subpel/chroma/wider search only when cheap luma cost is close to the current
+  best. This mirrors VTM/x265/VVenC without importing their whole decision
+  graphs.
+- VVenC and recent VVC complexity-reduction papers both point to partition and
+  mode pruning as the largest future source of FPS. FrameFinery currently avoids
+  the full QTMT explosion with a fixed residual tree, so the next local
+  equivalent is cheap candidate pruning before residual materialization, not a
+  large new recursive partition search.
+- The existing `[bytes, PSNR, FPS]` projection is adequate for accepting these
+  probes. If a change is byte-identical, require a clear FPS signal; if it is
+  output-changing, require positive aggregate score with no hard row
+  regressions and then VTM-required validation.
+
 Tradeoff gate:
 
 Use `scripts/benchmark_encode_matrix.py` as the acceptance function. It already
@@ -6521,10 +6553,22 @@ screen-content and AOM CTC vectors.
   <https://raw.githubusercontent.com/videolan/x265/master/source/x265.h>
 - x264 motion-estimation method notes:
   <https://x264-dsp.readthedocs.io/en/latest/x264_8h_source.html>
+- VTM encoder configuration controls for ME, adaptive search range, Hadamard
+  ME, and fast encoder decisions:
+  <https://raw.githubusercontent.com/ChristianFeldmann/VTM/master/source/App/EncoderApp/EncAppCfg.cpp>
+- VVenC medium random-access preset showing staged ME/mode/partition fast
+  controls:
+  <https://raw.githubusercontent.com/fraunhoferhhi/vvenc/master/cfg/randomaccess_medium.cfg>
+- Fraunhofer VVenC implementation paper and preset tradeoff summary:
+  <https://publica.fraunhofer.de/entities/publication/1b1598d4-d074-40aa-8af9-fcf1b2fcd393>
+- VVC inter-coding complexity-reduction survey:
+  <https://trepo.tuni.fi/handle/10024/233618>
+- VVC complexity-reduction comparative review:
+  <https://www.sciencedirect.com/science/article/pii/S1051200425000430>
+- Low-complexity VVC intra mode selection paper:
+  <https://doi.org/10.1016/j.icte.2021.08.018>
 - VTM random-access motion-search config:
   <https://jvet.hhi.fraunhofer.de/trac/vvc/attachment/ticket/74/encoder_randomaccess_vtm.cfg>
-- VTM encoder application search/mode options:
-  <https://raw.githubusercontent.com/ChristianFeldmann/VTM/master/source/App/EncoderApp/EncAppCfg.cpp>
 - VTM inter-search implementation:
   <https://raw.githubusercontent.com/ChristianFeldmann/VTM/master/source/Lib/EncoderLib/InterSearch.cpp>
 - VVenC medium random-access fast-tool config:
