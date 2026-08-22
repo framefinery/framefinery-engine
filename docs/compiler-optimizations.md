@@ -5514,6 +5514,13 @@ Rejected or risky mappings:
   gained almost no FPS and badly hurt bytes/PSNR on SceneComposition. BDPCM is
   expensive, but the gate must use a stronger cheap predictor than mode
   alignment alone.
+- A lossy `fast-search=lossless-speed` CCLM low-residual gate was rejected.
+  Reusing the existing moderate-search `best_score > near_exact_score` CCLM
+  gate regressed the first two 50-frame rows against `vvc-preskip-avg8-q19-50f`:
+  `SceneComposition_1_420` grew by 1,263 bytes, lost 0.153 dB, and scored
+  `-1.4`; `SceneComposition_1_422` grew by 1,485 bytes with negligible FPS
+  change and scored `-0.1`. CCLM remains worth checking in lossy
+  lossless-speed mode unless a stronger predictor is added.
 - Threaded mode decision or parallel ME should wait until the single-threaded
   decision graph is stable. x265 notes that parallel mode decision can disable
   early-outs; for this codebase, preserving early-out semantics is more
