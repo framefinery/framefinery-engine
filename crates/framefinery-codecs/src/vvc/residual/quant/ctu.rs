@@ -1961,6 +1961,12 @@ fn vvc_chroma_explicit_candidate_allowed_for_search(
     {
         return false;
     }
+    if policy.residual_mode() == VvcResidualCodingMode::Lossy
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+        && matches!(mode, VvcIntraPredictionMode::Dc)
+    {
+        return false;
+    }
     true
 }
 

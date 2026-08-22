@@ -6884,6 +6884,55 @@ The 4:4:4 timing changes in the stats table are noise or secondary cache
 effects because candidate counts and bitstreams are unchanged there. Treat the
 accepted signal as the 4:2:0 candidate/count and score result.
 
+### VVC lossy explicit chroma DC prune
+
+The follow-up probe pruned the explicit chroma DC candidate only for
+`lossless-speed` lossy search. This keeps default search and lossless behavior
+unchanged, and it leaves the VVC chroma candidate table intact for syntax. The
+fast path still evaluates the derived mode plus planar, vertical, horizontal,
+and any spec-valid co-located replacement angular mode; it only avoids spending
+prediction and RD scoring time on explicit DC, which was not selected by the
+current generated mode-probe vectors.
+
+The 50-frame rerun used:
+
+```text
+verification/generated/encode_matrix/vvc-explicit-chroma-dc-prune-50f-q19-rerun.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +33 | +0.000 | +1.61 | `+2.3 accept` |
+| probe_blocks_420 | +0 | +0.000 | +2.15 | `+2.4 accept` |
+| probe_checker_444 | +0 | +0.000 | +1.27 | `+2.0 watch` |
+| probe_blocks_444 | +0 | +0.000 | +1.24 | `+2.7 accept` |
+
+The `probe_checker_444` row is a timing-threshold watch, not a quality or
+bitrate concern: bytes and PSNR were unchanged, while the measured FPS ratio was
+near the 10% accept cutoff.
+
+Instrumentation confirmed that the intended candidate class was removed:
+
+```text
+verification/generated/profiling/vvc_explicit_chroma_dc_prune_stats_5f/
+```
+
+| Probe | Explicit candidates delta | Chroma mode-search delta | Explicit prediction delta | Score-time delta |
+|---|---:|---:|---:|---:|
+| probe_blocks_420 | -17998 (-25.0%) | -14361277 ns (-15.8%) | -7655759 ns (-16.4%) | -5358504 ns (-19.8%) |
+| probe_gradient_420 | -18000 (-25.0%) | -12485418 ns (-13.5%) | -7098377 ns (-14.8%) | -4784666 ns (-17.6%) |
+| probe_checker_444 | -18006 (-21.8%) | -10360032 ns (-6.2%) | -6609322 ns (-9.0%) | -3812158 ns (-7.9%) |
+| probe_blocks_444 | -32769 (-23.9%) | -4799385 ns (-1.6%) | -9262348 ns (-9.9%) | -3570176 ns (-4.3%) |
+
+The required VTM smoke gate passed after the change:
+
+```text
+make validate-set CODEC=vvc VALIDATION_SET=smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_SETTINGS='qp=19 gop=-1 fast-search=lossless-speed' \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1
+```
+
 ## References
 
 - Cargo profile settings:

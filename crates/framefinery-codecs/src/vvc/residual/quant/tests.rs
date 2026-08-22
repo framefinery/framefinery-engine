@@ -345,6 +345,35 @@ fn vvc_lossless_speed_chroma_keeps_lossy_candidates() {
 }
 
 #[test]
+fn vvc_lossless_speed_chroma_prunes_lossy_explicit_dc_search() {
+    let yuv444 = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let default_lossy = VvcResidualCodingPolicy::new(yuv444, VvcResidualCodingMode::Lossy);
+    let fast_lossy = default_lossy.with_fast_search(VvcFastSearch::LosslessSpeed);
+    let fast_lossless = VvcResidualCodingPolicy::new(yuv444, VvcResidualCodingMode::Lossless)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+
+    assert!(vvc_chroma_explicit_candidate_allowed_for_search(
+        default_lossy,
+        VvcIntraPredictionMode::Dc,
+    ));
+    assert!(!vvc_chroma_explicit_candidate_allowed_for_search(
+        fast_lossy,
+        VvcIntraPredictionMode::Dc,
+    ));
+    assert!(vvc_chroma_explicit_candidate_allowed_for_search(
+        fast_lossy,
+        VvcIntraPredictionMode::Planar,
+    ));
+    assert!(!vvc_chroma_explicit_candidate_allowed_for_search(
+        fast_lossless,
+        VvcIntraPredictionMode::Planar,
+    ));
+}
+
+#[test]
 fn vvc_lossless_speed_cclm_search_is_444_only_for_lossy() {
     let yuv420 = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs420,
