@@ -5945,6 +5945,41 @@ Implications for FrameFinery VVC:
    gates at the deepest candidate/tool-selection level so syntax,
    reconstruction, residual coding, and validation stay shared.
 
+Rejected probe: frame-level VVC quant scratch reuse.
+
+A low-risk allocation probe hoisted `VvcLumaModeSearchState` and
+`VvcCtuQuantScratch` out of the frame loop, clearing the luma mode map at the
+start of each frame and reusing CTU quantization scratch buffers across frames.
+The change was byte/PSNR neutral on the locally available Wayland row, and VTM
+reference validation passed:
+
+```text
+make validate-set CODEC=vvc \
+  VALIDATION_SET=wayland-vvc-probe \
+  VALIDATION_SET_DIR=verification/generated/agent_scratch \
+  VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_DIRECT_SOURCE_FILES=1 \
+  VALIDATION_FRAMES=50 \
+  VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS='qp=19 fast-search=lossless-speed gop=-1' \
+  VALIDATION_CLEANUP_RECON=1 \
+  VALIDATION_CLEANUP_OUTPUT=1
+```
+
+However the one-row encode-matrix comparison against
+`vvc-lossy-temporal-mode-hints-zero-q19-50f` rejected it:
+
+```text
+verification/generated/encode_matrix/vvc-frame-scratch-reuse-wayland-q19-50f.md
+screen_wayland_activity_rgb: bytes +0, PSNR +0.000, FPS 2.17 -> 2.12,
+score -0.3:regress
+```
+
+The source diff was reverted. This may simply be timing noise, but it is not a
+measurable win. Revisit only if allocation profiling later shows per-frame
+scratch construction as a confirmed hotspot or if the full six-vector matrix
+with `AOMCTC_ROOT` available shows a different result.
+
 ## References
 
 - Cargo profile settings:
