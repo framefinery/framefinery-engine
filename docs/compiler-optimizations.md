@@ -6301,6 +6301,88 @@ residual/CABAC path for intra CUs inside inter slices, including chroma
 residual syntax at the correct transform-tree sites. Do not retry this as a
 slice-header/PPS-only change.
 
+### VVC Motion Search And Mode-Selection Audit
+
+Research checkpoint: `vvc-motion-mode-audit-2026-08-22`.
+
+The current FrameFinery VVC encoder still does not have general nonzero-MV
+inter coding. Predictive VVC frames can emit all-frame/CTU `InterSkip` and can
+reuse cached reconstruction/decisions, but there is no translational or affine
+motion-vector search comparable to VTM, VVenC, x265, AOM, or rav1e yet. For the
+current codebase, motion-search research should therefore shape the next inter
+milestone rather than drive isolated tuning of a nonexistent ME path.
+
+Primary source implications:
+
+- VTM's `InterSearch` uses TZ-style searches: start from MVP/zero/cached or
+  hash candidates, test local diamond/square patterns, optionally refine, then
+  proceed to subpel and RD. The direct lesson is to introduce future VVC ME in
+  layers: zero/merge first, then a small predictor-centered diamond/TZ search,
+  then optional wider/hash search only when the cheap score justifies it.
+- VTM merge mode decision is two-pass: SATD-like candidate pruning first, then
+  full RD on a shortlist. That maps cleanly to our existing unified-path rule:
+  compute cheap source/reconstruction/texture scores before residual
+  materialization, then call the normal residual/CABAC path only for survivors.
+- x265 exposes the same tradeoff shape through presets, RD levels, merge
+  candidate limits, subpel refinement levels, HME, WPP, and threaded ME. The
+  practical lesson is that search scope should be staged and preset-controlled,
+  not implemented as one exhaustive default path.
+- AOM's speed-feature catalog is directly relevant for future AV2/VVC work:
+  reduce MV step size, skip motion search when zero-MV SSE is low, reuse simple
+  motion search for partition pruning, suppress duplicate MV candidates, and use
+  model/estimated RD before full transform search.
+- VVenC's preset model is explicitly Pareto-oriented. We should keep using
+  measured `[bytes, PSNR, FPS]` score gates rather than accepting a faster path
+  merely because it is standard-encoder-inspired.
+- VVC QT+MTT papers consistently point at variance, gradient, Laplacian, or
+  learned classifiers for partition/mode pruning. This is useful future
+  guidance, but FrameFinery currently uses a fixed residual tree; flexible
+  partitioning should not be added with exhaustive recursion as the first
+  implementation.
+
+Current priority order:
+
+1. Keep exploiting high-confidence skip before intra quantization. The accepted
+   average-SSE CTU pre-skip follows the same principle as AOM's zero-MV
+   low-SSE skip and VTM/x265 skip-first merge handling: when the cheap skip
+   predictor is strong enough, avoid expensive residual work.
+2. Implement legal mixed inter-slice intra syntax before adding broad nonzero
+   ME. The CTU-sliced workaround is currently the larger structural FPS tax,
+   and a P-slice with intra and skipped CUs is necessary for a normal inter
+   encoder anyway.
+3. Add a cheap mode shortlist before residual materialization. Use luma/chroma
+   source gradients, template availability, previous-frame skip distortion, and
+   QP-scaled tolerances to decide which intra/chroma candidates deserve full
+   RD. Do not repeat the rejected raw 2x-gap top-one gate without stronger
+   texture or predictor evidence.
+4. When nonzero-MV inter is introduced, start with whole-CTU or current-leaf
+   full-pel translational candidates in this order: zero MV, spatial neighbor
+   MVPs, temporal/cached MVP, duplicate-suppressed small diamond/TZ around the
+   best predictor, and only then optional wider/hash search for screen content.
+5. Defer affine, bidirectional refinement, weighted prediction, and large
+   flexible partition trees until the simple translational inter path is
+   reference-clean and score-positive.
+
+Tradeoff gate:
+
+Use `scripts/benchmark_encode_matrix.py` as the acceptance function. It already
+projects each comparable row into:
+
+```text
+10*log2(current_fps / baseline_fps)
++4*log2(baseline_bytes / current_bytes)
++8*(current_psnr_db - baseline_psnr_db)
+```
+
+Correctness still gates first: the candidate must pass unit tests and VTM
+reference decode validation before the score matters. For output-changing
+lossy probes, require the six-vector 50-frame scorer to show a positive
+aggregate result without hard per-row regressions. For byte-identical probes,
+classify small mixed FPS deltas as timing noise unless the aggregate score is
+negative or the same row regresses repeatedly. For exact-neutral source edits,
+keep the change only when it improves the current hotspot on a representative
+matrix; otherwise revert and document it.
+
 ## References
 
 - Cargo profile settings:
@@ -6352,6 +6434,12 @@ slice-header/PPS-only change.
   <https://pmc.ncbi.nlm.nih.gov/articles/PMC9692833/>
 - Fast VVC partitioning decision strategies:
   <https://publica.fraunhofer.de/entities/publication/9210f1fb-90f8-4759-9bb6-d6fc72a9b731>
+- Fast VVC partitioning strategies in VVenC:
+  <https://publica.fraunhofer.de/entities/publication/a6ca1879-7d67-4286-af4f-158e06d60ce9>
+- VVC QTMT variance/gradient fast partitioning:
+  <https://cir.nii.ac.jp/crid/1360016867546154752>
+- VVC QTMT partition and intra mode decision:
+  <https://www.sciencedirect.com/science/article/pii/S1047320323000822>
 - VVC intra texture/ML fast decision:
   <https://pmc.ncbi.nlm.nih.gov/articles/PMC9489355/>
 - VVC chroma intra texture decision:
