@@ -6430,6 +6430,43 @@ source change was reverted. Do not retry this exact constant-fill branch unless
 a profile trace shows the compiler failed to optimize the existing multiply
 path on a new target.
 
+Rejected probe: sort RD shortlists once after collection.
+
+The luma and chroma RD shortlist builders were changed to defer sorting until
+all candidates had been collected. Duplicate replacement still kept the lower
+raw score, and the overflow fallback scanned for the worst current candidate,
+so the final shortlisted candidate set and order were intended to remain
+equivalent while avoiding repeated small-array sorts.
+
+Focused and broad tests passed:
+
+```text
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  rd_shortlist --features vvc
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc --features vvc
+```
+
+The 50-frame six-vector A/B was byte- and PSNR-identical, but slower overall:
+
+```text
+verification/generated/encode_matrix/vvc-rd-shortlist-sort-once-q19-50f.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| SceneComposition_1_420 | +0 | +0.000 | -0.08 | `-0.2 regress` |
+| SceneComposition_1_422 | +0 | +0.000 | -0.45 | `-1.5 regress` |
+| screen_wayland_activity_rgb | +0 | +0.000 | -0.02 | `-0.2 regress` |
+| MissionControlClip1_420 | +0 | +0.000 | +0.05 | `+0.3 watch` |
+| MissionControlClip1_422 | +0 | +0.000 | -0.03 | `-0.2 regress` |
+| MissionControlClip1_444 | +0 | +0.000 | +0.01 | `+0.1 watch` |
+
+Aggregate score was `-0.3` with 0 accepts, 2 watches, and 4 regressions. The
+source change was reverted. The repeated stable sorts are not a relevant hot
+cost on the current matrix, or the sort-once rewrite made surrounding control
+flow less optimizer-friendly.
+
 ## References
 
 - Cargo profile settings:
