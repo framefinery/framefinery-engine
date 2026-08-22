@@ -4813,6 +4813,13 @@ Follow-up:
   and the extra source/reconstruction region scans. A legal mixed P-slice
   intra+InterSkip path is the next likely high-value speed and compression
   cleanup.
+- A scratch 128x64 two-frame yuv420p8 probe with the right CTU repeated and the
+  left CTU changed failed VTM when mixed intra+InterSkip CTUs were emitted as a
+  single P slice: VTM stopped in `decompressSlice` with `Expecting a terminating
+  bit`. That confirms the release path cannot be changed by only swapping
+  CTU-sliced packaging for single-slice packaging. The follow-up needs a legal
+  P-slice coding-tree body for mixed intra/inter CTUs, including the dual-tree
+  versus single-tree constraints and matching quantizer/CABAC neighbour state.
 
 ## References
 
