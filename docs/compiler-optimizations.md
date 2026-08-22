@@ -6480,6 +6480,29 @@ source diff was reverted. Do not prefer spatial-neighbour luma consensus over
 the source-gradient seed in lossy lossless-speed mode unless a later
 precondition proves the seed is duplicate or RD-irrelevant for the specific TU.
 
+Rejected probe: exact `gxy == 0` luma gradient seed fast-path.
+
+The luma source-gradient seed maps an axis-aligned structure tensor
+(`gxy == 0`) exactly to mode index 18 or 50 under the current floating-point
+formula, so a source-equivalent shortcut was tried to bypass `atan2()` for that
+case. The focused seed unit test passed and the first-three 50-frame matrix was
+byte/PSNR identical, but timing regressed on every measured row:
+
+```text
+verification/generated/encode_matrix/vvc-luma-axis-seed-fastpath-q19-50f-limit3.md
+```
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| SceneComposition_1_420 | +0 | -0.26 | +0.00 | `-0.7 regress` |
+| SceneComposition_1_422 | +0 | -0.20 | +0.00 | `-0.6 regress` |
+| screen_wayland_activity_rgb | +0 | -0.13 | +0.00 | `-0.9 regress` |
+
+Average score was `-0.7`, with all three rows classified as regressions. The
+source diff was reverted. The branch either does not trigger often enough or
+hurts the hot gradient path more than the avoided `atan2()` helps under the
+current release build.
+
 Rejected probe: CCLM constant-parameter fill.
 
 The CCLM prediction helper was briefly changed to fill the output block
