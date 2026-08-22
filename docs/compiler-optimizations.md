@@ -5615,6 +5615,82 @@ Next implementable priorities:
    smoke/regression validation. Rejected probes should record the score and
    reason here to avoid repeating bad local optima.
 
+### VVC Motion/Mode Follow-Up Sweep
+
+Research checkpoint: `vvc-motion-mode-followup-2026-08-22`.
+
+External scan result:
+
+- x265 exposes motion-search levels from cheap diamond/hex through UMH/star,
+  SEA, and exhaustive full search, plus subpel refinement tiers and
+  hierarchical ME. It also documents a practical caveat: parallel mode decision
+  can disable early-outs, so threading should not be the first fix while the
+  single-thread decision graph is still wasteful.
+- VTM's random-access config uses TZ search, adaptive search range, Hadamard
+  fractional ME, fast encoder decision, fast merge RD, and fast transform-skip
+  decisions. The reference encoder therefore treats fast ME/mode decision as
+  normal encoder policy, not bitstream semantics.
+- VVenC's medium random-access config layers more production heuristics:
+  adaptive/faster affine, MMVD, IMV, merge, QTBT, MIP, ISP, transform-skip,
+  SCC, intra-estimation decimation, reduced subpel filter taps, and early
+  integer-search termination. This reinforces that our VVC encoder should grow
+  optional staged search knobs rather than one exhaustive path.
+- VVC fast-mode papers point to the same signals: texture complexity, local
+  sub-CU variance/difference, neighbouring context, temporal/motion
+  correlation, and cheap SATD/SAD/gradient metrics. The useful deterministic
+  subset for FrameFinery is variance/edge density, reconstruction SSE,
+  max/mean residual delta, selected neighbour modes, and QP-scaled thresholds.
+
+Current local applicability:
+
+- General MV search is not present yet. The predictive VVC path can emit
+  all-frame or CTU InterSkip/reuse decisions, but it does not encode nonzero MV
+  inter blocks. Motion-search work should therefore start as a new staged
+  implementation: zero/merge candidates first, neighbour MVPs next, then small
+  diamond/hex luma SAD/SATD, with chroma/wider refinement only when close to
+  the current best.
+- The current profiler still says mode/quantization work dominates the
+  existing path. Near-term FPS attempts should target cheap mode pruning,
+  transform-skip/MTS gating, and high-confidence pre-skip classifiers before
+  adding a full ME subsystem.
+- ML classifiers from the literature are not the right first implementation
+  here. They are useful upper-bound evidence, but deterministic features are
+  easier to validate, reproduce, and keep in the unified encoder path.
+
+Accepted/rejected scoring remains the existing encode-matrix projection:
+
+```text
+score = 10*log2(current_fps / baseline_fps)
+      +  4*log2(baseline_bytes / current_bytes)
+      +  8*(current_psnr_db - baseline_psnr_db)
+```
+
+Hard guardrails remain active in `scripts/benchmark_encode_matrix.py`: large
+FPS regressions, byte growth, or PSNR loss force `regress`. For exact-neutral
+cleanups, require a clear timing signal; byte-identical output with noise-level
+FPS deltas is not enough to keep source churn.
+
+Rejected probe: fused materialized-residual scoring.
+
+The encoder currently materializes residual vectors and then separately scans
+them to compute SAD/SSE for luma/chroma candidate scoring. A fused builder was
+tested that produced the same residual vectors and score in one pass, including
+edge-clamped unusual-geometry coverage. The source diff was reverted because
+the 50-frame scorer did not show a reliable gain:
+
+| Vector summary | Bytes/PSNR | FPS signal | Tradeoff |
+|---|---|---:|---|
+| 6-row VVC lossy six-vector matrix | all rows identical | mixed `-0.02` to `+0.08` FPS | average `+0.0`, 0 accept / 4 watch / 2 regress |
+
+Benchmark artifact:
+
+```text
+verification/generated/encode_matrix/vvc-fused-mode-residual-score-q19-50f.md
+```
+
+Do not retry this exact fused residual-score cleanup unless another change
+makes residual score calculation a measured hotspot again.
+
 ## References
 
 - Cargo profile settings:
@@ -5625,6 +5701,10 @@ Next implementable priorities:
   <https://doc.rust-lang.org/nightly/rustc/profile-guided-optimization.html>
 - x265 CLI encoder speed and motion-search options:
   <https://x265.readthedocs.io/en/master/cli.html>
+- VTM random-access motion-search config:
+  <https://jvet.hhi.fraunhofer.de/trac/vvc/attachment/ticket/74/encoder_randomaccess_vtm.cfg>
+- VVenC medium random-access fast-tool config:
+  <https://raw.githubusercontent.com/fraunhoferhhi/vvenc/master/cfg/randomaccess_medium.cfg>
 - AOM AV1 encoder speed-feature definitions:
   <https://aomedia.googlesource.com/aom/+/29e0f9faea1f24377b9e0f4ec99f06f1d0545745/av1/encoder/speed_features.h>
 - rav1e feature overview and speed-tier note:
@@ -5635,6 +5715,12 @@ Next implementable priorities:
   <https://www.mdpi.com/2227-7390/14/10/1587>
 - Fast VVC partitioning decision strategies:
   <https://publica.fraunhofer.de/entities/publication/9210f1fb-90f8-4759-9bb6-d6fc72a9b731>
+- VVC intra texture/ML fast decision:
+  <https://pmc.ncbi.nlm.nih.gov/articles/PMC9489355/>
+- VVC chroma intra texture decision:
+  <https://www.jstage.jst.go.jp/article/transinf/E104.D/5/E104.D_2020EDL8140/_article>
+- VVC fast/low-complexity review:
+  <https://pmc.ncbi.nlm.nih.gov/articles/PMC9692833/>
 - rustc lints:
   <https://doc.rust-lang.org/rustc/lints/index.html>
 - Clippy lint groups and performance lints:
