@@ -5455,6 +5455,11 @@ Rejected follow-up probe:
   rows, but the benchmark scorer averaged `+0.0` with two timing-regression
   rows. This is not worth keeping over average-8 unless a future implementation
   makes the extra preselected CTUs materially reduce work.
+- `vvc-frame-skip-payload-cache-q19-50f` wired the existing
+  `VvcFrameSkipPayloadCache` into full-frame InterSkip emission. The probe was
+  byte-identical and PSNR-identical, but the six-vector scorer averaged `-0.1`
+  with three timing-regression rows. The repeated-frame entropy payload is not a
+  large enough cost center on this matrix to justify the extra encoder state.
 
 ### VVC Motion Search And Mode-Select Research Notes
 
