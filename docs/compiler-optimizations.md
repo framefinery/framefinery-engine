@@ -6467,6 +6467,44 @@ source change was reverted. The repeated stable sorts are not a relevant hot
 cost on the current matrix, or the sort-once rewrite made surrounding control
 flow less optimizer-friendly.
 
+Rejected probe: restrict lossy `LosslessSpeed` chroma BDPCM to aligned modes.
+
+The lossy VVC path was briefly changed so `fast-search=lossless-speed` only
+checked chroma BDPCM when the selected chroma mode was derived, horizontal, or
+vertical. The intent was to avoid expensive BDPCM candidate work after unrelated
+raw chroma-mode decisions while keeping a unified coding path.
+
+Focused and broad tests passed:
+
+```text
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_lossy_lossless_speed_chroma_bdpcm_requires_aligned_mode --features vvc
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc --features vvc
+```
+
+The 50-frame six-vector A/B against the current q19 baseline rejected the
+change. It increased bytes on every row, reduced PSNR on every row, and slowed
+five of six rows:
+
+```text
+verification/generated/encode_matrix/vvc-chroma-bdpcm-mode-aligned-q19-50f.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| SceneComposition_1_420 | +260,915 | -1.56 | +0.09 | `-12.8 regress` |
+| SceneComposition_1_422 | +552,073 | -1.35 | -0.34 | `-12.8 regress` |
+| screen_wayland_activity_rgb | +123,421 | -1.79 | -0.03 | `-14.7 regress` |
+| MissionControlClip1_420 | +3,173,112 | -7.68 | -0.24 | `-64.8 regress` |
+| MissionControlClip1_422 | +6,134,655 | -8.25 | -0.25 | `-70.9 regress` |
+| MissionControlClip1_444 | +11,679,056 | -9.17 | -0.19 | `-79.8 regress` |
+
+Aggregate score was `-42.6` with 0 accepts, 0 watches, and 6 regressions. The
+source change was reverted. Do not prune lossy chroma BDPCM from the selected
+raw chroma mode alone; it is carrying real rate-distortion value on the current
+screen-content and AOM CTC vectors.
+
 ## References
 
 - Cargo profile settings:
