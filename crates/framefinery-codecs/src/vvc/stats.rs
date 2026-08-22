@@ -604,6 +604,26 @@ fn add_vvc_quantized_ctu_counters(stats: &mut VvcFrameStats, quantized: &VvcQuan
         search.chroma_rd_refinement_nanos,
     );
     stats.add_counter("chroma_bdpcm_nanos", search.chroma_bdpcm_nanos);
+    stats.add_counter(
+        "chroma_bdpcm_direct_candidates",
+        search.chroma_bdpcm_direct_candidates as u64,
+    );
+    stats.add_counter(
+        "chroma_bdpcm_direct_safe_candidates",
+        search.chroma_bdpcm_direct_safe_candidates as u64,
+    );
+    stats.add_counter(
+        "chroma_bdpcm_direct_selected",
+        search.chroma_bdpcm_direct_selected as u64,
+    );
+    stats.add_counter(
+        "chroma_bdpcm_regular_candidates",
+        search.chroma_bdpcm_regular_candidates as u64,
+    );
+    stats.add_counter(
+        "chroma_bdpcm_regular_best_updates",
+        search.chroma_bdpcm_regular_best_updates as u64,
+    );
     stats.add_counter("chroma_finalize_nanos", search.chroma_finalize_nanos);
     stats.add_counter(
         "chroma_derived_prediction_nanos",

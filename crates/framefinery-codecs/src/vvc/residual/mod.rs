@@ -137,6 +137,11 @@ pub(super) struct VvcIntraSearchStats {
     pub(super) chroma_mode_search_nanos: u64,
     pub(super) chroma_rd_refinement_nanos: u64,
     pub(super) chroma_bdpcm_nanos: u64,
+    pub(super) chroma_bdpcm_direct_candidates: usize,
+    pub(super) chroma_bdpcm_direct_safe_candidates: usize,
+    pub(super) chroma_bdpcm_direct_selected: usize,
+    pub(super) chroma_bdpcm_regular_candidates: usize,
+    pub(super) chroma_bdpcm_regular_best_updates: usize,
     pub(super) chroma_finalize_nanos: u64,
     pub(super) chroma_derived_prediction_nanos: u64,
     pub(super) chroma_explicit_prediction_nanos: u64,
@@ -350,6 +355,26 @@ impl VvcIntraSearchStats {
 
     pub(super) fn add_chroma_bdpcm_nanos(&mut self, nanos: u64) {
         self.chroma_bdpcm_nanos = self.chroma_bdpcm_nanos.saturating_add(nanos);
+    }
+
+    pub(super) fn add_chroma_bdpcm_direct_candidate(&mut self) {
+        self.chroma_bdpcm_direct_candidates += 1;
+    }
+
+    pub(super) fn add_chroma_bdpcm_direct_safe_candidate(&mut self) {
+        self.chroma_bdpcm_direct_safe_candidates += 1;
+    }
+
+    pub(super) fn add_chroma_bdpcm_direct_selected(&mut self) {
+        self.chroma_bdpcm_direct_selected += 1;
+    }
+
+    pub(super) fn add_chroma_bdpcm_regular_candidate(&mut self) {
+        self.chroma_bdpcm_regular_candidates += 1;
+    }
+
+    pub(super) fn add_chroma_bdpcm_regular_best_update(&mut self) {
+        self.chroma_bdpcm_regular_best_updates += 1;
     }
 
     pub(super) fn add_chroma_finalize_nanos(&mut self, nanos: u64) {

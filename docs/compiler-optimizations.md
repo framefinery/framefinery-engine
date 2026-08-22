@@ -6188,6 +6188,21 @@ cost, or the extra control-flow/helper overhead cancels the saved work. Do not
 retry this exact reuse shape; if chroma BDPCM remains a hotspot, add candidate
 hit/miss counters first and optimize only the measured non-early-return cases.
 
+Follow-up stats counters confirmed that direct BDPCM usually early-returns on
+the affected Wayland row:
+
+```text
+verification/generated/encode_matrix/vvc-bdpcm-counter-smoke-5f.md
+chroma_bdpcm_direct_candidates=217,567
+chroma_bdpcm_direct_safe_candidates=211,972
+chroma_bdpcm_direct_selected=211,971
+chroma_bdpcm_regular_candidates=18,645
+chroma_bdpcm_regular_best_updates=9,649
+```
+
+The remaining chroma BDPCM work is therefore mostly the selected direct path
+itself plus the smaller regular fallback, not duplicated direct candidates.
+
 Rejected probe: lossy mixed single P-slice packetization.
 
 The CTU-sliced predictive path was briefly changed so a lossy mixed frame with

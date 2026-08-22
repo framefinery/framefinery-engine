@@ -354,6 +354,8 @@ fn select_vvc_chroma_bdpcm_prediction(
     .flatten()
     {
         #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_bdpcm_direct_candidate();
+        #[cfg(feature = "vvc-stats")]
         let prediction_start = StageStart::now();
         predict_vvc_chroma_bdpcm_block_into_with_availability(
             candidate_cb_prediction,
@@ -452,13 +454,20 @@ fn select_vvc_chroma_bdpcm_prediction(
         );
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
-        if vvc_chroma_direct_bdpcm_residual_is_safe(
+        let direct_bdpcm_safe = vvc_chroma_direct_bdpcm_residual_is_safe(
             selected_cb_residuals,
             selected_cr_residuals,
             candidate_cb_residuals,
             candidate_cr_residuals,
-        ) && candidate_score.selects_over(best_score)
+        );
+        #[cfg(feature = "vvc-stats")]
+        if direct_bdpcm_safe {
+            stats.add_chroma_bdpcm_direct_safe_candidate();
+        }
+        if direct_bdpcm_safe && candidate_score.selects_over(best_score)
         {
+            #[cfg(feature = "vvc-stats")]
+            stats.add_chroma_bdpcm_direct_selected();
             std::mem::swap(selected_cb_prediction, candidate_cb_prediction);
             std::mem::swap(selected_cr_prediction, candidate_cr_prediction);
             std::mem::swap(selected_cb_residuals, candidate_cb_residuals);
@@ -478,6 +487,8 @@ fn select_vvc_chroma_bdpcm_prediction(
         .into_iter()
         .flatten()
     {
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_bdpcm_regular_candidate();
         #[cfg(feature = "vvc-stats")]
         let prediction_start = StageStart::now();
         predict_vvc_chroma_bdpcm_block_into_with_availability(
@@ -578,6 +589,8 @@ fn select_vvc_chroma_bdpcm_prediction(
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
         if candidate_score.selects_over(best_score) {
+            #[cfg(feature = "vvc-stats")]
+            stats.add_chroma_bdpcm_regular_best_update();
             best_score = candidate_score;
             let mode = VvcChromaIntraPredictionMode::Explicit(
                 bdpcm_mode
