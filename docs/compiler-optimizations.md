@@ -6383,6 +6383,53 @@ negative or the same row regresses repeatedly. For exact-neutral source edits,
 keep the change only when it improves the current hotspot on a representative
 matrix; otherwise revert and document it.
 
+Rejected probe: CCLM constant-parameter fill.
+
+The CCLM prediction helper was briefly changed to fill the output block
+directly when `derive_vvc_cclm_parameters_from_selection()` returned `a == 0`.
+Mathematically this is equivalent to the existing per-sample loop because
+`right_shift_i32(0 * luma_sample, shift) + b == b`, so it looked like a
+low-risk way to reduce chroma CCLM prediction work.
+
+Correctness was clean:
+
+```text
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  cclm_flat_template_predicts_constant_chroma --features vvc
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc --features vvc
+```
+
+A 5-frame six-vector comparison against the recent stats checkpoint was
+byte- and PSNR-identical on all rows, confirming the implementation was
+decision-neutral for current content:
+
+```text
+verification/generated/encode_matrix/vvc-cclm-constant-fill-q19-5f.md
+```
+
+The matched 50-frame A/B run rejected the change on speed:
+
+```text
+baseline: verification/generated/encode_matrix/vvc-before-cclm-constant-fill-q19-50f.md
+probe:    verification/generated/encode_matrix/vvc-cclm-constant-fill-q19-50f.md
+scored:   verification/generated/encode_matrix/vvc-cclm-constant-fill-vs-before-q19-50f.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| SceneComposition_1_420 | +0 | +0.000 | -0.13 | `-0.3 regress` |
+| SceneComposition_1_422 | +0 | +0.000 | -0.09 | `-0.3 regress` |
+| screen_wayland_activity_rgb | +0 | +0.000 | +0.02 | `+0.2 watch` |
+| MissionControlClip1_420 | +0 | +0.000 | +0.11 | `+0.7 watch` |
+| MissionControlClip1_422 | +0 | +0.000 | -0.01 | `-0.1 regress` |
+| MissionControlClip1_444 | +0 | +0.000 | +0.00 | `+0.0 watch` |
+
+Aggregate score was `+0.0` with 0 accepts, 3 watches, and 3 regressions. The
+source change was reverted. Do not retry this exact constant-fill branch unless
+a profile trace shows the compiler failed to optimize the existing multiply
+path on a new target.
+
 ## References
 
 - Cargo profile settings:
