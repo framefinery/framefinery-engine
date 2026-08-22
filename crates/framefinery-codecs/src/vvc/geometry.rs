@@ -181,6 +181,6 @@ pub(in crate::vvc) struct VvcQuantizedCtu {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::vvc) enum VvcQuantizedCtuPayload {
-    Intra(VvcCtuPartitionParams),
+    Intra(Box<VvcCtuPartitionParams>),
     InterSkip,
 }

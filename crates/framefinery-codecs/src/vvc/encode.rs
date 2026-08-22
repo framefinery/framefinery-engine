@@ -944,7 +944,7 @@ fn vvc_intra_ctu_payload_from_quantized(
     if let Some(chroma_inter_skip) = chroma_inter_skip {
         params.chroma_tu_inter_skip = *chroma_inter_skip;
     }
-    Ok(VvcQuantizedCtuPayload::Intra(params))
+    Ok(VvcQuantizedCtuPayload::Intra(Box::new(params)))
 }
 
 #[derive(Debug, Clone)]

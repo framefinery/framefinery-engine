@@ -6940,6 +6940,54 @@ make validate-set CODEC=vvc VALIDATION_SET=smoke \
   VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1
 ```
 
+### VVC boxed CTU payload
+
+Clippy's performance lint reported that `VvcQuantizedCtuPayload` had a large
+enum variant: `Intra(VvcCtuPartitionParams)` was about 53 KiB while
+`InterSkip` was empty. The retained change boxes the intra payload:
+
+```rust
+VvcQuantizedCtuPayload::Intra(Box<VvcCtuPartitionParams>)
+```
+
+This is syntax- and reconstruction-neutral. It removes large enum moves from
+the frame CTU vector and makes mixed predictive frames less memory-heavy, while
+adding one allocation for each intra CTU payload.
+
+Correctness gates:
+
+```text
+make clippy-perf
+cargo test -p framefinery-codecs vvc --features vvc
+make validate-set CODEC=vvc VALIDATION_SET=smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_SETTINGS='qp=19 gop=-1 fast-search=lossless-speed' \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1
+```
+
+The VTM smoke gate passed 3/3 with matching internal/reference
+reconstructions. Two generated 640x360 q19 50-frame runs were byte- and
+PSNR-identical versus the current baseline and showed positive FPS movement on
+every row. The rerun used:
+
+```text
+verification/generated/encode_matrix/vvc-boxed-ctu-payload-generated-q19-50f-rerun.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.000 | +0.79 | `+1.1 watch` |
+| probe_blocks_420 | +0 | +0.000 | +0.84 | `+0.9 watch` |
+| probe_checker_444 | +0 | +0.000 | +0.74 | `+1.1 watch` |
+| probe_blocks_444 | +0 | +0.000 | +0.49 | `+1.0 watch` |
+
+Aggregate score was `+1.0 watch`, not a formal aggregate accept. The change
+was still retained because it is exact-neutral, clears the repo's perf lint,
+and reproduced all-row speed gains across two generated runs. Treat this as a
+small memory-movement cleanup, not a rate/quality improvement. A full
+six-vector rerun still requires `AOMCTC_ROOT`, which remains intentionally
+mandatory for that manifest.
+
 ### Rejected VVC transform-skip RD-zero quantization probe
 
 A follow-up probe tried a greedy RD-zero rule inside transform-skip coefficient
