@@ -6127,6 +6127,38 @@ the work moves rather than disappearing. The source diff was reverted. Revisit
 this area only by preserving residual reuse while avoiding redundant candidate
 scoring, not by bypassing luma RD wholesale.
 
+Rejected probe: 8-bit 4:4:4 final luma MTS refinement skip.
+
+A narrower follow-up kept luma RD refinement and residual reuse intact, but
+skipped only the late explicit-MTS refinement for lossy
+`fast-search=lossless-speed` 8-bit 4:4:4 streams. This was based on Wayland
+stats where `luma_mts_nonzero_count` was zero, so the probe tried to avoid
+redundant post-RD MTS work without changing the earlier shared mode path.
+
+The focused Wayland scorer against a fresh local baseline was byte/PSNR
+identical but only reached watch-level timing:
+
+```text
+verification/generated/encode_matrix/vvc-wayland-final-mts-skip-444-q19-50f.md
+bytes=4,060,779 fps=2.13 psnr=58.997
+delta: +0 bytes, +0.10 FPS, +0.000 dB, score +0.7:watch
+```
+
+The comparable six-vector 50-frame scorer against
+`vvc-lossy-temporal-mode-hints-zero-q19-50f` rejected the affected 8-bit 4:4:4
+Wayland row:
+
+```text
+verification/generated/encode_matrix/vvc-final-mts-skip-444-q19-50f-50f
+screen_wayland_activity_rgb: bytes +0, PSNR +0.000, FPS 2.17 -> 2.16,
+score -0.1:regress
+```
+
+The source diff was reverted. Do not retry a format-only final-MTS skip unless
+new instrumentation proves final explicit-MTS refinement is a stable hotspot
+and the skip is selected from per-TU evidence rather than only from 8-bit 4:4:4
+format policy.
+
 Rejected probe: lossy mixed single P-slice packetization.
 
 The CTU-sliced predictive path was briefly changed so a lossy mixed frame with
