@@ -6203,6 +6203,27 @@ chroma_bdpcm_regular_best_updates=9,649
 The remaining chroma BDPCM work is therefore mostly the selected direct path
 itself plus the smaller regular fallback, not duplicated direct candidates.
 
+Rejected probe: skip RD scoring for unsafe direct chroma BDPCM candidates.
+
+The direct BDPCM safety gate is computed from raw residual SSE, but the old
+order scored the quantized candidate before checking that gate. A probe moved
+the safety check before quantized residual scoring so unsafe direct candidates
+skip work they cannot use. This preserved bytes and PSNR, but did not produce a
+clear timing win:
+
+```text
+verification/generated/encode_matrix/vvc-direct-bdpcm-unsafe-score-skip-wayland-q19-50f.md
+bytes=4,060,779 fps=2.13 psnr=58.997
+delta: +0 bytes, +0.09 FPS, +0.000 dB, score +0.7:watch
+
+verification/generated/encode_matrix/vvc-direct-bdpcm-unsafe-score-skip-q19-50f-limit3.md
+screen_wayland_activity_rgb: bytes +0, PSNR +0.000, FPS 2.17 -> 2.16,
+score -0.1:regress
+```
+
+The source diff was reverted. The unsafe direct-candidate fraction is too small
+for this ordering change to matter under the current scorer.
+
 Rejected probe: lossy mixed single P-slice packetization.
 
 The CTU-sliced predictive path was briefly changed so a lossy mixed frame with
