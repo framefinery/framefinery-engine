@@ -460,7 +460,11 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         |(_, skip_distortion)| {
                             predictive_ctu_slice_frame
                                 && vvc_predictive_inter_skip_region(region)
-                                && vvc_lossy_predictive_inter_skip_preselected(*skip_distortion)
+                                && vvc_lossy_predictive_inter_skip_preselected(
+                                    *skip_distortion,
+                                    region,
+                                    stream_format,
+                                )
                         },
                     );
                     let cached_inter_skip_ctu_available = cached_inter_skip_ctu.is_some();
@@ -1129,8 +1133,37 @@ fn vvc_lossy_predictive_inter_skip_selects_over_intra(
     skip_distortion <= intra_distortion
 }
 
-fn vvc_lossy_predictive_inter_skip_preselected(skip_distortion: u64) -> bool {
-    skip_distortion == 0
+fn vvc_lossy_predictive_inter_skip_preselected(
+    skip_distortion: u64,
+    region: VvcCtuRegion,
+    format: VvcPictureFormat,
+) -> bool {
+    skip_distortion <= vvc_lossy_predictive_preskip_max_sse(region, format)
+}
+
+fn vvc_lossy_predictive_preskip_max_sse(
+    region: VvcCtuRegion,
+    format: VvcPictureFormat,
+) -> u64 {
+    let sample_count =
+        vvc_region_visible_luma_sample_count(region) + vvc_region_visible_chroma_sample_count(region, format);
+    let scale = 1u64 << u32::from(format.bit_depth.bits().saturating_sub(8));
+    sample_count.saturating_mul(scale.saturating_mul(scale))
+}
+
+fn vvc_region_visible_luma_sample_count(region: VvcCtuRegion) -> u64 {
+    (region.geometry.width as u64).saturating_mul(region.geometry.height as u64)
+}
+
+fn vvc_region_visible_chroma_sample_count(
+    region: VvcCtuRegion,
+    format: VvcPictureFormat,
+) -> u64 {
+    let subsample_x = chroma_subsample_x(format.chroma_sampling) as u64;
+    let subsample_y = chroma_subsample_y(format.chroma_sampling) as u64;
+    let chroma_width = (region.geometry.width as u64) / subsample_x;
+    let chroma_height = (region.geometry.height as u64) / subsample_y;
+    chroma_width.saturating_mul(chroma_height).saturating_mul(2)
 }
 
 fn vvc_region_sse_against_reconstruction(

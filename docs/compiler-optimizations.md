@@ -5245,6 +5245,79 @@ Follow-up:
   high-confidence skip pre-gate that can skip intra for nonzero distortion
   while proving the bitrate/PSNR tradeoff row-by-row.
 
+### VVC Lossy Low-Distortion CTU Pre-Skip
+
+Checkpoint: `vvc-preskip-avg1-q19-50f`.
+
+The zero-SSE pre-skip was extended to a very tight nonzero threshold: a lossy
+predictive CTU may bypass intra quantization when its InterSkip reconstruction
+has average SSE no greater than one 8-bit-equivalent squared sample error over
+the visible luma+chroma CTU samples. For higher bit depths the threshold scales
+by the square of the bit-depth sample step. For a full 8-bit 4:2:0 CTU, the
+threshold is 6,144 total SSE across 4,096 luma and 2,048 chroma samples.
+
+This intentionally remains inside the same unified path:
+
+- the normal InterSkip syntax and cached reconstruction are reused;
+- CTUs above the threshold still run full intra quantization and the existing
+  post-intra RD skip gate;
+- lossless predictive reuse is unchanged;
+- no separate lossy encoder path was added.
+
+50-frame VVC lossy matrix versus `vvc-zero-sse-preskip-q19-50f`:
+
+| Vector | Bytes before | Bytes after | Byte delta | FPS before | FPS after | FPS delta | PSNR before | PSNR after | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| SceneComposition_1_420 | 2,716,281 | 2,659,970 | -56,311 | 1.29 | 2.43 | +1.14 | 50.239 | 50.208 | -0.031 | `+9.0 accept` |
+| SceneComposition_1_422 | 3,256,957 | 3,224,447 | -32,510 | 1.06 | 2.34 | +1.27 | 52.007 | 51.880 | -0.127 | `+10.4 accept` |
+| screen_wayland_activity_rgb | 4,046,297 | 4,046,297 | +0 | 1.13 | 1.18 | +0.05 | 58.997 | 58.997 | +0.000 | `+0.7 watch` |
+| MissionControlClip1_420 | 10,122,157 | 9,457,968 | -664,189 | 1.13 | 2.06 | +0.93 | 51.924 | 51.817 | -0.107 | `+8.2 accept` |
+| MissionControlClip1_422 | 12,204,087 | 11,328,521 | -875,566 | 0.81 | 1.64 | +0.84 | 53.686 | 53.607 | -0.079 | `+10.1 accept` |
+| MissionControlClip1_444 | 14,067,577 | 13,138,501 | -929,076 | 0.53 | 1.03 | +0.51 | 54.807 | 54.759 | -0.048 | `+9.7 accept` |
+
+Aggregate after this checkpoint:
+
+| Metric | Previous VVC | Current VVC | AV2 current |
+|---|---:|---:|---:|
+| Bytes | 46,413,356 | 43,855,704 | 47,733,547 |
+| Mean row FPS | 0.91 | 1.78 | 5.13 |
+| Mean PSNR | 53.586 | 53.545 | 53.573 |
+
+Compared with `av2-current-lossy-q24-50f`, VVC is now about 8% smaller and
+within 0.03 dB aggregate PSNR, but still only about 0.35x AV2 mean row FPS.
+The remaining 0.0.4 gap is therefore mainly runtime.
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo fmt
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_lossy_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp AOMCTC_ROOT=/path/to/aomctc \
+  make validate-set CODEC=vvc VALIDATION_SET=release-six-vectors-full \
+  VALIDATION_LIMIT=6 VALIDATION_FRAMES=3 VALIDATION_DIRECT_SOURCE_FILES=1 \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Follow-up:
+
+- The average-1 threshold is a strong tradeoff point. Higher pre-skip
+  thresholds should be treated as new experiments and compared against this
+  checkpoint, not against the older zero-SSE baseline.
+- The next larger FPS gains probably need legal mixed P-slice intra+InterSkip
+  or a cheap predictor for CTUs where skip is likely but not below this
+  threshold.
+
 ## References
 
 - Cargo profile settings:

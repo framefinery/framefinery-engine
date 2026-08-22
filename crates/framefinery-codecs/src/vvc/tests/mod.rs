@@ -3471,11 +3471,30 @@ fn vvc_lossy_predictive_near_skip_uses_bounded_sample_delta() {
 }
 
 #[test]
-fn vvc_lossy_predictive_preskip_requires_zero_distortion() {
-    assert!(vvc_lossy_predictive_inter_skip_preselected(0));
+fn vvc_lossy_predictive_preskip_uses_tight_average_sse_threshold() {
+    let geometry = VvcVideoGeometry {
+        width: 64,
+        height: 64,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let region = VvcCtuRegion {
+        slice_address: 0,
+        origin_x: 0,
+        origin_y: 0,
+        geometry,
+    };
+    let threshold = vvc_lossy_predictive_preskip_max_sse(region, format);
+
+    assert_eq!(threshold, 6_144);
+    assert!(vvc_lossy_predictive_inter_skip_preselected(
+        threshold, region, format,
+    ));
     assert!(
-        !vvc_lossy_predictive_inter_skip_preselected(1),
-        "lossy pre-skip may only bypass intra quantization when RD would be a guaranteed skip"
+        !vvc_lossy_predictive_inter_skip_preselected(threshold + 1, region, format),
+        "lossy pre-skip should stay much tighter than the normal near-skip max-delta gate"
     );
 }
 
