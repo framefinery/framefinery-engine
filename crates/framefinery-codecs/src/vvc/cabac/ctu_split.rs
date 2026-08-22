@@ -58,6 +58,12 @@ impl VvcCtuPartitionParams {
         }
     }
 
+    pub(in crate::vvc) fn single_tree_shape(&self) -> VvcCtuPartitionShape {
+        let mut shape = self.shape();
+        shape.dual_tree_intra = false;
+        shape
+    }
+
     #[cfg(test)]
     pub(in crate::vvc) fn visible_chroma_width(&self) -> u16 {
         // coding_tree() uses luma-coordinate cbWidth/cbHeight even for

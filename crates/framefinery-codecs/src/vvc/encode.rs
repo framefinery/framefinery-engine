@@ -204,7 +204,6 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     let ctu_sliced_partitioning_supported =
         vvc_one_slice_per_ctu_partitioning_supported(geometry);
     let lossy_ctu_skip_enabled = predictive_enabled
-        && ctu_sliced_partitioning_supported
         && !residual_mode.is_lossless()
         && vvc_lossy_predictive_ctu_inter_skip_enabled_for_reference_clean_release();
     let mut slice_config = vvc_slice_config_for_input_format(
@@ -365,8 +364,10 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
             sample_vvc_yuv_frame(&frame_buf, VvcEncodeParams { frames: 1 }, geometry, format)?;
         #[cfg(feature = "vvc-stats")]
         frame_stats.add_elapsed("sample_frame", stage_start);
+        let lossy_mixed_single_p_slice_supported = !residual_mode.is_lossless()
+            && vvc_lossy_mixed_single_p_slice_supported(stream_format);
         let predictive_ctu_inter_skip_enabled = predictive_frame
-            && ctu_sliced_partitioning_supported
+            && (lossy_mixed_single_p_slice_supported || ctu_sliced_partitioning_supported)
             && vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release();
         let lossy_ctu_skip_candidate_distortions = if predictive_ctu_inter_skip_enabled
             && lossy_ctu_skip_enabled
@@ -402,12 +403,14 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         } else {
             0
         };
-        let predictive_ctu_slice_frame = predictive_ctu_skip_candidate_count > 0
+        let predictive_ctu_inter_skip_frame = predictive_ctu_skip_candidate_count > 0
             && (residual_mode.is_lossless()
-                || vvc_lossy_predictive_ctu_skip_candidate_count_allows_ctu_slices(
+                || vvc_lossy_predictive_ctu_skip_candidate_count_allows_mixed_p_slice(
                     predictive_ctu_skip_candidate_count,
                     ctu_count,
                 ));
+        let predictive_ctu_slice_frame =
+            !lossy_mixed_single_p_slice_supported && predictive_ctu_inter_skip_frame;
         {
             let mut frame_bitstream = CountingWriter::new(bitstream);
             let (frame_recon_yuv, next_predictive_cache) = {
@@ -459,7 +462,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     };
                     let preselected_lossy_inter_skip_ctu = cached_lossy_skip_ctu.filter(
                         |(_, skip_distortion)| {
-                            predictive_ctu_slice_frame
+                            predictive_ctu_inter_skip_frame
                                 && vvc_predictive_inter_skip_region(region)
                                 && vvc_lossy_predictive_inter_skip_preselected(
                                     *skip_distortion,
@@ -471,7 +474,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     let cached_inter_skip_ctu_available = cached_inter_skip_ctu.is_some();
                     let mut inter_skip_ctu =
                         (cached_inter_skip_ctu_available
-                            && predictive_ctu_slice_frame
+                            && predictive_ctu_inter_skip_frame
                             && vvc_predictive_inter_skip_region(region))
                             || preselected_lossy_inter_skip_ctu.is_some();
                     let intra_reuse_allowed = cached_exact_ctu_available
@@ -661,7 +664,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         )?;
                         if let Some(decisions) = frame_ctu_decisions.as_mut() {
                             if let Some((cached, skip_distortion)) = cached_lossy_skip_ctu {
-                                if predictive_ctu_slice_frame
+                                if predictive_ctu_inter_skip_frame
                                     && vvc_predictive_inter_skip_region(region)
                                     && vvc_lossy_predictive_inter_skip_selects_over_intra(
                                         &source_frame,
@@ -1052,11 +1055,19 @@ fn vvc_predictive_frame_lossless_ctu_inter_skip_candidate_count(
         .count()
 }
 
-fn vvc_lossy_predictive_ctu_skip_candidate_count_allows_ctu_slices(
+fn vvc_lossy_predictive_ctu_skip_candidate_count_allows_mixed_p_slice(
     candidate_count: usize,
     ctu_count: usize,
 ) -> bool {
     candidate_count.saturating_mul(2) >= ctu_count.max(1)
+}
+
+fn vvc_lossy_mixed_single_p_slice_supported(format: VvcPictureFormat) -> bool {
+    // The reference-clean single-tree transform_unit branch is currently
+    // validated for the 4:2:0 lossy CTU shape. 4:2:2/4:4:4 need the quantizer
+    // to use the same inter-slice partition plan as entropy before their
+    // chroma explicit-mode candidate tables are guaranteed to match.
+    format.chroma_sampling == ChromaSampling::Cs420
 }
 
 fn vvc_predictive_ctu_dependencies_reused(
@@ -1083,13 +1094,10 @@ fn vvc_predictive_ctu_dependencies_reused(
 
 fn vvc_lossless_speed_luma_leaf_inter_skip_allowed(format: VvcPictureFormat) -> bool {
     let _format = format;
-    // Leaf-level predictive skip currently copies source samples into the
-    // encoder reconstruction while the surrounding slice is still emitted as
-    // an I-slice unless a whole-CTU InterSkip is also present. Promoting those
-    // frames to P-slices is not enough; VTM rejects the current mixed
-    // leaf-skip syntax. Keep the release path reference-clean by limiting VVC
-    // predictive reuse to complete CTUs until the mixed CU/leaf P-slice syntax
-    // is implemented and reference-validated.
+    // Leaf-level predictive skip needs legal inter-slice local-separate-tree
+    // handling for small 4:2:0 intra leaves before it can share the mixed
+    // P-slice CTU path. Keep the release path reference-clean by limiting VVC
+    // predictive reuse to complete CTUs.
     false
 }
 
@@ -1104,27 +1112,25 @@ fn vvc_predictive_intra_ctu_reuse_enabled_for_mode(mode: VvcResidualCodingMode) 
 }
 
 fn vvc_predictive_frame_inter_skip_enabled_for_reference_clean_release() -> bool {
-    // Full-frame repeated P pictures use a single all-skip slice and now
+    // Full-frame repeated P pictures use a single all-skip slice and
     // initialize the CABAC state as a P slice before emitting split/skip
-    // syntax. Keep this separate from mixed CTU skip so reference validation can
-    // cover the smaller, spec-clean path first.
+    // syntax.
     true
 }
 
 fn vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release() -> bool {
-    // CTU-level InterSkip is emitted only in CTU-sliced predictive pictures:
-    // skipped CTUs are P slices, non-skipped CTUs remain I slices, and intra
-    // quantization is constrained to CTU-local availability before entropy
-    // emission. Do not insert the dual-tree I-slice CTU body into a mixed P
-    // slice.
+    // Lossy CTU-level InterSkip now emits skipped and non-skipped CTUs in one
+    // P-slice, using inter-slice split constraints plus single-tree intra
+    // transform_unit syntax for the non-skipped CTUs. Lossless mixed CTU skip
+    // still uses CTU slices because the 4x4 4:2:0 local-separate-tree branch is
+    // not wired yet.
     true
 }
 
 fn vvc_lossy_predictive_ctu_inter_skip_enabled_for_reference_clean_release() -> bool {
     // Lossy CTU InterSkip is only enabled after normal CTU quantization and a
     // conservative RD gate. The pre-scan still requires enough skip candidates
-    // to justify switching the frame to CTU-sliced output, because non-skipped
-    // CTUs lose cross-CTU intra availability in that syntax shape.
+    // to justify switching the frame to mixed P-slice output.
     true
 }
 

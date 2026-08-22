@@ -437,6 +437,11 @@ impl VvcFrameCtuCabacState {
         let luma_neighbours = &mut self.luma_neighbours;
         let luma_mode_neighbours = &mut self.luma_mode_neighbours;
         let chroma_neighbours = &mut self.chroma_neighbours;
+        let shape = if self.inter_slice {
+            params.single_tree_shape()
+        } else {
+            params.shape()
+        };
         let mut ctu_encoder = VvcCtuCabacGenerator::new(&mut self.contexts, params, slice_config)
             .with_inter_slice(
                 self.inter_slice,
@@ -444,23 +449,43 @@ impl VvcFrameCtuCabacState {
                 pred_mode_contexts,
                 Some(&mut self.inter_skip_neighbours),
             );
-        VvcCtuCabacOp::visit_intra_ctu_partition_with_luma_neighbours(
-            luma_neighbours,
-            params.shape(),
-            origin_x,
-            origin_y,
-            self.picture_width,
-            self.picture_height,
-            params.luma_max_leaf_size,
-            |op| {
-                ctu_encoder.emit_with_frame_neighbours(
-                    cabac,
-                    op,
-                    luma_mode_neighbours,
-                    chroma_neighbours,
-                );
-            },
-        );
+        if self.inter_slice {
+            VvcCtuCabacOp::visit_inter_skip_ctu_partition_with_luma_neighbours(
+                luma_neighbours,
+                shape,
+                origin_x,
+                origin_y,
+                self.picture_width,
+                self.picture_height,
+                params.luma_max_leaf_size,
+                |op| {
+                    ctu_encoder.emit_with_frame_neighbours(
+                        cabac,
+                        op,
+                        luma_mode_neighbours,
+                        chroma_neighbours,
+                    );
+                },
+            );
+        } else {
+            VvcCtuCabacOp::visit_intra_ctu_partition_with_luma_neighbours(
+                luma_neighbours,
+                shape,
+                origin_x,
+                origin_y,
+                self.picture_width,
+                self.picture_height,
+                params.luma_max_leaf_size,
+                |op| {
+                    ctu_encoder.emit_with_frame_neighbours(
+                        cabac,
+                        op,
+                        luma_mode_neighbours,
+                        chroma_neighbours,
+                    );
+                },
+            );
+        }
         if slice_address < self.skip_neighbours.len() {
             self.skip_neighbours[slice_address] = false;
         }
@@ -902,7 +927,8 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                         self.emit_luma_intra_prediction_mode(cabac, node, luma_mode_neighbours);
                     }
                 }
-                self.emit_luma_residual(cabac, node);
+                self.emit_single_tree_chroma_prediction(cabac, node, luma_mode_neighbours);
+                self.emit_transform_unit_residual(cabac, node);
             }
             VvcCtuCabacOp::ChromaTree {
                 node,
@@ -963,7 +989,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             unreachable!("emit_bt_split expects a binary split operation");
         };
         debug_assert!(node.cqt_depth >= 1 || node.mtt_depth > 0 || (node.x == 0 && node.y == 0));
-        debug_assert_eq!(node.tree_type, VvcTreeType::DualTreeLuma);
+        debug_assert!(matches!(
+            node.tree_type,
+            VvcTreeType::SingleTree | VvcTreeType::DualTreeLuma
+        ));
         if write_split_flag {
             self.contexts.encode_split_flag(cabac, split_ctx, true);
         }
@@ -991,7 +1020,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
     ) {
         debug_assert!(node.cqt_depth <= 3);
         debug_assert_eq!(node.mtt_depth, 0);
-        debug_assert_eq!(node.tree_type, VvcTreeType::DualTreeLuma);
+        debug_assert!(matches!(
+            node.tree_type,
+            VvcTreeType::SingleTree | VvcTreeType::DualTreeLuma
+        ));
         // VVC 7.3.11.4 coding_tree emits split_cu_flag for QT-split luma
         // nodes. Some root-only geometries infer split_qt_flag, while boundary
         // constrained rectangular CTU views write it explicitly.
@@ -1012,7 +1044,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
     ) {
         debug_assert!(node.cqt_depth >= 1 || node.mtt_depth > 0 || (node.x == 0 && node.y == 0));
         debug_assert!(node.mtt_depth <= VVC_CURRENT_MAX_LUMA_MTT_DEPTH + node.depth_offset);
-        debug_assert_eq!(node.tree_type, VvcTreeType::DualTreeLuma);
+        debug_assert!(matches!(
+            node.tree_type,
+            VvcTreeType::SingleTree | VvcTreeType::DualTreeLuma
+        ));
         if !write_split_flag {
             return;
         }
@@ -1083,7 +1118,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         node: VvcCodingTreeNode,
         neighbours: &mut VvcLumaModeNeighbourState,
     ) {
-        debug_assert_eq!(node.tree_type, VvcTreeType::DualTreeLuma);
+        debug_assert!(matches!(
+            node.tree_type,
+            VvcTreeType::SingleTree | VvcTreeType::DualTreeLuma
+        ));
         let mode = self.params.luma_tu_intra_modes[self.luma_tu_index];
         let mode_index = mode.luma_mode_index();
         let mrl_index = self.params.luma_tu_mrl_index[self.luma_tu_index];
@@ -1187,7 +1225,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
     }
 
     fn emit_luma_multi_ref_line(&mut self, cabac: &mut VvcCabacEncoder, node: VvcCodingTreeNode) {
-        debug_assert_eq!(node.tree_type, VvcTreeType::DualTreeLuma);
+        debug_assert!(matches!(
+            node.tree_type,
+            VvcTreeType::SingleTree | VvcTreeType::DualTreeLuma
+        ));
         // With sps_mrl_enabled_flag set, VVC extend_ref_line emits
         // MultiRefLineIdx for intra luma CUs that are not on the first luma
         // line of the CTU. VTM's MULTI_REF_LINE_IDX table is [0, 1, 2].
@@ -1242,10 +1283,27 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         cbf: bool,
         bdpcm: bool,
     ) {
-        debug_assert_eq!(node.tree_type, VvcTreeType::DualTreeLuma);
+        debug_assert!(matches!(
+            node.tree_type,
+            VvcTreeType::SingleTree | VvcTreeType::DualTreeLuma
+        ));
         // VVC 7.3.11.10 transform_unit emits tu_y_coded_flag / cbf_comp
         // through QtCbf[Y].
         self.contexts.encode_qt_cbf_y(cabac, u8::from(bdpcm), cbf);
+    }
+
+    fn emit_transform_unit_residual(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        node: VvcCodingTreeNode,
+    ) {
+        if node.tree_type == VvcTreeType::SingleTree
+            && self.params.chroma_sampling != ChromaSampling::Monochrome
+        {
+            self.emit_single_tree_residual(cabac, node);
+        } else {
+            self.emit_luma_residual(cabac, node);
+        }
     }
 
     fn emit_luma_residual(&mut self, cabac: &mut VvcCabacEncoder, node: VvcCodingTreeNode) {
@@ -1284,6 +1342,125 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             cabac,
         );
         self.emit_luma_post_residual_tools(cabac, node, has_ac, transform_skip, mts_index);
+    }
+
+    fn emit_single_tree_chroma_prediction(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        node: VvcCodingTreeNode,
+        luma_mode_neighbours: &VvcLumaModeNeighbourState,
+    ) {
+        if node.tree_type != VvcTreeType::SingleTree
+            || self.params.chroma_sampling == ChromaSampling::Monochrome
+        {
+            return;
+        }
+        let tu_idx = self.chroma_tu_index;
+        assert!(
+            tu_idx < self.params.chroma_tu_count,
+            "missing chroma TU prediction data for single-tree leaf {tu_idx}"
+        );
+        let chroma_bdpcm_mode = self.params.chroma_tu_bdpcm_modes[tu_idx];
+        if !self.emit_chroma_bdpcm_mode(cabac, node, chroma_bdpcm_mode) {
+            self.emit_chroma_intra_prediction_mode(cabac, node, tu_idx, luma_mode_neighbours);
+        }
+    }
+
+    fn emit_single_tree_residual(&mut self, cabac: &mut VvcCabacEncoder, node: VvcCodingTreeNode) {
+        let luma_tu_idx = self.luma_tu_index;
+        self.luma_tu_index += 1;
+        assert!(
+            luma_tu_idx < self.params.luma_tu_count,
+            "missing luma TU coefficient data for single-tree leaf {luma_tu_idx}"
+        );
+        let chroma_tu_idx = self.chroma_tu_index;
+        self.chroma_tu_index += 1;
+        assert!(
+            chroma_tu_idx < self.params.chroma_tu_count,
+            "missing chroma TU coefficient data for single-tree leaf {chroma_tu_idx}"
+        );
+
+        let chroma_bdpcm_mode = self.params.chroma_tu_bdpcm_modes[chroma_tu_idx];
+        let cb_dc_level = self.params.cb_tu_dc_levels[chroma_tu_idx];
+        let cr_dc_level = self.params.cr_tu_dc_levels[chroma_tu_idx];
+        let cbf_cb = cb_dc_level != 0 || self.params.cb_tu_has_ac[chroma_tu_idx];
+        let cbf_cr = cr_dc_level != 0 || self.params.cr_tu_has_ac[chroma_tu_idx];
+        let cbf_cb_ctx = u8::from(chroma_bdpcm_mode.is_enabled());
+        let cbf_cr_ctx = if chroma_bdpcm_mode.is_enabled() {
+            2
+        } else {
+            u8::from(cbf_cb)
+        };
+        self.contexts.encode_qt_cbf_cb(cabac, cbf_cb_ctx, cbf_cb);
+        self.contexts.encode_qt_cbf_cr(cabac, cbf_cr_ctx, cbf_cr);
+
+        let luma_dc_level = self.params.luma_tu_dc_levels[luma_tu_idx];
+        let cbf_luma = luma_dc_level != 0 || self.params.luma_tu_has_ac[luma_tu_idx];
+        let luma_bdpcm_mode = self.params.luma_tu_bdpcm_modes[luma_tu_idx];
+        self.emit_luma_cbf(cabac, node, cbf_luma, luma_bdpcm_mode.is_enabled());
+
+        if cbf_luma {
+            let log2_width = node.width.ilog2() as u8;
+            let log2_height = node.height.ilog2() as u8;
+            let luma_has_ac = self.params.luma_tu_has_ac[luma_tu_idx];
+            let luma_transform_skip = self.params.luma_tu_transform_skip[luma_tu_idx];
+            let luma_mts_index = self.params.luma_tu_mts_index[luma_tu_idx];
+            let mut residual = VvcResidualCabacEncoder::new(
+                &mut *self.contexts,
+                self.slice_config.residual_options(),
+            );
+            VvcResidualCabacSymbolStream::emit_luma_stored_coefficients(
+                log2_width,
+                log2_height,
+                luma_dc_level,
+                &self.params.luma_tu_ac_levels[luma_tu_idx],
+                luma_has_ac,
+                luma_transform_skip,
+                luma_bdpcm_mode.is_enabled(),
+                luma_mts_index,
+                &mut residual,
+                cabac,
+            );
+        }
+        if cbf_cb {
+            Self::emit_chroma_residual(
+                &mut *self.contexts,
+                self.slice_config,
+                self.params.chroma_sampling,
+                cabac,
+                VvcResidualComponent::ChromaCb,
+                node,
+                cb_dc_level,
+                &self.params.cb_tu_ac_levels[chroma_tu_idx],
+                self.params.cb_tu_has_ac[chroma_tu_idx],
+                self.params.cb_tu_transform_skip[chroma_tu_idx],
+                chroma_bdpcm_mode.is_enabled(),
+            );
+        }
+        if cbf_cr {
+            Self::emit_chroma_residual(
+                &mut *self.contexts,
+                self.slice_config,
+                self.params.chroma_sampling,
+                cabac,
+                VvcResidualComponent::ChromaCr,
+                node,
+                cr_dc_level,
+                &self.params.cr_tu_ac_levels[chroma_tu_idx],
+                self.params.cr_tu_has_ac[chroma_tu_idx],
+                self.params.cr_tu_transform_skip[chroma_tu_idx],
+                chroma_bdpcm_mode.is_enabled(),
+            );
+        }
+        if cbf_luma {
+            self.emit_luma_post_residual_tools(
+                cabac,
+                node,
+                self.params.luma_tu_has_ac[luma_tu_idx],
+                self.params.luma_tu_transform_skip[luma_tu_idx],
+                self.params.luma_tu_mts_index[luma_tu_idx],
+            );
+        }
     }
 
     fn emit_luma_post_residual_tools(
@@ -1993,13 +2170,20 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                 self.contexts.encode_intra_chroma_pred_mode(cabac, 0, false);
             }
             VvcChromaIntraPredictionMode::Explicit(mode) => {
-                self.contexts.encode_intra_chroma_pred_mode(cabac, 0, true);
                 let co_located_luma_mode = luma_mode_neighbours
                     .co_located_for_chroma(node)
                     .unwrap_or(VvcIntraPredictionMode::Dc);
-                let candidate_index =
+                let Some(candidate_index) =
                     vvc_chroma_explicit_candidate_index(mode, co_located_luma_mode)
-                        .expect("selected VVC chroma explicit mode must be in the candidate table");
+                else {
+                    assert_eq!(
+                        mode, co_located_luma_mode,
+                        "selected VVC chroma explicit mode must be derived or in the candidate table"
+                    );
+                    self.contexts.encode_intra_chroma_pred_mode(cabac, 0, false);
+                    return;
+                };
+                self.contexts.encode_intra_chroma_pred_mode(cabac, 0, true);
                 cabac.encode_bins_ep(u32::from(candidate_index), 2);
             }
             VvcChromaIntraPredictionMode::Cclm(_) => {

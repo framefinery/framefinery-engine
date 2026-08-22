@@ -6279,27 +6279,42 @@ The source diff was reverted. Do not retry this exact fused helper shape; it
 likely makes the hot loop less optimizer-friendly or changes cache/control-flow
 behavior enough to erase the saved residual pass.
 
-Rejected probe: lossy mixed single P-slice packetization.
+Accepted structural probe: lossy mixed single P-slice packetization.
 
-The CTU-sliced predictive path was briefly changed so a lossy mixed frame with
-one intra CTU and one InterSkip CTU used `vvc_predictive_frame_slice_unit`
-instead of one Trail NAL per CTU. A focused 128x64 two-frame YUV420 probe was
-generated under `verification/generated/agent_scratch/` with the left CTU
-changed and the right CTU repeated. The internal encode succeeded, but VTM
-rejected the second picture while decoding the CABAC payload:
+The CTU-sliced predictive path can now emit 4:2:0 lossy mixed frames with intra
+CTUs and `InterSkip` CTUs in one P-slice. The fix was not a
+slice-header/PPS-only change: intra CTUs inside the P-slice use inter-slice
+split constraints, single-tree intra prediction syntax, and inline chroma
+CBF/residual syntax at the VTM `transform_unit()` site. A focused 128x64
+two-frame YUV420 probe was generated under
+`verification/generated/agent_scratch/mixed_p_slice/` with the left CTU changed
+and the right CTU repeated. VTM accepted the lossy QP 19 stream and the
+reference reconstruction matched the encoder reconstruction:
 
 ```text
-ERROR: ... DecSlice.cpp:253: Expecting a terminating bit
+lossy_q19.vvc: 229 bytes
+sha256(lossy_q19.recon.yuv) =
+sha256(lossy_q19.vtm.yuv)   = fef53fa65db414b929185ee8356dfb76d8a942ac8294423ffe342e13efb60e71
 ```
 
-VTM's `CABACReader::coding_tree_unit()` confirms the root cause: `TREE_D` is a
-joint tree for single-tree slices, and dual luma/chroma tree parsing is only
-entered through the dual I-tree path. FrameFinery's residual CTU body still
-emits dual-tree intra syntax for residual CTUs, so simply wrapping those CTUs in
-a P slice misaligns the decoder. The future fix is a real single-tree
-residual/CABAC path for intra CUs inside inter slices, including chroma
-residual syntax at the correct transform-tree sites. Do not retry this as a
-slice-header/PPS-only change.
+Lossless mixed CTU skip and lossy 4:2:2/4:4:4 mixed CTU skip intentionally
+remain on the CTU-slice fallback. The lossless path uses 4x4 luma leaves for
+4:2:0, where VTM infers local separate luma/chroma trees in inter slices. The
+4:2:2/4:4:4 lossy paths need quantization and entropy to share the same
+inter-slice partition plan before the chroma explicit-mode candidate tables are
+guaranteed to match. The focused lossless probe remains reference-clean through
+the fallback:
+
+```text
+lossless.vvc: 550 bytes
+sha256(lossless.recon.yuv) =
+sha256(lossless.vtm.yuv)   = 062e62b51aa375585ef2d2fae22c39f31d298da3689c25a1e1227af55eb0d808
+```
+
+Remaining TODO: implement the local-separate-tree branch for small 4:2:0
+inter-slice intra leaves and make quantization use the inter-slice single-tree
+partition plan for 4:2:2/4:4:4 before enabling those mixed single P-slices or
+leaf-level predictive skip.
 
 ### VVC Motion Search And Mode-Selection Audit
 
@@ -6346,10 +6361,11 @@ Current priority order:
    average-SSE CTU pre-skip follows the same principle as AOM's zero-MV
    low-SSE skip and VTM/x265 skip-first merge handling: when the cheap skip
    predictor is strong enough, avoid expensive residual work.
-2. Implement legal mixed inter-slice intra syntax before adding broad nonzero
-   ME. The CTU-sliced workaround is currently the larger structural FPS tax,
-   and a P-slice with intra and skipped CUs is necessary for a normal inter
-   encoder anyway.
+2. Extend the legal mixed inter-slice intra syntax to the remaining
+   local-separate-tree cases and align 4:2:2/4:4:4 quantization with the
+   inter-slice partition plan before enabling those mixed single P-slices or
+   leaf-level skip. The 4:2:0 lossy CTU-level mixed P-slice path is now
+   reference-clean and should be the baseline for future inter work.
 3. Add a cheap mode shortlist before residual materialization. Use luma/chroma
    source gradients, template availability, previous-frame skip distortion, and
    QP-scaled tolerances to decide which intra/chroma candidates deserve full
