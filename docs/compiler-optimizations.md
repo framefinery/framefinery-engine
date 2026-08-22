@@ -6451,6 +6451,35 @@ negative or the same row regresses repeatedly. For exact-neutral source edits,
 keep the change only when it improves the current hotspot on a representative
 matrix; otherwise revert and document it.
 
+Rejected probe: lossy luma spatial-consensus seed gate.
+
+A narrow deterministic mode-pruning probe changed `lossy +
+fast-search=lossless-speed` luma directional candidate generation so a close
+left/above spatial consensus skipped the source-gradient seed scan and used the
+consensus candidate first. This matched the research pattern of using
+neighbouring context before expensive candidate generation, but it was not a
+good local tradeoff: the source-gradient seed still carries useful decisions,
+and removing it did not produce a timing win.
+
+The source diff passed the focused luma directional-search unit tests, but the
+first-three 50-frame six-vector scorer rejected it against
+`vvc-lossy-temporal-mode-hints-zero-q19-50f`:
+
+```text
+verification/generated/encode_matrix/vvc-luma-spatial-consensus-seed-q19-50f-limit3.md
+```
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| SceneComposition_1_420 | +1,681 | -0.23 | -0.00 | `-0.6 regress` |
+| SceneComposition_1_422 | +2,158 | -0.06 | +0.00 | `-0.2 regress` |
+| screen_wayland_activity_rgb | +222 | -0.11 | -0.00 | `-0.7 regress` |
+
+Average score was `-0.5`, with all three rows classified as regressions. The
+source diff was reverted. Do not prefer spatial-neighbour luma consensus over
+the source-gradient seed in lossy lossless-speed mode unless a later
+precondition proves the seed is duplicate or RD-irrelevant for the specific TU.
+
 Rejected probe: CCLM constant-parameter fill.
 
 The CCLM prediction helper was briefly changed to fill the output block
