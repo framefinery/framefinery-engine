@@ -7018,6 +7018,36 @@ candidate inside the normal CTU mode graph, plus a better block-level
 rate/distortion model for deciding between BDPCM, transform skip, and
 transformed residuals.
 
+### Rejected VVC chroma Planar texture gate
+
+The VVC mode-search audit and fast intra papers suggest using cheap texture
+features before expensive prediction/RD. A direct probe applied that idea to
+explicit chroma Planar in lossy `lossless-speed`: when source Cb/Cr gradients
+were strongly axis-dominant, explicit Planar was skipped before prediction and
+residual materialization. The gate was content-adaptive and lived in the shared
+candidate generator, so it did not create a separate coding path.
+
+The generated 640x360 50-frame q19 scorer rejected the change against the
+current baseline:
+
+```text
+verification/generated/encode_matrix/vvc-chroma-planar-texture-gate-50f-q19.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | -173 | +0.000 | -0.61 | `-0.9 regress` |
+| probe_blocks_420 | +0 | +0.000 | +0.19 | `+0.2 watch` |
+| probe_checker_444 | +0 | +0.000 | -0.38 | `-0.6 regress` |
+| probe_blocks_444 | +0 | +0.000 | -0.24 | `-0.5 regress` |
+
+Aggregate score was `-0.4 regress`, with 0 accepts, 1 watch, and 3
+regressions. The source change was reverted. Do not retry this exact
+source-gradient explicit Planar gate; the extra per-block texture scan costs
+more than the removed Planar predictions on the current mode-probe set. If
+explicit chroma Planar is revisited, reuse already-computed residual or
+prediction statistics rather than adding a separate source-plane scan.
+
 ## References
 
 - Cargo profile settings:
