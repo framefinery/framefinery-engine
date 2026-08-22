@@ -59,6 +59,7 @@ def project_metric_tradeoff(
     if score is None:
         return result or None
     result["tradeoff_score"] = score
+    result["tradeoff_hard_regression"] = has_hard_tradeoff_regression(result)
     result["tradeoff_status"] = classify_tradeoff_result(result)
     return result
 
@@ -95,11 +96,7 @@ def classify_tradeoff_result(result: dict[str, Any]) -> str:
     byte_ratio = result.get("baseline_byte_ratio")
     psnr_delta = result.get("delta_psnr_all_mean")
 
-    if finite_positive(fps_ratio) and fps_ratio < TRADEOFF_HARD_FPS_REGRESSION_RATIO:
-        return TRADEOFF_REGRESS_STATUS
-    if finite_positive(byte_ratio) and byte_ratio > TRADEOFF_HARD_BYTE_REGRESSION_RATIO:
-        return TRADEOFF_REGRESS_STATUS
-    if finite_number(psnr_delta) and float(psnr_delta) < -TRADEOFF_HARD_PSNR_LOSS_DB:
+    if has_hard_tradeoff_regression(result):
         return TRADEOFF_REGRESS_STATUS
 
     watched = False
@@ -116,6 +113,71 @@ def classify_tradeoff_result(result: dict[str, Any]) -> str:
     if finite_number(score) and float(score) >= 0.0:
         return TRADEOFF_WATCH_STATUS
     return TRADEOFF_REGRESS_STATUS
+
+
+def has_hard_tradeoff_regression(result: dict[str, Any]) -> bool:
+    """Return whether a row crossed a hard byte, quality, or speed guardrail."""
+    fps_ratio = result.get("baseline_fps_ratio")
+    byte_ratio = result.get("baseline_byte_ratio")
+    psnr_delta = result.get("delta_psnr_all_mean")
+
+    if finite_positive(fps_ratio) and fps_ratio < TRADEOFF_HARD_FPS_REGRESSION_RATIO:
+        return True
+    if finite_positive(byte_ratio) and byte_ratio > TRADEOFF_HARD_BYTE_REGRESSION_RATIO:
+        return True
+    if finite_number(psnr_delta) and float(psnr_delta) < -TRADEOFF_HARD_PSNR_LOSS_DB:
+        return True
+    return False
+
+
+def aggregate_tradeoff_summary(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Summarize comparable rows into one probe-level tradeoff decision.
+
+    The aggregate decision is intentionally stricter than an average score:
+    hard byte/quality/speed regressions fail the probe even if another row is
+    much faster. Pure timing noise can still be reported as `watch` when the
+    average score is non-negative but row-level classifications are mixed.
+    """
+    scored = [row for row in rows if finite_number(row.get("tradeoff_score"))]
+    if not scored:
+        return None
+
+    score_sum = sum(float(row["tradeoff_score"]) for row in scored)
+    hard_regressions = sum(
+        1
+        for row in scored
+        if bool(row.get("tradeoff_hard_regression"))
+        or has_hard_tradeoff_regression(row)
+    )
+    status_counts = {
+        TRADEOFF_ACCEPT_STATUS: 0,
+        TRADEOFF_WATCH_STATUS: 0,
+        TRADEOFF_REGRESS_STATUS: 0,
+    }
+    for row in scored:
+        status = row.get("tradeoff_status")
+        if status in status_counts:
+            status_counts[status] += 1
+
+    average_score = score_sum / len(scored)
+    if hard_regressions:
+        status = TRADEOFF_REGRESS_STATUS
+    elif average_score >= TRADEOFF_ACCEPT_SCORE and not status_counts[TRADEOFF_REGRESS_STATUS]:
+        status = TRADEOFF_ACCEPT_STATUS
+    elif average_score >= 0.0:
+        status = TRADEOFF_WATCH_STATUS
+    else:
+        status = TRADEOFF_REGRESS_STATUS
+
+    return {
+        "rows": len(scored),
+        "average_score": average_score,
+        "accept": status_counts[TRADEOFF_ACCEPT_STATUS],
+        "watch": status_counts[TRADEOFF_WATCH_STATUS],
+        "regress": status_counts[TRADEOFF_REGRESS_STATUS],
+        "hard_regressions": hard_regressions,
+        "tradeoff_status": status,
+    }
 
 
 def finite_positive(value: Any) -> bool:

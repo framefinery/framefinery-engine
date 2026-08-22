@@ -233,6 +233,7 @@ def clear_derived_metrics(row: dict[str, Any]) -> None:
 
 
 def write_report_files(report: dict[str, Any], out_dir: Path, skipped: int) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / f"{report['run_name']}.json"
     md_path = out_dir / f"{report['run_name']}.md"
     json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
@@ -801,35 +802,24 @@ def tradeoff_scale_rows(results: list[dict[str, Any]]) -> list[str]:
         f"{TRADEOFF_FPS_LOG2_WEIGHT:g}*log2(FPS ratio) + "
         f"{TRADEOFF_BYTES_LOG2_WEIGHT:g}*log2(baseline bytes / current bytes) + "
         f"{TRADEOFF_PSNR_DB_WEIGHT:g}*PSNR dB delta.",
-        "Status is `accept` for clear aggregate wins, `watch` for useful wins with local bitrate/PSNR concerns, and `regress` for changes that need more work.",
+        "Status is `accept` for clear aggregate wins, `watch` for useful wins with local bitrate/PSNR concerns or timing noise, and `regress` for changes that need more work.",
         "",
-        "| Codec | Mode | Rows | Average score | Accept | Watch | Regress |",
-        "|---|---|---:|---:|---:|---:|---:|",
+        "| Codec | Mode | Rows | Average score | Status | Accept | Watch | Regress | Hard regressions |",
+        "|---|---|---:|---:|---|---:|---:|---:|---:|",
     ]
-    totals: dict[tuple[str, str], dict[str, float]] = {}
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in scored:
         key = (row["codec"], row["mode"])
-        total = totals.setdefault(
-            key,
-            {
-                "rows": 0.0,
-                "score": 0.0,
-                "accept": 0.0,
-                "watch": 0.0,
-                "regress": 0.0,
-            },
-        )
-        total["rows"] += 1.0
-        total["score"] += row["tradeoff_score"]
-        status = row.get("tradeoff_status")
-        if status in {"accept", "watch", "regress"}:
-            total[status] += 1.0
-    for (codec, mode), total in sorted(totals.items()):
-        rows = int(total["rows"])
-        average = total["score"] / total["rows"] if total["rows"] else 0.0
+        groups.setdefault(key, []).append(row)
+    for (codec, mode), rows_for_group in sorted(groups.items()):
+        summary = encode_tradeoff.aggregate_tradeoff_summary(rows_for_group)
+        if summary is None:
+            continue
         lines.append(
-            f"| {codec} | {mode} | {rows} | {average:+.1f} | "
-            f"{int(total['accept'])} | {int(total['watch'])} | {int(total['regress'])} |"
+            f"| {codec} | {mode} | {summary['rows']} | "
+            f"{summary['average_score']:+.1f} | {summary['tradeoff_status']} | "
+            f"{summary['accept']} | {summary['watch']} | {summary['regress']} | "
+            f"{summary['hard_regressions']} |"
         )
     return lines
 

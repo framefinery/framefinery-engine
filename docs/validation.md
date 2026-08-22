@@ -184,6 +184,11 @@ Use that score only after correctness gates pass. It is a probe triage rule,
 not a codec-quality metric: `accept` means the speed/rate/quality tradeoff is a
 clear local win, `watch` means useful but risky or noisy, and `regress` means
 the change should be fixed, narrowed, or reverted before it is committed.
+The report also aggregates scored rows by codec/mode. Any hard row regression
+currently fails the aggregate result: FPS below 0.90x, bytes above 1.20x, or
+PSNR below -1.0 dB versus the comparable baseline. Without a hard regression,
+an average score of at least 2.0 is an aggregate `accept`; a non-negative
+average is `watch`; and a negative average is `regress`.
 
 `scripts/generate_predictive_sweep.py` creates that local ignored manifest and
 384 local Y4M crops: six AOM CTC B2 screen-content variants, 64 geometries from

@@ -38,6 +38,7 @@ class EncodeTradeoffTests(unittest.TestCase):
         self.assertIsNotNone(result)
         assert result is not None
         self.assertEqual(result["tradeoff_status"], "regress")
+        self.assertTrue(result["tradeoff_hard_regression"])
 
     def test_large_psnr_loss_hard_fails_even_with_speedup(self) -> None:
         result = encode_tradeoff.project_metric_tradeoff(
@@ -52,6 +53,7 @@ class EncodeTradeoffTests(unittest.TestCase):
         self.assertIsNotNone(result)
         assert result is not None
         self.assertEqual(result["tradeoff_status"], "regress")
+        self.assertTrue(result["tradeoff_hard_regression"])
 
     def test_minor_quality_or_byte_concern_downgrades_to_watch(self) -> None:
         result = encode_tradeoff.project_metric_tradeoff(
@@ -66,6 +68,7 @@ class EncodeTradeoffTests(unittest.TestCase):
         self.assertIsNotNone(result)
         assert result is not None
         self.assertEqual(result["tradeoff_status"], "watch")
+        self.assertFalse(result["tradeoff_hard_regression"])
 
     def test_missing_metrics_do_not_create_score(self) -> None:
         result = encode_tradeoff.project_metric_tradeoff(
@@ -78,6 +81,64 @@ class EncodeTradeoffTests(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+
+    def test_aggregate_accepts_clear_clean_probe_win(self) -> None:
+        rows = [
+            encode_tradeoff.project_metric_tradeoff(
+                baseline_bytes=1000,
+                current_bytes=1000,
+                baseline_psnr=50.0,
+                current_psnr=50.0,
+                baseline_fps=10.0,
+                current_fps=12.0,
+            ),
+            encode_tradeoff.project_metric_tradeoff(
+                baseline_bytes=2000,
+                current_bytes=1900,
+                baseline_psnr=49.0,
+                current_psnr=49.1,
+                baseline_fps=8.0,
+                current_fps=10.0,
+            ),
+        ]
+
+        summary = encode_tradeoff.aggregate_tradeoff_summary(
+            [row for row in rows if row is not None]
+        )
+
+        self.assertIsNotNone(summary)
+        assert summary is not None
+        self.assertEqual(summary["tradeoff_status"], "accept")
+        self.assertEqual(summary["hard_regressions"], 0)
+
+    def test_aggregate_hard_regression_fails_even_with_positive_average(self) -> None:
+        rows = [
+            encode_tradeoff.project_metric_tradeoff(
+                baseline_bytes=1000,
+                current_bytes=1000,
+                baseline_psnr=50.0,
+                current_psnr=50.0,
+                baseline_fps=10.0,
+                current_fps=40.0,
+            ),
+            encode_tradeoff.project_metric_tradeoff(
+                baseline_bytes=1000,
+                current_bytes=1300,
+                baseline_psnr=50.0,
+                current_psnr=50.4,
+                baseline_fps=10.0,
+                current_fps=20.0,
+            ),
+        ]
+
+        summary = encode_tradeoff.aggregate_tradeoff_summary(
+            [row for row in rows if row is not None]
+        )
+
+        self.assertIsNotNone(summary)
+        assert summary is not None
+        self.assertEqual(summary["tradeoff_status"], "regress")
+        self.assertEqual(summary["hard_regressions"], 1)
 
 
 if __name__ == "__main__":

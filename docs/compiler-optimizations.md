@@ -6499,6 +6499,13 @@ negative or the same row regresses repeatedly. For exact-neutral source edits,
 keep the change only when it improves the current hotspot on a representative
 matrix; otherwise revert and document it.
 
+The aggregate scorer is centralized in `scripts/encode_tradeoff.py`. It marks
+hard row regressions separately from noisy row classifications: FPS below 0.90x,
+bytes above 1.20x, or PSNR below -1.0 dB fail the aggregate result even if
+another row is much faster. Without a hard regression, average score >= 2.0 is
+an aggregate `accept`, average score >= 0 is `watch`, and a negative average is
+`regress`.
+
 Rejected probe: lossy luma spatial-consensus seed gate.
 
 A narrow deterministic mode-pruning probe changed `lossy +
