@@ -655,7 +655,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         .all(|ctu| matches!(ctu.payload, VvcQuantizedCtuPayload::InterSkip));
                 #[cfg(feature = "vvc-stats")]
                 if predictive_frame_skip {
-                    frame_stats.add_counter("predictive_ctu_slice_frame_count", 1);
+                    frame_stats.add_counter("predictive_frame_skip_count", 1);
                 }
                 let frame_slice_units = if predictive_enabled && !predictive_frame {
                     vec![vvc_predictive_frame_slice_unit(
