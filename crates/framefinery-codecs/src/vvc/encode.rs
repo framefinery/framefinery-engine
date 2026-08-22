@@ -309,18 +309,19 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         payload: VvcQuantizedCtuPayload::InterSkip,
                     })
                     .collect();
-                let frame_slice_units = vvc_predictive_ctu_slice_units(
-                        frame_idx,
-                        geometry,
+                let frame_slice_units = vec![vvc_predictive_frame_slice_unit(
+                    frame_idx,
+                    geometry,
                     &frame_ctus,
-                    slice_config,
-                )?;
+                    predictive_single_slice_config
+                        .expect("predictive single-slice config is available in predictive mode"),
+                )?];
                 #[cfg(feature = "vvc-stats")]
                 {
                     frame_stats.add_counter("predictive_reused_ctu_count", ctu_count as u64);
                     frame_stats.add_counter("predictive_exact_ctu_count", ctu_count as u64);
                     frame_stats.add_counter("predictive_inter_skip_ctu_count", ctu_count as u64);
-                    frame_stats.add_counter("predictive_ctu_slice_frame_count", 1);
+                    frame_stats.add_counter("predictive_frame_skip_count", 1);
                     frame_stats.add_counter("slice_count", frame_slice_units.len() as u64);
                     frame_stats.add_counter(
                         "frame_entropy_build_nanos",
@@ -665,11 +666,14 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             .expect("predictive single-slice config is available in predictive mode"),
                     )?]
                 } else if predictive_frame_skip {
-                    // Keep all-skip pictures on the CTU-sliced path until the
-                    // specialized cached single-slice skip payload is proven
-                    // against VTM. VTM rejects that multi-CTU payload today at
-                    // CABAC stream termination, while per-CTU slices validate.
-                    vvc_predictive_ctu_slice_units(frame_idx, geometry, &frame_ctus, slice_config)?
+                    vec![vvc_predictive_frame_slice_unit(
+                        frame_idx,
+                        geometry,
+                        &frame_ctus,
+                        predictive_single_slice_config.expect(
+                            "predictive single-slice config is available in predictive mode",
+                        ),
+                    )?]
                 } else if predictive_ctu_slice_frame {
                     vvc_predictive_ctu_slice_units(frame_idx, geometry, &frame_ctus, slice_config)?
                 } else if predictive_enabled {

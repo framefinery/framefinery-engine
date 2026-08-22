@@ -3105,7 +3105,7 @@ fn vvc_predictive_repeated_frame_matches_nonpredictive_output() {
 }
 
 #[test]
-fn vvc_predictive_full_repeated_frame_uses_ctu_sliced_trailing_picture() {
+fn vvc_predictive_full_repeated_frame_uses_single_skip_slice() {
     let geometry = VvcVideoGeometry {
         width: 128,
         height: 64,
@@ -3159,16 +3159,16 @@ fn vvc_predictive_full_repeated_frame_uses_ctu_sliced_trailing_picture() {
             .iter()
             .filter(|info| info.nal_unit_type == VvcNalUnitType::PictureHeader as u8)
             .count(),
-        1,
-        "the repeated predictive frame should carry one picture header for CTU-sliced output"
+        0,
+        "the repeated predictive frame should carry slice state directly in the single trailing slice"
     );
     assert_eq!(
         predictive_nals
             .iter()
             .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
             .count(),
-        2,
-        "the repeated predictive frame should be encoded as one trailing slice per CTU"
+        1,
+        "the repeated predictive frame should be encoded as one trailing P slice"
     );
 }
 

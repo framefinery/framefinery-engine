@@ -40,6 +40,40 @@ fn encode_inter_skip_ctu_body_with_contexts(
     ctu_geometry: VvcVideoGeometry,
     slice_config: VvcSliceSyntaxConfig,
 ) {
+    let mut split_neighbours = VvcLumaNeighbourState::new(
+        ctu_geometry.coded_width() as u16,
+        ctu_geometry.coded_height() as u16,
+    );
+    let mut skip_neighbours = VvcInterSkipNeighbourState::new(
+        ctu_geometry.coded_width() as u16,
+        ctu_geometry.coded_height() as u16,
+    );
+    encode_inter_skip_ctu_body_with_frame_contexts(
+        cabac,
+        contexts,
+        ctu_geometry,
+        slice_config,
+        &mut split_neighbours,
+        &mut skip_neighbours,
+        0,
+        0,
+        ctu_geometry.coded_width() as u16,
+        ctu_geometry.coded_height() as u16,
+    );
+}
+
+fn encode_inter_skip_ctu_body_with_frame_contexts(
+    cabac: &mut VvcCabacEncoder,
+    contexts: &mut VvcCabacContexts,
+    ctu_geometry: VvcVideoGeometry,
+    slice_config: VvcSliceSyntaxConfig,
+    split_neighbours: &mut VvcLumaNeighbourState,
+    skip_neighbours: &mut VvcInterSkipNeighbourState,
+    origin_x: u16,
+    origin_y: u16,
+    picture_width: u16,
+    picture_height: u16,
+) {
     let shape = VvcCtuPartitionShape {
         root_width: VVC_CTU_SIZE as u16,
         root_height: VVC_CTU_SIZE as u16,
@@ -48,19 +82,15 @@ fn encode_inter_skip_ctu_body_with_contexts(
         chroma_sampling: slice_config.coding_tree.chroma_sampling,
         dual_tree_intra: false,
     };
-    let mut split_neighbours =
-        VvcLumaNeighbourState::new(shape.visible_width, shape.visible_height);
-    let mut skip_neighbours =
-        VvcInterSkipNeighbourState::new(shape.visible_width, shape.visible_height);
     VvcCtuCabacOp::visit_inter_skip_ctu_partition_with_luma_neighbours(
-        &mut split_neighbours,
+        split_neighbours,
         shape,
-        0,
-        0,
-        shape.visible_width,
-        shape.visible_height,
+        origin_x,
+        origin_y,
+        picture_width,
+        picture_height,
         VVC_CTU_SIZE as u16,
-        |op| emit_inter_skip_ctu_op(cabac, contexts, op, &mut skip_neighbours),
+        |op| emit_inter_skip_ctu_op(cabac, contexts, op, skip_neighbours),
     );
 }
 
@@ -443,30 +473,23 @@ impl VvcFrameCtuCabacState {
         ctu_geometry: VvcVideoGeometry,
         slice_config: VvcSliceSyntaxConfig,
     ) {
-        encode_inter_skip_ctu_body_with_contexts(
+        let ctu_x = slice_address % self.ctu_cols;
+        let ctu_y = slice_address / self.ctu_cols;
+        encode_inter_skip_ctu_body_with_frame_contexts(
             cabac,
             &mut self.contexts,
             ctu_geometry,
             slice_config,
+            &mut self.luma_neighbours,
+            &mut self.inter_skip_neighbours,
+            (ctu_x * VVC_CTU_SIZE) as u16,
+            (ctu_y * VVC_CTU_SIZE) as u16,
+            self.picture_width,
+            self.picture_height,
         );
         if slice_address < self.skip_neighbours.len() {
             self.skip_neighbours[slice_address] = true;
         }
-        let ctu_x = slice_address % self.ctu_cols;
-        let ctu_y = slice_address / self.ctu_cols;
-        self.inter_skip_neighbours.mark_leaf(VvcCodingTreeNode {
-            x: (ctu_x * VVC_CTU_SIZE) as u16,
-            y: (ctu_y * VVC_CTU_SIZE) as u16,
-            width: ctu_geometry.coded_width() as u16,
-            height: ctu_geometry.coded_height() as u16,
-            cqt_depth: 0,
-            mtt_depth: 0,
-            depth_offset: 0,
-            part_idx: 0,
-            parent_split: VvcPartSplit::None,
-            tree_type: VvcTreeType::DualTreeLuma,
-            split_history: [VvcPartSplit::None; 2],
-        });
     }
 
     fn skip_ctx(&self, slice_address: usize) -> u8 {
