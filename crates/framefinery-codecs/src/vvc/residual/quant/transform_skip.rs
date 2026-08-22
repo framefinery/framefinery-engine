@@ -434,11 +434,9 @@ fn transform_skip_luma_ac_levels_and_flag_with_table(
                 continue;
             }
             let raster_idx = y * width + x;
-            if raster_idx < residuals.len() {
-                let level = quant_table.level(residuals[raster_idx]);
-                levels[y * active_width + x - 1] = level;
-                has_ac |= level != 0;
-            }
+            let level = quant_table.level(residuals[raster_idx]);
+            levels[y * active_width + x - 1] = level;
+            has_ac |= level != 0;
         }
     }
     (levels, has_ac)
@@ -511,10 +509,20 @@ fn transform_skip_chroma_ac_levels_and_flag_with_table(
 ) -> ([i16; VVC_CHROMA_AC_COEFFS_PER_TU], bool) {
     let mut levels = [0; VVC_CHROMA_AC_COEFFS_PER_TU];
     let mut has_ac = false;
+    let height = residuals.len() / width;
+    if width >= 4 && height >= 4 {
+        for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
+            let level = quant_table.level(residuals[y * width + x]);
+            levels[slot] = level;
+            has_ac |= level != 0;
+        }
+        return (levels, has_ac);
+    }
+    let active_width = width.min(4);
+    let active_height = height.min(4);
     for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
-        let raster_idx = y * width + x;
-        if raster_idx < residuals.len() {
-            let level = quant_table.level(residuals[raster_idx]);
+        if x < active_width && y < active_height {
+            let level = quant_table.level(residuals[y * width + x]);
             levels[slot] = level;
             has_ac |= level != 0;
         }

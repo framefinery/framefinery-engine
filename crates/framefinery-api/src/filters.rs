@@ -127,7 +127,13 @@ impl FilterManifest {
 }
 
 /// Canonical pattern source names accepted by the `pattern` source filter.
-pub const PATTERN_SOURCE_NAMES: &[&str] = &["black", "checker", "gradient", "color_blocks"];
+pub const PATTERN_SOURCE_NAMES: &[&str] = &[
+    "black",
+    "checker",
+    "gradient",
+    "color_blocks",
+    "bitdepth_canary",
+];
 
 const PATTERN_SPEC_FORMS: &[FilterSpecForm] = &[
     FilterSpecForm {
@@ -1474,6 +1480,8 @@ pub enum PatternKind {
     Gradient,
     /// Moving colored block frames.
     ColorBlocks,
+    /// High-bit-depth canary frames with nonzero lower bits.
+    BitdepthCanary,
 }
 
 #[cfg(feature = "filter-pattern")]
@@ -1493,6 +1501,7 @@ impl PatternKind {
             Self::Checker => "checker",
             Self::Gradient => "gradient",
             Self::ColorBlocks => "color_blocks",
+            Self::BitdepthCanary => "bitdepth_canary",
         }
     }
 }
@@ -1507,6 +1516,7 @@ impl FromStr for PatternKind {
             "checker" => Ok(Self::Checker),
             "gradient" => Ok(Self::Gradient),
             "color_blocks" | "blocks" => Ok(Self::ColorBlocks),
+            "bitdepth_canary" => Ok(Self::BitdepthCanary),
             other => Err(MediaError::Message(format!(
                 "unknown pattern source '{other}'; accepted patterns: {}",
                 PatternKind::CANONICAL_NAMES.join(", ")
@@ -1529,7 +1539,7 @@ pub struct PatternSource {
 impl PatternSource {
     /// Create a finite pattern source.
     pub fn new(info: FrameInfo, pattern: PatternKind, frames: usize) -> Result<Self> {
-        validate_pattern_format(info.format)?;
+        validate_pattern_kind_format(info.format, pattern)?;
         Ok(Self {
             info,
             pattern,
@@ -1609,7 +1619,7 @@ pub fn generate_pattern_stream(
 #[cfg(feature = "filter-pattern")]
 /// Generate one deterministic raw frame for a pattern.
 pub fn pattern_frame_data(info: FrameInfo, pattern: PatternKind, frame: usize) -> Result<Vec<u8>> {
-    validate_pattern_format(info.format)?;
+    validate_pattern_kind_format(info.format, pattern)?;
     let mut output = vec![0; info.expected_len()];
     fill_pattern_frame(info, pattern, frame, &mut output)?;
     Ok(output)
@@ -1622,6 +1632,27 @@ fn validate_pattern_format(format: PixelFormat) -> Result<()> {
         | PixelFormat::Gray { .. }
         | PixelFormat::Gbrp8
         | PixelFormat::Rgb24 => Ok(()),
+    }
+}
+
+#[cfg(feature = "filter-pattern")]
+fn validate_pattern_kind_format(format: PixelFormat, pattern: PatternKind) -> Result<()> {
+    validate_pattern_format(format)?;
+    if pattern == PatternKind::BitdepthCanary {
+        validate_bitdepth_canary_format(format)?;
+    }
+    Ok(())
+}
+
+#[cfg(feature = "filter-pattern")]
+fn validate_bitdepth_canary_format(format: PixelFormat) -> Result<()> {
+    match format {
+        PixelFormat::Gray { bit_depth } | PixelFormat::PlanarYuv { bit_depth, .. } => {
+            validate_bitdepth_canary_depth(bit_depth)
+        }
+        PixelFormat::Gbrp8 | PixelFormat::Rgb24 => Err(MediaError::Message(
+            "bitdepth_canary is only supported for high-bit-depth planar formats".to_string(),
+        )),
     }
 }
 
@@ -1639,7 +1670,10 @@ fn fill_pattern_frame(
             actual: output.len(),
         });
     }
-    validate_pattern_format(info.format)?;
+    validate_pattern_kind_format(info.format, pattern)?;
+    if pattern == PatternKind::BitdepthCanary {
+        return fill_bitdepth_canary_frame(info, frame, output);
+    }
     match info.format {
         PixelFormat::Rgb24 => fill_pattern_rgb24(info.width, info.height, pattern, frame, output),
         PixelFormat::Gbrp8 => fill_pattern_gbrp8(info.width, info.height, pattern, frame, output),
@@ -1771,6 +1805,120 @@ fn fill_pattern_planar_yuv(
 }
 
 #[cfg(feature = "filter-pattern")]
+fn fill_bitdepth_canary_frame(info: FrameInfo, frame: usize, output: &mut [u8]) -> Result<()> {
+    match info.format {
+        PixelFormat::Gray { bit_depth } => {
+            fill_bitdepth_canary_plane(info.width, info.height, bit_depth, frame, 0, output);
+        }
+        PixelFormat::PlanarYuv {
+            chroma_sampling,
+            bit_depth,
+        } => {
+            fill_bitdepth_canary_planar_yuv(
+                info.width,
+                info.height,
+                chroma_sampling,
+                bit_depth,
+                frame,
+                output,
+            );
+        }
+        PixelFormat::Gbrp8 | PixelFormat::Rgb24 => {
+            unreachable!("bitdepth_canary format validation rejects RGB-family formats");
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "filter-pattern")]
+fn validate_bitdepth_canary_depth(bit_depth: SampleBitDepth) -> Result<()> {
+    if bit_depth.bits() <= 8 {
+        return Err(MediaError::Message(
+            "bitdepth_canary is intended for high-bit-depth generated vectors".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "filter-pattern")]
+fn fill_bitdepth_canary_planar_yuv(
+    width: usize,
+    height: usize,
+    chroma_sampling: ChromaSampling,
+    bit_depth: SampleBitDepth,
+    frame: usize,
+    output: &mut [u8],
+) {
+    let bytes_per_sample = bit_depth.bytes_per_sample();
+    let luma_len = width * height * bytes_per_sample;
+    fill_bitdepth_canary_plane(width, height, bit_depth, frame, 0, &mut output[..luma_len]);
+
+    if chroma_sampling == ChromaSampling::Monochrome {
+        return;
+    }
+
+    let subsample_x = chroma_sampling.subsample_x();
+    let subsample_y = chroma_sampling.subsample_y();
+    let chroma_width = width / subsample_x;
+    let chroma_height = height / subsample_y;
+    let chroma_len = chroma_width * chroma_height * bytes_per_sample;
+    let (u_plane, v_plane) = output[luma_len..luma_len + chroma_len * 2].split_at_mut(chroma_len);
+    fill_bitdepth_canary_plane(chroma_width, chroma_height, bit_depth, frame, 1, u_plane);
+    fill_bitdepth_canary_plane(chroma_width, chroma_height, bit_depth, frame, 2, v_plane);
+}
+
+#[cfg(feature = "filter-pattern")]
+fn fill_bitdepth_canary_plane(
+    width: usize,
+    height: usize,
+    bit_depth: SampleBitDepth,
+    frame: usize,
+    plane: usize,
+    output: &mut [u8],
+) {
+    for y in 0..height {
+        for x in 0..width {
+            write_planar_sample(
+                output,
+                y * width + x,
+                bitdepth_canary_sample(x, y, frame, plane, bit_depth),
+                bit_depth,
+            )
+            .expect("validated pattern output must contain every sample");
+        }
+    }
+}
+
+#[cfg(feature = "filter-pattern")]
+fn bitdepth_canary_sample(
+    x: usize,
+    y: usize,
+    frame: usize,
+    plane: usize,
+    bit_depth: SampleBitDepth,
+) -> u16 {
+    let shift = u32::from(bit_depth.bits() - 8);
+    let block_index = ((x / 8) + (y / 8) * 2 + frame) % 4;
+    let base = match plane {
+        0 => [32u16, 96, 160, 224][block_index],
+        1 => [80u16, 144, 208, 48][block_index],
+        2 => [112u16, 176, 64, 240][block_index],
+        _ => 0,
+    };
+    (base << shift) | bitdepth_canary_lower(x, y, frame, plane, shift)
+}
+
+#[cfg(feature = "filter-pattern")]
+fn bitdepth_canary_lower(x: usize, y: usize, frame: usize, plane: usize, shift: u32) -> u16 {
+    let low_mask = (1u16 << shift) - 1;
+    let mut lower = ((x & 3) | ((y & 3) << 2) | ((plane & 3) << 1) | frame) as u16 & low_mask;
+    if lower == 0 {
+        lower = low_mask;
+    }
+    lower
+}
+
+#[cfg(feature = "filter-pattern")]
 fn write_pattern_sample(
     output: &mut [u8],
     sample_index: usize,
@@ -1811,6 +1959,7 @@ fn pattern_sample(pattern: PatternKind, x: usize, y: usize, frame: usize) -> (u8
             ];
             PALETTE[((x / 8) + (y / 8) * 2 + frame) % PALETTE.len()]
         }
+        PatternKind::BitdepthCanary => unreachable!("bitdepth_canary uses native-depth samples"),
     }
 }
 
@@ -1884,7 +2033,13 @@ mod tests {
         );
         assert_eq!(
             PatternKind::CANONICAL_NAMES,
-            ["black", "checker", "gradient", "color_blocks"]
+            [
+                "black",
+                "checker",
+                "gradient",
+                "color_blocks",
+                "bitdepth_canary"
+            ]
         );
     }
 
@@ -1997,5 +2152,34 @@ mod tests {
         assert_eq!(frame.len(), info.expected_len());
         let first = crate::read_planar_sample(&frame, 1, info.format.bit_depth()).unwrap();
         assert!(first > 0);
+    }
+
+    #[cfg(feature = "filter-pattern")]
+    #[test]
+    fn pattern_source_generates_bitdepth_canary_yuv444p10_frame() {
+        let info = FrameInfo::new(8, 8, PixelFormat::yuv444(10).unwrap()).unwrap();
+        let frame = pattern_frame_data(info, PatternKind::BitdepthCanary, 0).unwrap();
+
+        assert_eq!(frame.len(), info.expected_len());
+        assert_eq!(
+            crate::read_planar_sample(&frame, 0, info.format.bit_depth()).unwrap(),
+            131
+        );
+        assert_eq!(
+            crate::read_planar_sample(&frame, 64, info.format.bit_depth()).unwrap(),
+            322
+        );
+        assert_eq!(
+            crate::read_planar_sample(&frame, 128, info.format.bit_depth()).unwrap(),
+            451
+        );
+    }
+
+    #[cfg(feature = "filter-pattern")]
+    #[test]
+    fn pattern_source_rejects_bitdepth_canary_for_8_bit_formats() {
+        let info = FrameInfo::new(8, 8, PixelFormat::Yuv444p8).unwrap();
+        let err = PatternSource::new(info, PatternKind::BitdepthCanary, 1).unwrap_err();
+        assert!(err.to_string().contains("high-bit-depth"), "{err}");
     }
 }

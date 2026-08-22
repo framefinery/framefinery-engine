@@ -7148,6 +7148,103 @@ more than the removed Planar predictions on the current mode-probe set. If
 explicit chroma Planar is revisited, reuse already-computed residual or
 prediction statistics rather than adding a separate source-plane scan.
 
+### VVC transform-skip AC extraction fast path
+
+Checkpoint: `vvc-transform-skip-ac-fastpath`.
+
+The current VVC hotspot profile still spends substantial time in
+transform-skip candidate generation. This cleanup keeps the same unified
+residual path but removes redundant bounds checks from luma transform-skip AC
+extraction: the active luma extent already guarantees in-bounds accesses. For
+chroma, normal `>= 4x4` blocks now use a direct AC-position fast path, while
+smaller edge/fallback blocks use explicit active-width/height checks instead of
+the older raster-index-only guard.
+
+The 50-frame local VVC mode probe at q19 was byte- and PSNR-identical and
+showed positive FPS movement on all rows:
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.000 | +0.46 | `+0.6 watch` |
+| probe_blocks_420 | +0 | +0.000 | +0.56 | `+0.6 watch` |
+| probe_checker_444 | +0 | +0.000 | +0.26 | `+0.4 watch` |
+| probe_blocks_444 | +0 | +0.000 | +0.21 | `+0.4 watch` |
+
+Aggregate score: `+0.5 watch`, with 4 watch rows and no regressions or hard
+regressions. This is an implementation cleanup rather than a mode-decision
+change, so byte-identical output and positive all-row FPS were enough to keep
+it.
+
+Validation:
+
+```sh
+cargo test -p framefinery-api pattern --features filter-pattern
+cargo test -p framefinery-codecs vvc --features vvc
+cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+make validate-set CODEC=vvc VALIDATION_SET=smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_SETTINGS='qp=19 gop=-1 fast-search=lossless-speed' \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1
+make validate-set CODEC=vvc VALIDATION_SET=unusual-geometry-smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_SETTINGS='qp=19 gop=-1 fast-search=lossless-speed' \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1
+make validate-set CODEC=vvc VALIDATION_SET=multictu-regression \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_SETTINGS='qp=19 gop=-1 fast-search=lossless-speed' \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1
+make validate-set CODEC=vvc VALIDATION_SET=high-depth-smoke \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_SOURCE_FILTERS=1 \
+  VALIDATION_SETTINGS='fast-search=lossless-speed' \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1
+```
+
+`multictu-regression` now passes all 4 rows, including the 257x129 10-bit
+`bitdepth_canary` source-filter row. `high-depth-smoke` passes all 6 lossless
+canary rows with source and VTM-required reconstruction matches. The
+source-filter API and benchmark runner both accept `bitdepth_canary` so these
+manifests no longer need materialized raw files.
+
+Benchmark artifact:
+
+```text
+verification/generated/encode_matrix/vvc-transform-skip-ac-fastpath-q19-50f.md
+```
+
+### Rejected VVC local implementation-cleanup probes
+
+Checkpoint: `vvc-local-cleanup-probes-2026-08-22`.
+
+The current hotspot pass rechecked small exact-neutral implementation cleanups
+before changing mode decisions. None was kept:
+
+- Chroma zero-coded RD early-out, including a wider `<= 4 SSE/sample` variant.
+  Output stayed byte/PSNR-identical on `local-vvc-mode-probe-50f`, but the FPS
+  signal stayed in timing-noise territory: average score `+0.2`, with one
+  `probe_blocks_444` row still negative.
+- Allocation-free luma/chroma RD-cache placeholders. The local four-row probe
+  was positive (`+0.4` average), but this exact source-neutral cleanup had
+  already been rejected on the broader six-vector matrix. Do not reapply it
+  without allocator-profile evidence that the cache placeholder is now a real
+  bottleneck.
+- Always running direct chroma AC quantization instead of first checking whether
+  residuals have AC energy. Output was identical, but it regressed 3/4 local
+  rows because the full-block AC-energy scan is cheaper than running the
+  chroma transform on flat residuals.
+- Resizing residual vectors and filling by index instead of clearing and
+  pushing residual samples. Output was identical, but the local matrix was
+  mixed/slower overall.
+
+Benchmark artifacts:
+
+```text
+verification/generated/encode_matrix/vvc-chroma-zero-rd-probe-q19-50f.md
+verification/generated/encode_matrix/vvc-chroma-zero-rd-threshold4-probe-q19-50f.md
+verification/generated/encode_matrix/vvc-rd-cache-empty-placeholder-q19-50f.md
+verification/generated/encode_matrix/vvc-chroma-ac-direct-quant-q19-50f.md
+verification/generated/encode_matrix/vvc-residual-fill-resize-q19-50f.md
+```
+
 ## References
 
 - Cargo profile settings:

@@ -27,7 +27,9 @@ DEFAULT_SET = "local-aomctc-b2-scc-1080p-lossless-50f"
 DEFAULT_VECTOR_DIR = REPO_ROOT / "verification" / "generated" / "test_vectors"
 DEFAULT_OUT_DIR = REPO_ROOT / "verification" / "generated" / "encode_matrix"
 PSNR_ALL_RE = re.compile(r"\bpsnr_all=(inf|[-+]?[0-9]*\.?[0-9]+)")
-CLI_SOURCE_FILTER_PATTERNS = frozenset(("black", "checker", "gradient", "color_blocks"))
+CLI_SOURCE_FILTER_PATTERNS = frozenset(
+    ("black", "checker", "gradient", "color_blocks", "bitdepth_canary")
+)
 TRADEOFF_FPS_LOG2_WEIGHT = encode_tradeoff.TRADEOFF_FPS_LOG2_WEIGHT
 TRADEOFF_BYTES_LOG2_WEIGHT = encode_tradeoff.TRADEOFF_BYTES_LOG2_WEIGHT
 TRADEOFF_PSNR_DB_WEIGHT = encode_tradeoff.TRADEOFF_PSNR_DB_WEIGHT
