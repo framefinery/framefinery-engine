@@ -7342,6 +7342,35 @@ seed skip; the current source-gradient scan is not the dominant cost under this
 benchmark, or the candidate-list/order change perturbs later work enough to
 lose the small scan saving.
 
+Rejected probe: lossy `lossless-speed` luma RD top-one shortlist.
+
+Stats after the transform-skip AC fast path showed that 4:2:0 rows still scored
+one cached luma RD candidate per TU, while 8-bit 4:4:4 already used a top-one
+shortlist. A probe reduced the non-4:4:4 lossy `lossless-speed` shortlist from
+two candidates to one, targeting the extra transform-skip/RD scoring work on
+4:2:0 while leaving 4:4:4 decisions unchanged.
+
+The output stayed byte/PSNR-identical, but the generated q19 matrix did not
+show a stable FPS win:
+
+```text
+verification/generated/encode_matrix/vvc-lossless-speed-luma-rd-top1-q19-50f.md
+probe_gradient_420: bytes +0, PSNR +0.000, FPS +0.42, score +0.5:watch
+probe_blocks_420:   bytes +0, PSNR +0.000, FPS +0.11, score +0.1:watch
+probe_checker_444:  bytes +0, PSNR +0.000, FPS -0.24, score -0.3:regress
+probe_blocks_444:   bytes +0, PSNR +0.000, FPS -0.25, score -0.5:regress
+
+verification/generated/encode_matrix/vvc-lossless-speed-luma-rd-top1-q19-50f-rerun.md
+probe_gradient_420: bytes +0, PSNR +0.000, FPS +0.35, score +0.5:watch
+probe_blocks_420:   bytes +0, PSNR +0.000, FPS -0.16, score -0.2:regress
+probe_checker_444:  bytes +0, PSNR +0.000, FPS -0.23, score -0.3:regress
+probe_blocks_444:   bytes +0, PSNR +0.000, FPS -0.29, score -0.6:regress
+```
+
+The source diff was reverted. Do not retry this exact shortlist reduction
+without a broader affected-row baseline or a stronger policy that produces a
+real byte/quality/speed improvement rather than timing noise.
+
 ## References
 
 - Cargo profile settings:
