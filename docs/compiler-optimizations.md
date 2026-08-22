@@ -4899,6 +4899,12 @@ Rejected probe:
   only from 1.05 to 1.08, while bytes increased from 759,800 to 962,958 and
   mean PSNR fell from 51.903 dB to 50.181 dB. BDPCM remains expensive, but a
   coarse alignment-only prune discards useful screen-content candidates.
+- A one-candidate RD-refinement cap for lossy `fast-search=lossless-speed`
+  4:2:0/4:2:2 was also not worth keeping. On the same 10-frame
+  `SceneComposition_1_420` probe it improved FPS only from 1.05 to 1.07, while
+  bytes increased from 759,800 to 760,549 and mean PSNR fell from 51.903 dB to
+  51.843 dB. The existing two-candidate cap remains the better speed/quality
+  point for 4:2:0/4:2:2.
 
 ## References
 
