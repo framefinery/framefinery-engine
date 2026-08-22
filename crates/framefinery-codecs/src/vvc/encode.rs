@@ -1141,7 +1141,7 @@ fn vvc_lossy_predictive_inter_skip_preselected(
     skip_distortion <= vvc_lossy_predictive_preskip_max_sse(region, format)
 }
 
-const VVC_LOSSY_PREDICTIVE_PRESKIP_AVG_SSE_8BIT: u64 = 4;
+const VVC_LOSSY_PREDICTIVE_PRESKIP_AVG_SSE_8BIT: u64 = 8;
 
 fn vvc_lossy_predictive_preskip_max_sse(
     region: VvcCtuRegion,

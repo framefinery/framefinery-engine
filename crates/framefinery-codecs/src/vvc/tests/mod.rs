@@ -3488,7 +3488,7 @@ fn vvc_lossy_predictive_preskip_uses_tight_average_sse_threshold() {
     };
     let threshold = vvc_lossy_predictive_preskip_max_sse(region, format);
 
-    assert_eq!(threshold, 24_576);
+    assert_eq!(threshold, 49_152);
     assert!(vvc_lossy_predictive_inter_skip_preselected(
         threshold, region, format,
     ));

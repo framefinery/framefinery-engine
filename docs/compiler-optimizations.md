@@ -5378,12 +5378,75 @@ TMPDIR=verification/generated/agent_scratch/tmp AOMCTC_ROOT=/path/to/aomctc \
 
 Follow-up:
 
-- Treat average-4 as the new baseline for any higher pre-skip threshold. The
-  next threshold must beat `vvc-preskip-avg4-q19-50f` on the full six-vector
-  scorer and still pass VTM.
+- Superseded by the average-8 checkpoint below. The `vvc-preskip-avg4-q19-50f`
+  matrix remains useful as the immediate comparison point for that change.
 - This remains a conservative pre-gate. Catching up further on FPS probably
   needs mixed P-slice intra+InterSkip legality work or a predictor that can
   skip more CTUs without depending only on reconstruction SSE.
+
+### VVC Lossy Average-8 CTU Pre-Skip
+
+Checkpoint: `vvc-preskip-avg8-q19-50f`.
+
+The lossy predictive pre-skip threshold was raised from average SSE <= 4 to
+average SSE <= 8 in 8-bit-equivalent squared units. For a full 8-bit 4:2:0 CTU,
+the pre-skip limit is now 49,152 total SSE across visible luma+chroma samples.
+
+50-frame VVC lossy matrix versus `vvc-preskip-avg4-q19-50f`:
+
+| Vector | Bytes delta | Bitstream change | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---|---:|---:|---|
+| SceneComposition_1_420 | +0 | no | +0.14 | +0.000 | `+0.9 watch` |
+| SceneComposition_1_422 | +0 | no | +0.14 | +0.000 | `+0.9 watch` |
+| screen_wayland_activity_rgb | +0 | no | +0.05 | +0.000 | `+0.5 watch` |
+| MissionControlClip1_420 | +0 | no | +0.14 | +0.000 | `+0.8 watch` |
+| MissionControlClip1_422 | +0 | no | +0.06 | +0.000 | `+0.5 watch` |
+| MissionControlClip1_444 | +0 | no | +0.06 | +0.000 | `+0.5 watch` |
+
+Aggregate after this checkpoint:
+
+| Metric | Avg4 | Avg8 |
+|---|---:|---:|
+| Bytes | 43,847,122 | 43,847,122 |
+| Mean row FPS | 2.16 | 2.26 |
+| Mean PSNR | 53.543 | 53.543 |
+
+All six 50-frame outputs were bitstream-identical to the average-4 baseline, so
+the change is a pure speed improvement on this matrix. The likely reason is
+that the raised gate preselects CTUs that the later full mode path was already
+choosing as InterSkip, avoiding extra analysis without changing the encoded
+syntax or reconstruction.
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo fmt
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_lossy_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp AOMCTC_ROOT=/path/to/aomctc \
+  make validate-set CODEC=vvc VALIDATION_SET=release-six-vectors-full \
+  VALIDATION_LIMIT=6 VALIDATION_FRAMES=3 VALIDATION_DIRECT_SOURCE_FILES=1 \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Follow-up:
+
+- Treat average-8 as the new conservative pre-skip baseline. Higher thresholds
+  must still clear the 50-frame scorer and VTM checks because they are more
+  likely to trade bytes or PSNR for FPS.
+- The remaining FPS gap to AV2 is too large for threshold tuning alone. The
+  next likely wins are better search ordering, mixed P-slice legality, and
+  early mode pruning based on cheap inter/intra predictors.
 
 ## References
 
