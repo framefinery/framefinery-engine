@@ -6247,6 +6247,38 @@ reliable speed win under the current single-threaded benchmark; future work
 should target the cost of BDPCM prediction/residual generation itself or move
 to structural slice/inter improvements.
 
+Rejected probe: fused chroma BDPCM prediction and residual build.
+
+The direct and regular chroma BDPCM candidate loops currently predict Cb/Cr and
+then build residual vectors in separate passes. A byte-equivalent helper was
+tested that fused BDPCM prediction and residual construction for each chroma
+plane while preserving the same reference availability and visible-edge clamp
+behavior. Focused unit coverage proved the fused helper matched the separate
+path for horizontal and vertical BDPCM on an edge-clamped 4:2:0 block, and VVC
+tests passed with and without `vvc-stats`.
+
+The scorer rejected the change. The focused Wayland row was byte/PSNR-identical
+but slightly slower:
+
+```text
+verification/generated/encode_matrix/vvc-chroma-bdpcm-fused-predict-residual-wayland-q19-50f.md
+screen_wayland_activity_rgb: bytes +0, PSNR +0.000, FPS 2.04 -> 2.03,
+score -0.1:regress
+```
+
+The comparable first-three six-vector run also rejected all rows:
+
+```text
+verification/generated/encode_matrix/vvc-chroma-bdpcm-fused-predict-residual-q19-50f-limit3.md
+SceneComposition_1_420: bytes +0, PSNR +0.000, FPS 5.77 -> 5.42, score -0.9:regress
+SceneComposition_1_422: bytes +0, PSNR +0.000, FPS 4.64 -> 4.40, score -0.8:regress
+screen_wayland_activity_rgb: bytes +0, PSNR +0.000, FPS 2.17 -> 1.98, score -1.3:regress
+```
+
+The source diff was reverted. Do not retry this exact fused helper shape; it
+likely makes the hot loop less optimizer-friendly or changes cache/control-flow
+behavior enough to erase the saved residual pass.
+
 Rejected probe: lossy mixed single P-slice packetization.
 
 The CTU-sliced predictive path was briefly changed so a lossy mixed frame with
