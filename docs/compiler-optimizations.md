@@ -6503,6 +6503,30 @@ source diff was reverted. The branch either does not trigger often enough or
 hurts the hot gradient path more than the avoided `atan2()` helps under the
 current release build.
 
+Rejected probe: CCLM prediction resize without clear.
+
+The CCLM predictor output buffer is fully overwritten after it is resized, so
+an exact-neutral probe removed the preceding `prediction.clear()` and let
+`Vec::resize()` keep the existing initialized contents when the block size was
+unchanged. This looked like a possible way to avoid zero-filling in a measured
+hot CCLM path, but the release scorer rejected it even though bytes and PSNR
+were identical:
+
+```text
+verification/generated/encode_matrix/vvc-cclm-resize-no-clear-q19-50f-limit3.md
+```
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| SceneComposition_1_420 | +0 | -0.40 | +0.00 | `-1.0 regress` |
+| SceneComposition_1_422 | +0 | -0.34 | +0.00 | `-1.1 regress` |
+| screen_wayland_activity_rgb | +0 | -0.19 | +0.00 | `-1.3 regress` |
+
+Average score was `-1.1`, with all three rows classified as regressions. The
+source diff was reverted. Do not remove `clear()` from CCLM prediction output
+without a lower-level profile proving a different buffer-management path is the
+actual bottleneck.
+
 Rejected probe: CCLM constant-parameter fill.
 
 The CCLM prediction helper was briefly changed to fill the output block
