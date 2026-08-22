@@ -6940,6 +6940,33 @@ make validate-set CODEC=vvc VALIDATION_SET=smoke \
   VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1
 ```
 
+### Rejected VVC transform-skip RD-zero quantization probe
+
+A follow-up probe tried a greedy RD-zero rule inside transform-skip coefficient
+quantization. The intent was to reduce BDPCM/transform-skip residual bits by
+zeroing a non-exact lossy coefficient when the predictor or zero level added
+only a small local SSE penalty. Exact transform-skip QPs were left unchanged so
+lossless paths would remain bit-exact.
+
+The focused unit tests passed, but the 50-frame generated mode-probe scorer
+rejected the change:
+
+```text
+verification/generated/encode_matrix/vvc-ts-rd-zero-q19-50f.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +857942 | -1.40 | -0.60 | `-13.3 regress` |
+| probe_blocks_420 | +0 | +0.000 | -0.44 | `-0.5 regress` |
+| probe_checker_444 | +0 | +0.000 | -0.15 | `-0.2 regress` |
+| probe_blocks_444 | +0 | +0.000 | +0.07 | `+0.1 watch` |
+
+Aggregate result: `-3.5 regress`, with one hard row regression. The source
+change was reverted. Do not retry coefficient-local zeroing in BDPCM without a
+block-level RD check: greedy predictor reuse can change later BDPCM predictors
+and made the gradient row both larger and lower quality.
+
 ## References
 
 - Cargo profile settings:
