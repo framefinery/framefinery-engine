@@ -4891,6 +4891,15 @@ TMPDIR=verification/generated/agent_scratch/tmp AOMCTC_ROOT=/path/to/aomctc \
   ENCODE_MATRIX_DIRECT_SOURCE_FILES=1
 ```
 
+Rejected probe:
+
+- A lossy `fast-search=lossless-speed` BDPCM gate that only tested
+  BDPCM-aligned luma modes/neighbours and derived/aligned chroma modes was not
+  worth keeping. On a 10-frame `SceneComposition_1_420` probe it improved FPS
+  only from 1.05 to 1.08, while bytes increased from 759,800 to 962,958 and
+  mean PSNR fell from 51.903 dB to 50.181 dB. BDPCM remains expensive, but a
+  coarse alignment-only prune discards useful screen-content candidates.
+
 ## References
 
 - Cargo profile settings:
