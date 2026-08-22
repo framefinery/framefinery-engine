@@ -277,6 +277,19 @@ VVC/VTM debugging notes:
   `sps_gpm_enabled_flag` only when the signalled max merge candidate count is
   at least 2, and picture-header RPL/QP fields only when the PPS says those
   fields are carried in the picture header.
+- VVC optimization history, external encoder/paper notes, and rejected probes
+  are tracked in `docs/compiler-optimizations.md`. Search there before trying a
+  new mode-search, CCLM, BDPCM, MTS, InterSkip, or mixed P-slice experiment.
+- Use `scripts/benchmark_encode_matrix.py` for `[bytes, PSNR, FPS]` tradeoff
+  scoring. The score is documented in `docs/validation.md`; correctness and
+  reference-decoder validation still gate before the score matters.
+- Current VVC predictive mode limitation: mixed intra/InterSkip frames use
+  CTU-sliced output because FrameFinery's residual CTU body still emits
+  dual-tree intra syntax. A single mixed P-slice needs a real joint-tree
+  intra-CU syntax path, not just a PPS or slice-header change.
+- For VVC profiling, build with `VVC_STATS=1` or the `vvc-stats` feature and
+  write `FRAMEFINERY_VVC_STATS` under `verification/generated/`; avoid `/tmp`
+  for large probes.
 
 Persistent local validation source:
 
