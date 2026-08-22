@@ -5919,12 +5919,30 @@ Observed external patterns worth adapting:
   RD: entropy/texture contrast, variance of sub-CU variance, Laplacian or HOG
   direction estimates, and soft decisions that keep more candidates when the
   classifier confidence is low.
+- SVT-AV1 documents a useful future inter-search architecture: open-loop
+  hierarchical ME on downsampled source frames, multiple search centers to
+  avoid local minima, then a smaller full-resolution search. It also adjusts
+  search ranges based on reference distance, HME SAD, near-zero motion, and
+  prunes references whose SAD is far from the best. This is future-only until
+  FrameFinery VVC has normal nonzero-MV inter blocks, but it argues against
+  starting with an exhaustive single-resolution search.
+- VTM and x265 both expose encoder-policy search knobs rather than treating
+  motion/mode search as syntax: VTM has full/diamond/selective/enhanced-diamond
+  search, search-range, minimum-window, smoother-MV, Hadamard-ME, and adaptive
+  search-range controls; x265 exposes merge-candidate limits, reference/mode
+  limits, ME patterns from diamond through exhaustive full search, hierarchical
+  ME, early-skip, recursion skip, fast intra, and transform-skip fast modes.
+- rav1e's AV1 ME code is a useful Rust-side reference for implementation shape:
+  it stores per-block ME stats, reuses subset predictors from neighboring and
+  previous searches, performs coarse-to-fine passes, and uses an uneven
+  multi-hexagon refinement stage for harder motion.
 
 Implications for FrameFinery VVC:
 
 1. Keep correctness gates first: every accepted search/mode shortcut must still
    pass internal reconstruction and reference-decoder validation.
-2. Score lossy probes with the encode-matrix tradeoff projection:
+2. Score lossy probes with the encode-matrix tradeoff projection implemented by
+   `project_metric_tradeoff()` in `scripts/benchmark_encode_matrix.py`:
    `10*log2(fps ratio) + 4*log2(byte inverse ratio) + 8*PSNR delta`.
    This makes a 10% speed gain worth roughly +1.4 points, a 10% byte increase
    worth roughly -0.55 points, and a 0.1 dB PSNR loss worth -0.8 points.
@@ -6056,6 +6074,28 @@ a proven bottleneck under the current benchmark shape; if repeated-frame FPS is
 revisited, first separate encoder time from `--psnr` metrics and raw
 reconstruction-output cost.
 
+Rejected probe: lossy mixed single P-slice packetization.
+
+The CTU-sliced predictive path was briefly changed so a lossy mixed frame with
+one intra CTU and one InterSkip CTU used `vvc_predictive_frame_slice_unit`
+instead of one Trail NAL per CTU. A focused 128x64 two-frame YUV420 probe was
+generated under `verification/generated/agent_scratch/` with the left CTU
+changed and the right CTU repeated. The internal encode succeeded, but VTM
+rejected the second picture while decoding the CABAC payload:
+
+```text
+ERROR: ... DecSlice.cpp:253: Expecting a terminating bit
+```
+
+VTM's `CABACReader::coding_tree_unit()` confirms the root cause: `TREE_D` is a
+joint tree for single-tree slices, and dual luma/chroma tree parsing is only
+entered through the dual I-tree path. FrameFinery's residual CTU body still
+emits dual-tree intra syntax for residual CTUs, so simply wrapping those CTUs in
+a P slice misaligns the decoder. The future fix is a real single-tree
+residual/CABAC path for intra CUs inside inter slices, including chroma
+residual syntax at the correct transform-tree sites. Do not retry this as a
+slice-header/PPS-only change.
+
 ## References
 
 - Cargo profile settings:
@@ -6068,8 +6108,16 @@ reconstruction-output cost.
   <https://x265.readthedocs.io/en/master/cli.html>
 - x265 mode decision and early-skip options:
   <https://x265.readthedocs.io/en/master/cli.html#mode-decision-analysis>
+- x265 encoder API motion-search, HME, and mode-decision controls:
+  <https://raw.githubusercontent.com/videolan/x265/master/source/x265.h>
+- x264 motion-estimation method notes:
+  <https://x264-dsp.readthedocs.io/en/latest/x264_8h_source.html>
 - VTM random-access motion-search config:
   <https://jvet.hhi.fraunhofer.de/trac/vvc/attachment/ticket/74/encoder_randomaccess_vtm.cfg>
+- VTM encoder application search/mode options:
+  <https://raw.githubusercontent.com/ChristianFeldmann/VTM/master/source/App/EncoderApp/EncAppCfg.cpp>
+- VTM inter-search implementation:
+  <https://raw.githubusercontent.com/ChristianFeldmann/VTM/master/source/Lib/EncoderLib/InterSearch.cpp>
 - VVenC medium random-access fast-tool config:
   <https://raw.githubusercontent.com/fraunhoferhhi/vvenc/master/cfg/randomaccess_medium.cfg>
 - VVenC project and presets:
@@ -6081,12 +6129,22 @@ reconstruction-output cost.
   <https://link.springer.com/article/10.1186/s13640-024-00622-7>
 - AOM AV1 encoder speed-feature definitions:
   <https://aomedia.googlesource.com/aom/+/29e0f9faea1f24377b9e0f4ec99f06f1d0545745/av1/encoder/speed_features.h>
+- SVT-AV1 open-loop/hierarchical motion-estimation design:
+  <https://gitlab.com/AOMediaCodec/SVT-AV1/-/raw/master/Docs/Appendix-Open-Loop-Motion-Estimation.md>
+- rav1e motion-estimation implementation:
+  <https://codebrowser.dev/slint/crates/rav1e/src/me.rs.html>
 - rav1e feature overview and speed-tier note:
   <https://github.com/xiph/rav1e>
 - Fast Versatile Video Coding intra-coding paper:
   <https://www.mdpi.com/2079-9292/13/11/2150>
 - Quantization-adaptive VVC partition early-termination paper:
   <https://www.mdpi.com/2227-7390/14/10/1587>
+- HEVC TZSearch complexity-reduction paper:
+  <https://www.sciencedirect.com/science/article/abs/pii/S0923596515001654>
+- HEVC TZSearch early-termination paper:
+  <https://scholars.ln.edu.hk/en/publications/early-termination-for-tzsearch-in-hevc-motion-estimation/>
+- VVC fast/low-complexity survey:
+  <https://pmc.ncbi.nlm.nih.gov/articles/PMC9692833/>
 - Fast VVC partitioning decision strategies:
   <https://publica.fraunhofer.de/entities/publication/9210f1fb-90f8-4759-9bb6-d6fc72a9b731>
 - VVC intra texture/ML fast decision:

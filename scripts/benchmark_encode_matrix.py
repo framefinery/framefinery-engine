@@ -37,6 +37,9 @@ TRADEOFF_MINOR_BYTE_REGRESSION_RATIO = 1.05
 TRADEOFF_HARD_BYTE_REGRESSION_RATIO = 1.20
 TRADEOFF_MIN_FPS_RATIO_FOR_ACCEPT = 1.10
 TRADEOFF_HARD_FPS_REGRESSION_RATIO = 0.90
+TRADEOFF_ACCEPT_STATUS = "accept"
+TRADEOFF_WATCH_STATUS = "watch"
+TRADEOFF_REGRESS_STATUS = "regress"
 
 
 def main() -> int:
@@ -562,38 +565,68 @@ def apply_baseline_delta(
     result["baseline_fps"] = previous["fps"]
     result["delta_bytes"] = result["bytes"] - previous["bytes"]
     result["delta_fps"] = result["fps"] - previous["fps"]
-    if previous["bytes"] > 0:
-        byte_ratio = result["bytes"] / previous["bytes"]
-        result["baseline_byte_ratio"] = byte_ratio
-        result["delta_bytes_pct"] = (byte_ratio - 1.0) * 100.0
-    if previous["fps"] > 0.0:
-        fps_ratio = result["fps"] / previous["fps"]
-        result["baseline_fps_ratio"] = fps_ratio
-        result["delta_fps_pct"] = (fps_ratio - 1.0) * 100.0
     previous_psnr = previous.get("psnr_all_mean")
     current_psnr = result.get("psnr_all_mean")
-    if previous_psnr is not None and current_psnr is not None:
-        if math.isfinite(previous_psnr) and math.isfinite(current_psnr):
-            result["delta_psnr_all_mean"] = current_psnr - previous_psnr
-    apply_tradeoff_scale(result)
+    projection = project_metric_tradeoff(
+        baseline_bytes=previous["bytes"],
+        current_bytes=result["bytes"],
+        baseline_psnr=previous_psnr,
+        current_psnr=current_psnr,
+        baseline_fps=previous["fps"],
+        current_fps=result["fps"],
+    )
+    if projection is None:
+        return
+    result.update(projection)
 
 
-def apply_tradeoff_scale(result: dict[str, Any]) -> None:
+def project_metric_tradeoff(
+    *,
+    baseline_bytes: int | float | None,
+    current_bytes: int | float | None,
+    baseline_psnr: float | None,
+    current_psnr: float | None,
+    baseline_fps: float | None,
+    current_fps: float | None,
+) -> dict[str, Any] | None:
+    """Project byte, quality, and speed metrics into one probe result.
+
+    This intentionally stays local to one comparable row: positive FPS deltas
+    help, positive byte deltas hurt, and positive PSNR deltas help. Log-scaled
+    FPS/byte ratios make percentage changes comparable across small and large
+    vectors while PSNR remains in decibels. The status then applies hard gates
+    so a large speedup cannot hide severe quality, bitrate, or speed regressions.
+    """
+    result: dict[str, Any] = {}
+
+    if finite_positive(baseline_bytes) and finite_positive(current_bytes):
+        byte_ratio = float(current_bytes) / float(baseline_bytes)
+        result["baseline_byte_ratio"] = byte_ratio
+        result["delta_bytes_pct"] = (byte_ratio - 1.0) * 100.0
+
+    if finite_positive(baseline_fps) and finite_positive(current_fps):
+        fps_ratio = float(current_fps) / float(baseline_fps)
+        result["baseline_fps_ratio"] = fps_ratio
+        result["delta_fps_pct"] = (fps_ratio - 1.0) * 100.0
+
+    if (
+        baseline_psnr is not None
+        and current_psnr is not None
+        and math.isfinite(baseline_psnr)
+        and math.isfinite(current_psnr)
+    ):
+        result["delta_psnr_all_mean"] = current_psnr - baseline_psnr
+
     score = projected_tradeoff_score(result)
     if score is None:
-        return
+        return result or None
     result["tradeoff_score"] = score
     result["tradeoff_status"] = classify_tradeoff_result(result)
+    return result
 
 
 def projected_tradeoff_score(result: dict[str, Any]) -> float | None:
-    """Project byte, quality, and speed deltas into one probe score.
-
-    The score is intentionally simple and local to a single comparable row:
-    positive FPS deltas help, positive byte deltas hurt, and positive PSNR
-    deltas help. Log-scaled FPS/byte ratios make percentage changes comparable
-    across small and large vectors while PSNR remains in decibels.
-    """
+    """Return the weighted scalar score for already-computed metric deltas."""
     score = 0.0
     scored = False
 
@@ -624,11 +657,11 @@ def classify_tradeoff_result(result: dict[str, Any]) -> str:
     psnr_delta = result.get("delta_psnr_all_mean")
 
     if finite_positive(fps_ratio) and fps_ratio < TRADEOFF_HARD_FPS_REGRESSION_RATIO:
-        return "regress"
+        return TRADEOFF_REGRESS_STATUS
     if finite_positive(byte_ratio) and byte_ratio > TRADEOFF_HARD_BYTE_REGRESSION_RATIO:
-        return "regress"
+        return TRADEOFF_REGRESS_STATUS
     if finite_number(psnr_delta) and psnr_delta < -TRADEOFF_HARD_PSNR_LOSS_DB:
-        return "regress"
+        return TRADEOFF_REGRESS_STATUS
 
     watched = False
     if finite_number(psnr_delta) and psnr_delta < -TRADEOFF_MINOR_PSNR_LOSS_DB:
@@ -639,10 +672,10 @@ def classify_tradeoff_result(result: dict[str, Any]) -> str:
     if score >= TRADEOFF_ACCEPT_SCORE and (
         not finite_positive(fps_ratio) or fps_ratio >= TRADEOFF_MIN_FPS_RATIO_FOR_ACCEPT
     ):
-        return "watch" if watched else "accept"
+        return TRADEOFF_WATCH_STATUS if watched else TRADEOFF_ACCEPT_STATUS
     if score >= 0.0:
-        return "watch"
-    return "regress"
+        return TRADEOFF_WATCH_STATUS
+    return TRADEOFF_REGRESS_STATUS
 
 
 def apply_av2_parity_gaps(results: list[dict[str, Any]]) -> None:
