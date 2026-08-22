@@ -6074,6 +6074,34 @@ a proven bottleneck under the current benchmark shape; if repeated-frame FPS is
 revisited, first separate encoder time from `--psnr` metrics and raw
 reconstruction-output cost.
 
+Rejected probe: 8-bit 4:4:4 BDPCM-aligned raw chroma search skip.
+
+Wayland stats showed that 8-bit 4:4:4 lossy `fast-search=lossless-speed`
+selects many horizontal/vertical chroma modes and spends heavily in chroma
+prediction/search. A narrow probe skipped explicit and CCLM raw chroma
+candidate generation when the co-located luma mode was already horizontal or
+vertical, leaving raw chroma mode as Derived and relying on the existing direct
+BDPCM selector to switch to horizontal/vertical BDPCM only if the residual
+safety check accepted it.
+
+The implementation remained unified and only changed candidate generation, but
+the 50-frame Wayland scorer rejected it against a fresh normal-build baseline:
+
+```text
+verification/generated/encode_matrix/vvc-wayland-pre-bdpcm-raw-gate-q19-50f.md
+bytes=4,060,779 fps=2.04 psnr=58.997
+
+verification/generated/encode_matrix/vvc-wayland-bdpcm-raw-gate-q19-50f.md
+bytes=6,244,380 fps=2.41 psnr=59.724
+delta: +2,183,601 bytes, +0.37 FPS, +0.727 dB, score +5.7:regress
+```
+
+The scalar score was positive because PSNR/FPS improved, but byte growth was
+53.8%, exceeding the hard 1.20x byte-regression guardrail. The source diff was
+reverted. Do not skip full raw chroma search purely from luma horizontal/vertical
+alignment on 8-bit 4:4:4; if this area is revisited, require a byte-aware cheap
+predictor or an RD-preserving early stop rather than forcing Derived+BDPCM.
+
 Rejected probe: lossy mixed single P-slice packetization.
 
 The CTU-sliced predictive path was briefly changed so a lossy mixed frame with
