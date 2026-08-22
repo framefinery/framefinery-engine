@@ -5318,6 +5318,73 @@ Follow-up:
   or a cheap predictor for CTUs where skip is likely but not below this
   threshold.
 
+### VVC Lossy Average-4 CTU Pre-Skip
+
+Checkpoint: `vvc-preskip-avg4-q19-50f`.
+
+The low-distortion pre-skip threshold was raised from average SSE <= 1 to
+average SSE <= 4 in 8-bit-equivalent squared units. For a full 8-bit 4:2:0 CTU,
+the pre-skip limit is now 24,576 total SSE across visible luma+chroma samples.
+The threshold is named in code as
+`VVC_LOSSY_PREDICTIVE_PRESKIP_AVG_SSE_8BIT` so future probes can compare
+against the current checkpoint directly.
+
+50-frame VVC lossy matrix versus `vvc-preskip-avg1-q19-50f`:
+
+| Vector | Bytes delta | Bitstream change | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---|---:|---:|---|
+| SceneComposition_1_420 | -8,582 | yes | +1.50 | -0.010 | `+6.9 accept` |
+| SceneComposition_1_422 | +0 | no | +0.74 | +0.000 | `+4.0 accept` |
+| screen_wayland_activity_rgb | +0 | no | +0.00 | +0.000 | `+0.1 watch` |
+| MissionControlClip1_420 | +0 | no | +0.05 | +0.000 | `+0.3 watch` |
+| MissionControlClip1_422 | +0 | no | -0.02 | +0.000 | `-0.2 regress` |
+| MissionControlClip1_444 | +0 | no | +0.01 | +0.000 | `+0.2 watch` |
+
+Aggregate after this checkpoint:
+
+| Metric | Avg1 | Avg4 |
+|---|---:|---:|
+| Bytes | 43,855,704 | 43,847,122 |
+| Mean row FPS | 1.78 | 2.16 |
+| Mean PSNR | 53.545 | 53.543 |
+
+Most of the measured gain comes from preselecting additional CTUs without
+changing the final payload decisions. Only the 8-bit 4:2:0 row changed
+bitstream output, and that change reduced bytes with a 0.01 dB PSNR cost. The
+small 10-bit 4:2:2 negative FPS sample was output-identical noise, not a codec
+decision regression.
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo fmt
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_lossy_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp AOMCTC_ROOT=/path/to/aomctc \
+  make validate-set CODEC=vvc VALIDATION_SET=release-six-vectors-full \
+  VALIDATION_LIMIT=6 VALIDATION_FRAMES=3 VALIDATION_DIRECT_SOURCE_FILES=1 \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Follow-up:
+
+- Treat average-4 as the new baseline for any higher pre-skip threshold. The
+  next threshold must beat `vvc-preskip-avg4-q19-50f` on the full six-vector
+  scorer and still pass VTM.
+- This remains a conservative pre-gate. Catching up further on FPS probably
+  needs mixed P-slice intra+InterSkip legality work or a predictor that can
+  skip more CTUs without depending only on reconstruction SSE.
+
 ## References
 
 - Cargo profile settings:

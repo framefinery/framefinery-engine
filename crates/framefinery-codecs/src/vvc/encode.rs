@@ -1141,6 +1141,8 @@ fn vvc_lossy_predictive_inter_skip_preselected(
     skip_distortion <= vvc_lossy_predictive_preskip_max_sse(region, format)
 }
 
+const VVC_LOSSY_PREDICTIVE_PRESKIP_AVG_SSE_8BIT: u64 = 4;
+
 fn vvc_lossy_predictive_preskip_max_sse(
     region: VvcCtuRegion,
     format: VvcPictureFormat,
@@ -1148,7 +1150,11 @@ fn vvc_lossy_predictive_preskip_max_sse(
     let sample_count =
         vvc_region_visible_luma_sample_count(region) + vvc_region_visible_chroma_sample_count(region, format);
     let scale = 1u64 << u32::from(format.bit_depth.bits().saturating_sub(8));
-    sample_count.saturating_mul(scale.saturating_mul(scale))
+    sample_count.saturating_mul(
+        scale
+            .saturating_mul(scale)
+            .saturating_mul(VVC_LOSSY_PREDICTIVE_PRESKIP_AVG_SSE_8BIT),
+    )
 }
 
 fn vvc_region_visible_luma_sample_count(region: VvcCtuRegion) -> u64 {
