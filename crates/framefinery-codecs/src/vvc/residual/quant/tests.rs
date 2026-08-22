@@ -279,7 +279,7 @@ fn vvc_lossless_speed_luma_search_keeps_dc_for_lossy() {
 }
 
 #[test]
-fn vvc_lossless_speed_luma_planar_search_keeps_lossy_candidate() {
+fn vvc_lossless_speed_luma_planar_search_uses_neighbor_gate() {
     let format = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs420,
         bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
@@ -292,7 +292,7 @@ fn vvc_lossless_speed_luma_planar_search_keeps_lossy_candidate() {
         Some(VvcIntraPredictionMode::Horizontal),
         Some(VvcIntraPredictionMode::Vertical),
     ));
-    assert!(vvc_luma_lossless_speed_evaluates_planar(
+    assert!(!vvc_luma_lossless_speed_evaluates_planar(
         fast_lossy,
         Some(VvcIntraPredictionMode::Horizontal),
         Some(VvcIntraPredictionMode::Vertical),

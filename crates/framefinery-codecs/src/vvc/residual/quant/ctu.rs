@@ -1945,11 +1945,6 @@ fn vvc_luma_lossless_speed_evaluates_planar(
     if policy.fast_search() != VvcFastSearch::LosslessSpeed {
         return true;
     }
-    if policy.residual_mode() == VvcResidualCodingMode::Lossy {
-        // Planar is also cheap enough to keep for lossy fast search; the
-        // residual RD selector can reject it when directional modes are better.
-        return true;
-    }
     matches!(left, None | Some(VvcIntraPredictionMode::Planar))
         || matches!(above, None | Some(VvcIntraPredictionMode::Planar))
 }

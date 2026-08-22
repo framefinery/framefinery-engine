@@ -6793,6 +6793,56 @@ were unchanged in both reruns. The useful signal is the direct counter drop:
 this is a work-removal change, not a new coding path. It keeps lossless
 behavior unchanged and remains inside the shared luma residual selector.
 
+### VVC lossy luma planar neighbour gate
+
+The next screen-content pass tested two early-prune ideas from the same
+mode-decision guidance:
+
+- skip lossy `lossless-speed` CCLM when derived/explicit chroma was already
+  near-exact;
+- skip lossy `lossless-speed` luma planar prediction unless a missing or
+  planar neighbour makes it likely.
+
+The CCLM threshold was rejected. CCLM remains critical for 4:4:4 screen
+content even when the first-stage score looks low; the probe lost quality on
+checker content and grew the blocks stream:
+
+```text
+verification/generated/encode_matrix/vvc-cclm-near-exact-prune-50f-q19.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.000 | -0.41 | `-0.8 regress` |
+| probe_blocks_420 | +0 | +0.000 | +0.30 | `+0.5 watch` |
+| probe_checker_444 | +0 | -3.011 | -0.06 | `-24.2 regress` |
+| probe_blocks_444 | +56449 | +0.000 | -0.65 | `-1.8 regress` |
+
+The luma planar neighbour gate was accepted. It applies to both lossy and
+lossless `lossless-speed` through the existing shared
+`vvc_luma_lossless_speed_evaluates_planar` policy gate; the residual selector
+and reconstruction path are unchanged. The normal 50-frame matrix produced the
+same bytes and PSNR in both runs, while FPS remained noisy:
+
+```text
+verification/generated/encode_matrix/vvc-luma-planar-neighbor-gate-50f-q19.md
+verification/generated/encode_matrix/vvc-luma-planar-neighbor-gate-50f-q19-rerun.md
+```
+
+Instrumentation gave the useful signal: selected luma modes and bytes were
+unchanged, but planar prediction work was removed from the lossy mode search:
+
+```text
+verification/generated/profiling/vvc_luma_planar_neighbor_gate_stats_5f/
+```
+
+| Probe | Bytes | Old planar candidates | New planar candidates | Old luma mode-search ns | New luma mode-search ns |
+|---|---:|---:|---:|---:|---:|
+| probe_blocks_420 | 226078 | 18000 | 2595 | 81403418 | 64293421 |
+| probe_gradient_420 | 389995 | 18000 | 2595 | 117126224 | 94923225 |
+| probe_checker_444 | 234080 | 18000 | 2595 | 70975551 | 54554130 |
+| probe_blocks_444 | 250950 | 18000 | 2595 | 85527082 | 60805057 |
+
 ## References
 
 - Cargo profile settings:
