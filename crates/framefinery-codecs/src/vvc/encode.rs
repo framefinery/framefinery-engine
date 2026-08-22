@@ -268,6 +268,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     let mut vvc_ctu_bits = VvcCtuBitSink::from_env()?;
 
     let mut frame_buf = vec![0; frame_len];
+    let mut ctu_inter_skip_slice_payload_cache = VvcCtuInterSkipSlicePayloadCache::default();
     let mut previous_predictive_cache: Option<std::sync::Arc<VvcPredictiveFrameCache>> = None;
     let mut frame_idx = 0usize;
     while frame_limit.should_read(frame_idx) {
@@ -766,7 +767,13 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         ),
                     )?]
                 } else if predictive_ctu_slice_frame {
-                    vvc_predictive_ctu_slice_units(frame_idx, geometry, &frame_ctus, slice_config)?
+                    vvc_predictive_ctu_slice_units_with_inter_skip_cache(
+                        frame_idx,
+                        geometry,
+                        &frame_ctus,
+                        slice_config,
+                        &mut ctu_inter_skip_slice_payload_cache,
+                    )?
                 } else if predictive_enabled {
                     vec![vvc_predictive_frame_slice_unit(
                         frame_idx,

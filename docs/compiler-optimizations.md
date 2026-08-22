@@ -5461,6 +5461,75 @@ Rejected follow-up probe:
   with three timing-regression rows. The repeated-frame entropy payload is not a
   large enough cost center on this matrix to justify the extra encoder state.
 
+### VVC CTU InterSkip Slice Payload Cache
+
+Checkpoint: `vvc-ctu-interskip-slice-cache-q19-50f`.
+
+CTU-sliced predictive frames still spend significant time building and writing
+slice payloads for skipped CTUs. Unlike the rejected full-frame skip cache, the
+CTU-slice case repeats hundreds of small InterSkip slice bodies per frame. The
+picture header is emitted as a separate NAL in this path, so a fixed
+slice-address/geometry/config InterSkip CTU-slice RBSP does not depend on POC.
+
+This checkpoint caches complete CTU InterSkip slice RBSP payloads by picture
+kind, picture geometry, CTU geometry, slice address, and slice syntax config.
+Intra CTU slices still use the existing uncached path. Mode decisions,
+reconstruction, slice selection, and CABAC coding-tree semantics are unchanged.
+
+50-frame VVC lossy matrix versus `vvc-preskip-avg8-q19-50f`:
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| SceneComposition_1_420 | +0 | +0.000 | +1.23 | `+3.8 accept` |
+| SceneComposition_1_422 | +0 | +0.000 | +1.05 | `+4.1 accept` |
+| screen_wayland_activity_rgb | +0 | +0.000 | +0.00 | `+0.0 watch` |
+| MissionControlClip1_420 | +0 | +0.000 | +0.13 | `+0.8 watch` |
+| MissionControlClip1_422 | +0 | +0.000 | +0.12 | `+1.0 watch` |
+| MissionControlClip1_444 | +0 | +0.000 | +0.12 | `+1.4 watch` |
+
+Aggregate scorer summary:
+
+| Rows | Average score | Accept | Watch | Regress |
+|---:|---:|---:|---:|---:|
+| 6 | +1.9 | 2 | 4 | 0 |
+
+All six rows were byte- and PSNR-identical. The per-row baseline deltas in the
+scorer are the acceptance signal because absolute FPS samples vary across
+separate benchmark runs.
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo fmt
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_lossy_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp AOMCTC_ROOT=/path/to/aomctc \
+  make validate-set CODEC=vvc VALIDATION_SET=release-six-vectors-full \
+  VALIDATION_LIMIT=6 VALIDATION_FRAMES=3 VALIDATION_DIRECT_SOURCE_FILES=1 \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Follow-up:
+
+- This reduces repeated CTU-slice syntax construction, but it does not solve the
+  root cost of one slice per CTU. Legal mixed P-slice intra+InterSkip or grouped
+  slice maps remain the larger structural FPS opportunity.
+- If grouped CTU-slice maps are implemented later, keep this cache scoped to
+  deterministic InterSkip slice bodies and revalidate that POC/state does not
+  enter the cached RBSP.
+
 ### VVC Motion Search And Mode-Select Research Notes
 
 Research checkpoint: `vvc-motion-mode-research-2026-08-21`.

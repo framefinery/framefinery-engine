@@ -177,6 +177,71 @@ pub(in crate::vvc) fn vvc_predictive_ctu_slice_units(
     ctus: &[VvcQuantizedCtu],
     slice_config: VvcSliceSyntaxConfig,
 ) -> Result<Vec<VvcNalUnit>, String> {
+    let mut inter_skip_cache = VvcCtuInterSkipSlicePayloadCache::default();
+    vvc_predictive_ctu_slice_units_with_inter_skip_cache(
+        frame_idx,
+        picture_geometry,
+        ctus,
+        slice_config,
+        &mut inter_skip_cache,
+    )
+}
+
+pub(in crate::vvc) fn vvc_predictive_ctu_slice_units_with_inter_skip_cache(
+    frame_idx: usize,
+    picture_geometry: VvcVideoGeometry,
+    ctus: &[VvcQuantizedCtu],
+    slice_config: VvcSliceSyntaxConfig,
+    inter_skip_cache: &mut VvcCtuInterSkipSlicePayloadCache,
+) -> Result<Vec<VvcNalUnit>, String> {
+    let picture_kind = vvc_picture_kind_for_frame_idx(frame_idx, true);
+    if picture_kind.is_irap() {
+        return Err("VVC predictive CTU-slice path requires a non-IRAP picture".to_string());
+    }
+    let poc_lsb = vvc_poc_lsb_for_frame_idx(frame_idx);
+    let expected_ctus = vvc_picture_ctu_count(picture_geometry);
+    if ctus.len() != expected_ctus {
+        return Err(format!(
+            "VVC predictive CTU-slice frame expected {expected_ctus} CTU payload(s), got {}",
+            ctus.len()
+        ));
+    }
+
+    let mut units = Vec::with_capacity(ctus.len() + 1);
+    units.push(vvc_picture_header_unit_with_poc(
+        picture_kind,
+        poc_lsb,
+        slice_config,
+    ));
+    for ctu in ctus {
+        if matches!(ctu.payload, VvcQuantizedCtuPayload::InterSkip) {
+            units.push(inter_skip_cache.slice_unit_for(
+                picture_kind,
+                poc_lsb,
+                picture_geometry,
+                ctu,
+                slice_config,
+            ));
+        } else {
+            units.push(vvc_ctu_slice_unit_with_poc(
+                picture_kind,
+                poc_lsb,
+                picture_geometry,
+                ctu,
+                slice_config,
+            ));
+        }
+    }
+    Ok(units)
+}
+
+#[cfg(test)]
+pub(in crate::vvc) fn vvc_predictive_ctu_slice_units_uncached_for_test(
+    frame_idx: usize,
+    picture_geometry: VvcVideoGeometry,
+    ctus: &[VvcQuantizedCtu],
+    slice_config: VvcSliceSyntaxConfig,
+) -> Result<Vec<VvcNalUnit>, String> {
     let picture_kind = vvc_picture_kind_for_frame_idx(frame_idx, true);
     if picture_kind.is_irap() {
         return Err("VVC predictive CTU-slice path requires a non-IRAP picture".to_string());
@@ -334,6 +399,95 @@ impl VvcFrameSkipPayloadCache {
             .last()
             .expect("just pushed frame-skip payload")
             .2
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct VvcCtuInterSkipSlicePayloadCacheKey {
+    picture_kind: VvcPictureKind,
+    picture_geometry: VvcVideoGeometry,
+    ctu_geometry: VvcVideoGeometry,
+    slice_address: usize,
+    slice_config: VvcSliceSyntaxConfig,
+}
+
+#[derive(Default)]
+pub(in crate::vvc) struct VvcCtuInterSkipSlicePayloadCache {
+    entries: Vec<(VvcCtuInterSkipSlicePayloadCacheKey, Vec<u8>)>,
+}
+
+impl VvcCtuInterSkipSlicePayloadCache {
+    fn slice_unit_for(
+        &mut self,
+        picture_kind: VvcPictureKind,
+        poc_lsb: u32,
+        picture_geometry: VvcVideoGeometry,
+        ctu: &VvcQuantizedCtu,
+        slice_config: VvcSliceSyntaxConfig,
+    ) -> VvcNalUnit {
+        if vvc_picture_ctu_count(picture_geometry) <= 1 {
+            return VvcNalUnit {
+                nal_unit_type: picture_kind.nal_unit_type(),
+                layer_id: 0,
+                temporal_id: 0,
+                rbsp_payload: vvc_ctu_slice_payload_with_poc(
+                    picture_kind,
+                    poc_lsb,
+                    picture_geometry,
+                    ctu,
+                    slice_config,
+                ),
+            };
+        }
+        VvcNalUnit {
+            nal_unit_type: picture_kind.nal_unit_type(),
+            layer_id: 0,
+            temporal_id: 0,
+            rbsp_payload: self
+                .payload_for(picture_kind, poc_lsb, picture_geometry, ctu, slice_config)
+                .to_vec(),
+        }
+    }
+
+    fn payload_for(
+        &mut self,
+        picture_kind: VvcPictureKind,
+        poc_lsb: u32,
+        picture_geometry: VvcVideoGeometry,
+        ctu: &VvcQuantizedCtu,
+        slice_config: VvcSliceSyntaxConfig,
+    ) -> &[u8] {
+        debug_assert!(matches!(ctu.payload, VvcQuantizedCtuPayload::InterSkip));
+        debug_assert!(vvc_picture_ctu_count(picture_geometry) > 1);
+        let key = VvcCtuInterSkipSlicePayloadCacheKey {
+            picture_kind,
+            picture_geometry,
+            ctu_geometry: ctu.geometry,
+            slice_address: ctu.slice_address,
+            slice_config,
+        };
+        if let Some(index) = self
+            .entries
+            .iter()
+            .position(|(entry_key, _)| *entry_key == key)
+        {
+            return &self.entries[index].1;
+        }
+        self.entries.push((
+            key,
+            vvc_ctu_slice_payload_with_poc(
+                picture_kind,
+                poc_lsb,
+                picture_geometry,
+                ctu,
+                slice_config,
+            ),
+        ));
+        &self
+            .entries
+            .last()
+            .expect("just pushed CTU InterSkip payload")
+            .1
     }
 }
 

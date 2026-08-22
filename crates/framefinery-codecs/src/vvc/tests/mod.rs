@@ -2098,6 +2098,46 @@ fn vvc_predictive_frame_skip_payload_cache_matches_uncached_slice() {
 }
 
 #[test]
+fn vvc_predictive_ctu_inter_skip_slice_cache_matches_uncached_slices() {
+    let geometry = VvcVideoGeometry {
+        width: 128,
+        height: 64,
+    };
+    let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
+    let slice_config = VvcSliceSyntaxConfig::residual_lossless(ChromaSampling::Cs420, bit_depth)
+        .with_inter_enabled()
+        .without_picture_header_slice_state();
+    let ctus: Vec<_> = vvc_ctu_regions(geometry)
+        .map(|region| VvcQuantizedCtu {
+            slice_address: region.slice_address,
+            geometry: region.geometry,
+            payload: VvcQuantizedCtuPayload::InterSkip,
+        })
+        .collect();
+    let mut cache = VvcCtuInterSkipSlicePayloadCache::default();
+
+    for frame_idx in [2, 3] {
+        let uncached = vvc_predictive_ctu_slice_units_uncached_for_test(
+            frame_idx,
+            geometry,
+            &ctus,
+            slice_config,
+        )
+        .expect("uncached CTU-slice units");
+        let cached = vvc_predictive_ctu_slice_units_with_inter_skip_cache(
+            frame_idx,
+            geometry,
+            &ctus,
+            slice_config,
+            &mut cache,
+        )
+        .expect("cached CTU-slice units");
+
+        assert_eq!(cached, uncached);
+    }
+}
+
+#[test]
 fn vvc_residual_intra_mode_selector_is_shared_across_formats_and_coding_modes() {
     let luma_node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
     let chroma_node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeChroma);
