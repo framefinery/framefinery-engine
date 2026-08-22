@@ -7234,6 +7234,10 @@ before changing mode decisions. None was kept:
 - Resizing residual vectors and filling by index instead of clearing and
   pushing residual samples. Output was identical, but the local matrix was
   mixed/slower overall.
+- Bounded-top-N luma/chroma RD shortlist insertion. The rewrite preserved the
+  same shortlist choices and byte/PSNR output, but the 50-frame generated q19
+  scorer was slower on all four rows. The existing simple insert/sort path is
+  not a useful hotspot under the current candidate counts.
 
 Benchmark artifacts:
 
@@ -7243,7 +7247,100 @@ verification/generated/encode_matrix/vvc-chroma-zero-rd-threshold4-probe-q19-50f
 verification/generated/encode_matrix/vvc-rd-cache-empty-placeholder-q19-50f.md
 verification/generated/encode_matrix/vvc-chroma-ac-direct-quant-q19-50f.md
 verification/generated/encode_matrix/vvc-residual-fill-resize-q19-50f.md
+verification/generated/encode_matrix/vvc-rd-shortlist-topn-q19-50f.md
 ```
+
+### Advanced VVC motion/mode-selection audit
+
+Checkpoint: `vvc-advanced-motion-mode-audit-2026-08-22`.
+
+The current FrameFinery VVC predictive path does not yet have a normal
+translational motion-vector search comparable to the AV2 motion map. Predictive
+VVC currently relies on repeated-frame/CTU skip plus intra CTUs. That makes
+external motion-search work useful as design guidance for the future inter path,
+but immediate measured work should target intra/SCC mode selection, residual
+scoring, entropy construction, and eventually a unified palette/IBC candidate in
+the normal CTU graph.
+
+External encoder and paper patterns that should shape future probes:
+
+- VVenC exposes speed/quality presets as tool-selection policy: adaptive search
+  range, fast merge, fast sub-pel ME, SCC-specific search, IBC fast methods,
+  BDPCM/SCC detection, transform-skip policy, content-based QTBT, reduced
+  chroma full-RD modes, and fast intra-tool gates.
+- x265 uses the same cheap-first structure: reduced merge/reference candidates,
+  early skip when merge has no residual, recursion skip from neighbor/cost or
+  edge-density evidence, and fast intra angular scans before deeper RD.
+- SVT-AV1’s open-loop ME is the right model for a future FrameFinery inter
+  pass: hierarchical/downsampled search, several search centers to avoid local
+  minima, full-resolution refinement in a smaller window, and adaptive range
+  cuts for near-zero/low-SAD motion.
+- rav1e is a useful Rust implementation reference for search-state shape:
+  predictor reuse, coarse-to-fine passes, early SAD thresholds, and UMH-style
+  refinement before falling back to exhaustive search.
+- VVC fast intra papers repeatedly point to rough mode decision plus MPM/left
+  and above modes, then optional texture/HOG/variance classifiers. In this code
+  base, prefer reusing already-computed residual/search evidence over adding
+  fresh per-block texture scans, because prior source-gradient probes have
+  consumed more time than they saved.
+
+The existing tradeoff projection in `scripts/encode_tradeoff.py` is the gate for
+lossy probes:
+
+```text
+score = 10*log2(current_fps / baseline_fps)
+      + 4*log2(baseline_bytes / current_bytes)
+      + 8*(current_psnr - baseline_psnr)
+```
+
+Hard guardrails reject a row even when the scalar score is positive if bytes
+grow by more than 20%, PSNR drops by more than 1 dB, or FPS drops below 90% of
+baseline. This is important for VVC mode-selection work: speed wins with small
+byte/quality penalties can be accepted, but a large byte regression is still a
+failed probe.
+
+Ranked next work:
+
+1. Integrate the existing VVC palette/IBC code as candidates inside the normal
+   CTU mode graph instead of keeping it as a separate 4:4:4 path. This is the
+   most likely large compression win for screen content and keeps with VVenC’s
+   SCC-specific IBC/BDPCM/transform-skip policy.
+2. Add a real translational inter mode for VVC, starting with integer-pel L0
+   search and a small set of predictor centers, then extend to adaptive search
+   range and hierarchical/open-loop search. This is required before motion
+   vector search papers can materially improve current VVC.
+3. Improve residual/mode scoring so BDPCM, transform skip, and transformed
+   residuals are compared with a better block-level RD model. Prior greedy
+   coefficient-local and format-only gates failed because they ignored block
+   context.
+4. Keep exact-neutral implementation work only when it shows repeatable
+   benchmark movement or removes a confirmed hotspot. Several allocation and
+   candidate-list cleanups were byte-identical but slower after measurement.
+
+Rejected probe: neighbor-first luma directional fast search.
+
+The VVC fast-intra literature and x265/VTM/VVenC practice all prioritize
+MPM/neighbor evidence before expensive full mode decisions. A local probe
+adapted that idea narrowly for lossy `fast-search=lossless-speed`: if left or
+above luma already supplied a directional candidate, it skipped the separate
+source-gradient seed scan and used the neighbor candidate first.
+
+The focused unit test passed and output remained byte/PSNR-identical, but the
+50-frame generated q19 scorer rejected the change against
+`vvc-transform-skip-ac-fastpath-q19-50f`:
+
+```text
+verification/generated/encode_matrix/vvc-neighbor-first-luma-directional-q19-50f.md
+probe_gradient_420: bytes +0, PSNR +0.000, FPS +0.11, score +0.1:watch
+probe_blocks_420:   bytes +0, PSNR +0.000, FPS -0.74, score -0.8:regress
+probe_checker_444:  bytes +0, PSNR +0.000, FPS -0.28, score -0.4:regress
+probe_blocks_444:   bytes +0, PSNR +0.000, FPS -0.40, score -0.8:regress
+```
+
+The source diff was reverted. Do not retry this exact neighbor-first source
+seed skip; the current source-gradient scan is not the dominant cost under this
+benchmark, or the candidate-list/order change perturbs later work enough to
+lose the small scan saving.
 
 ## References
 
@@ -7316,6 +7413,8 @@ verification/generated/encode_matrix/vvc-residual-fill-resize-q19-50f.md
   <https://publica.fraunhofer.de/entities/publication/9210f1fb-90f8-4759-9bb6-d6fc72a9b731>
 - Fast VVC partitioning strategies in VVenC:
   <https://publica.fraunhofer.de/entities/publication/a6ca1879-7d67-4286-af4f-158e06d60ce9>
+- HOG-based VVC fast intra and partition decision:
+  <https://www.sciencedirect.com/science/article/pii/S1047320323001384>
 - VVC QTMT variance/gradient fast partitioning:
   <https://cir.nii.ac.jp/crid/1360016867546154752>
 - VVC QTMT partition and intra mode decision:
