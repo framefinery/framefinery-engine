@@ -6159,6 +6159,35 @@ new instrumentation proves final explicit-MTS refinement is a stable hotspot
 and the skip is selected from per-TU evidence rather than only from 8-bit 4:4:4
 format policy.
 
+Rejected probe: direct chroma BDPCM candidate reuse.
+
+The lossy 8-bit 4:4:4 direct chroma BDPCM path evaluates the same H/V BDPCM
+candidates as the later normal BDPCM loop when the direct safety gate does not
+early-return. A probe tried to reuse those scored direct candidates as the
+normal BDPCM decision result, preserving the current early-return rule by
+capturing the original baseline residual SSE before any candidate buffer swaps.
+
+An intermediate version exposed the exact hazard in this area: updating the
+selected residual buffers before later direct-safety checks changed the
+Wayland bitstream by 14 bytes. The corrected version restored byte/PSNR
+identity, but the scorer still rejected it:
+
+```text
+verification/generated/encode_matrix/vvc-direct-bdpcm-reuse-wayland-q19-50f.md
+bytes=4,060,779 fps=2.14 psnr=58.997
+delta: +0 bytes, +0.10 FPS, +0.000 dB, score +0.7:watch
+
+verification/generated/encode_matrix/vvc-direct-bdpcm-reuse-fixed-q19-50f-limit3.md
+screen_wayland_activity_rgb: bytes +0, PSNR +0.000, FPS 2.17 -> 2.11,
+score -0.4:regress
+```
+
+The source diff was reverted. The evidence suggests direct BDPCM either
+early-returns often enough that duplicate candidate evaluation is not the real
+cost, or the extra control-flow/helper overhead cancels the saved work. Do not
+retry this exact reuse shape; if chroma BDPCM remains a hotspot, add candidate
+hit/miss counters first and optimize only the measured non-early-return cases.
+
 Rejected probe: lossy mixed single P-slice packetization.
 
 The CTU-sliced predictive path was briefly changed so a lossy mixed frame with
