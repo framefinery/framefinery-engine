@@ -5831,6 +5831,38 @@ Instrumentation confirmed the change did not reduce work:
 The source diff was reverted. If chroma mode search order is revisited, it
 needs a stronger early-stop condition; reordering alone is noise or worse.
 
+Rejected probe: lossy CCLM Linear-only fast search.
+
+The 5-frame stats run showed that CCLM was evaluated far more often than it was
+selected, and MDLM-left/top accounted for a large fraction of CCLM cost. A
+probe limited `lossy + fast-search=lossless-speed` CCLM mode generation to
+Linear only, keeping the normal full CCLM set for other policies.
+
+It produced the intended timing reduction but failed the quality/rate tradeoff:
+
+```text
+verification/generated/encode_matrix/vvc-cclm-linear-only-stats-5f.md
+average score -1.3, 0 accept / 2 watch / 4 regress
+```
+
+Worst rows:
+
+- `screen_wayland_activity_rgb`: +11,421 bytes, -0.75 dB, +0.05 FPS, score -6.1.
+- `SceneComposition_1_420`: +2,536 bytes, -0.22 dB, +0.02 FPS, score -1.7.
+
+Instrumentation showed why the idea was tempting:
+
+| Metric | Baseline | Probe |
+|---|---:|---:|
+| `ctu_quantize` | 13,562.1 ms | 12,976.7 ms |
+| `chroma_mode_search_nanos` | 4,137.2 ms | 3,223.7 ms |
+| `chroma_cclm_prediction_nanos` | 1,191.0 ms | 463.3 ms |
+| `chroma_candidate_cclm` | 1,290,924 | 430,772 |
+
+The source diff was reverted. CCLM cannot be cut down to Linear-only for the
+current lossy fast mode; MDLM-left/top matter enough on screen-content rows
+that the quality loss overwhelms the speed win.
+
 ## References
 
 - Cargo profile settings:
