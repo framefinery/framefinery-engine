@@ -6224,6 +6224,29 @@ score -0.1:regress
 The source diff was reverted. The unsafe direct-candidate fraction is too small
 for this ordering change to matter under the current scorer.
 
+Rejected probe: immediate selection for safe direct chroma BDPCM.
+
+The next probe treated the raw-SSE direct safety gate as sufficient for lossy
+8-bit 4:4:4 direct chroma BDPCM and returned immediately without full RD
+scoring. This is the larger possible speed tradeoff because Wayland stats show
+almost every direct-safe candidate is selected by the normal RD check. It
+slightly reduced bytes on the affected row, but still failed the timing scorer:
+
+```text
+verification/generated/encode_matrix/vvc-direct-bdpcm-safe-immediate-wayland-q19-50f.md
+bytes=4,060,774 fps=2.17 psnr=58.997
+delta: -5 bytes, +0.13 FPS, +0.000 dB, score +0.9:watch
+
+verification/generated/encode_matrix/vvc-direct-bdpcm-safe-immediate-q19-50f-limit3.md
+screen_wayland_activity_rgb: bytes -5, PSNR +0.000, FPS 2.17 -> 2.12,
+score -0.4:regress
+```
+
+The source diff was reverted. Direct-safe BDPCM immediate selection is not a
+reliable speed win under the current single-threaded benchmark; future work
+should target the cost of BDPCM prediction/residual generation itself or move
+to structural slice/inter improvements.
+
 Rejected probe: lossy mixed single P-slice packetization.
 
 The CTU-sliced predictive path was briefly changed so a lossy mixed frame with
