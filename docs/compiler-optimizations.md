@@ -5980,6 +5980,54 @@ measurable win. Revisit only if allocation profiling later shows per-frame
 scratch construction as a confirmed hotspot or if the full six-vector matrix
 with `AOMCTC_ROOT` available shows a different result.
 
+Rejected probe: CTU-slice InterSkip Annex-B streaming.
+
+The stats hotspot suggested that cached InterSkip CTU-slice payloads might be
+paying avoidable clone/allocation cost: `VvcCtuInterSkipSlicePayloadCache`
+stores RBSP payloads, but `slice_unit_for` clones the cached payload into a
+fresh `VvcNalUnit`, and `write_annex_b_to` then builds a second Annex-B `Vec`.
+
+Two byte-equivalent implementations were tried:
+
+- a borrowed-payload Annex-B writer that emitted picture-header and CTU-slice
+  NAL units directly into the output writer;
+- the same borrowed-payload writer targeting a local Annex-B `Vec`, followed by
+  one write to the output stream.
+
+Both variants passed the local byte-equivalence unit test and VTM-required
+Wayland validation:
+
+```text
+cargo test -p framefinery-codecs --features vvc \
+  vvc_predictive_ctu_inter_skip_streaming_writer_matches_cached_units
+
+make validate-set CODEC=vvc \
+  VALIDATION_SET=wayland-vvc-probe \
+  VALIDATION_SET_DIR=verification/generated/agent_scratch \
+  VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_DIRECT_SOURCE_FILES=1 \
+  VALIDATION_FRAMES=50 \
+  VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS='qp=19 fast-search=lossless-speed gop=-1' \
+  VALIDATION_CLEANUP_RECON=1 \
+  VALIDATION_CLEANUP_OUTPUT=1
+```
+
+The scorer rejected both on the available 50-frame Wayland row:
+
+```text
+verification/generated/encode_matrix/vvc-ctu-slice-stream-writer-wayland-q19-50f.md
+bytes +0, PSNR +0.000, FPS 2.17 -> 2.16, score -0.1:regress
+
+verification/generated/encode_matrix/vvc-ctu-slice-annexb-vec-wayland-q19-50f.md
+bytes +0, PSNR +0.000, FPS 2.17 -> 2.08, score -0.6:regress
+```
+
+The source diff was reverted. The current evidence says CTU-slice payload
+cloning is not worth optimizing this way; if entropy build remains hot, inspect
+CABAC payload generation and slice count first rather than just changing
+ownership/write plumbing.
+
 ## References
 
 - Cargo profile settings:
