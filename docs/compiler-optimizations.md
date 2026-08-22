@@ -6843,6 +6843,47 @@ verification/generated/profiling/vvc_luma_planar_neighbor_gate_stats_5f/
 | probe_checker_444 | 234080 | 18000 | 2595 | 70975551 | 54554130 |
 | probe_blocks_444 | 250950 | 18000 | 2595 | 85527082 | 60805057 |
 
+### VVC lossy CCLM 4:4:4-only fast search
+
+The earlier CCLM near-exact threshold showed that CCLM must stay available for
+4:4:4 screen content. A narrower follow-up probe kept CCLM enabled for lossy
+`lossless-speed` 4:4:4 and skipped it for lower-chroma formats. The intent is
+to remove expensive CCLM prediction/model scoring where chroma resolution is
+already reduced, while keeping the path that the 4:4:4 probes showed to be
+quality-critical.
+
+The 50-frame generated mode-probe matrix accepted the change on both 4:2:0
+rows and left 4:4:4 output unchanged:
+
+```text
+verification/generated/encode_matrix/vvc-cclm-444-only-50f-q19.md
+verification/generated/encode_matrix/vvc-cclm-444-only-50f-q19-rerun.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | -20329 | -0.051 | +2.29 | `+3.6 accept` |
+| probe_blocks_420 | +8083 | +0.000 | +2.33 | `+3.2 accept` |
+| probe_checker_444 | +0 | +0.000 | +0.20 | `+0.3 watch` |
+| probe_blocks_444 | +0 | +0.000 | -0.03 | `-0.1 regress` |
+
+Instrumentation confirmed that the accepted rows remove the intended work:
+
+```text
+verification/generated/profiling/vvc_cclm_444_only_stats_5f/
+```
+
+| Probe | Bytes | Old CCLM candidates | New CCLM candidates | Old chroma mode-search ns | New chroma mode-search ns |
+|---|---:|---:|---:|---:|---:|
+| probe_blocks_420 | 226078 -> 226935 | 53994 | 0 | 224971317 | 90927417 |
+| probe_gradient_420 | 389995 -> 388115 | 54000 | 0 | 214642902 | 92594252 |
+| probe_checker_444 | 234080 -> 234080 | 54018 | 54018 | 207945409 | 166579340 |
+| probe_blocks_444 | 250950 -> 250950 | 98307 | 98307 | 336656124 | 290996890 |
+
+The 4:4:4 timing changes in the stats table are noise or secondary cache
+effects because candidate counts and bitstreams are unchanged there. Treat the
+accepted signal as the 4:2:0 candidate/count and score result.
+
 ## References
 
 - Cargo profile settings:

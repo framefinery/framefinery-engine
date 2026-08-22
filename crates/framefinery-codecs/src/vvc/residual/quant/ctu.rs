@@ -1978,7 +1978,7 @@ fn vvc_chroma_cclm_fast_search_allowed(
     match policy.fast_search() {
         VvcFastSearch::Off | VvcFastSearch::Conservative => true,
         VvcFastSearch::LosslessSpeed if policy.residual_mode() == VvcResidualCodingMode::Lossy => {
-            true
+            policy.chroma_sampling() == ChromaSampling::Cs444
         }
         VvcFastSearch::Moderate | VvcFastSearch::LosslessSpeed => {
             best_score > vvc_chroma_cclm_fast_search_score(policy, chroma_width, chroma_height)
