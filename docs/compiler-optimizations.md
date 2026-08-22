@@ -6967,6 +6967,57 @@ change was reverted. Do not retry coefficient-local zeroing in BDPCM without a
 block-level RD check: greedy predictor reuse can change later BDPCM predictors
 and made the gradient row both larger and lower quality.
 
+### Rejected VVC skip-bit and luma transform-skip probes
+
+Two follow-up probes from the motion/mode audit were tested and rejected.
+
+The first changed lossy predictive CTU skip from a distortion-only gate to a
+payload-local RD gate:
+
+```text
+skip_sse + lambda * skip_cabac_bits <= intra_sse + lambda * intra_cabac_bits
+```
+
+The bit counts were measured through the existing CTU CABAC payload builder,
+not a separate syntax estimator. On the 50-frame generated mode-probe matrix it
+did not change any bytes or PSNR, and only added timing noise:
+
+```text
+verification/generated/encode_matrix/vvc-skip-rd-bits-q19-50f.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.000 | -0.10 | `-0.1 regress` |
+| probe_blocks_420 | +0 | +0.000 | -0.71 | `-0.8 regress` |
+| probe_checker_444 | +0 | +0.000 | -0.19 | `-0.3 regress` |
+| probe_blocks_444 | +0 | +0.000 | +0.33 | `+0.7 watch` |
+
+Aggregate result: `-0.1 regress`.
+
+The second narrowed lossy `lossless-speed` luma transform-skip-first selection
+to 8-bit 4:4:4 so that 4:2:0 luma would compare transformed residual coding
+again. This tested whether the poor 4:2:0 block score was caused by blindly
+forcing transform skip. The result was also rejected:
+
+```text
+verification/generated/encode_matrix/vvc-luma-ts-444-only-q19-50f.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.000 | -1.60 | `-2.5 regress` |
+| probe_blocks_420 | +6492 | +0.053 | -2.58 | `-2.8 regress` |
+| probe_checker_444 | +0 | +0.000 | +0.08 | `+0.1 watch` |
+| probe_blocks_444 | +0 | +0.000 | +0.19 | `+0.4 watch` |
+
+The source changes were reverted. The result suggests the screen-content gap is
+not fixed by simply spending more transformed-residual search on the current
+fixed 8x8 residual path. The next useful work is a unified palette/IBC
+candidate inside the normal CTU mode graph, plus a better block-level
+rate/distortion model for deciding between BDPCM, transform skip, and
+transformed residuals.
+
 ## References
 
 - Cargo profile settings:
