@@ -619,9 +619,6 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                         &frame_recon,
                                         &cached.reconstruction,
                                         region,
-                                        geometry,
-                                        &payload,
-                                        slice_config,
                                     )
                                 {
                                     frame_recon.copy_ctu_from(&cached.reconstruction, region);
@@ -1072,34 +1069,13 @@ fn vvc_lossy_predictive_inter_skip_selects_over_intra(
     intra_reconstruction: &VvcReconstructionFrame,
     skip_reconstruction: &VvcReconstructionFrame,
     region: VvcCtuRegion,
-    picture_geometry: VvcVideoGeometry,
-    intra_payload: &VvcQuantizedCtuPayload,
-    slice_config: VvcSliceSyntaxConfig,
 ) -> bool {
     let intra_distortion =
         vvc_region_sse_against_reconstruction(source_frame, intra_reconstruction, region);
     let skip_distortion =
         vvc_region_sse_against_reconstruction(source_frame, skip_reconstruction, region);
-    if skip_distortion > intra_distortion {
-        return false;
-    }
-
-    let intra_ctu = VvcQuantizedCtu {
-        slice_address: region.slice_address,
-        geometry: region.geometry,
-        payload: intra_payload.clone(),
-    };
-    let skip_ctu = VvcQuantizedCtu {
-        slice_address: region.slice_address,
-        geometry: region.geometry,
-        payload: VvcQuantizedCtuPayload::InterSkip,
-    };
-    let intra_bits = vvc_ctu_cabac_payload(picture_geometry, &intra_ctu, slice_config, false).bit_len;
-    let skip_bits = vvc_ctu_cabac_payload(picture_geometry, &skip_ctu, slice_config, true).bit_len;
-    skip_bits.saturating_add(VVC_LOSSY_PREDICTIVE_CTU_SKIP_BIT_MARGIN) < intra_bits
+    skip_distortion <= intra_distortion
 }
-
-const VVC_LOSSY_PREDICTIVE_CTU_SKIP_BIT_MARGIN: usize = 256;
 
 fn vvc_region_sse_against_reconstruction(
     source_frame: &VvcSampledFrame,

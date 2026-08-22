@@ -4745,6 +4745,75 @@ Follow-ups:
 - Replace exact CABAC recounting in the gate with a cheaper bit-cost proxy or a
   cached payload-size estimate once the selection policy is stable.
 
+### VVC Lossy CTU Skip Gate Speed Cleanup
+
+Checkpoint: `vvc-lossy-ctu-skip-no-bitcount-q19-50f`.
+
+The first RD-gated CTU skip implementation re-encoded each candidate CTU into a
+temporary CABAC payload to enforce a bit-margin check. On the six-vector matrix,
+that recount did not change any selected CTU: removing it produced identical
+bitstream checksums, byte counts, and PSNR for all six rows. The gate now uses
+the already-computed visible-sample SSE comparison only; the frame-level
+candidate-count threshold remains the guard against sparse skip candidates
+forcing CTU-sliced output.
+
+50-frame six-vector VVC lossy matrix versus
+`vvc-lossy-rd-ctu-skip-q19-50f-limit1`:
+
+| Vector | Bytes delta | FPS before | FPS after | FPS delta | PSNR delta | Bitstream checksum |
+|---|---:|---:|---:|---:|---:|---|
+| SceneComposition_1_420 | +0 | 0.88 | 1.17 | +0.29 | +0.000 | identical |
+| SceneComposition_1_422 | +0 | 0.71 | 0.92 | +0.22 | +0.000 | identical |
+| screen_wayland_activity_rgb | +0 | 0.41 | 0.59 | +0.18 | +0.000 | identical |
+| MissionControlClip1_420 | +0 | 0.86 | 1.12 | +0.27 | +0.000 | identical |
+| MissionControlClip1_422 | +0 | 0.69 | 0.82 | +0.13 | +0.000 | identical |
+| MissionControlClip1_444 | +0 | 0.45 | 0.52 | +0.07 | +0.000 | identical |
+
+Aggregate after this checkpoint:
+
+| Metric | Previous | Current | Delta |
+|---|---:|---:|---:|
+| Bytes | 40,817,987 | 40,817,987 | +0 |
+| Mean FPS | 0.61 | 0.78 | +27.9% |
+| Mean PSNR | 52.756 | 52.756 | +0.000 |
+
+Validation:
+
+```sh
+cargo fmt
+cargo check -p framefinery-codecs --features "vvc vvc-stats"
+cargo test -p framefinery-codecs vvc_lossy_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Command:
+
+```sh
+AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=release-six-vectors-full \
+  ENCODE_MATRIX_RUN=vvc-lossy-ctu-skip-no-bitcount-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc \
+  ENCODE_MATRIX_MODES=lossy \
+  ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_VVC_LOSSY_QP=19 \
+  ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
+  ENCODE_MATRIX_VVC_GOP=-1 \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-lossy-rd-ctu-skip-q19-50f-limit1.json \
+  ENCODE_MATRIX_CLEANUP_RECON=1 \
+  ENCODE_MATRIX_CLEANUP_OUTPUT=1 \
+  ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
+Follow-up:
+
+- The remaining speed gap is now mostly the deliberate CTU-sliced syntax shape
+  and the extra source/reconstruction region scans. A legal mixed P-slice
+  intra+InterSkip path is the next likely high-value speed and compression
+  cleanup.
+
 ## References
 
 - Cargo profile settings:
