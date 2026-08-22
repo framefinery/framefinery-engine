@@ -5448,6 +5448,92 @@ Follow-up:
   next likely wins are better search ordering, mixed P-slice legality, and
   early mode pruning based on cheap inter/intra predictors.
 
+Rejected follow-up probe:
+
+- `vvc-preskip-avg16-q19-50f` raised the same threshold to average SSE <= 16.
+  It produced byte-identical and PSNR-identical output on all six 50-frame
+  rows, but the benchmark scorer averaged `+0.0` with two timing-regression
+  rows. This is not worth keeping over average-8 unless a future implementation
+  makes the extra preselected CTUs materially reduce work.
+
+### VVC Motion Search And Mode-Select Research Notes
+
+Research checkpoint: `vvc-motion-mode-research-2026-08-21`.
+
+The current FrameFinery VVC path does not yet encode general nonzero-MV inter
+blocks. Predictive frames can emit all-frame/CTU InterSkip and reuse cached
+mode decisions, but there is no normal translational/affine motion-vector search
+to tune. That means external ME techniques should be treated as design input for
+the next inter milestone, while current FPS work should focus on pruning the
+existing intra/residual mode path without forking lossy/lossless implementations.
+
+The existing encode-matrix scorer is the right accept/reject function for these
+probes:
+
+```text
+score = 10*log2(current_fps / baseline_fps)
+      +  4*log2(baseline_bytes / current_bytes)
+      +  8*(current_psnr_db - baseline_psnr_db)
+```
+
+The hard guardrails in `scripts/benchmark_encode_matrix.py` still apply: large
+FPS regressions, byte growth, or PSNR loss force `regress` even when the scalar
+score is positive. This keeps local speed hacks from silently buying FPS with
+too much rate or quality loss.
+
+External encoder/paper notes checked:
+
+- x265 uses speed tiers for motion search instead of exhaustive ME by default:
+  diamond/hex/UMH/star/SEA/full, subpel refinement levels, early-skip,
+  recursive skip, hierarchical ME, WPP, and optional threaded ME. The useful
+  lesson for this encoder is to add future VVC inter search in layers:
+  zero/merge first, small diamond/hex around predicted MVs next, then optional
+  wider patterns only when the cheap score justifies them.
+- x265's `fast-intra` and AOM's speed features both support the same local
+  pattern we already use in places: cheap candidate generation, shortlist the
+  best modes, then run expensive RD only for winners.
+- AOM AV1 speed features explicitly prune partition shapes using local variance,
+  the best NONE prediction mode, prior split information, and best-RD limits.
+  This maps to future VVC QT/BT/TT pruning and to safer current luma/chroma
+  candidate pruning.
+- VVC partitioning papers consistently report that most practical speed wins
+  come from early partition/mode termination, not from small arithmetic
+  cleanups. Reported examples include VTM partition-search speedups around 7x at
+  about 1.1% bitrate cost, quantization-adaptive early termination around 38%
+  time saving at 0.85% BD-BR cost, and random-forest/gradient-guided intra
+  search with large time savings and small BDBR losses.
+
+Rejected or risky mappings:
+
+- A coarse lossy BDPCM alignment-only gate was already rejected because it
+  gained almost no FPS and badly hurt bytes/PSNR on SceneComposition. BDPCM is
+  expensive, but the gate must use a stronger cheap predictor than mode
+  alignment alone.
+- Threaded mode decision or parallel ME should wait until the single-threaded
+  decision graph is stable. x265 notes that parallel mode decision can disable
+  early-outs; for this codebase, preserving early-out semantics is more
+  important until the mode search is less wasteful.
+- ML partition classifiers from papers are useful as an upper-bound direction,
+  but they add model ownership, training data, and determinism concerns. Start
+  with deterministic texture/variance/SATD-style rules that can be exhaustively
+  validated against the reference decoder.
+
+Next implementable priorities:
+
+1. Add a legal mixed P-slice path so non-skipped CTUs and InterSkip CTUs share
+   one slice context instead of relying on CTU-sliced output. This is the
+   prerequisite for normal inter modes and better skip coverage.
+2. Add a cheap CTU/leaf classifier from already available quantities:
+   reconstruction SSE, max absolute delta, variance/edge density, and selected
+   intra mode family. Use it only to shortlist candidates; final selected syntax
+   must remain in the unified residual path.
+3. For future MV search, start with predicted-zero/neighbor candidates and a
+   small diamond/hex search using luma SAD/SATD first; only add chroma and
+   wider patterns when the luma score is close to the current best.
+4. Keep every accepted probe tied to the six-vector 50-frame scorer plus VTM
+   smoke/regression validation. Rejected probes should record the score and
+   reason here to avoid repeating bad local optima.
+
 ## References
 
 - Cargo profile settings:
@@ -5456,6 +5542,18 @@ Follow-up:
   <https://doc.rust-lang.org/stable/rustc/codegen-options/index.html>
 - rustc profile-guided optimization:
   <https://doc.rust-lang.org/nightly/rustc/profile-guided-optimization.html>
+- x265 CLI encoder speed and motion-search options:
+  <https://x265.readthedocs.io/en/master/cli.html>
+- AOM AV1 encoder speed-feature definitions:
+  <https://aomedia.googlesource.com/aom/+/29e0f9faea1f24377b9e0f4ec99f06f1d0545745/av1/encoder/speed_features.h>
+- rav1e feature overview and speed-tier note:
+  <https://github.com/xiph/rav1e>
+- Fast Versatile Video Coding intra-coding paper:
+  <https://www.mdpi.com/2079-9292/13/11/2150>
+- Quantization-adaptive VVC partition early-termination paper:
+  <https://www.mdpi.com/2227-7390/14/10/1587>
+- Fast VVC partitioning decision strategies:
+  <https://publica.fraunhofer.de/entities/publication/9210f1fb-90f8-4759-9bb6-d6fc72a9b731>
 - rustc lints:
   <https://doc.rust-lang.org/rustc/lints/index.html>
 - Clippy lint groups and performance lints:
