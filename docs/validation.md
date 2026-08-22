@@ -171,6 +171,20 @@ successful encoded bitstreams and generated raw source vectors by default. It
 defaults to 50 frames per stream to exercise inter prediction without
 materializing raw reconstructions.
 
+Encode-matrix baseline comparisons project each row's byte, PSNR, and FPS
+deltas into a single tradeoff score:
+
+```text
+score = 10*log2(current_fps / baseline_fps)
+      + 4*log2(baseline_bytes / current_bytes)
+      + 8*(current_psnr_db - baseline_psnr_db)
+```
+
+Use that score only after correctness gates pass. It is a probe triage rule,
+not a codec-quality metric: `accept` means the speed/rate/quality tradeoff is a
+clear local win, `watch` means useful but risky or noisy, and `regress` means
+the change should be fixed, narrowed, or reverted before it is committed.
+
 `scripts/generate_predictive_sweep.py` creates that local ignored manifest and
 384 local Y4M crops: six AOM CTC B2 screen-content variants, 64 geometries from
 8x8 through 64x64, and three frames per crop. Each crop currently repeats one

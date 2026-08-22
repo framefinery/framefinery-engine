@@ -5893,6 +5893,58 @@ tradeoff:
 The source diff was reverted. Any future CCLM pruning needs content-adaptive
 evidence stronger than format/bit-depth alone.
 
+### Motion Search And Mode-Decision Research Triage
+
+Research and production encoder practice point to fast-search heuristics that
+can improve FPS with controlled byte/PSNR risk, but only when the heuristic is
+measured as a rate-quality-speed tradeoff rather than as speed alone.
+
+Observed external patterns worth adapting:
+
+- VVenC exposes presets as a Pareto tradeoff over encoder tools. Its medium
+  random-access configuration keeps broad motion range but enables adaptive
+  search range, fast merge decisions, fast subpel search, SCC-aware BDPCM/IBC,
+  content-based QTBT speedups, reduced intra chroma full-RD modes, and several
+  inter-tool fast modes.
+- x265's speed knobs follow the same structure: early skip after no-residual
+  merge, recursion skip using neighbor/homogeneity or edge density, fast intra
+  angular scans, reduced merge/ref candidates, diamond ME, and lower RD levels
+  for first-pass/turbo analysis.
+- Fast inter-prediction literature commonly uses merge/skip outcomes and
+  rolling RD-cost history to decide whether later inter modes or larger motion
+  searches are worth running. One HEVC inter paper reports cutting search
+  range to 2 after a selected skip candidate because the best MV remains within
+  a tiny range with high probability.
+- VVC fast CU/mode papers generally use cheap texture features before expensive
+  RD: entropy/texture contrast, variance of sub-CU variance, Laplacian or HOG
+  direction estimates, and soft decisions that keep more candidates when the
+  classifier confidence is low.
+
+Implications for FrameFinery VVC:
+
+1. Keep correctness gates first: every accepted search/mode shortcut must still
+   pass internal reconstruction and reference-decoder validation.
+2. Score lossy probes with the encode-matrix tradeoff projection:
+   `10*log2(fps ratio) + 4*log2(byte inverse ratio) + 8*PSNR delta`.
+   This makes a 10% speed gain worth roughly +1.4 points, a 10% byte increase
+   worth roughly -0.55 points, and a 0.1 dB PSNR loss worth -0.8 points.
+3. Prefer deterministic, content-adaptive gates before ML classifiers: skip or
+   narrow expensive candidates only when cheap residual, texture, or neighbor
+   evidence is strong. The rejected CCLM probes show that format-only pruning
+   is too blunt.
+4. Highest-priority candidate probes:
+   - rolling CTU-depth skip/merge RD thresholds for temporal/inter mode
+     pruning;
+   - search-range narrowing when a temporal/merge candidate has zero or tiny
+     residual;
+   - staged luma/chroma mode selection using cheap SSE/SATD and directional
+     gradients before full RD;
+   - allocation- and entropy-build reductions that keep bytes and PSNR exactly
+     unchanged.
+5. Avoid splitting the encoder into independent lossy/lossless paths. Add
+   gates at the deepest candidate/tool-selection level so syntax,
+   reconstruction, residual coding, and validation stay shared.
+
 ## References
 
 - Cargo profile settings:
@@ -5903,10 +5955,19 @@ evidence stronger than format/bit-depth alone.
   <https://doc.rust-lang.org/nightly/rustc/profile-guided-optimization.html>
 - x265 CLI encoder speed and motion-search options:
   <https://x265.readthedocs.io/en/master/cli.html>
+- x265 mode decision and early-skip options:
+  <https://x265.readthedocs.io/en/master/cli.html#mode-decision-analysis>
 - VTM random-access motion-search config:
   <https://jvet.hhi.fraunhofer.de/trac/vvc/attachment/ticket/74/encoder_randomaccess_vtm.cfg>
 - VVenC medium random-access fast-tool config:
   <https://raw.githubusercontent.com/fraunhoferhhi/vvenc/master/cfg/randomaccess_medium.cfg>
+- VVenC project and presets:
+  <https://github.com/fraunhoferhhi/vvenc>
+  <https://github.com/fraunhoferhhi/vvenc/wiki/Presets>
+- HEVC fast inter-prediction using MV/merge/skip information:
+  <https://link.springer.com/article/10.1186/s13640-018-0340-4>
+- VVC fast CU size and intra mode decision:
+  <https://link.springer.com/article/10.1186/s13640-024-00622-7>
 - AOM AV1 encoder speed-feature definitions:
   <https://aomedia.googlesource.com/aom/+/29e0f9faea1f24377b9e0f4ec99f06f1d0545745/av1/encoder/speed_features.h>
 - rav1e feature overview and speed-tier note:

@@ -579,6 +579,21 @@ def apply_baseline_delta(
 
 
 def apply_tradeoff_scale(result: dict[str, Any]) -> None:
+    score = projected_tradeoff_score(result)
+    if score is None:
+        return
+    result["tradeoff_score"] = score
+    result["tradeoff_status"] = classify_tradeoff_result(result)
+
+
+def projected_tradeoff_score(result: dict[str, Any]) -> float | None:
+    """Project byte, quality, and speed deltas into one probe score.
+
+    The score is intentionally simple and local to a single comparable row:
+    positive FPS deltas help, positive byte deltas hurt, and positive PSNR
+    deltas help. Log-scaled FPS/byte ratios make percentage changes comparable
+    across small and large vectors while PSNR remains in decibels.
+    """
     score = 0.0
     scored = False
 
@@ -598,9 +613,8 @@ def apply_tradeoff_scale(result: dict[str, Any]) -> None:
         scored = True
 
     if not scored:
-        return
-    result["tradeoff_score"] = score
-    result["tradeoff_status"] = classify_tradeoff_result(result)
+        return None
+    return score
 
 
 def classify_tradeoff_result(result: dict[str, Any]) -> str:
@@ -826,7 +840,10 @@ def tradeoff_scale_rows(results: list[dict[str, Any]]) -> list[str]:
     lines = [
         "## Tradeoff Scale",
         "",
-        "Higher is better. Score = 10*log2(FPS ratio) + 4*log2(baseline bytes / current bytes) + 8*PSNR dB delta.",
+        "Higher is better. Score = "
+        f"{TRADEOFF_FPS_LOG2_WEIGHT:g}*log2(FPS ratio) + "
+        f"{TRADEOFF_BYTES_LOG2_WEIGHT:g}*log2(baseline bytes / current bytes) + "
+        f"{TRADEOFF_PSNR_DB_WEIGHT:g}*PSNR dB delta.",
         "Status is `accept` for clear aggregate wins, `watch` for useful wins with local bitrate/PSNR concerns, and `regress` for changes that need more work.",
         "",
         "| Codec | Mode | Rows | Average score | Accept | Watch | Regress |",
