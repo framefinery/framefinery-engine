@@ -201,7 +201,10 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     let residual_policy =
         VvcResidualCodingPolicy::new(stream_format, residual_mode).with_fast_search(options.fast_search);
     let predictive_enabled = options.gop.is_predictive();
+    let ctu_sliced_partitioning_supported =
+        vvc_one_slice_per_ctu_partitioning_supported(geometry);
     let lossy_ctu_skip_enabled = predictive_enabled
+        && ctu_sliced_partitioning_supported
         && !residual_mode.is_lossless()
         && vvc_lossy_predictive_ctu_inter_skip_enabled_for_reference_clean_release();
     let mut slice_config = vvc_slice_config_for_input_format(
@@ -212,7 +215,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         slice_config = slice_config.without_lossless_speed_unused_tools();
     }
     slice_config = slice_config.with_validated_profile_for_format(options.profile, stream_format)?;
-    let picture_partitioning = if predictive_enabled {
+    let picture_partitioning = if predictive_enabled && ctu_sliced_partitioning_supported {
         VvcPicturePartitioning::OneSlicePerCtu
     } else {
         residual_mode.picture_partitioning()
@@ -233,17 +236,23 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     };
     let transform_skip_quant_tables =
         VvcTransformSkipQuantTables::new(format.bit_depth(), luma_qp, chroma_qp);
-    let mut parameter_sets = Vec::with_capacity(if predictive_enabled { 3 } else { 2 });
+    let emit_base_picture_parameter_set = !predictive_enabled || ctu_sliced_partitioning_supported;
+    let mut parameter_sets = Vec::with_capacity(
+        1 + usize::from(emit_base_picture_parameter_set)
+            + usize::from(predictive_single_slice_config.is_some()),
+    );
     parameter_sets.push(vvc_sps_unit(
         geometry,
         slice_config,
         stream_format.bit_depth,
     ));
-    parameter_sets.push(vvc_pps_unit_with_partitioning_and_config(
-        geometry,
-        picture_partitioning,
-        slice_config,
-    ));
+    if emit_base_picture_parameter_set {
+        parameter_sets.push(vvc_pps_unit_with_partitioning_and_config(
+            geometry,
+            picture_partitioning,
+            slice_config,
+        ));
+    }
     if let Some(single_slice_config) = predictive_single_slice_config {
         parameter_sets.push(vvc_pps_unit_with_partitioning_and_config(
             geometry,
@@ -355,8 +364,9 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
             sample_vvc_yuv_frame(&frame_buf, VvcEncodeParams { frames: 1 }, geometry, format)?;
         #[cfg(feature = "vvc-stats")]
         frame_stats.add_elapsed("sample_frame", stage_start);
-        let predictive_ctu_inter_skip_enabled =
-            predictive_frame && vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release();
+        let predictive_ctu_inter_skip_enabled = predictive_frame
+            && ctu_sliced_partitioning_supported
+            && vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release();
         let lossy_ctu_skip_candidate_distortions = if predictive_ctu_inter_skip_enabled
             && lossy_ctu_skip_enabled
         {

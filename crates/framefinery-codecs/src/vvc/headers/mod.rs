@@ -28,6 +28,9 @@ pub(in crate::vvc) enum VvcPicturePartitioning {
     OneSlicePerCtu,
 }
 
+const VVC_MAX_EXPLICIT_TILE_COLUMNS: usize = 30;
+const VVC_MAX_TILES_PER_PICTURE: usize = 990;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::vvc) enum VvcSliceType {
     I,
@@ -765,8 +768,9 @@ pub(in crate::vvc) fn vvc_pps_rbsp_with_partitioning_and_config(
     let ctu_cols = vvc_picture_ctu_cols(geometry);
     let ctu_rows = vvc_picture_ctu_rows(geometry);
     let has_multiple_ctus = ctu_cols * ctu_rows > 1;
-    let use_picture_partitioning =
-        has_multiple_ctus && partitioning == VvcPicturePartitioning::OneSlicePerCtu;
+    let use_picture_partitioning = has_multiple_ctus
+        && partitioning == VvcPicturePartitioning::OneSlicePerCtu
+        && vvc_one_slice_per_ctu_partitioning_supported(geometry);
     let picture_header_carries_slice_state =
         use_picture_partitioning && vvc_picture_header_carries_slice_state(slice_config);
     writer.write_u(
@@ -1297,6 +1301,13 @@ pub(in crate::vvc) fn vvc_picture_ctu_rows(geometry: VvcVideoGeometry) -> usize 
 
 pub(in crate::vvc) fn vvc_picture_ctu_count(geometry: VvcVideoGeometry) -> usize {
     vvc_picture_ctu_cols(geometry) * vvc_picture_ctu_rows(geometry)
+}
+
+pub(in crate::vvc) fn vvc_one_slice_per_ctu_partitioning_supported(
+    geometry: VvcVideoGeometry,
+) -> bool {
+    vvc_picture_ctu_cols(geometry) <= VVC_MAX_EXPLICIT_TILE_COLUMNS
+        && vvc_picture_ctu_count(geometry) <= VVC_MAX_TILES_PER_PICTURE
 }
 
 pub(in crate::vvc) fn vvc_slice_address_bits(geometry: VvcVideoGeometry) -> u8 {

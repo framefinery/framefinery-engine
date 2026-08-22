@@ -757,6 +757,36 @@ fn vvc_multi_ctu_pps_signals_picture_header_placement_flags() {
 }
 
 #[test]
+fn vvc_ctu_sliced_pps_respects_vtm_tile_column_limit() {
+    let max_supported_width = VvcVideoGeometry {
+        width: 1920,
+        height: 1080,
+    };
+    assert_eq!(vvc_picture_ctu_cols(max_supported_width), 30);
+    assert!(vvc_one_slice_per_ctu_partitioning_supported(
+        max_supported_width
+    ));
+
+    let too_wide = VvcVideoGeometry {
+        width: 2560,
+        height: 1440,
+    };
+    assert_eq!(vvc_picture_ctu_cols(too_wide), 40);
+    assert!(!vvc_one_slice_per_ctu_partitioning_supported(too_wide));
+    let pps = vvc_pps_rbsp_with_partitioning_and_config(
+        too_wide,
+        VvcPicturePartitioning::OneSlicePerCtu,
+        vvc_test_slice_config()
+            .with_inter_enabled()
+            .with_picture_header_slice_state(),
+    );
+    assert_vvc_flag(&pps, "pps_no_pic_partition_flag", true);
+    assert_vvc_field_absent(&pps, "pps_num_exp_tile_columns_minus1");
+    assert_vvc_field_absent(&pps, "pps_rpl_info_in_ph_flag");
+    assert_vvc_field_absent(&pps, "pps_qp_delta_info_in_ph_flag");
+}
+
+#[test]
 fn vvc_sps_can_signal_4x8_visible_geometry() {
     assert_vvc_parameter_sets_signal_geometry(VvcVideoGeometry {
         width: 4,
@@ -3177,6 +3207,44 @@ fn vvc_predictive_full_repeated_frame_uses_single_skip_slice() {
             .count(),
         1,
         "the repeated predictive frame should be encoded as one trailing P slice"
+    );
+}
+
+#[test]
+fn vvc_predictive_large_geometry_uses_only_single_slice_pps() {
+    let geometry = VvcVideoGeometry {
+        width: 1922,
+        height: 64,
+    };
+    assert!(!vvc_one_slice_per_ctu_partitioning_supported(geometry));
+    let input = solid_yuv420p8_geometry(geometry.width, geometry.height, 72, 128, 192, 2);
+    let predictive = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        PixelFormat::Yuv420p8,
+        VvcEncodeOptions {
+            lossless: true,
+            gop: crate::settings::GopMode::Infinite,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("large predictive repeated-frame VVC encode should succeed");
+
+    let predictive_nals = parse_annex_b_nal_units(&predictive.bitstream).unwrap();
+    assert_eq!(
+        predictive_nals
+            .iter()
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::Pps as u8)
+            .count(),
+        1,
+        "large predictive streams should omit the unsupported CTU-sliced PPS"
+    );
+    assert!(
+        predictive_nals
+            .iter()
+            .any(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8),
+        "large repeated predictive stream should keep the single-slice trailing picture"
     );
 }
 

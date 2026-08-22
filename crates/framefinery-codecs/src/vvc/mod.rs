@@ -51,9 +51,10 @@ use cabac::{
     VvcTreeType,
 };
 use header::{
-    vvc_frame_slice_unit, vvc_picture_ctu_cols, vvc_picture_ctu_count, vvc_picture_ctu_rows,
-    vvc_pps_unit_with_partitioning_and_config, vvc_predictive_ctu_slice_units,
-    vvc_predictive_frame_slice_unit, vvc_sps_unit, VvcPicturePartitioning,
+    vvc_frame_slice_unit, vvc_one_slice_per_ctu_partitioning_supported, vvc_picture_ctu_cols,
+    vvc_picture_ctu_count, vvc_picture_ctu_rows, vvc_pps_unit_with_partitioning_and_config,
+    vvc_predictive_ctu_slice_units, vvc_predictive_frame_slice_unit, vvc_sps_unit,
+    VvcPicturePartitioning,
 };
 #[cfg(test)]
 use header::{

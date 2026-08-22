@@ -4982,11 +4982,75 @@ Follow-ups:
 
 - The remaining gap is speed, not aggregate quality/bytes. VVC is still about
   0.17x AV2 mean FPS on the six-vector lossy matrix.
-- `release-six-vectors-full` cannot currently be used as a one-command
-  VTM-required VVC gate because the 2560x1440 Wayland RGB row fails VTM PPS
-  parsing with `Number of explicit tile columns exceeds valid range`. That row
-  is unchanged by this QP retune and should be debugged separately as a
-  large-geometry/RGB partitioning issue.
+- The 2560x1440 Wayland RGB row exposed a separate VTM PPS parser failure for
+  CTU-sliced predictive streams. That blocker is resolved by the
+  `vvc-large-geometry-predictive-pps` checkpoint below.
+
+### VVC Large-Geometry Predictive PPS Gate
+
+Checkpoint: `vvc-large-geometry-predictive-pps`.
+
+Predictive VVC streams used to emit both a CTU-sliced PPS and a single-slice
+PPS up front. The CTU-sliced PPS maps one 64x64 CTU to one tile and one slice
+so mixed predictive frames can encode skipped CTUs as P slices while keeping
+non-skipped CTUs as I slices. That syntax shape is reference-clean for the
+normal 1920x1080 six-vector AOM rows, which have 30 CTU columns, but it is not
+valid for wider frames. VTM 24.0 rejects more than 30 explicit tile columns;
+the 2560x1440 Wayland row has 40 CTU columns and failed before decoding any
+slice:
+
+```text
+Number of explicit tile columns exceeds valid range
+```
+
+The encoder now gates one-slice-per-CTU partitioning through
+`vvc_one_slice_per_ctu_partitioning_supported()`, currently matching VTM's
+`MAX_TILE_COLS = 30` and `MAX_TILES = 990` limits. When a predictive stream is
+too large for that CTU-as-tile layout:
+
+- the unsupported CTU-sliced PPS is not emitted;
+- CTU-level mixed InterSkip is disabled for that stream;
+- the single-slice predictive PPS remains available, so repeated full frames
+  can still use the reference-clean all-skip P-slice path.
+
+The immediate Wayland RGB 3-frame validation now passes and omits the unused
+PPS:
+
+| Row | Geometry | Frames | Result | Bytes |
+|---|---:|---:|---|---:|
+| screen_wayland_activity_rgb | 2560x1440 gbrp8 | 3 | VTM reconstruction matches | 151,982 |
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo fmt
+TMPDIR=verification/generated/agent_scratch/tmp cargo check -p framefinery-codecs --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_ctu_sliced_pps_respects_vtm_tile_column_limit --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_predictive_large_geometry_uses_only_single_slice_pps --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_lossy_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp AOMCTC_ROOT=/path/to/aomctc \
+  make validate-set CODEC=vvc VALIDATION_SET=release-six-vectors-full \
+  VALIDATION_LIMIT=3 VALIDATION_FRAMES=3 VALIDATION_DIRECT_SOURCE_FILES=1 \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Follow-up:
+
+- If CTU-level mixed InterSkip is worth preserving for wider frames, implement
+  a legal large-picture partitioning layout instead of one tile per CTU. The
+  likely direction is grouped tile columns or a different slice map that stays
+  under VVC/VTM tile limits while still keeping CABAC bodies reference-clean.
 
 ## References
 
