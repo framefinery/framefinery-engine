@@ -4642,6 +4642,109 @@ Follow-up:
   later pass should test whether the second luma RD candidate can be selected by
   a raw-score-gap threshold instead of by chroma format.
 
+### VVC Lossy RD-Gated CTU Skip
+
+Checkpoint: `vvc-lossy-rd-ctu-skip-q19-50f-limit1`.
+
+Lossy predictive CTU skip is now enabled only after the normal intra CTU path
+has produced a reconstruction and payload. A CTU may switch to InterSkip when
+the previous reconstruction is no worse by visible-sample SSE and the skipped
+payload still saves a conservative CABAC bit margin. The pre-scan also requires
+at least half of the frame's CTUs to have skip candidates before switching to
+CTU-sliced output, because non-skipped CTUs lose cross-CTU intra availability in
+that syntax shape.
+
+This keeps the encoding paths unified: lossy CTUs still run through the same
+intra quantization and mode-decision path first, and InterSkip is selected only
+as a final block-level replacement. The path is reference-clean against VTM,
+including one 50-frame AOM CTC `SceneComposition_1` row.
+
+50-frame six-vector VVC lossy matrix versus
+`vvc-rd1-lossy-luma-rd2-gated-chroma-rd2-q19-50f`:
+
+| Vector | Previous bytes | Current bytes | Byte delta | Previous FPS | Current FPS | FPS delta | Previous PSNR | Current PSNR | PSNR delta |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| SceneComposition_1_420 | 9,588,482 | 2,716,281 | -6,872,201 | 1.574 | 0.88 | -0.70 | 50.284 | 50.239 | -0.045 |
+| SceneComposition_1_422 | 10,553,882 | 2,957,068 | -7,596,814 | 1.250 | 0.71 | -0.54 | 50.471 | 50.406 | -0.065 |
+| screen_wayland_activity_rgb | 7,498,778 | 959,945 | -6,538,833 | 0.674 | 0.41 | -0.26 | 58.997 | 58.842 | -0.155 |
+| MissionControlClip1_420 | 24,309,986 | 10,122,157 | -14,187,829 | 1.036 | 0.86 | -0.18 | 51.840 | 51.924 | +0.084 |
+| MissionControlClip1_422 | 27,199,189 | 11,275,575 | -15,923,614 | 0.761 | 0.69 | -0.07 | 51.979 | 52.055 | +0.076 |
+| MissionControlClip1_444 | 31,758,589 | 12,786,961 | -18,971,628 | 0.494 | 0.45 | -0.05 | 53.075 | 53.069 | -0.006 |
+
+Aggregate after this checkpoint:
+
+| Metric | Previous | Current | Delta |
+|---|---:|---:|---:|
+| Bytes | 110,908,906 | 40,817,987 | -70,090,919 (-63.2%) |
+| Mean FPS | 0.965 | 0.61 | -36.8% |
+| Mean PSNR | 52.774 | 52.756 | -0.018 |
+
+Validation:
+
+```sh
+cargo fmt
+cargo check -p framefinery-codecs --features "vvc vvc-stats"
+cargo test -p framefinery-codecs vvc_lossy_predictive --features "vvc vvc-stats" -- --nocapture
+cargo test -p framefinery-codecs vvc_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=multictu-regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=unusual-geometry-smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_SOURCE_FILTERS=1 VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp AOMCTC_ROOT=/path/to/aomctc \
+  make validate-set CODEC=vvc VALIDATION_SET=release-six-vectors-full \
+  VALIDATION_LIMIT=1 VALIDATION_FRAMES=50 VALIDATION_DIRECT_SOURCE_FILES=1 \
+  VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_SETTINGS="lossless gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Command:
+
+```sh
+AOMCTC_ROOT=/path/to/aomctc make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=release-six-vectors-full \
+  ENCODE_MATRIX_RUN=vvc-lossy-rd-ctu-skip-q19-50f-limit1 \
+  ENCODE_MATRIX_CODECS=vvc \
+  ENCODE_MATRIX_MODES=lossy \
+  ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_VVC_LOSSY_QP=19 \
+  ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
+  ENCODE_MATRIX_VVC_GOP=-1 \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-rd1-lossy-luma-rd2-gated-chroma-rd2-q19-50f.json \
+  ENCODE_MATRIX_CLEANUP_RECON=1 \
+  ENCODE_MATRIX_CLEANUP_OUTPUT=1 \
+  ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
+Follow-ups:
+
+- Recover speed. The current gate performs extra per-candidate CTU CABAC
+  counting and often moves the frame to CTU-sliced output; both are visible in
+  the FPS regression.
+- Implement and validate a legal mixed P-slice intra+InterSkip path. If VTM
+  accepts it with dual-tree/profile constraints handled correctly, that should
+  remove most CTU-slice header overhead and preserve cross-CTU intra context for
+  non-skipped CTUs.
+- Replace exact CABAC recounting in the gate with a cheaper bit-cost proxy or a
+  cached payload-size estimate once the selection policy is stable.
+
 ## References
 
 - Cargo profile settings:

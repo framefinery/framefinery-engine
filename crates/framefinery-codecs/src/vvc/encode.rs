@@ -201,7 +201,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     let residual_policy =
         VvcResidualCodingPolicy::new(stream_format, residual_mode).with_fast_search(options.fast_search);
     let predictive_enabled = options.gop.is_predictive();
-    let lossy_near_skip_enabled = predictive_enabled
+    let lossy_ctu_skip_enabled = predictive_enabled
         && !residual_mode.is_lossless()
         && vvc_lossy_predictive_ctu_inter_skip_enabled_for_reference_clean_release();
     let mut slice_config = vvc_slice_config_for_input_format(
@@ -357,16 +357,25 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         frame_stats.add_elapsed("sample_frame", stage_start);
         let predictive_ctu_inter_skip_enabled =
             predictive_frame && vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release();
-        let predictive_ctu_slice_frame = predictive_ctu_inter_skip_enabled
-            && vvc_predictive_frame_has_ctu_inter_skip_candidate(
+        let predictive_ctu_skip_candidate_count = if predictive_ctu_inter_skip_enabled {
+            vvc_predictive_frame_ctu_inter_skip_candidate_count(
                 previous_predictive_cache.as_deref(),
                 &frame_buf,
                 stream_frame_layout,
                 &source_frame,
                 geometry,
                 residual_mode,
-                lossy_near_skip_enabled,
-            );
+                lossy_ctu_skip_enabled,
+            )
+        } else {
+            0
+        };
+        let predictive_ctu_slice_frame = predictive_ctu_skip_candidate_count > 0
+            && (residual_mode.is_lossless()
+                || vvc_lossy_predictive_ctu_skip_candidate_count_allows_ctu_slices(
+                    predictive_ctu_skip_candidate_count,
+                    ctu_count,
+                ));
         {
             let mut frame_bitstream = CountingWriter::new(bitstream);
             let (frame_recon_yuv, next_predictive_cache) = {
@@ -395,17 +404,26 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                     let cached_lossy_skip_ctu = if !predictive_ctu_inter_skip_enabled
                         || !predictive_frame
                         || cached_exact_ctu_available
-                        || !lossy_near_skip_enabled
+                        || !lossy_ctu_skip_enabled
                     {
                         None
                     } else {
                         previous_predictive_cache.as_ref().and_then(|cache| {
-                            cache.lossy_near_reconstruction_decision(&source_frame, region)
+                            cache.lossy_inter_skip_decision(
+                                &frame_buf,
+                                stream_frame_layout,
+                                &source_frame,
+                                region,
+                            )
                         })
                     };
-                    let cached_inter_skip_ctu = cached_exact_ctu.or(cached_lossy_skip_ctu);
+                    let cached_inter_skip_ctu = if residual_mode.is_lossless() {
+                        cached_exact_ctu
+                    } else {
+                        None
+                    };
                     let cached_inter_skip_ctu_available = cached_inter_skip_ctu.is_some();
-                    let inter_skip_ctu = cached_inter_skip_ctu_available
+                    let mut inter_skip_ctu = cached_inter_skip_ctu_available
                         && predictive_ctu_slice_frame
                         && vvc_predictive_inter_skip_region(region);
                     let intra_reuse_allowed = cached_exact_ctu_available
@@ -585,15 +603,38 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 slice_config,
                             )?;
                         }
+                        let mut payload = vvc_intra_ctu_payload_from_decision(
+                            region,
+                            &decision,
+                            slice_config,
+                            luma_inter_skip_mask.as_ref(),
+                            chroma_inter_skip_mask.as_ref(),
+                        )?;
                         if let Some(decisions) = frame_ctu_decisions.as_mut() {
-                            let payload = vvc_intra_ctu_payload_from_decision(
-                                region,
-                                &decision,
-                                slice_config,
-                                luma_inter_skip_mask.as_ref(),
-                                chroma_inter_skip_mask.as_ref(),
-                            )?;
-                            decisions.push(std::sync::Arc::new(decision));
+                            if let Some(cached) = cached_lossy_skip_ctu {
+                                if predictive_ctu_slice_frame
+                                    && vvc_predictive_inter_skip_region(region)
+                                    && vvc_lossy_predictive_inter_skip_selects_over_intra(
+                                        &source_frame,
+                                        &frame_recon,
+                                        &cached.reconstruction,
+                                        region,
+                                        geometry,
+                                        &payload,
+                                        slice_config,
+                                    )
+                                {
+                                    frame_recon.copy_ctu_from(&cached.reconstruction, region);
+                                    reused_predictive_ctu = true;
+                                    inter_skip_ctu = true;
+                                    payload = VvcQuantizedCtuPayload::InterSkip;
+                                    decisions.push(std::sync::Arc::clone(cached.decision));
+                                } else {
+                                    decisions.push(std::sync::Arc::new(decision));
+                                }
+                            } else {
+                                decisions.push(std::sync::Arc::new(decision));
+                            }
                             payload
                         } else {
                             let VvcQuantizedCtuLeafDecision {
@@ -907,21 +948,32 @@ impl VvcPredictiveFrameCache {
             decision,
         })
     }
+
+    fn lossy_inter_skip_decision(
+        &self,
+        current_source: &[u8],
+        layout: PlanarYuvFrameLayout,
+        current_frame: &VvcSampledFrame,
+        region: VvcCtuRegion,
+    ) -> Option<VvcReusableCtuDecision<'_>> {
+        self.matching_decision(current_source, layout, region)
+            .or_else(|| self.lossy_near_reconstruction_decision(current_frame, region))
+    }
 }
 
-fn vvc_predictive_frame_has_ctu_inter_skip_candidate(
+fn vvc_predictive_frame_ctu_inter_skip_candidate_count(
     previous_cache: Option<&VvcPredictiveFrameCache>,
     current_source: &[u8],
     layout: PlanarYuvFrameLayout,
     current_frame: &VvcSampledFrame,
     geometry: VvcVideoGeometry,
     residual_mode: VvcResidualCodingMode,
-    lossy_near_skip_enabled: bool,
-) -> bool {
+    lossy_ctu_skip_enabled: bool,
+) -> usize {
     let Some(cache) = previous_cache else {
-        return false;
+        return 0;
     };
-    vvc_ctu_regions(geometry).any(|region| {
+    vvc_ctu_regions(geometry).filter(|&region| {
         if !vvc_predictive_inter_skip_region(region) {
             return false;
         }
@@ -932,11 +984,18 @@ fn vvc_predictive_frame_has_ctu_inter_skip_candidate(
         {
             return true;
         }
-        lossy_near_skip_enabled
+        lossy_ctu_skip_enabled
             && cache
-                .lossy_near_reconstruction_decision(current_frame, region)
+                .lossy_inter_skip_decision(current_source, layout, current_frame, region)
                 .is_some()
-    })
+    }).count()
+}
+
+fn vvc_lossy_predictive_ctu_skip_candidate_count_allows_ctu_slices(
+    candidate_count: usize,
+    ctu_count: usize,
+) -> bool {
+    candidate_count.saturating_mul(2) >= ctu_count.max(1)
 }
 
 fn vvc_predictive_ctu_dependencies_reused(
@@ -1001,12 +1060,121 @@ fn vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release() -> bool {
 }
 
 fn vvc_lossy_predictive_ctu_inter_skip_enabled_for_reference_clean_release() -> bool {
-    // The bounded-delta lossy near-skip detector is syntax-clean, but it is not
-    // RD-gated yet. Enabling it can force a whole frame onto CTU-sliced output,
-    // increasing slice overhead and resetting intra context availability enough
-    // to regress natural lossy content. Keep lossy InterSkip off until the mode
-    // decision includes bit cost and distortion against normal intra coding.
-    false
+    // Lossy CTU InterSkip is only enabled after normal CTU quantization and a
+    // conservative RD gate. The pre-scan still requires enough skip candidates
+    // to justify switching the frame to CTU-sliced output, because non-skipped
+    // CTUs lose cross-CTU intra availability in that syntax shape.
+    true
+}
+
+fn vvc_lossy_predictive_inter_skip_selects_over_intra(
+    source_frame: &VvcSampledFrame,
+    intra_reconstruction: &VvcReconstructionFrame,
+    skip_reconstruction: &VvcReconstructionFrame,
+    region: VvcCtuRegion,
+    picture_geometry: VvcVideoGeometry,
+    intra_payload: &VvcQuantizedCtuPayload,
+    slice_config: VvcSliceSyntaxConfig,
+) -> bool {
+    let intra_distortion =
+        vvc_region_sse_against_reconstruction(source_frame, intra_reconstruction, region);
+    let skip_distortion =
+        vvc_region_sse_against_reconstruction(source_frame, skip_reconstruction, region);
+    if skip_distortion > intra_distortion {
+        return false;
+    }
+
+    let intra_ctu = VvcQuantizedCtu {
+        slice_address: region.slice_address,
+        geometry: region.geometry,
+        payload: intra_payload.clone(),
+    };
+    let skip_ctu = VvcQuantizedCtu {
+        slice_address: region.slice_address,
+        geometry: region.geometry,
+        payload: VvcQuantizedCtuPayload::InterSkip,
+    };
+    let intra_bits = vvc_ctu_cabac_payload(picture_geometry, &intra_ctu, slice_config, false).bit_len;
+    let skip_bits = vvc_ctu_cabac_payload(picture_geometry, &skip_ctu, slice_config, true).bit_len;
+    skip_bits.saturating_add(VVC_LOSSY_PREDICTIVE_CTU_SKIP_BIT_MARGIN) < intra_bits
+}
+
+const VVC_LOSSY_PREDICTIVE_CTU_SKIP_BIT_MARGIN: usize = 256;
+
+fn vvc_region_sse_against_reconstruction(
+    source_frame: &VvcSampledFrame,
+    reconstruction: &VvcReconstructionFrame,
+    region: VvcCtuRegion,
+) -> u64 {
+    if source_frame.geometry != reconstruction.geometry || source_frame.format != reconstruction.format {
+        return u64::MAX;
+    }
+    let width = region
+        .geometry
+        .width
+        .min(source_frame.geometry.width.saturating_sub(region.origin_x));
+    let height = region
+        .geometry
+        .height
+        .min(source_frame.geometry.height.saturating_sub(region.origin_y));
+    let mut sse = vvc_plane_region_sse(
+        &source_frame.luma,
+        source_frame.geometry.width,
+        &reconstruction.luma,
+        reconstruction.luma_width(),
+        region.origin_x,
+        region.origin_y,
+        width,
+        height,
+    );
+    let subsample_x = chroma_subsample_x(source_frame.format.chroma_sampling);
+    let subsample_y = chroma_subsample_y(source_frame.format.chroma_sampling);
+    let chroma_x = region.origin_x / subsample_x;
+    let chroma_y = region.origin_y / subsample_y;
+    let chroma_width = width / subsample_x;
+    let chroma_height = height / subsample_y;
+    sse = sse.saturating_add(vvc_plane_region_sse(
+        &source_frame.cb,
+        source_frame.geometry.width / subsample_x,
+        &reconstruction.cb,
+        reconstruction.chroma_width(),
+        chroma_x,
+        chroma_y,
+        chroma_width,
+        chroma_height,
+    ));
+    sse.saturating_add(vvc_plane_region_sse(
+        &source_frame.cr,
+        source_frame.geometry.width / subsample_x,
+        &reconstruction.cr,
+        reconstruction.chroma_width(),
+        chroma_x,
+        chroma_y,
+        chroma_width,
+        chroma_height,
+    ))
+}
+
+fn vvc_plane_region_sse(
+    source: &[VvcSample],
+    source_stride: usize,
+    reconstruction: &[VvcSample],
+    reconstruction_stride: usize,
+    start_x: usize,
+    start_y: usize,
+    width: usize,
+    height: usize,
+) -> u64 {
+    let mut sse = 0u64;
+    for y in 0..height {
+        let source_row = (start_y + y) * source_stride + start_x;
+        let reconstruction_row = (start_y + y) * reconstruction_stride + start_x;
+        for x in 0..width {
+            let delta = i64::from(source[source_row + x]) - i64::from(reconstruction[reconstruction_row + x]);
+            sse = sse.saturating_add((delta * delta) as u64);
+        }
+    }
+    sse
 }
 
 fn vvc_predictive_luma_leaf_inter_skip_mask(
