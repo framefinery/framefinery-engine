@@ -281,8 +281,9 @@ VVC/VTM debugging notes:
   are tracked in `docs/compiler-optimizations.md`. Search there before trying a
   new mode-search, CCLM, BDPCM, MTS, InterSkip, or mixed P-slice experiment.
 - Use `scripts/benchmark_encode_matrix.py` for `[bytes, PSNR, FPS]` tradeoff
-  scoring. The score is documented in `docs/validation.md`; correctness and
-  reference-decoder validation still gate before the score matters.
+  scoring. The score implementation lives in `scripts/encode_tradeoff.py` and
+  is documented in `docs/validation.md`; correctness and reference-decoder
+  validation still gate before the score matters.
 - Current VVC predictive mode limitation: lossy 4:2:0 mixed intra/InterSkip
   frames can use one P-slice. Lossless and high-chroma 4:2:2/4:4:4 mixed
   frames intentionally remain on the CTU-slice fallback; the 4:2:2/4:4:4
@@ -292,6 +293,11 @@ VVC/VTM debugging notes:
 - For VVC profiling, build with `VVC_STATS=1` or the `vvc-stats` feature and
   write `FRAMEFINERY_VVC_STATS` under `verification/generated/`; avoid `/tmp`
   for large probes.
+- If AOM CTC sources are not locally available, use ignored local manifests
+  under `verification/test_vector_sets/local/` for focused probes. The
+  persistent Wayland source row can be isolated with
+  `local-wayland-screen-50f`, and generated mode-search rows can use
+  `local-vvc-mode-probe-50f`.
 
 Persistent local validation source:
 

@@ -6697,6 +6697,51 @@ source change was reverted. Do not prune lossy chroma BDPCM from the selected
 raw chroma mode alone; it is carrying real rate-distortion value on the current
 screen-content and AOM CTC vectors.
 
+Rejected/inconclusive probe: compact lossy `lossless-speed` directional
+refinement.
+
+External encoder guidance favors staged refinement around the best cheap
+candidate. The current VVC luma directional mode search already does that, but
+the default lossy `lossless-speed` refinement intentionally widens the second
+pass to the normal seven-offset family around the current winner. A probe
+narrowed that second pass to the compact five-offset family by using the active
+fast-search policy directly.
+
+Focused 50-frame Wayland result against a fresh current-code baseline:
+
+```text
+verification/generated/encode_matrix/vvc-lossless-speed-compact-refine-wayland-q19-50f.md
+```
+
+```text
+bytes +0, PSNR +0.000 dB, FPS 1.87 -> 1.93, score +0.5:watch
+```
+
+Generated 640x360 50-frame mode-probe result against a fresh current-code
+baseline:
+
+```text
+verification/generated/encode_matrix/vvc-compact-refine-generated-q19-50f.md
+```
+
+| Vector | Bytes delta | PSNR delta | FPS delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.000 | -0.13 | `-0.2 regress` |
+| probe_blocks_420 | +0 | +0.000 | +0.22 | `+0.3 watch` |
+| probe_checker_444 | +0 | +0.000 | -0.26 | `-0.5 regress` |
+| probe_blocks_444 | +0 | +0.000 | +0.15 | `+0.4 watch` |
+
+The source change was reverted. Do not retry this exact refinement narrowing
+unless a future profile shows the seven-offset refinement itself as a stable
+hotspot; current timing noise and mixed rows do not justify the quality risk of
+dropping the ±4 winner refinement.
+
+Tooling note: the encode-matrix tradeoff scorer is now centralized in
+`scripts/encode_tradeoff.py` with unit coverage in
+`scripts/test_encode_tradeoff.py`. `scripts/benchmark_encode_matrix.py` imports
+that helper so release tables and local optimization probes use the same
+accept/watch/regress semantics.
+
 ## References
 
 - Cargo profile settings:
