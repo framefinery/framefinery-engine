@@ -357,16 +357,37 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         frame_stats.add_elapsed("sample_frame", stage_start);
         let predictive_ctu_inter_skip_enabled =
             predictive_frame && vvc_predictive_ctu_inter_skip_enabled_for_reference_clean_release();
+        let lossy_ctu_skip_candidate_distortions = if predictive_ctu_inter_skip_enabled
+            && lossy_ctu_skip_enabled
+        {
+            previous_predictive_cache
+                .as_ref()
+                .map(|cache| {
+                    cache.lossy_inter_skip_candidate_distortions(
+                        &frame_buf,
+                        stream_frame_layout,
+                        &source_frame,
+                        geometry,
+                    )
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let predictive_ctu_skip_candidate_count = if predictive_ctu_inter_skip_enabled {
-            vvc_predictive_frame_ctu_inter_skip_candidate_count(
-                previous_predictive_cache.as_deref(),
-                &frame_buf,
-                stream_frame_layout,
-                &source_frame,
-                geometry,
-                residual_mode,
-                lossy_ctu_skip_enabled,
-            )
+            if residual_mode.is_lossless() {
+                vvc_predictive_frame_lossless_ctu_inter_skip_candidate_count(
+                    previous_predictive_cache.as_deref(),
+                    &frame_buf,
+                    stream_frame_layout,
+                    geometry,
+                )
+            } else {
+                lossy_ctu_skip_candidate_distortions
+                    .iter()
+                    .filter(|distortion| distortion.is_some())
+                    .count()
+            }
         } else {
             0
         };
@@ -409,12 +430,15 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         None
                     } else {
                         previous_predictive_cache.as_ref().and_then(|cache| {
-                            cache.lossy_inter_skip_decision(
-                                &frame_buf,
-                                stream_frame_layout,
-                                &source_frame,
-                                region,
-                            )
+                            lossy_ctu_skip_candidate_distortions
+                                .get(region.slice_address)
+                                .copied()
+                                .flatten()
+                                .and_then(|skip_distortion| {
+                                    cache
+                                        .reusable_decision(region)
+                                        .map(|cached| (cached, skip_distortion))
+                                })
                         })
                     };
                     let cached_inter_skip_ctu = if residual_mode.is_lossless() {
@@ -611,14 +635,14 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             chroma_inter_skip_mask.as_ref(),
                         )?;
                         if let Some(decisions) = frame_ctu_decisions.as_mut() {
-                            if let Some(cached) = cached_lossy_skip_ctu {
+                            if let Some((cached, skip_distortion)) = cached_lossy_skip_ctu {
                                 if predictive_ctu_slice_frame
                                     && vvc_predictive_inter_skip_region(region)
                                     && vvc_lossy_predictive_inter_skip_selects_over_intra(
                                         &source_frame,
                                         &frame_recon,
-                                        &cached.reconstruction,
                                         region,
+                                        skip_distortion,
                                     )
                                 {
                                     frame_recon.copy_ctu_from(&cached.reconstruction, region);
@@ -901,13 +925,21 @@ impl VvcPredictiveFrameCache {
             .map(std::sync::Arc::as_ref)
     }
 
+    fn reusable_decision(&self, region: VvcCtuRegion) -> Option<VvcReusableCtuDecision<'_>> {
+        let decision = self.ctu_decisions.get(region.slice_address)?;
+        Some(VvcReusableCtuDecision {
+            reconstruction: &self.reconstruction,
+            decision,
+        })
+    }
+
     fn matching_decision(
         &self,
         current_source: &[u8],
         layout: PlanarYuvFrameLayout,
         region: VvcCtuRegion,
     ) -> Option<VvcReusableCtuDecision<'_>> {
-        let decision = self.ctu_decisions.get(region.slice_address)?;
+        let reusable = self.reusable_decision(region)?;
         if !layout.regions_equal_between(
             current_source,
             region.origin_x,
@@ -920,72 +952,69 @@ impl VvcPredictiveFrameCache {
         ) {
             return None;
         }
-        Some(VvcReusableCtuDecision {
-            reconstruction: &self.reconstruction,
-            decision,
-        })
+        Some(reusable)
     }
 
-    fn lossy_near_reconstruction_decision(
-        &self,
-        current_source: &VvcSampledFrame,
-        region: VvcCtuRegion,
-    ) -> Option<VvcReusableCtuDecision<'_>> {
-        let decision = self.ctu_decisions.get(region.slice_address)?;
-        if !vvc_predictive_lossy_region_within_reconstruction_delta(
-            current_source,
-            &self.reconstruction,
-            region,
-            vvc_lossy_predictive_skip_max_abs_delta(current_source.format.bit_depth),
-        ) {
-            return None;
-        }
-        Some(VvcReusableCtuDecision {
-            reconstruction: &self.reconstruction,
-            decision,
-        })
-    }
-
-    fn lossy_inter_skip_decision(
+    fn lossy_inter_skip_candidate_distortions(
         &self,
         current_source: &[u8],
         layout: PlanarYuvFrameLayout,
         current_frame: &VvcSampledFrame,
-        region: VvcCtuRegion,
-    ) -> Option<VvcReusableCtuDecision<'_>> {
-        self.matching_decision(current_source, layout, region)
-            .or_else(|| self.lossy_near_reconstruction_decision(current_frame, region))
+        geometry: VvcVideoGeometry,
+    ) -> Vec<Option<u64>> {
+        let max_abs_delta =
+            vvc_lossy_predictive_skip_max_abs_delta(current_frame.format.bit_depth);
+        vvc_ctu_regions(geometry)
+            .map(|region| {
+                if !vvc_predictive_inter_skip_region(region)
+                    || self.ctu_decisions.get(region.slice_address).is_none()
+                {
+                    return None;
+                }
+                if layout.regions_equal_between(
+                    current_source,
+                    region.origin_x,
+                    region.origin_y,
+                    &self.source,
+                    region.origin_x,
+                    region.origin_y,
+                    region.geometry.width,
+                    region.geometry.height,
+                ) {
+                    return Some(vvc_region_sse_against_reconstruction(
+                        current_frame,
+                        &self.reconstruction,
+                        region,
+                    ));
+                }
+                vvc_predictive_lossy_region_sse_if_within_reconstruction_delta(
+                    current_frame,
+                    &self.reconstruction,
+                    region,
+                    max_abs_delta,
+                )
+            })
+            .collect()
     }
 }
 
-fn vvc_predictive_frame_ctu_inter_skip_candidate_count(
+fn vvc_predictive_frame_lossless_ctu_inter_skip_candidate_count(
     previous_cache: Option<&VvcPredictiveFrameCache>,
     current_source: &[u8],
     layout: PlanarYuvFrameLayout,
-    current_frame: &VvcSampledFrame,
     geometry: VvcVideoGeometry,
-    residual_mode: VvcResidualCodingMode,
-    lossy_ctu_skip_enabled: bool,
 ) -> usize {
     let Some(cache) = previous_cache else {
         return 0;
     };
-    vvc_ctu_regions(geometry).filter(|&region| {
-        if !vvc_predictive_inter_skip_region(region) {
-            return false;
-        }
-        if residual_mode.is_lossless()
-            && cache
-                .matching_decision(current_source, layout, region)
-                .is_some()
-        {
-            return true;
-        }
-        lossy_ctu_skip_enabled
-            && cache
-                .lossy_inter_skip_decision(current_source, layout, current_frame, region)
-                .is_some()
-    }).count()
+    vvc_ctu_regions(geometry)
+        .filter(|&region| {
+            vvc_predictive_inter_skip_region(region)
+                && cache
+                    .matching_decision(current_source, layout, region)
+                    .is_some()
+        })
+        .count()
 }
 
 fn vvc_lossy_predictive_ctu_skip_candidate_count_allows_ctu_slices(
@@ -1067,13 +1096,11 @@ fn vvc_lossy_predictive_ctu_inter_skip_enabled_for_reference_clean_release() -> 
 fn vvc_lossy_predictive_inter_skip_selects_over_intra(
     source_frame: &VvcSampledFrame,
     intra_reconstruction: &VvcReconstructionFrame,
-    skip_reconstruction: &VvcReconstructionFrame,
     region: VvcCtuRegion,
+    skip_distortion: u64,
 ) -> bool {
     let intra_distortion =
         vvc_region_sse_against_reconstruction(source_frame, intra_reconstruction, region);
-    let skip_distortion =
-        vvc_region_sse_against_reconstruction(source_frame, skip_reconstruction, region);
     skip_distortion <= intra_distortion
 }
 
@@ -1273,10 +1300,25 @@ fn vvc_predictive_lossy_region_within_reconstruction_delta(
     region: VvcCtuRegion,
     max_abs_delta: u16,
 ) -> bool {
+    vvc_predictive_lossy_region_sse_if_within_reconstruction_delta(
+        current_source,
+        previous_reconstruction,
+        region,
+        max_abs_delta,
+    )
+    .is_some()
+}
+
+fn vvc_predictive_lossy_region_sse_if_within_reconstruction_delta(
+    current_source: &VvcSampledFrame,
+    previous_reconstruction: &VvcReconstructionFrame,
+    region: VvcCtuRegion,
+    max_abs_delta: u16,
+) -> Option<u64> {
     if current_source.geometry != previous_reconstruction.geometry
         || current_source.format != previous_reconstruction.format
     {
-        return false;
+        return None;
     }
 
     let width = region
@@ -1288,9 +1330,9 @@ fn vvc_predictive_lossy_region_within_reconstruction_delta(
         .height
         .min(current_source.geometry.height.saturating_sub(region.origin_y));
     if width == 0 || height == 0 {
-        return false;
+        return None;
     }
-    if !vvc_predictive_plane_region_within_delta(
+    let mut sse = vvc_predictive_plane_region_sse_if_within_delta(
         &current_source.luma,
         &previous_reconstruction.luma,
         current_source.geometry.width,
@@ -1300,9 +1342,7 @@ fn vvc_predictive_lossy_region_within_reconstruction_delta(
         width,
         height,
         max_abs_delta,
-    ) {
-        return false;
-    }
+    )?;
 
     let subsample_x = chroma_subsample_x(current_source.format.chroma_sampling);
     let subsample_y = chroma_subsample_y(current_source.format.chroma_sampling);
@@ -1312,7 +1352,7 @@ fn vvc_predictive_lossy_region_within_reconstruction_delta(
     let chroma_height = height / subsample_y;
     let chroma_stride = current_source.geometry.width / subsample_x;
     let reference_chroma_stride = previous_reconstruction.chroma_width();
-    vvc_predictive_plane_region_within_delta(
+    sse = sse.saturating_add(vvc_predictive_plane_region_sse_if_within_delta(
         &current_source.cb,
         &previous_reconstruction.cb,
         chroma_stride,
@@ -1322,7 +1362,8 @@ fn vvc_predictive_lossy_region_within_reconstruction_delta(
         chroma_width,
         chroma_height,
         max_abs_delta,
-    ) && vvc_predictive_plane_region_within_delta(
+    )?);
+    sse = sse.saturating_add(vvc_predictive_plane_region_sse_if_within_delta(
         &current_source.cr,
         &previous_reconstruction.cr,
         chroma_stride,
@@ -1332,10 +1373,11 @@ fn vvc_predictive_lossy_region_within_reconstruction_delta(
         chroma_width,
         chroma_height,
         max_abs_delta,
-    )
+    )?);
+    Some(sse)
 }
 
-fn vvc_predictive_plane_region_within_delta(
+fn vvc_predictive_plane_region_sse_if_within_delta(
     current: &[VvcSample],
     reference: &[VvcSample],
     current_stride: usize,
@@ -1345,15 +1387,20 @@ fn vvc_predictive_plane_region_within_delta(
     width: usize,
     height: usize,
     max_abs_delta: u16,
-) -> bool {
+) -> Option<u64> {
+    let mut sse = 0u64;
     for y in origin_y..origin_y + height {
         let current_row = y * current_stride;
         let reference_row = y * reference_stride;
         for x in origin_x..origin_x + width {
-            if current[current_row + x].abs_diff(reference[reference_row + x]) > max_abs_delta {
-                return false;
+            let current_sample = current[current_row + x];
+            let reference_sample = reference[reference_row + x];
+            if current_sample.abs_diff(reference_sample) > max_abs_delta {
+                return None;
             }
+            let delta = i64::from(current_sample) - i64::from(reference_sample);
+            sse = sse.saturating_add((delta * delta) as u64);
         }
     }
-    true
+    Some(sse)
 }

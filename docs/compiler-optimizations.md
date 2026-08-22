@@ -4821,6 +4821,76 @@ Follow-up:
   P-slice coding-tree body for mixed intra/inter CTUs, including the dual-tree
   versus single-tree constraints and matching quantizer/CABAC neighbour state.
 
+### VVC Lossy Skip Distortion Cache
+
+Checkpoint: `vvc-lossy-skip-cached-distortion-q19-50f`.
+
+The lossy CTU-skip pre-scan now caches each accepted candidate's skip
+distortion and reuses it in the final post-intra InterSkip gate. Near-skip
+candidate detection also combines the max-delta check with SSE accumulation, so
+accepted near candidates do not scan the previous reconstruction twice. This is
+a cleanup of duplicate reads only: the same CTUs are selected, and the emitted
+bitstreams are byte-identical to `vvc-lossy-ctu-skip-no-bitcount-q19-50f`.
+
+50-frame six-vector VVC lossy matrix versus
+`vvc-lossy-ctu-skip-no-bitcount-q19-50f`:
+
+| Vector | Bytes delta | FPS before | FPS after | FPS delta | PSNR delta | Bitstream checksum |
+|---|---:|---:|---:|---:|---:|---|
+| SceneComposition_1_420 | +0 | 1.17 | 1.17 | +0.00 | +0.000 | identical |
+| SceneComposition_1_422 | +0 | 0.92 | 0.92 | -0.00 | +0.000 | identical |
+| screen_wayland_activity_rgb | +0 | 0.59 | 0.59 | +0.00 | +0.000 | identical |
+| MissionControlClip1_420 | +0 | 1.12 | 1.12 | -0.00 | +0.000 | identical |
+| MissionControlClip1_422 | +0 | 0.82 | 0.80 | -0.01 | +0.000 | identical |
+| MissionControlClip1_444 | +0 | 0.52 | 0.52 | +0.01 | +0.000 | identical |
+
+Aggregate after this checkpoint:
+
+| Metric | Previous | Current | Delta |
+|---|---:|---:|---:|
+| Bytes | 40,817,987 | 40,817,987 | +0 |
+| Mean FPS | 0.78 | 0.78 | +0.0% |
+| Mean PSNR | 52.756 | 52.756 | +0.000 |
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo fmt
+TMPDIR=verification/generated/agent_scratch/tmp cargo check -p framefinery-codecs --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_lossy_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_predictive --features "vvc vvc-stats" -- --nocapture
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_SETTINGS="lossless gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Command:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp AOMCTC_ROOT=/path/to/aomctc \
+  make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=release-six-vectors-full \
+  ENCODE_MATRIX_RUN=vvc-lossy-skip-cached-distortion-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc \
+  ENCODE_MATRIX_MODES=lossy \
+  ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_VVC_LOSSY_QP=19 \
+  ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
+  ENCODE_MATRIX_VVC_GOP=-1 \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-lossy-ctu-skip-no-bitcount-q19-50f.json \
+  ENCODE_MATRIX_CLEANUP_RECON=1 \
+  ENCODE_MATRIX_CLEANUP_OUTPUT=1 \
+  ENCODE_MATRIX_CLEANUP_VECTORS=1 \
+  ENCODE_MATRIX_DIRECT_SOURCE_FILES=1
+```
+
 ## References
 
 - Cargo profile settings:
