@@ -6028,6 +6028,34 @@ cloning is not worth optimizing this way; if entropy build remains hot, inspect
 CABAC payload generation and slice count first rather than just changing
 ownership/write plumbing.
 
+Rejected probe: repeated predictive reconstruction byte cache.
+
+The Wayland screen-capture row has many repeated predictive frames. The
+repeated-frame path currently calls `VvcReconstructionFrame::to_yuv()` every
+time it needs internal reconstruction bytes for metrics or optional
+reconstruction output. Two exact-neutral cache variants were tested:
+
+- lazily cache a `Vec<u8>` raw reconstruction inside `VvcPredictiveFrameCache`
+  and clone it for repeated frames;
+- lazily cache an `Arc<[u8]>` raw reconstruction and return shared bytes for
+  repeated frames, avoiding full-frame clones.
+
+Both variants passed focused predictive tests, but the one-row 50-frame Wayland
+scorer rejected them against `vvc-lossy-temporal-mode-hints-zero-q19-50f`:
+
+```text
+verification/generated/encode_matrix/vvc-repeated-yuv-cache-wayland-q19-50f.md
+bytes +0, PSNR +0.000, FPS 2.17 -> 2.18, score +0.1:watch
+
+verification/generated/encode_matrix/vvc-repeated-yuv-arc-cache-wayland-q19-50f.md
+bytes +0, PSNR +0.000, FPS 2.17 -> 2.14, score -0.2:regress
+```
+
+The source diffs were reverted. Repacking repeated reconstruction bytes is not
+a proven bottleneck under the current benchmark shape; if repeated-frame FPS is
+revisited, first separate encoder time from `--psnr` metrics and raw
+reconstruction-output cost.
+
 ## References
 
 - Cargo profile settings:
