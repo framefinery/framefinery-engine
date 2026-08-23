@@ -1,4 +1,5 @@
 use crate::bitstream::insert_emulation_prevention_bytes;
+use std::io::Write;
 
 use super::{VvcSyntaxRbsp, VvcSyntaxWriter};
 
@@ -72,13 +73,37 @@ impl VvcNalUnit {
 }
 
 pub fn write_annex_b(units: &[VvcNalUnit]) -> Result<Vec<u8>, String> {
-    let mut out = Vec::new();
-    for unit in units {
-        out.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
-        out.extend_from_slice(&nal_unit_header_bytes(unit)?);
-        out.extend_from_slice(&insert_emulation_prevention_bytes(&unit.rbsp_payload));
-    }
+    let estimated_size = units
+        .iter()
+        .map(|unit| 6usize.saturating_add(unit.rbsp_payload.len()))
+        .sum();
+    let mut out = Vec::with_capacity(estimated_size);
+    write_annex_b_to(&mut out, units)?;
     Ok(out)
+}
+
+pub fn write_annex_b_to<W: Write + ?Sized>(
+    out: &mut W,
+    units: &[VvcNalUnit],
+) -> Result<usize, String> {
+    let headers: Vec<_> = units
+        .iter()
+        .map(nal_unit_header_bytes)
+        .collect::<Result<_, _>>()?;
+    let mut bytes_written = 0usize;
+    for (unit, header) in units.iter().zip(headers) {
+        out.write_all(&[0x00, 0x00, 0x00, 0x01])
+            .map_err(|err| format!("failed to write VVC Annex-B start code: {err}"))?;
+        out.write_all(&header)
+            .map_err(|err| format!("failed to write VVC NAL header: {err}"))?;
+        let escaped_payload = insert_emulation_prevention_bytes(&unit.rbsp_payload);
+        out.write_all(&escaped_payload)
+            .map_err(|err| format!("failed to write VVC NAL payload: {err}"))?;
+        bytes_written = bytes_written
+            .saturating_add(6)
+            .saturating_add(escaped_payload.len());
+    }
+    Ok(bytes_written)
 }
 
 pub fn nal_unit_header_bytes(unit: &VvcNalUnit) -> Result<[u8; 2], String> {
@@ -179,4 +204,55 @@ fn annex_b_ranges(bytes: &[u8]) -> Vec<(usize, usize)> {
             (payload_start, payload_end)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{write_annex_b, write_annex_b_to, VvcNalUnit, VvcNalUnitType};
+
+    #[test]
+    fn streaming_annex_b_writer_matches_vector_writer() {
+        let units = [
+            VvcNalUnit {
+                nal_unit_type: VvcNalUnitType::Sps,
+                layer_id: 0,
+                temporal_id: 0,
+                rbsp_payload: vec![0, 0, 0, 1, 2, 3],
+            },
+            VvcNalUnit {
+                nal_unit_type: VvcNalUnitType::Trail,
+                layer_id: 0,
+                temporal_id: 0,
+                rbsp_payload: vec![9, 8, 0, 0, 3],
+            },
+        ];
+        let expected = write_annex_b(&units).expect("valid VVC NAL units");
+        let mut streamed = Vec::new();
+        let bytes = write_annex_b_to(&mut streamed, &units).expect("valid VVC NAL units");
+
+        assert_eq!(streamed, expected);
+        assert_eq!(bytes, expected.len());
+    }
+
+    #[test]
+    fn streaming_annex_b_writer_validates_headers_before_writing() {
+        let units = [
+            VvcNalUnit {
+                nal_unit_type: VvcNalUnitType::Sps,
+                layer_id: 0,
+                temporal_id: 0,
+                rbsp_payload: vec![1, 2, 3],
+            },
+            VvcNalUnit {
+                nal_unit_type: VvcNalUnitType::Trail,
+                layer_id: 56,
+                temporal_id: 0,
+                rbsp_payload: vec![4, 5, 6],
+            },
+        ];
+        let mut streamed = Vec::new();
+
+        assert!(write_annex_b_to(&mut streamed, &units).is_err());
+        assert!(streamed.is_empty());
+    }
 }

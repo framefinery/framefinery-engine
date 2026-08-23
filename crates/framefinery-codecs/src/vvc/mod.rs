@@ -68,8 +68,8 @@ use header::{
     write_vvc_coding_tree_entropy, VvcFrameSkipPayloadCache, VvcPictureKind, VvcSliceType,
 };
 pub use nal::{
-    nal_unit_header_bytes, parse_annex_b_nal_units, write_annex_b, write_nal_unit_header,
-    VvcNalHeader, VvcNalInfo, VvcNalUnit, VvcNalUnitType,
+    nal_unit_header_bytes, parse_annex_b_nal_units, write_annex_b, write_annex_b_to,
+    write_nal_unit_header, VvcNalHeader, VvcNalInfo, VvcNalUnit, VvcNalUnitType,
 };
 pub use palette::vvc_palette_444_cabac_dump_json;
 #[cfg(test)]

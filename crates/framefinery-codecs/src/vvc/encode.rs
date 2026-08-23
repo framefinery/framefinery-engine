@@ -947,18 +947,6 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     }
 }
 
-fn write_annex_b_to<W: Write + ?Sized>(
-    output: &mut W,
-    units: &[VvcNalUnit],
-) -> Result<usize, String> {
-    let bytes = write_annex_b(units)?;
-    let len = bytes.len();
-    output
-        .write_all(&bytes)
-        .map_err(|err| format!("failed to write VVC Annex-B stream: {err}"))?;
-    Ok(len)
-}
-
 fn vvc_intra_ctu_payload_from_decision(
     region: VvcCtuRegion,
     decision: &VvcQuantizedCtuLeafDecision,

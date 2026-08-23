@@ -7567,6 +7567,30 @@ exact but not uniform-MV, which is useful evidence that future inter search
 should test partitions before assuming a larger translational block. VVC lossy
 smoke validation with VTM required passed 3/3 after this scaffold.
 
+### VVC Streaming Annex-B Emission
+
+Accepted cleanup: VVC frame emission now streams Annex-B start codes, NAL
+headers, and escaped RBSP payloads directly to the output writer. The public
+`write_annex_b()` helper still returns a byte vector for tests and callers, but
+the encoder no longer builds a second full-frame Annex-B `Vec` before writing.
+
+This does not change mode selection, reconstruction, NAL syntax, or emitted
+bytes. The local one-frame `local-vvc-mode-probe-50f` q19 A/B against
+`vvc-current-hotspot-c08ccb1` was byte- and PSNR-identical. The aggregate score
+was only `+0.3 watch` because one 4:4:4 row moved negative within timing noise,
+but total FPS moved from 6.05 to 6.14 and the allocation removal is
+structurally correct. Treat this as an implementation cleanup, not a proven
+compression improvement.
+
+Validation:
+
+```text
+TMPDIR=verification/generated/agent_scratch/tmp cargo check -p framefinery-codecs --features vvc
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs streaming_annex_b --features vvc
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
 ## References
 
 - Cargo profile settings:
