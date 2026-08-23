@@ -7777,6 +7777,72 @@ TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
   VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
 ```
 
+### VVC Single-Tree 4:4:4 IBC Enablement Probe
+
+Rejected/blocked probe: enabling IBC for 4:4:4 `lossless-speed` by switching
+production residual slices to single-tree 4:4:4 is not safe yet. A direct
+quantizer fixture with 8x8 leaves selected the intended exact IBC decision for
+the repeated block, but regular single-tree 4:4:4 reconstruction did not remain
+lossless-exact; the first mismatch was in Cb at sample 4100, where the decoded
+value stayed neutral `128` instead of source `69`.
+
+The apparent cause is that the current regular single-tree chroma residual path
+still covers only the 4x4 chroma subset under an 8x8 luma leaf. Do not enable
+production 4:4:4 SCC tools until single-tree 4:4:4 chroma residual coverage is
+fixed or luma/chroma reconstruction is interleaved through a shared leaf helper.
+
+### Advanced Motion Search And Mode-Selection Refresh
+
+Research checkpoint: `vvc-motion-mode-refresh-2026-08-23`.
+
+Current conclusion: do not spend time tuning a general VVC motion-vector search
+policy until the encoder has a normal non-skip translational inter payload. The
+existing predictive VVC path has repeated-frame/CTU skip, open-loop motion
+counters, and SCC/IBC scaffolding, but changed motion still mostly falls back to
+intra residual decisions. External encoder practice should therefore shape the
+next implementation order, not be copied wholesale yet.
+
+Useful patterns to adapt:
+
+- Keep the Lagrangian/RD idea as the final arbiter, but stage cheaper estimates
+  before full residual/CABAC work.
+- Build motion analysis from source-frame/open-loop evidence first: zero MV,
+  neighboring/temporal predictors, low-resolution or aggregate 8x8 SAD, then a
+  bounded full-pel refinement window.
+- Derive 16x16/32x32/64x64 candidate costs from 8x8 SAD before testing exact
+  residual coding, so large blocks get tested only when the smaller cells agree.
+- Use texture, QP, neighbor mode, and skip/merge residual evidence to prune
+  intra/mode/partition candidates. Avoid format-only gates; prior probes showed
+  they are too blunt.
+- Treat ML partition classifiers as a later option. The low-risk baseline is
+  progressive split-depth/content-variance pruning with conservative fallback.
+
+Recommended next implementation order:
+
+1. Add a legal translational VVC inter leaf that reuses the existing unified
+   CTU residual/entropy path for final candidates.
+2. Feed that leaf from the existing open-loop luma motion map with zero,
+   neighbor/HMVP, and small diamond/hex full-pel searches.
+3. Add adaptive search windows only after the first inter leaf is validated:
+   exact repeated/zero-SSE blocks should terminate immediately, smooth
+   neighboring MVs should shrink the search, and high-SAD blocks should keep the
+   wider search.
+4. Extend exact-hash IBC as a bounded SCC candidate once the single-tree 4:4:4
+   residual blocker above is fixed.
+5. Evaluate every lossy shortcut through `scripts/encode_tradeoff.py`, not FPS
+   alone. The current scalar projection is:
+
+```text
+score = 10*log2(current_fps / baseline_fps)
+      + 4*log2(baseline_bytes / current_bytes)
+      + 8*(current_psnr_db - baseline_psnr_db)
+```
+
+Hard row guardrails still override the score: FPS below `0.90x`, bytes above
+`1.20x`, or PSNR below `-1.0 dB` is a regression. A clean accept requires score
+`>= 2.0` and, when FPS is present, FPS at least `1.10x` baseline. This allows
+small byte/PSNR costs only when the speed win is large enough to matter.
+
 ## References
 
 - Cargo profile settings:

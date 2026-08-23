@@ -70,6 +70,37 @@ class EncodeTradeoffTests(unittest.TestCase):
         self.assertEqual(result["tradeoff_status"], "watch")
         self.assertFalse(result["tradeoff_hard_regression"])
 
+    def test_speed_win_can_pay_for_small_rate_and_quality_cost(self) -> None:
+        result = encode_tradeoff.project_metric_tradeoff(
+            baseline_bytes=1000,
+            current_bytes=1040,
+            baseline_psnr=50.0,
+            current_psnr=49.85,
+            baseline_fps=10.0,
+            current_fps=13.5,
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["tradeoff_status"], "accept")
+        self.assertGreaterEqual(result["tradeoff_score"], 2.0)
+        self.assertFalse(result["tradeoff_hard_regression"])
+
+    def test_small_speed_win_does_not_pay_for_rate_and_quality_cost(self) -> None:
+        result = encode_tradeoff.project_metric_tradeoff(
+            baseline_bytes=1000,
+            current_bytes=1050,
+            baseline_psnr=50.0,
+            current_psnr=49.8,
+            baseline_fps=10.0,
+            current_fps=11.0,
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["tradeoff_status"], "regress")
+        self.assertLess(result["tradeoff_score"], 0.0)
+
     def test_missing_metrics_do_not_create_score(self) -> None:
         result = encode_tradeoff.project_metric_tradeoff(
             baseline_bytes=0,
