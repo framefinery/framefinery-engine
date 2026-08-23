@@ -540,6 +540,7 @@ pub(in crate::vvc) struct VvcCtuCabacGenerator<'a, 'p> {
     params: &'p VvcCtuPartitionParams,
     luma_tu_index: usize,
     chroma_tu_index: usize,
+    chroma_inter_skip_active: bool,
     slice_config: VvcSliceSyntaxConfig,
     inter_slice: bool,
     inter_skip_ctx: u8,
@@ -854,6 +855,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             params,
             luma_tu_index: 0,
             chroma_tu_index: 0,
+            chroma_inter_skip_active: vvc_chroma_inter_skip_active(
+                &params.chroma_tu_inter_skip,
+                params.chroma_tu_count,
+            ),
             slice_config,
             inter_slice: false,
             inter_skip_ctx: 0,
@@ -2047,13 +2052,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             tu_idx < self.params.chroma_tu_count,
             "missing chroma TU coefficient data for coding-tree leaf {tu_idx}"
         );
-        let chroma_inter_skip_active = self.params.chroma_tu_inter_skip[..self
-            .params
-            .chroma_tu_count
-            .min(self.params.chroma_tu_inter_skip.len())]
-            .iter()
-            .any(|&skip| skip);
-        if self.inter_slice && chroma_inter_skip_active {
+        if self.inter_slice && self.chroma_inter_skip_active {
             let chroma_inter_skip = self.params.chroma_tu_inter_skip[tu_idx];
             let skip_ctx = self.inter_skip_ctx_for_node(node);
             self.contexts
@@ -2316,4 +2315,23 @@ fn vvc_cabac_op_trace_enabled() -> bool {
     *ENABLED.get_or_init(|| {
         std::env::var_os("FRAMEFINERY_CABAC_OP_TRACE").is_some_and(|value| value != "0")
     })
+}
+
+fn vvc_chroma_inter_skip_active(chroma_tu_inter_skip: &[bool], chroma_tu_count: usize) -> bool {
+    chroma_tu_inter_skip[..chroma_tu_count.min(chroma_tu_inter_skip.len())]
+        .iter()
+        .any(|&skip| skip)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::vvc_chroma_inter_skip_active;
+
+    #[test]
+    fn chroma_inter_skip_active_ignores_inactive_tail() {
+        assert!(!vvc_chroma_inter_skip_active(&[false, true], 1));
+        assert!(vvc_chroma_inter_skip_active(&[false, true], 2));
+        assert!(!vvc_chroma_inter_skip_active(&[false], 4));
+        assert!(!vvc_chroma_inter_skip_active(&[], 4));
+    }
 }
