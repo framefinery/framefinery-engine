@@ -1,8 +1,10 @@
+mod binarization;
 mod context;
 mod ctu_body;
 mod ctu_split;
 mod writer;
 
+pub(in crate::vvc) use binarization::vvc_encode_exp_golomb_ep_combined;
 #[cfg(test)]
 pub(super) use context::VvcCabacInitType;
 pub(super) use context::{VvcCabacContext, VvcCabacContexts, VvcLastSigCoeffPrefixCtxInput};

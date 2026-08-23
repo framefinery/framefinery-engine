@@ -7741,6 +7741,42 @@ TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
   VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
 ```
 
+### VVC Normal CTU SCC Leaf Decisions
+
+Accepted scaffold: `VvcCtuPartitionParams` and `VvcQuantizedColor` now carry a
+per-luma-leaf SCC decision. The normal CTU CABAC generator can emit an exact
+4:4:4 single-tree IBC leaf through the same recursive leaf traversal used by
+regular intra residual CUs:
+
+- `cu_skip_flag=0`;
+- `pred_mode_ibc_flag=1`;
+- `general_merge_flag=0`;
+- explicit BVD/MVD syntax;
+- `cu_coded_flag=0`, so no transform tree follows.
+
+The existing palette scaffold now shares the same CABAC EP Exp-Golomb helper,
+so future IBC integration can reuse syntax primitives instead of growing a
+second entropy path. Normal encoder output remains unchanged because the
+quantizer still initializes every SCC leaf decision to regular intra. The next
+output-changing step is to let the unified quantizer/mode selector promote
+validated 4:4:4 exact-hash IBC candidates into this field, then score the
+byte/PSNR/FPS tradeoff with the six-vector 50-frame matrix and VTM-required
+validation.
+
+Validation:
+
+```text
+TMPDIR=verification/generated/agent_scratch/tmp cargo fmt
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_ctu_body --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
 ## References
 
 - Cargo profile settings:

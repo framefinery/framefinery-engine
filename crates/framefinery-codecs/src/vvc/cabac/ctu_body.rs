@@ -1,3 +1,4 @@
+use super::binarization::vvc_encode_exp_golomb_ep_combined;
 use super::context::{VvcCabacInitType, VvcCabacProbModel};
 use super::ctu_split::{
     vvc_chroma_height, vvc_chroma_split_availability, vvc_chroma_width, VvcChromaSplitAvailability,
@@ -10,9 +11,9 @@ use crate::vvc::residual::{VvcResidualCabacEncoder, VvcResidualCabacSymbolStream
 use crate::vvc::{
     chroma_subsample_x, chroma_subsample_y, vvc_chroma_cclm_node_allowed,
     vvc_chroma_explicit_candidate_index, VvcBdpcmMode, VvcChromaCclmMode,
-    VvcChromaIntraPredictionMode, VvcIntraPredictionMode, VvcResidualComponent,
-    VvcSliceSyntaxConfig, VvcVideoGeometry, VVC_CHROMA_AC_COEFFS_PER_TU, VVC_CTU_SIZE,
-    VVC_CURRENT_ENCODER_CHROMA_420_TB_SIZE, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
+    VvcChromaIntraPredictionMode, VvcIntraPredictionMode, VvcLumaIbcDecision, VvcLumaSccDecision,
+    VvcResidualComponent, VvcSliceSyntaxConfig, VvcVideoGeometry, VVC_CHROMA_AC_COEFFS_PER_TU,
+    VVC_CTU_SIZE, VVC_CURRENT_ENCODER_CHROMA_420_TB_SIZE, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
 };
 
 const VVC_LUMA_ANGULAR_BASE: i16 = 2;
@@ -924,6 +925,9 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                 if self.emit_luma_inter_skip_leaf(cabac, node) {
                     return;
                 }
+                if self.emit_luma_scc_selected_leaf(cabac, node) {
+                    return;
+                }
                 self.emit_luma_inter_slice_intra_prefix(cabac, node, luma_mode_neighbours);
                 self.emit_luma_scc_regular_intra_prefix(cabac, node);
                 if !self.emit_luma_bdpcm_mode(cabac, node, luma_mode_neighbours) {
@@ -1084,6 +1088,129 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         if self.slice_config.tools.palette_enabled && vvc_scc_palette_luma_node_allowed(node) {
             self.contexts
                 .encode(cabac, VvcCabacContext::PredModePltFlag, false);
+        }
+    }
+
+    fn emit_luma_scc_selected_leaf(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        node: VvcCodingTreeNode,
+    ) -> bool {
+        let decision = self
+            .params
+            .luma_tu_scc_decisions
+            .get(self.luma_tu_index)
+            .copied()
+            .unwrap_or(VvcLumaSccDecision::RegularIntra);
+        match decision {
+            VvcLumaSccDecision::RegularIntra => false,
+            VvcLumaSccDecision::IbcExact(decision) => {
+                self.emit_luma_exact_ibc_leaf(cabac, node, decision);
+                true
+            }
+        }
+    }
+
+    fn emit_luma_exact_ibc_leaf(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        node: VvcCodingTreeNode,
+        decision: VvcLumaIbcDecision,
+    ) {
+        assert!(
+            !self.inter_slice,
+            "P-slice exact IBC leaf ordering is not wired into pred_mode_flag yet"
+        );
+        assert!(
+            self.slice_config.tools.ibc_enabled,
+            "exact IBC leaf selected without SCC IBC syntax enabled"
+        );
+        assert!(
+            vvc_scc_ibc_luma_node_allowed(node),
+            "exact IBC leaf selected for unsupported luma CU size {}x{}",
+            node.width,
+            node.height
+        );
+        assert_eq!(
+            node.tree_type,
+            VvcTreeType::SingleTree,
+            "exact IBC leaf currently requires single-tree 4:4:4 syntax"
+        );
+        assert_eq!(
+            self.params.chroma_sampling,
+            ChromaSampling::Cs444,
+            "exact IBC leaf currently requires 4:4:4 syntax"
+        );
+        assert!(
+            self.luma_tu_index < self.params.luma_tu_count,
+            "missing luma TU slot for exact IBC leaf {}",
+            self.luma_tu_index
+        );
+
+        self.contexts.encode_cu_skip_flag(cabac, 0, false);
+        self.contexts.encode(
+            cabac,
+            VvcCabacContext::PredModeIbcFlag(decision.pred_mode_ibc_ctx),
+            true,
+        );
+        self.emit_luma_exact_ibc_prediction(cabac, decision);
+        // H.266 7.3.11.4/7.4.12.4: cu_coded_flag=0 means the exact-match IBC
+        // CU has no transform_tree(); reconstruction is fully predicted.
+        self.contexts
+            .encode(cabac, VvcCabacContext::CuCodedFlag(0), false);
+        self.luma_tu_index += 1;
+        if self.params.chroma_sampling != ChromaSampling::Monochrome {
+            assert!(
+                self.chroma_tu_index < self.params.chroma_tu_count,
+                "missing chroma TU slot for exact IBC leaf {}",
+                self.chroma_tu_index
+            );
+            self.chroma_tu_index += 1;
+        }
+    }
+
+    fn emit_luma_exact_ibc_prediction(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        decision: VvcLumaIbcDecision,
+    ) {
+        // MODE_IBC with cu_skip_flag=0 signals general_merge_flag. Use explicit
+        // BVD syntax for hash-search decisions rather than selecting an inferred
+        // merge vector.
+        self.contexts
+            .encode(cabac, VvcCabacContext::GeneralMergeFlag(0), false);
+        self.emit_luma_ibc_mvd_coding(cabac, decision.mvd_x, decision.mvd_y);
+        // MaxNumIbcMergeCand is fixed to one in this SPS and AMVR is disabled,
+        // so mvp_l0_flag/amvr_precision_idx are inferred in the same way as the
+        // existing palette/SCC scaffold.
+    }
+
+    fn emit_luma_ibc_mvd_coding(&mut self, cabac: &mut VvcCabacEncoder, mvd_x: i16, mvd_y: i16) {
+        let abs_x = i32::from(mvd_x).unsigned_abs();
+        let abs_y = i32::from(mvd_y).unsigned_abs();
+        self.contexts
+            .encode(cabac, VvcCabacContext::AbsMvdGreater0Flag(0), abs_x > 0);
+        self.contexts
+            .encode(cabac, VvcCabacContext::AbsMvdGreater0Flag(0), abs_y > 0);
+        if abs_x > 0 {
+            self.contexts
+                .encode(cabac, VvcCabacContext::AbsMvdGreater1Flag(0), abs_x > 1);
+        }
+        if abs_y > 0 {
+            self.contexts
+                .encode(cabac, VvcCabacContext::AbsMvdGreater1Flag(0), abs_y > 1);
+        }
+        if abs_x > 0 {
+            if abs_x > 1 {
+                vvc_encode_exp_golomb_ep_combined(cabac, abs_x - 2, 1);
+            }
+            cabac.encode_bin_ep(mvd_x < 0);
+        }
+        if abs_y > 0 {
+            if abs_y > 1 {
+                vvc_encode_exp_golomb_ep_combined(cabac, abs_y - 2, 1);
+            }
+            cabac.encode_bin_ep(mvd_y < 0);
         }
     }
 

@@ -543,6 +543,7 @@ fn vvc_quantized_color(y: u8, luma_rem: u8) -> VvcQuantizedColor {
         luma_tu_dc_levels: [luma_dc_level; MAX_VVC_LUMA_TUS],
         luma_tu_ac_levels: [[0; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
         luma_tu_has_ac: [false; MAX_VVC_LUMA_TUS],
+        luma_tu_scc_decisions: [VvcLumaSccDecision::RegularIntra; MAX_VVC_LUMA_TUS],
         luma_tu_transform_skip: [false; MAX_VVC_LUMA_TUS],
         luma_tu_bdpcm_modes: [VvcBdpcmMode::None; MAX_VVC_LUMA_TUS],
         luma_tu_mrl_index: [0; MAX_VVC_LUMA_TUS],
@@ -1840,6 +1841,82 @@ fn vvc_ctu_body_emits_scc_regular_intra_prefix_when_tools_are_enabled() {
 }
 
 #[test]
+fn vvc_ctu_body_emits_exact_ibc_leaf_from_partition_decision() {
+    let neutral = quantize_vvc_color(VvcSampledColor {
+        y: 128,
+        u: 128,
+        v: 128,
+    });
+    let mut params = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
+        VvcVideoGeometry {
+            width: 8,
+            height: 8,
+        },
+        neutral,
+        VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+        ChromaSampling::Cs444,
+        false,
+    )
+    .expect("8x8 single-tree 4:4:4 partition parameters");
+    params.luma_tu_scc_decisions[0] = VvcLumaSccDecision::IbcExact(VvcLumaIbcDecision {
+        mvd_x: -8,
+        mvd_y: 0,
+        pred_mode_ibc_ctx: 0,
+    });
+
+    let config = VvcSliceSyntaxConfig::palette_444();
+    let mut contexts = initial_vvc_cabac_contexts(config);
+    let mut cabac = VvcCabacEncoder::new_with_dump();
+    cabac.start();
+    encode_ctu_partition_body_with_contexts(&mut cabac, &mut contexts, &params, config);
+
+    let context_bins: Vec<(u16, bool)> = cabac
+        .context_events
+        .iter()
+        .map(|event| (event.ctx_id, event.bin))
+        .collect();
+
+    assert!(
+        context_bins.contains(&(
+            VvcCabacContext::CuSkipFlag(0).rtl_context_id().unwrap(),
+            false
+        )),
+        "explicit IBC leaves must still signal cu_skip_flag=0"
+    );
+    assert!(
+        context_bins.contains(&(
+            VvcCabacContext::PredModeIbcFlag(0)
+                .rtl_context_id()
+                .unwrap(),
+            true
+        )),
+        "partition SCC decision must select MODE_IBC on the normal CTU path"
+    );
+    assert!(
+        context_bins.contains(&(
+            VvcCabacContext::GeneralMergeFlag(0)
+                .rtl_context_id()
+                .unwrap(),
+            false
+        )),
+        "hash-search IBC decisions use explicit BVD instead of merge"
+    );
+    assert!(
+        context_bins.contains(&(
+            VvcCabacContext::CuCodedFlag(0).rtl_context_id().unwrap(),
+            false
+        )),
+        "exact IBC leaves must suppress residual transform_tree syntax"
+    );
+    assert!(
+        !context_bins.iter().any(
+            |(ctx_id, _)| *ctx_id == VvcCabacContext::PredModePltFlag.rtl_context_id().unwrap()
+        ),
+        "exact IBC leaves should return before palette/intra syntax"
+    );
+}
+
+#[test]
 fn vvc_ctu_body_omits_scc_palette_prefix_for_4x4_regular_intra_leaf() {
     let neutral = quantize_vvc_color(VvcSampledColor {
         y: 128,
@@ -2021,6 +2098,7 @@ fn vvc_ctu_cabac_generator_uses_one_recursive_luma_base() {
             luma_tu_ac_levels: [[0; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
             luma_tu_has_ac: [false; MAX_VVC_LUMA_TUS],
             luma_tu_inter_skip: [false; MAX_VVC_LUMA_TUS],
+            luma_tu_scc_decisions: [VvcLumaSccDecision::RegularIntra; MAX_VVC_LUMA_TUS],
             luma_tu_transform_skip: [false; MAX_VVC_LUMA_TUS],
             luma_tu_bdpcm_modes: [VvcBdpcmMode::None; MAX_VVC_LUMA_TUS],
             luma_tu_mrl_index: [0; MAX_VVC_LUMA_TUS],
@@ -2819,6 +2897,7 @@ fn vvc_ctu_chroma_tree_uses_luma_coordinate_root() {
             luma_tu_ac_levels: [[0; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
             luma_tu_has_ac: [false; MAX_VVC_LUMA_TUS],
             luma_tu_inter_skip: [false; MAX_VVC_LUMA_TUS],
+            luma_tu_scc_decisions: [VvcLumaSccDecision::RegularIntra; MAX_VVC_LUMA_TUS],
             luma_tu_transform_skip: [false; MAX_VVC_LUMA_TUS],
             luma_tu_bdpcm_modes: [VvcBdpcmMode::None; MAX_VVC_LUMA_TUS],
             luma_tu_mrl_index: [0; MAX_VVC_LUMA_TUS],

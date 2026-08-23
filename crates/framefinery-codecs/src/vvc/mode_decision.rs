@@ -31,6 +31,20 @@ impl VvcBdpcmMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(in crate::vvc) enum VvcLumaSccDecision {
+    #[default]
+    RegularIntra,
+    IbcExact(VvcLumaIbcDecision),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(in crate::vvc) struct VvcLumaIbcDecision {
+    pub(in crate::vvc) mvd_x: i16,
+    pub(in crate::vvc) mvd_y: i16,
+    pub(in crate::vvc) pred_mode_ibc_ctx: u8,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::vvc) enum VvcResidualScoreMetric {
     Sad,

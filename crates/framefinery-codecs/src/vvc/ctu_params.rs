@@ -119,6 +119,7 @@ fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
         mut luma_tu_dc_levels,
         mut luma_tu_ac_levels,
         mut luma_tu_has_ac,
+        mut luma_tu_scc_decisions,
         mut luma_tu_transform_skip,
         mut luma_tu_bdpcm_modes,
         mut luma_tu_mrl_index,
@@ -168,6 +169,7 @@ fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
             luma_tu_dc_levels[idx] = luma_tu_dc_levels[0];
             luma_tu_ac_levels[idx] = luma_tu_ac_levels[0];
             luma_tu_has_ac[idx] = luma_tu_has_ac[0];
+            luma_tu_scc_decisions[idx] = luma_tu_scc_decisions[0];
             luma_tu_transform_skip[idx] = luma_tu_transform_skip[0];
             luma_tu_bdpcm_modes[idx] = luma_tu_bdpcm_modes[0];
             luma_tu_mrl_index[idx] = luma_tu_mrl_index[0];
@@ -191,6 +193,7 @@ fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
         luma_tu_ac_levels,
         luma_tu_has_ac,
         luma_tu_inter_skip: [false; MAX_VVC_LUMA_TUS],
+        luma_tu_scc_decisions,
         luma_tu_transform_skip,
         luma_tu_bdpcm_modes,
         luma_tu_mrl_index,

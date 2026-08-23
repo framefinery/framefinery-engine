@@ -10,7 +10,9 @@ fn append_palette_syntax_token_bits(bits: &mut Vec<bool>, token: VvcPaletteSynta
 
 fn append_palette_syntax_token_cabac(cabac: &mut VvcCabacEncoder, token: VvcPaletteSyntaxToken) {
     match token.kind {
-        VvcPaletteSyntaxTokenKind::Eg0 { value } => encode_exp_golomb_ep_combined(cabac, value, 0),
+        VvcPaletteSyntaxTokenKind::Eg0 { value } => {
+            vvc_encode_exp_golomb_ep_combined(cabac, value, 0)
+        }
         VvcPaletteSyntaxTokenKind::FixedLength { value, bit_count } => {
             cabac.encode_bins_ep(value, bit_count as u32);
         }
@@ -27,21 +29,6 @@ fn encode_trunc_bin_code_ep(cabac: &mut VvcCabacEncoder, symbol: u32, num_symbol
     } else {
         cabac.encode_bins_ep(symbol + val - b, thresh + 1);
     }
-}
-
-fn encode_exp_golomb_ep_combined(cabac: &mut VvcCabacEncoder, mut symbol: u32, mut count: u32) {
-    let mut bins = 0;
-    let mut num_bins = 0;
-    while symbol >= (1 << count) {
-        bins <<= 1;
-        bins += 1;
-        num_bins += 1;
-        symbol -= 1 << count;
-        count += 1;
-    }
-    bins <<= 1;
-    num_bins += 1;
-    cabac.encode_bins_ep((bins << count) | symbol, num_bins + count);
 }
 
 #[cfg(test)]

@@ -290,13 +290,13 @@ fn append_vvc_ibc_mvd_coding(
     }
     if abs_x > 0 {
         if abs_x > 1 {
-            encode_exp_golomb_ep_combined(cabac, abs_x - 2, 1);
+            vvc_encode_exp_golomb_ep_combined(cabac, abs_x - 2, 1);
         }
         cabac.encode_bin_ep(mvd_x < 0);
     }
     if abs_y > 0 {
         if abs_y > 1 {
-            encode_exp_golomb_ep_combined(cabac, abs_y - 2, 1);
+            vvc_encode_exp_golomb_ep_combined(cabac, abs_y - 2, 1);
         }
         cabac.encode_bin_ep(mvd_y < 0);
     }
@@ -394,7 +394,7 @@ fn append_vvc_palette_444_index_map(
                     // PaletteIndexMap equals MaxPaletteIndex. Per Table 130,
                     // palette_escape_val is bypass-coded; H.266 9.3.3 uses
                     // EG5 binarization for this syntax element.
-                    encode_exp_golomb_ep_combined(cabac, value as u32, 5);
+                    vvc_encode_exp_golomb_ep_combined(cabac, value as u32, 5);
                 }
             }
         }

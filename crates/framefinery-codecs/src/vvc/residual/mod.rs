@@ -6,7 +6,9 @@ mod syntax;
 pub(super) mod transform;
 
 use super::VvcSample;
-use super::{VvcBdpcmMode, VvcChromaIntraPredictionMode, VvcIntraPredictionMode};
+use super::{
+    VvcBdpcmMode, VvcChromaIntraPredictionMode, VvcIntraPredictionMode, VvcLumaSccDecision,
+};
 
 #[cfg(test)]
 mod tests;
@@ -70,6 +72,7 @@ pub struct VvcQuantizedColor {
     pub(super) luma_tu_dc_levels: [i16; MAX_VVC_LUMA_TUS],
     pub(super) luma_tu_ac_levels: [[i16; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
     pub(super) luma_tu_has_ac: [bool; MAX_VVC_LUMA_TUS],
+    pub(super) luma_tu_scc_decisions: [VvcLumaSccDecision; MAX_VVC_LUMA_TUS],
     pub(super) luma_tu_transform_skip: [bool; MAX_VVC_LUMA_TUS],
     pub(super) luma_tu_bdpcm_modes: [VvcBdpcmMode; MAX_VVC_LUMA_TUS],
     pub(super) luma_tu_mrl_index: [u8; MAX_VVC_LUMA_TUS],

@@ -12,9 +12,9 @@ use super::super::{
     VvcChromaIntraCandidateCost, VvcChromaIntraCandidateCosts, VvcChromaIntraPredictionMode,
     VvcChromaTuCodingDecision, VvcCodingTreeNode, VvcCtuPartitionShape, VvcCtuRegion,
     VvcFastSearch, VvcIntraPredictionMode, VvcLumaIntraCandidateCost, VvcLumaIntraCandidateCosts,
-    VvcLumaTuCodingDecision, VvcPictureFormat, VvcReconstructionFrame, VvcResidualCodingMode,
-    VvcResidualCodingPolicy,
-    VvcResidualScoreMetric, VvcSample, VvcSampledColor, VvcSampledFrame,
+    VvcLumaSccDecision, VvcLumaTuCodingDecision, VvcPictureFormat, VvcReconstructionFrame,
+    VvcResidualCodingMode, VvcResidualCodingPolicy, VvcResidualScoreMetric, VvcSample,
+    VvcSampledColor, VvcSampledFrame,
     VvcTuResidualCodingMode, VvcVideoGeometry, VVC_CHROMA_INTRA_CANDIDATE_CAPACITY, VVC_CTU_SIZE,
     VVC_LUMA_INTRA_CANDIDATE_CAPACITY,
 };

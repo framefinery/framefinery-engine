@@ -1,10 +1,11 @@
 use crate::picture::ChromaSampling;
 use crate::vvc::{
     chroma_subsample_x, chroma_subsample_y, VvcBdpcmMode, VvcChromaIntraPredictionMode,
-    VvcIntraPredictionMode, MAX_VVC_CHROMA_TUS, MAX_VVC_LUMA_TUS, VVC_CHROMA_AC_COEFFS_PER_TU,
-    VVC_CTU_SIZE, VVC_CURRENT_ENCODER_CHROMA_420_TB_SIZE, VVC_CURRENT_MAX_CHROMA_420_BT_SIZE,
-    VVC_CURRENT_MAX_CHROMA_420_MTT_DEPTH, VVC_CURRENT_MAX_CHROMA_420_TT_SIZE,
-    VVC_CURRENT_MAX_LUMA_BT_SIZE, VVC_CURRENT_MAX_LUMA_MTT_DEPTH, VVC_CURRENT_MAX_LUMA_TT_SIZE,
+    VvcIntraPredictionMode, VvcLumaSccDecision, MAX_VVC_CHROMA_TUS, MAX_VVC_LUMA_TUS,
+    VVC_CHROMA_AC_COEFFS_PER_TU, VVC_CTU_SIZE, VVC_CURRENT_ENCODER_CHROMA_420_TB_SIZE,
+    VVC_CURRENT_MAX_CHROMA_420_BT_SIZE, VVC_CURRENT_MAX_CHROMA_420_MTT_DEPTH,
+    VVC_CURRENT_MAX_CHROMA_420_TT_SIZE, VVC_CURRENT_MAX_LUMA_BT_SIZE,
+    VVC_CURRENT_MAX_LUMA_MTT_DEPTH, VVC_CURRENT_MAX_LUMA_TT_SIZE,
     VVC_CURRENT_MIN_CHROMA_420_QT_SIZE, VVC_CURRENT_MIN_LUMA_CB_SIZE, VVC_CURRENT_MIN_LUMA_QT_SIZE,
     VVC_LUMA_AC_COEFFS_PER_TU,
 };
@@ -27,6 +28,7 @@ pub(in crate::vvc) struct VvcCtuPartitionParams {
     pub(in crate::vvc) luma_tu_ac_levels: [[i16; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
     pub(in crate::vvc) luma_tu_has_ac: [bool; MAX_VVC_LUMA_TUS],
     pub(in crate::vvc) luma_tu_inter_skip: [bool; MAX_VVC_LUMA_TUS],
+    pub(in crate::vvc) luma_tu_scc_decisions: [VvcLumaSccDecision; MAX_VVC_LUMA_TUS],
     pub(in crate::vvc) luma_tu_transform_skip: [bool; MAX_VVC_LUMA_TUS],
     pub(in crate::vvc) luma_tu_bdpcm_modes: [VvcBdpcmMode; MAX_VVC_LUMA_TUS],
     pub(in crate::vvc) luma_tu_mrl_index: [u8; MAX_VVC_LUMA_TUS],

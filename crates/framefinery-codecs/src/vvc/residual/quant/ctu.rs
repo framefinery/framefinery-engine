@@ -1810,6 +1810,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         luma_tu_dc_levels,
         luma_tu_ac_levels,
         luma_tu_has_ac,
+        luma_tu_scc_decisions: [VvcLumaSccDecision::RegularIntra; MAX_VVC_LUMA_TUS],
         luma_tu_transform_skip,
         luma_tu_bdpcm_modes,
         luma_tu_mrl_index,

@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use crate::picture::{ChromaSampling, PixelFormat, SampleBitDepth};
 
 use super::{
+    cabac::vvc_encode_exp_golomb_ep_combined,
     ibc::{VvcIbcCuDecision, VvcIbcHashSearch},
     residual::{VvcResidualCabacEncoder, VvcResidualCabacSymbolStream, VvcResidualComponent},
     sample_vvc_yuv_frame, VvcCabacContext, VvcCabacContexts, VvcCabacEncoder, VvcCtuCabacOp,
