@@ -7340,6 +7340,28 @@ matched the encoder reconstruction byte-for-byte. Keep 4:2:2 on the CTU-slice
 fallback until its rectangular chroma residual quality/rate tradeoff is
 validated separately.
 
+Rejected probe: mixed single P-slice for lossy 4:2:2 VVC.
+
+The same mixed-slice gate was tested for 4:2:2 after the 4:4:4 win. The probe
+was reference-clean: VTM 24.0 decoded the 50-frame stream and matched the
+encoder reconstruction. The reconstructed quality and rate were the problem.
+
+The focused 128x64 50-frame 4:2:2 probe used constant chroma and the same
+left-half luma change/right-half repeat pattern as the 4:4:4 check. At
+`qp=19 gop=-1 fast-search=lossless-speed`, compared with the current CTU-slice
+fallback:
+
+```text
+old CTU-slice fallback:  4,626 bytes, 1497.43 fps, PSNR mean 68.587 dB
+single P-slice probe:    9,061 bytes, 1040.84 fps, PSNR mean 41.046 dB
+projected tradeoff:      -229.45, hard regress
+```
+
+The single-tree 4:2:2 path spent almost twice the bytes, ran about 30% slower,
+and dropped Cr PSNR to about 34.5 dB on frames where the fallback kept Cr near
+72.2 dB. Keep 4:2:2 gated off from mixed single P-slices until rectangular
+chroma residual decisions are fixed inside the unified quantization path.
+
 Rejected probe: neighbor-first luma directional fast search.
 
 The VVC fast-intra literature and x265/VTM/VVenC practice all prioritize
