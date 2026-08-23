@@ -1220,7 +1220,7 @@ fn vvc_predictive_luma_inter_decisions_for_ctu(
     if luma_max_leaf_size != VVC_CURRENT_MAX_LUMA_LEAF_SIZE {
         return None;
     }
-    if format.chroma_sampling != ChromaSampling::Cs420 {
+    if !vvc_explicit_inter_chroma_exact_gate_supported(format.chroma_sampling) {
         return None;
     }
     let motion_map = motion::vvc_luma_motion_map_for_region(current, previous_source, region, 16)?;
@@ -1322,10 +1322,20 @@ fn vvc_inter_decision_supported_by_source_and_reconstruction(
     if !vvc_inter_luma_prediction_fits(previous_reconstruction, node, decision) {
         return false;
     }
+    if current.format.chroma_sampling == ChromaSampling::Cs444
+        && !vvc_inter_luma_reconstruction_predicts_source_exact(
+            current,
+            previous_reconstruction,
+            node,
+            decision,
+        )
+    {
+        return false;
+    }
     if current.format.chroma_sampling == ChromaSampling::Monochrome {
         return true;
     }
-    if current.format.chroma_sampling != ChromaSampling::Cs420 {
+    if !vvc_explicit_inter_chroma_exact_gate_supported(current.format.chroma_sampling) {
         return false;
     }
     if !vvc_inter_chroma_source_motion_is_exact(current, previous_source, node, decision) {
@@ -1338,6 +1348,43 @@ fn vvc_inter_decision_supported_by_source_and_reconstruction(
             node,
             decision,
         )
+}
+
+fn vvc_explicit_inter_chroma_exact_gate_supported(chroma_sampling: ChromaSampling) -> bool {
+    matches!(
+        chroma_sampling,
+        ChromaSampling::Cs420 | ChromaSampling::Cs444
+    )
+}
+
+fn vvc_inter_luma_reconstruction_predicts_source_exact(
+    current: &VvcSampledFrame,
+    previous_reconstruction: &VvcReconstructionFrame,
+    node: VvcCodingTreeNode,
+    decision: VvcLumaInterDecision,
+) -> bool {
+    let dst_x = usize::from(node.x);
+    let dst_y = usize::from(node.y);
+    let Some(src_x) = offset_vvc_encode_origin(dst_x, decision.mv_x) else {
+        return false;
+    };
+    let Some(src_y) = offset_vvc_encode_origin(dst_y, decision.mv_y) else {
+        return false;
+    };
+    let width = usize::from(node.width);
+    let height = usize::from(node.height);
+    vvc_plane_regions_equal(
+        &current.luma,
+        current.geometry.width,
+        dst_x,
+        dst_y,
+        &previous_reconstruction.luma,
+        previous_reconstruction.luma_width(),
+        src_x,
+        src_y,
+        width,
+        height,
+    )
 }
 
 fn vvc_inter_chroma_source_motion_is_exact(

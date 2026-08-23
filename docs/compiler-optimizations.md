@@ -8103,10 +8103,82 @@ TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
   ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
 ```
 
+### VVC 4:4:4 Reconstruction-Exact Explicit Inter
+
+Checkpoint: `vvc-explicit-inter-444-recon-exact-q19-50f`.
+
+The 4:2:0-gated explicit-inter selector has been extended to a strict 8-bit
+4:4:4 subset. 4:4:4 candidates are only generated when:
+
+- luma source motion is exact;
+- chroma source motion is exact;
+- previous reconstruction predicts chroma exactly;
+- previous reconstruction also predicts luma exactly.
+
+This makes the accepted 4:4:4 path no-residual/reconstruction-exact. The
+existing residual-coded explicit inter path remains available for the proven
+4:2:0 case, but 4:4:4 does not yet use residual-coded explicit inter because
+single-tree P-slice activation can hurt non-inter chroma leaves badly.
+
+Rejected probes before the final gate:
+
+- `vvc-explicit-inter-444-exact-chroma-q19-50f`,
+  `vvc-explicit-inter-444-exact-chroma-quality-q19-50f`, and
+  `vvc-explicit-inter-444-exact-only-q19-50f` all kept the large
+  `probe_checker_444` win but regressed `probe_blocks_444` to 732,794 bytes
+  at 39.471 dB, a hard PSNR regression. Stats showed the issue was not chroma
+  source motion; it was admitting residual-coded 4:4:4 inter into a frame where
+  non-inter chroma leaves still paid the single-tree P-slice cost. Requiring
+  previous-reconstruction-exact luma rejects that row while keeping exact
+  repeated checker motion.
+
+50-frame local VVC mode-probe matrix versus `vvc-motion-sad-limit-q19-50f`:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.11 | +0.000 | +0.1 watch |
+| probe_blocks_420 | +0 | -0.25 | +0.000 | -0.3 regress |
+| probe_checker_444 | -2,283,008 | +6.12 | +0.000 | +28.2 accept |
+| probe_blocks_444 | +0 | -0.05 | +0.000 | -0.1 regress |
+
+Aggregate score was `+7.0`, status `watch`, with no hard regressions. The
+4:2:0 and 4:4:4 color-block rows are byte/PSNR-identical to the baseline; their
+negative row scores are timing noise. The useful signal is
+`probe_checker_444`, where all predictive frames become tiny exact inter
+frames without changing PSNR.
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=local-vvc-mode-probe-50f \
+  ENCODE_MATRIX_RUN=vvc-explicit-inter-444-recon-exact-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc ENCODE_MATRIX_MODES=lossy ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_VVC_LOSSY_QP=19 ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
+  ENCODE_MATRIX_VVC_GOP=-1 \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-motion-sad-limit-q19-50f.json \
+  ENCODE_MATRIX_FAIL_ON_REGRESS=1 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
+`verification/test_vector_sets/regression.csv` now includes
+`checker_444_5f`, a small multi-frame 4:4:4 checker vector that exercises this
+exact inter path against the VTM decoder.
+
 Follow-ups:
 
-- Add a luma+chroma explicit-inter RD candidate so 4:4:4 and 4:2:2 can be
-  reconsidered without chroma PSNR regressions.
+- Add a true luma+chroma explicit-inter RD candidate so residual-coded 4:4:4
+  and 4:2:2 can be reconsidered without chroma PSNR regressions or whole-frame
+  single-tree side effects.
 - Replace the source-exact-only candidate with diamond/TZ search around AMVP,
   zero, and spatial/HMVP predictors; keep source-exact as an early-accept case.
 - Add merge/skip candidate selection before explicit MVD when the legal

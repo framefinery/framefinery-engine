@@ -413,6 +413,12 @@ fn select_vvc_luma_explicit_inter_candidate(
         inter_residual,
         vvc_luma_explicit_inter_syntax_cost(decision),
     );
+    if policy.chroma_sampling() == ChromaSampling::Cs444 && inter_score.distortion != 0 {
+        return None;
+    }
+    if inter_score.distortion > intra_score.distortion {
+        return None;
+    }
     inter_score
         .selects_over(intra_score)
         .then_some(inter_residual)
