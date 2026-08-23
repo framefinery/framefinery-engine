@@ -7434,6 +7434,96 @@ The source diff was reverted. Do not retry this exact shortlist reduction
 without a broader affected-row baseline or a stronger policy that produces a
 real byte/quality/speed improvement rather than timing noise.
 
+### VVC Motion Search And Mode-Selection Audit
+
+The current VVC path still has a large structural gap versus production
+encoders: it has exact repeated-frame/CTU reuse and a narrow CTU-local IBC hash
+path, but it does not yet have a general translational inter motion-search path
+with coded residuals. That means most changed predictive content still falls
+back to intra/TU mode decisions, where the current encoder then spends many bits
+and cycles searching residual choices that an inter candidate should have
+avoided.
+
+External encoder and paper audit:
+
+- VVenC's medium random-access preset is built around staged fast decisions:
+  TZ/fast search, adaptive search range, fast merge, fast sub-pel, SCC-specific
+  fast search, IBC fast methods, content-based QTBT pruning, and reduced intra
+  mode full-RD search.
+- x265 exposes the same family of practical controls: cheap motion search
+  methods from diamond/hex through UMH/star/full, subpel refinement levels,
+  temporal MVP, hierarchical ME, source-picture analysis for independent ME,
+  and `limit-modes` that uses sub-CU costs to skip unlikely rectangular/AMP
+  modes.
+- SVT-AV1's open-loop ME is the best implementation model for our safe Rust
+  first pass: it searches source pictures, performs coarse hierarchical search
+  on downsampled frames, selects a search center, then does full-pel refinement
+  and derives larger block costs from 8x8 SADs. That makes motion analysis
+  parallelizable and mostly independent of reconstruction-side CABAC state.
+- The 2024 VVC fast-partitioning review from Fraunhofer is a useful warning
+  against starting with complex ML partition predictors. Its common-baseline
+  result shows that progressive reduction of available split depths already
+  forms a strong speed/BD-rate envelope, with only about half the reviewed
+  papers beating that simple baseline.
+- Recent VVC SCC work keeps pointing back at hash-based IBC and screen-content
+  tool gating. For this codebase, the practical direction is to extend the
+  existing hash-search machinery before adding decoder-heavy inter tools such
+  as affine, GEO, DMVR, or bidirectional prediction.
+
+Concrete implementation order:
+
+1. Add block-level translational inter candidates for lossy P pictures before
+   any broader mode-search tuning. Start with full-pel luma-only SAD over 8x8
+   cells, candidates from zero MV, left/above/HMVP, and a small diamond/hex
+   refinement. Use chroma and exact residual coding only for the final
+   shortlisted candidates. Keep this inside the existing CTU quantization path
+   so lossless/lossy and 4:2:0/4:2:2/4:4:4 continue to share code and only gate
+   syntax/tool eligibility at the deepest point.
+2. Build an open-loop source-frame motion map for the next probe rather than
+   starting from reconstruction-dependent search. This follows SVT/x265
+   source-picture analysis and lets later parallelization happen without
+   changing the bitstream decision path.
+3. Derive 16x16/32x32/64x64 inter costs from 8x8 SADs before doing any exact
+   residual evaluation. Use those aggregate costs to decide whether larger
+   inter leaves are worth testing and to avoid broad intra searches on blocks
+   that are clearly translational.
+4. Add adaptive search-range limits after the first working inter candidate:
+   exact zero/repeated blocks should terminate immediately, smooth neighboring
+   MVs should shrink the local range, and only high-SAD or high-motion regions
+   should use the wider search.
+5. Extend VVC IBC from the current A1/B1/B0 exact-hash subset to a bounded
+   picture/CTU-window hash table for screen content. This should be scored as a
+   separate SCC probe because it can win heavily on repeated UI/text blocks but
+   can also explode search cost if the hash index is not bounded.
+6. Defer ML partition/mode predictors. If we need a partition speed knob first,
+   implement simple progressive split-depth/content-variance pruning and score
+   it against the same matrix before adding model dependencies.
+
+All of these probes must be judged through `scripts/encode_tradeoff.py` after
+correctness passes. The local projection remains:
+
+```text
+score = 10*log2(current_fps / baseline_fps)
+      + 4*log2(baseline_bytes / current_bytes)
+      + 8*(current_psnr_db - baseline_psnr_db)
+```
+
+A high aggregate score is not enough to commit a probe when a row crosses a
+hard guardrail. Current hard row regressions remain FPS below 0.90x, bytes
+above 1.20x, or PSNR below -1.0 dB versus the baseline; minor byte or PSNR
+losses downgrade otherwise-good probes to `watch`.
+
+Rejected probe: disable high-depth 4:2:0 mixed single P-slices.
+
+The high-depth 4:4:4 mixed single-P-slice path was previously rejected because
+it destroyed chroma quality. A matching high-depth 4:2:0 gate was checked
+before changing the policy. On a 10-frame 128x64 yuv420p10le probe, the current
+single-slice path produced 925 bytes at 1013.53 fps with the same PSNR as the
+fallback. The forced CTU-slice fallback produced 993 bytes at 1019.61 fps and
+identical PSNR. The tradeoff score is negative because the small measured speed
+gain does not justify a 7.35% byte increase, so the current gate stays enabled
+for all 4:2:0 bit depths.
+
 ## References
 
 - Cargo profile settings:
@@ -7501,10 +7591,17 @@ real byte/quality/speed improvement rather than timing noise.
   <https://scholars.ln.edu.hk/en/publications/early-termination-for-tzsearch-in-hevc-motion-estimation/>
 - VVC fast/low-complexity survey:
   <https://pmc.ncbi.nlm.nih.gov/articles/PMC9692833/>
+- Review and evaluation of VVC fast partitioning search methods using a
+  common baseline:
+  <https://publica.fraunhofer.de/entities/publication/69c2a152-f47a-4631-922e-5267fba35e63>
 - Fast VVC partitioning decision strategies:
   <https://publica.fraunhofer.de/entities/publication/9210f1fb-90f8-4759-9bb6-d6fc72a9b731>
 - Fast VVC partitioning strategies in VVenC:
   <https://publica.fraunhofer.de/entities/publication/a6ca1879-7d67-4286-af4f-158e06d60ce9>
+- VVC screen-content coding tools overview:
+  <https://www.microsoft.com/en-us/research/?p=798274>
+- FR-IBC VVC screen-content hash-search paper:
+  <https://www.mdpi.com/2079-9292/14/2/221>
 - HOG-based VVC fast intra and partition decision:
   <https://www.sciencedirect.com/science/article/pii/S1047320323001384>
 - VVC QTMT variance/gradient fast partitioning:
