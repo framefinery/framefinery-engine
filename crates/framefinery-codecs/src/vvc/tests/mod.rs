@@ -3508,7 +3508,7 @@ fn vvc_lossy_predictive_mixed_yuv422_frame_uses_ctu_slice_fallback() {
 }
 
 #[test]
-fn vvc_lossy_predictive_mixed_yuv444_frame_uses_ctu_slice_fallback() {
+fn vvc_lossy_predictive_mixed_yuv444_frame_uses_single_p_slice() {
     let geometry = VvcVideoGeometry {
         width: 128,
         height: 64,
@@ -3537,16 +3537,16 @@ fn vvc_lossy_predictive_mixed_yuv444_frame_uses_ctu_slice_fallback() {
             .iter()
             .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
             .count(),
-        2,
-        "mixed lossy 4:4:4 predictive output should stay on the CTU-slice fallback until rectangular chroma residual quality is fixed"
+        1,
+        "mixed lossy 4:4:4 predictive output should use one trailing P slice"
     );
     assert_eq!(
         predictive_nals
             .iter()
             .filter(|info| info.nal_unit_type == VvcNalUnitType::PictureHeader as u8)
             .count(),
-        1,
-        "mixed lossy 4:4:4 predictive frames should carry one picture header for CTU-sliced output"
+        0,
+        "mixed lossy 4:4:4 predictive frames should carry slice state in the single trailing slice"
     );
 }
 

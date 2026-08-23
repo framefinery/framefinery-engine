@@ -7317,6 +7317,29 @@ Ranked next work:
    benchmark movement or removes a confirmed hotspot. Several allocation and
    candidate-list cleanups were byte-identical but slower after measurement.
 
+Accepted probe: mixed single P-slice for lossy 4:4:4 VVC.
+
+The previous release path allowed mixed CTU-level InterSkip/Intra P-slices only
+for 4:2:0 and kept both 4:2:2 and 4:4:4 on one-slice-per-CTU fallback. That was
+too conservative for 4:4:4: single-tree luma/chroma geometry is aligned there,
+so the same unified CTU quantization and CABAC path used by 4:2:0 can carry
+mixed 4:4:4 frames without introducing a separate encoder implementation.
+
+A focused 128x64 50-frame 4:4:4 probe changed the left half of the frame while
+keeping the right half repeatable, forcing the mixed InterSkip/Intra decision.
+Against the old CTU-slice fallback at `qp=19 gop=-1 fast-search=lossless-speed`:
+
+```text
+old CTU-slice fallback:  4,909 bytes, 1308.05 fps, same PSNR
+new single P-slice path: 3,269 bytes, 1520.04 fps, same PSNR
+projected tradeoff:      about +4.5, accept, no hard regression
+```
+
+VTM 24.0 decoded the final 50-frame bitstream and the decoded reconstruction
+matched the encoder reconstruction byte-for-byte. Keep 4:2:2 on the CTU-slice
+fallback until its rectangular chroma residual quality/rate tradeoff is
+validated separately.
+
 Rejected probe: neighbor-first luma directional fast search.
 
 The VVC fast-intra literature and x265/VTM/VVenC practice all prioritize
