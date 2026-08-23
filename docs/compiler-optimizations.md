@@ -7591,6 +7591,17 @@ TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs
 TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
 ```
 
+### VVC 64x64 Open-Loop Motion Aggregates
+
+Accepted scaffold: the VVC source-frame motion map now reports 64x64 aggregate
+summaries in addition to 8x8, 16x16, and 32x32 counters. This matches the
+current CTU size and gives the next translational-inter probe a cheap way to
+distinguish whole-CTU uniform motion from CTUs that should be partitioned
+before trying residual-coded inter candidates.
+
+The normal product build and bitstreams remain unchanged; these counters are
+behind `vvc-stats`.
+
 ## References
 
 - Cargo profile settings:

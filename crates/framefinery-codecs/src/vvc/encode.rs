@@ -486,6 +486,11 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 "predictive_luma_motion_32x32",
                                 motion_analysis.aggregate_32x32,
                             );
+                            add_vvc_luma_motion_aggregate_counters(
+                                &mut frame_stats,
+                                "predictive_luma_motion_64x64",
+                                motion_analysis.aggregate_64x64,
+                            );
                         }
                     }
                     let cached_exact_ctu = if predictive_frame

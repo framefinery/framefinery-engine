@@ -35,6 +35,7 @@ pub(in crate::vvc) struct VvcLumaMotionRegionAnalysis {
     pub(in crate::vvc) total_sad: u64,
     pub(in crate::vvc) aggregate_16x16: VvcLumaMotionAggregateSummary,
     pub(in crate::vvc) aggregate_32x32: VvcLumaMotionAggregateSummary,
+    pub(in crate::vvc) aggregate_64x64: VvcLumaMotionAggregateSummary,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -73,6 +74,7 @@ pub(in crate::vvc) fn vvc_luma_motion_analysis_for_region(
     let mut analysis = map.block_analysis(near_sad_per_sample);
     analysis.aggregate_16x16 = map.aggregate_summary(2, near_sad_per_sample);
     analysis.aggregate_32x32 = map.aggregate_summary(4, near_sad_per_sample);
+    analysis.aggregate_64x64 = map.aggregate_summary(8, near_sad_per_sample);
     analysis
 }
 
@@ -229,6 +231,7 @@ impl VvcLumaMotionMap {
             total_sad: summary.total_sad,
             aggregate_16x16: VvcLumaMotionAggregateSummary::default(),
             aggregate_32x32: VvcLumaMotionAggregateSummary::default(),
+            aggregate_64x64: VvcLumaMotionAggregateSummary::default(),
         }
     }
 
@@ -661,6 +664,35 @@ mod tests {
         assert!(analysis.aggregate_16x16.nonzero_uniform_exact_count >= 4);
         assert!(analysis.aggregate_32x32.candidate_count >= 2);
         assert!(analysis.aggregate_32x32.nonzero_uniform_exact_count >= 1);
+    }
+
+    #[test]
+    fn vvc_luma_motion_map_summarizes_whole_ctu_motion_candidate() {
+        let width = 72;
+        let height = 64;
+        let mut reference = motion_test_frame(width, height);
+        for y in 0..64 {
+            for x in 8..72 {
+                reference.luma[y * width + x] = (1500 + y * 17 + x * 23) as VvcSample;
+            }
+        }
+        let mut current = motion_test_frame(width, height);
+        for y in 0..64 {
+            for x in 0..64 {
+                current.luma[y * width + x] = reference.luma[y * width + 8 + x];
+            }
+        }
+
+        let region = VvcCtuRegion {
+            slice_address: 0,
+            origin_x: 0,
+            origin_y: 0,
+            geometry: VvcVideoGeometry { width: 64, height },
+        };
+        let analysis = vvc_luma_motion_analysis_for_region(&current, &reference, region, 8, 0);
+
+        assert_eq!(analysis.aggregate_64x64.candidate_count, 1);
+        assert!(analysis.aggregate_64x64.nonzero_uniform_exact_count >= 1);
     }
 
     fn motion_test_frame(width: usize, height: usize) -> VvcSampledFrame {
