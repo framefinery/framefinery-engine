@@ -8054,6 +8054,55 @@ TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
   ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
 ```
 
+### VVC Motion SAD Limit
+
+Checkpoint: `vvc-motion-sad-limit-q19-50f`.
+
+The luma diamond motion search now scores non-initial candidates with the
+current best SAD as an early-termination limit. Once a candidate's partial SAD
+exceeds the current best, that candidate cannot win under the existing
+SAD-first comparison, so the block scorer returns immediately. Candidates that
+tie or beat the current best still compute the full SAD, preserving the
+existing MV tie-break behaviour.
+
+This is output-identical by construction and stays inside the shared motion-map
+implementation used by explicit inter and stats analysis. It does not add any
+new mode path.
+
+50-frame local VVC mode-probe matrix versus
+`vvc-motion-small-exact-early-exit-q19-50f`:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.45 | +0.000 | +0.6 watch |
+| probe_blocks_420 | +0 | -0.12 | +0.000 | -0.1 regress |
+| probe_checker_444 | +0 | -0.06 | +0.000 | -0.1 regress |
+| probe_blocks_444 | +0 | +0.19 | +0.000 | +0.4 watch |
+
+Aggregate score was `+0.2`, status `watch`, with no hard regressions. Bytes and
+PSNR were unchanged in every row. The row-level FPS signs are local timing
+noise, but the change is retained because it removes strictly unnecessary SAD
+work without altering selected candidates and clears the aggregate gate.
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=local-vvc-mode-probe-50f \
+  ENCODE_MATRIX_RUN=vvc-motion-sad-limit-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc ENCODE_MATRIX_MODES=lossy ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_VVC_LOSSY_QP=19 ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
+  ENCODE_MATRIX_VVC_GOP=-1 \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-motion-small-exact-early-exit-q19-50f.json \
+  ENCODE_MATRIX_FAIL_ON_REGRESS=1 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
 Follow-ups:
 
 - Add a luma+chroma explicit-inter RD candidate so 4:4:4 and 4:2:2 can be

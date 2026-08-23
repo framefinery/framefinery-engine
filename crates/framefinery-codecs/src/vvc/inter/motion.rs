@@ -464,9 +464,14 @@ pub(in crate::vvc) fn vvc_luma_diamond_motion_search(
         let Some(ref_origin_y) = offset_origin(block.origin_y, predictor.y) else {
             continue;
         };
-        if let Some(candidate) =
-            vvc_luma_motion_candidate_at(current, reference, block, ref_origin_x, ref_origin_y)
-        {
+        if let Some(candidate) = vvc_luma_motion_candidate_at_with_sad_limit(
+            current,
+            reference,
+            block,
+            ref_origin_x,
+            ref_origin_y,
+            Some(best.sad),
+        ) {
             if candidate.is_better_than(best) {
                 best = candidate;
                 if vvc_exact_motion_candidate_allows_early_exit(best) {
@@ -494,9 +499,14 @@ pub(in crate::vvc) fn vvc_luma_diamond_motion_search(
             let Some(ref_origin_y) = offset_origin(block.origin_y, next_mv.y) else {
                 continue;
             };
-            let Some(candidate) =
-                vvc_luma_motion_candidate_at(current, reference, block, ref_origin_x, ref_origin_y)
-            else {
+            let Some(candidate) = vvc_luma_motion_candidate_at_with_sad_limit(
+                current,
+                reference,
+                block,
+                ref_origin_x,
+                ref_origin_y,
+                Some(best.sad),
+            ) else {
                 continue;
             };
             if candidate.is_better_than(best) {
@@ -544,6 +554,24 @@ fn vvc_luma_motion_candidate_at(
     ref_origin_x: usize,
     ref_origin_y: usize,
 ) -> Option<VvcLumaMotionCandidate> {
+    vvc_luma_motion_candidate_at_with_sad_limit(
+        current,
+        reference,
+        block,
+        ref_origin_x,
+        ref_origin_y,
+        None,
+    )
+}
+
+fn vvc_luma_motion_candidate_at_with_sad_limit(
+    current: &VvcSampledFrame,
+    reference: &VvcSampledFrame,
+    block: VvcLumaMotionSearchBlock,
+    ref_origin_x: usize,
+    ref_origin_y: usize,
+    sad_limit: Option<u64>,
+) -> Option<VvcLumaMotionCandidate> {
     if ref_origin_x.checked_add(block.width)? > reference.geometry.width
         || ref_origin_y.checked_add(block.height)? > reference.geometry.height
     {
@@ -559,7 +587,14 @@ fn vvc_luma_motion_candidate_at(
         ref_origin_x,
         ref_origin_y,
         mv,
-        sad: vvc_luma_block_sad(current, reference, block, ref_origin_x, ref_origin_y),
+        sad: vvc_luma_block_sad_limited(
+            current,
+            reference,
+            block,
+            ref_origin_x,
+            ref_origin_y,
+            sad_limit,
+        ),
     })
 }
 
@@ -569,6 +604,17 @@ fn vvc_luma_block_sad(
     block: VvcLumaMotionSearchBlock,
     ref_origin_x: usize,
     ref_origin_y: usize,
+) -> u64 {
+    vvc_luma_block_sad_limited(current, reference, block, ref_origin_x, ref_origin_y, None)
+}
+
+fn vvc_luma_block_sad_limited(
+    current: &VvcSampledFrame,
+    reference: &VvcSampledFrame,
+    block: VvcLumaMotionSearchBlock,
+    ref_origin_x: usize,
+    ref_origin_y: usize,
+    sad_limit: Option<u64>,
 ) -> u64 {
     let current_stride = current.geometry.width;
     let reference_stride = reference.geometry.width;
@@ -580,6 +626,9 @@ fn vvc_luma_block_sad(
             let current_sample = current.luma[current_row + x];
             let reference_sample = reference.luma[reference_row + x];
             sad += u64::from(current_sample.abs_diff(reference_sample));
+            if sad_limit.is_some_and(|limit| sad > limit) {
+                return sad;
+            }
         }
     }
     sad
