@@ -49,8 +49,8 @@ use cabac::{
 #[cfg(test)]
 use cabac::{
     encode_ctu_partition_body_with_contexts, initial_vvc_cabac_contexts,
-    vvc_luma_mpm_list_for_test, VvcCtuCabacGenerator, VvcQtSplitCtxInput, VvcSplitCtxInput,
-    VvcTreeType,
+    vvc_luma_mpm_list_for_test, VvcCtuCabacGenerator, VvcInterMotionInfo,
+    VvcInterMotionNeighbourState, VvcQtSplitCtxInput, VvcSplitCtxInput, VvcTreeType,
 };
 use header::{
     vvc_frame_slice_unit, vvc_one_slice_per_ctu_partitioning_supported, vvc_picture_ctu_cols,

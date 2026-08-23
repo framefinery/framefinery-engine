@@ -7897,10 +7897,19 @@ The first compliant subset to wire is:
 - `cu_coded_flag=0` only for exact/no-residual copies at first.
 
 This pass adds the missing `MVPIdx` CABAC context scaffold required by that
-subset. It is intentionally output-neutral; it should not be scored as a speed
-or compression improvement. A future explicit-inter attempt must be evaluated
-with `scripts/encode_tradeoff.py`, whose row score currently projects local
-metrics as:
+subset. The follow-up explicit-inter syntax scaffold adds a CTU payload field
+for non-merge list0 inter decisions, VTM-order AMVP spatial/HMVP/zero candidate
+derivation, quarter-pel MVD signalling, and P-slice detection for explicit
+inter payloads. It is still not production motion selection: no normal encode
+path currently chooses these leaves or copies the corresponding inter prediction
+into the reconstructed frame. Do not mix this explicit-inter path with the
+current `InterSkip` shortcut for nonzero-motion frames until merge-candidate
+motion derivation is modelled too; otherwise the reference decoder may choose a
+different skip motion than the encoder's same-position copy assumption. A future
+output-changing explicit-inter attempt must first wire reconstruction through
+the existing CTU quantization path and then be evaluated with
+`scripts/encode_tradeoff.py`, whose row score currently projects local metrics
+as:
 
 ```text
 score = 10*log2(current_fps / baseline_fps)

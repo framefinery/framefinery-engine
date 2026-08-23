@@ -45,6 +45,14 @@ pub(in crate::vvc) struct VvcLumaIbcDecision {
     pub(in crate::vvc) pred_mode_ibc_ctx: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(in crate::vvc) struct VvcLumaInterDecision {
+    /// Full-pel luma motion vector against reference picture list 0.
+    pub(in crate::vvc) mv_x: i16,
+    /// Full-pel luma motion vector against reference picture list 0.
+    pub(in crate::vvc) mv_y: i16,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::vvc) enum VvcResidualScoreMetric {
     Sad,

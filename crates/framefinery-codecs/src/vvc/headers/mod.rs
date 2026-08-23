@@ -1426,11 +1426,7 @@ pub(in crate::vvc) fn vvc_slice_type_for_ctus(
     picture_kind: VvcPictureKind,
     ctus: &[VvcQuantizedCtu],
 ) -> VvcSliceType {
-    if !picture_kind.is_irap()
-        && ctus
-            .iter()
-            .any(|ctu| matches!(ctu.payload, VvcQuantizedCtuPayload::InterSkip))
-    {
+    if !picture_kind.is_irap() && ctus.iter().any(|ctu| ctu.payload.is_inter_coded()) {
         VvcSliceType::P
     } else {
         VvcSliceType::I
@@ -1438,7 +1434,7 @@ pub(in crate::vvc) fn vvc_slice_type_for_ctus(
 }
 
 fn vvc_slice_type_for_ctu(picture_kind: VvcPictureKind, ctu: &VvcQuantizedCtu) -> VvcSliceType {
-    if !picture_kind.is_irap() && matches!(ctu.payload, VvcQuantizedCtuPayload::InterSkip) {
+    if !picture_kind.is_irap() && ctu.payload.is_inter_coded() {
         VvcSliceType::P
     } else {
         VvcSliceType::I

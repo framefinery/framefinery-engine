@@ -184,3 +184,16 @@ pub(in crate::vvc) enum VvcQuantizedCtuPayload {
     Intra(Box<VvcCtuPartitionParams>),
     InterSkip,
 }
+
+impl VvcQuantizedCtuPayload {
+    pub(in crate::vvc) fn is_inter_coded(&self) -> bool {
+        match self {
+            Self::InterSkip => true,
+            Self::Intra(params) => params
+                .luma_tu_inter_decisions
+                .iter()
+                .take(params.luma_tu_count)
+                .any(Option::is_some),
+        }
+    }
+}

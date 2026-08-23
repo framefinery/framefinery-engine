@@ -16,7 +16,8 @@ pub(super) use ctu_body::{
 #[cfg(test)]
 pub(super) use ctu_body::{
     encode_ctu_partition_body_with_contexts, initial_vvc_cabac_contexts,
-    vvc_luma_mpm_list_for_test, VvcCtuCabacGenerator,
+    vvc_luma_mpm_list_for_test, VvcCtuCabacGenerator, VvcInterMotionInfo,
+    VvcInterMotionNeighbourState,
 };
 pub(super) use ctu_split::{
     vvc_chroma_transform_nodes, vvc_chroma_transform_nodes_into, vvc_luma_transform_nodes,

@@ -404,6 +404,34 @@ fn vvc_predictive_slice_type_matches_actual_ctu_payloads() {
         vvc_slice_type_for_ctus(VvcPictureKind::Idr, &inter_skip_ctus),
         VvcSliceType::I
     );
+    let neutral = quantize_vvc_color(VvcSampledColor {
+        y: 128,
+        u: 128,
+        v: 128,
+    });
+    let mut explicit_inter_params = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
+        geometry,
+        neutral,
+        VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+        ChromaSampling::Cs420,
+        false,
+    )
+    .expect("64x64 single-tree 4:2:0 partition parameters");
+    explicit_inter_params.luma_tu_inter_decisions[0] =
+        Some(VvcLumaInterDecision { mv_x: -1, mv_y: 0 });
+    let explicit_inter_ctus = [VvcQuantizedCtu {
+        slice_address: 0,
+        geometry,
+        payload: VvcQuantizedCtuPayload::Intra(Box::new(explicit_inter_params)),
+    }];
+    assert_eq!(
+        vvc_slice_type_for_ctus(VvcPictureKind::Trail, &explicit_inter_ctus),
+        VvcSliceType::P
+    );
+    assert_eq!(
+        vvc_slice_type_for_ctus(VvcPictureKind::Idr, &explicit_inter_ctus),
+        VvcSliceType::I
+    );
 
     let black = quantize_vvc_color(VvcSampledColor { y: 0, u: 0, v: 0 });
     let rbsp = vvc_slice_rbsp(
@@ -1924,6 +1952,114 @@ fn vvc_ctu_body_emits_exact_ibc_leaf_from_partition_decision() {
 }
 
 #[test]
+fn vvc_inter_motion_neighbour_state_uses_vtm_amvp_spatial_order() {
+    let mut state = VvcInterMotionNeighbourState::new(32, 32);
+    let mut target = VvcCodingTreeNode::root(8, 8, VvcTreeType::SingleTree);
+    target.x = 8;
+    target.y = 8;
+    let left = VvcInterMotionInfo {
+        mv_internal_x: -16,
+        mv_internal_y: 0,
+    };
+    let above_right = VvcInterMotionInfo {
+        mv_internal_x: 32,
+        mv_internal_y: 0,
+    };
+    let mut left_node = target;
+    left_node.x = 0;
+    state.mark_leaf(left_node, left);
+    let mut above_right_node = target;
+    above_right_node.x = 16;
+    above_right_node.y = 0;
+    state.mark_leaf(above_right_node, above_right);
+
+    let candidates = state.mvp_candidates(target);
+
+    assert_eq!(candidates[0], left);
+    assert_eq!(candidates[1], above_right);
+}
+
+#[test]
+fn vvc_ctu_body_emits_explicit_inter_leaf_from_partition_decision() {
+    let neutral = quantize_vvc_color(VvcSampledColor {
+        y: 128,
+        u: 128,
+        v: 128,
+    });
+    let mut params = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
+        VvcVideoGeometry {
+            width: 8,
+            height: 8,
+        },
+        neutral,
+        VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+        ChromaSampling::Cs420,
+        false,
+    )
+    .expect("8x8 single-tree 4:2:0 partition parameters");
+    params.luma_tu_inter_decisions[0] = Some(VvcLumaInterDecision { mv_x: -1, mv_y: 0 });
+
+    let config = VvcSliceSyntaxConfig::yuv420_residual().with_inter_enabled();
+    let geometry = VvcVideoGeometry {
+        width: 8,
+        height: 8,
+    };
+    let mut frame_state = VvcFrameCtuCabacState::new(geometry, config, true);
+    let mut cabac = VvcCabacEncoder::new_with_dump();
+    cabac.start();
+    frame_state.encode_ctu(&mut cabac, 0, &params, config);
+
+    let context_bins: Vec<(u16, bool)> = cabac
+        .context_events
+        .iter()
+        .map(|event| (event.ctx_id, event.bin))
+        .collect();
+
+    assert!(
+        context_bins.contains(&(
+            VvcCabacContext::CuSkipFlag(0).rtl_context_id().unwrap(),
+            false
+        )),
+        "explicit inter leaves must signal cu_skip_flag=0"
+    );
+    assert!(
+        context_bins.contains(&(
+            VvcCabacContext::GeneralMergeFlag(0)
+                .rtl_context_id()
+                .unwrap(),
+            false
+        )),
+        "explicit inter leaves use MVD syntax instead of merge"
+    );
+    assert!(
+        context_bins.contains(&(
+            VvcCabacContext::AbsMvdGreater0Flag(0)
+                .rtl_context_id()
+                .unwrap(),
+            true
+        )),
+        "non-zero full-pel motion must emit non-zero MVD"
+    );
+    assert!(
+        context_bins.contains(&(VvcCabacContext::MvpIdxFlag.rtl_context_id().unwrap(), false)),
+        "zero-filled AMVP candidate 0 should be selected at picture origin"
+    );
+    assert!(
+        context_bins.contains(&(
+            VvcCabacContext::CuCodedFlag(0).rtl_context_id().unwrap(),
+            false
+        )),
+        "exact explicit inter leaves must suppress residual transform_tree syntax"
+    );
+    assert!(
+        !context_bins.iter().any(|(ctx_id, _)| {
+            *ctx_id == VvcCabacContext::IntraLumaMpmFlag.rtl_context_id().unwrap()
+        }),
+        "explicit inter leaves must return before intra prediction syntax"
+    );
+}
+
+#[test]
 fn vvc_ctu_body_omits_scc_palette_prefix_for_4x4_regular_intra_leaf() {
     let neutral = quantize_vvc_color(VvcSampledColor {
         y: 128,
@@ -2105,6 +2241,7 @@ fn vvc_ctu_cabac_generator_uses_one_recursive_luma_base() {
             luma_tu_ac_levels: [[0; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
             luma_tu_has_ac: [false; MAX_VVC_LUMA_TUS],
             luma_tu_inter_skip: [false; MAX_VVC_LUMA_TUS],
+            luma_tu_inter_decisions: [None; MAX_VVC_LUMA_TUS],
             luma_tu_scc_decisions: [VvcLumaSccDecision::RegularIntra; MAX_VVC_LUMA_TUS],
             luma_tu_transform_skip: [false; MAX_VVC_LUMA_TUS],
             luma_tu_bdpcm_modes: [VvcBdpcmMode::None; MAX_VVC_LUMA_TUS],
@@ -2905,6 +3042,7 @@ fn vvc_ctu_chroma_tree_uses_luma_coordinate_root() {
             luma_tu_ac_levels: [[0; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
             luma_tu_has_ac: [false; MAX_VVC_LUMA_TUS],
             luma_tu_inter_skip: [false; MAX_VVC_LUMA_TUS],
+            luma_tu_inter_decisions: [None; MAX_VVC_LUMA_TUS],
             luma_tu_scc_decisions: [VvcLumaSccDecision::RegularIntra; MAX_VVC_LUMA_TUS],
             luma_tu_transform_skip: [false; MAX_VVC_LUMA_TUS],
             luma_tu_bdpcm_modes: [VvcBdpcmMode::None; MAX_VVC_LUMA_TUS],

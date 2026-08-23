@@ -193,6 +193,7 @@ fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
         luma_tu_ac_levels,
         luma_tu_has_ac,
         luma_tu_inter_skip: [false; MAX_VVC_LUMA_TUS],
+        luma_tu_inter_decisions: [None; MAX_VVC_LUMA_TUS],
         luma_tu_scc_decisions,
         luma_tu_transform_skip,
         luma_tu_bdpcm_modes,

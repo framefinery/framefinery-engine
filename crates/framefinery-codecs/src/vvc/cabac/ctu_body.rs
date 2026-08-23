@@ -11,9 +11,10 @@ use crate::vvc::residual::{VvcResidualCabacEncoder, VvcResidualCabacSymbolStream
 use crate::vvc::{
     chroma_subsample_x, chroma_subsample_y, vvc_chroma_cclm_node_allowed,
     vvc_chroma_explicit_candidate_index, VvcBdpcmMode, VvcChromaCclmMode,
-    VvcChromaIntraPredictionMode, VvcIntraPredictionMode, VvcLumaIbcDecision, VvcLumaSccDecision,
-    VvcResidualComponent, VvcSliceSyntaxConfig, VvcVideoGeometry, VVC_CHROMA_AC_COEFFS_PER_TU,
-    VVC_CTU_SIZE, VVC_CURRENT_ENCODER_CHROMA_420_TB_SIZE, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
+    VvcChromaIntraPredictionMode, VvcIntraPredictionMode, VvcLumaIbcDecision, VvcLumaInterDecision,
+    VvcLumaSccDecision, VvcResidualComponent, VvcSliceSyntaxConfig, VvcVideoGeometry,
+    VVC_CHROMA_AC_COEFFS_PER_TU, VVC_CTU_SIZE, VVC_CURRENT_ENCODER_CHROMA_420_TB_SIZE,
+    VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
 };
 
 const VVC_LUMA_ANGULAR_BASE: i16 = 2;
@@ -56,6 +57,10 @@ fn encode_inter_skip_ctu_body_with_contexts(
         slice_config,
         &mut split_neighbours,
         &mut skip_neighbours,
+        &mut VvcInterMotionNeighbourState::new(
+            ctu_geometry.coded_width() as u16,
+            ctu_geometry.coded_height() as u16,
+        ),
         0,
         0,
         ctu_geometry.coded_width() as u16,
@@ -70,6 +75,7 @@ fn encode_inter_skip_ctu_body_with_frame_contexts(
     slice_config: VvcSliceSyntaxConfig,
     split_neighbours: &mut VvcLumaNeighbourState,
     skip_neighbours: &mut VvcInterSkipNeighbourState,
+    motion_neighbours: &mut VvcInterMotionNeighbourState,
     origin_x: u16,
     origin_y: u16,
     picture_width: u16,
@@ -91,7 +97,7 @@ fn encode_inter_skip_ctu_body_with_frame_contexts(
         picture_width,
         picture_height,
         VVC_CTU_SIZE as u16,
-        |op| emit_inter_skip_ctu_op(cabac, contexts, op, skip_neighbours),
+        |op| emit_inter_skip_ctu_op(cabac, contexts, op, skip_neighbours, motion_neighbours),
     );
 }
 
@@ -100,6 +106,7 @@ fn emit_inter_skip_ctu_op(
     contexts: &mut VvcCabacContexts,
     op: VvcCtuCabacOp,
     skip_neighbours: &mut VvcInterSkipNeighbourState,
+    motion_neighbours: &mut VvcInterMotionNeighbourState,
 ) {
     match op {
         VvcCtuCabacOp::QtSplit {
@@ -153,6 +160,7 @@ fn emit_inter_skip_ctu_op(
             let skip_ctx = skip_neighbours.skip_ctx(node);
             contexts.encode_cu_skip_flag(cabac, skip_ctx, true);
             skip_neighbours.mark_leaf(node);
+            motion_neighbours.mark_leaf(node, VvcInterMotionInfo::default());
         }
         VvcCtuCabacOp::ChromaTree { .. } => {}
     }
@@ -371,6 +379,7 @@ pub(in crate::vvc) struct VvcFrameCtuCabacState {
     luma_mode_neighbours: VvcLumaModeNeighbourState,
     chroma_neighbours: VvcChromaNeighbourState,
     inter_skip_neighbours: VvcInterSkipNeighbourState,
+    inter_motion_neighbours: VvcInterMotionNeighbourState,
     skip_neighbours: Vec<bool>,
     pred_mode_contexts: Option<[VvcCabacProbModel; 2]>,
     inter_slice: bool,
@@ -402,6 +411,10 @@ impl VvcFrameCtuCabacState {
                 slice_config.coding_tree.chroma_sampling,
             ),
             inter_skip_neighbours: VvcInterSkipNeighbourState::new(picture_width, picture_height),
+            inter_motion_neighbours: VvcInterMotionNeighbourState::new(
+                picture_width,
+                picture_height,
+            ),
             skip_neighbours: vec![
                 false;
                 picture_geometry.coded_width().div_ceil(VVC_CTU_SIZE)
@@ -438,6 +451,7 @@ impl VvcFrameCtuCabacState {
         let luma_neighbours = &mut self.luma_neighbours;
         let luma_mode_neighbours = &mut self.luma_mode_neighbours;
         let chroma_neighbours = &mut self.chroma_neighbours;
+        let inter_motion_neighbours = &mut self.inter_motion_neighbours;
         let shape = if self.inter_slice {
             params.single_tree_shape()
         } else {
@@ -449,6 +463,7 @@ impl VvcFrameCtuCabacState {
                 skip_ctx,
                 pred_mode_contexts,
                 Some(&mut self.inter_skip_neighbours),
+                Some(inter_motion_neighbours),
             );
         if self.inter_slice {
             VvcCtuCabacOp::visit_inter_skip_ctu_partition_with_luma_neighbours(
@@ -508,6 +523,7 @@ impl VvcFrameCtuCabacState {
             slice_config,
             &mut self.luma_neighbours,
             &mut self.inter_skip_neighbours,
+            &mut self.inter_motion_neighbours,
             (ctu_x * VVC_CTU_SIZE) as u16,
             (ctu_y * VVC_CTU_SIZE) as u16,
             self.picture_width,
@@ -547,6 +563,7 @@ pub(in crate::vvc) struct VvcCtuCabacGenerator<'a, 'p> {
     inter_skip_ctx: u8,
     inter_pred_mode_contexts: Option<&'a mut [VvcCabacProbModel; 2]>,
     inter_skip_neighbours: Option<&'a mut VvcInterSkipNeighbourState>,
+    inter_motion_neighbours: Option<&'a mut VvcInterMotionNeighbourState>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -744,6 +761,191 @@ impl VvcInterSkipNeighbourState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(in crate::vvc) struct VvcInterMotionInfo {
+    pub(in crate::vvc) mv_internal_x: i32,
+    pub(in crate::vvc) mv_internal_y: i32,
+}
+
+impl VvcInterMotionInfo {
+    pub(in crate::vvc) fn from_full_pel_decision(decision: VvcLumaInterDecision) -> Self {
+        Self {
+            mv_internal_x: i32::from(decision.mv_x) << 4,
+            mv_internal_y: i32::from(decision.mv_y) << 4,
+        }
+    }
+
+    fn rounded_translational_amvp(self) -> Self {
+        // The current encoder keeps AMVR disabled for translational inter CUs.
+        // VTM rounds AMVP candidates from internal 1/16 precision to quarter
+        // precision and back before duplicate pruning.
+        Self {
+            mv_internal_x: vvc_round_internal_mv_to_quarter(self.mv_internal_x),
+            mv_internal_y: vvc_round_internal_mv_to_quarter(self.mv_internal_y),
+        }
+    }
+
+    fn signalled_mvd_from(self, predictor: Self) -> (i32, i32) {
+        let mvd_internal_x = self.mv_internal_x - predictor.mv_internal_x;
+        let mvd_internal_y = self.mv_internal_y - predictor.mv_internal_y;
+        debug_assert_eq!(mvd_internal_x & 3, 0);
+        debug_assert_eq!(mvd_internal_y & 3, 0);
+        (mvd_internal_x >> 2, mvd_internal_y >> 2)
+    }
+}
+
+fn vvc_round_internal_mv_to_quarter(value: i32) -> i32 {
+    ((value + 2) >> 2) << 2
+}
+
+fn vvc_best_explicit_inter_mvp_index(
+    desired: VvcInterMotionInfo,
+    candidates: [VvcInterMotionInfo; 2],
+) -> usize {
+    let cost0 = vvc_explicit_inter_mvd_cost(desired, candidates[0]);
+    let cost1 = vvc_explicit_inter_mvd_cost(desired, candidates[1]);
+    usize::from(cost1 < cost0)
+}
+
+fn vvc_explicit_inter_mvd_cost(desired: VvcInterMotionInfo, predictor: VvcInterMotionInfo) -> u32 {
+    let (mvd_x, mvd_y) = desired.signalled_mvd_from(predictor);
+    mvd_x.unsigned_abs() + mvd_y.unsigned_abs()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::vvc) struct VvcInterMotionNeighbourState {
+    width: u16,
+    height: u16,
+    cell_width: usize,
+    inter: Vec<Option<VvcInterMotionInfo>>,
+    hmvp: Vec<VvcInterMotionInfo>,
+}
+
+impl VvcInterMotionNeighbourState {
+    const MAX_HMVP_CANDIDATES: usize = 5;
+
+    pub(in crate::vvc) fn new(width: u16, height: u16) -> Self {
+        let cell_width = usize::from(width.div_ceil(VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE));
+        let cell_height = usize::from(height.div_ceil(VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE));
+        Self {
+            width,
+            height,
+            cell_width,
+            inter: vec![None; cell_width * cell_height],
+            hmvp: Vec::new(),
+        }
+    }
+
+    pub(in crate::vvc) fn mark_leaf(
+        &mut self,
+        node: VvcCodingTreeNode,
+        motion: VvcInterMotionInfo,
+    ) {
+        let end_x = (node.x + node.width).min(self.width);
+        let end_y = (node.y + node.height).min(self.height);
+        let start_cell_x = node.x / VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE;
+        let start_cell_y = node.y / VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE;
+        let end_cell_x = end_x.div_ceil(VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE);
+        let end_cell_y = end_y.div_ceil(VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE);
+        for cell_y in start_cell_y..end_cell_y {
+            let start = usize::from(cell_y) * self.cell_width + usize::from(start_cell_x);
+            let end = usize::from(cell_y) * self.cell_width + usize::from(end_cell_x);
+            self.inter[start..end].fill(Some(motion));
+        }
+        if vvc_inter_motion_saved_for_hmvp(node) {
+            self.push_hmvp(motion);
+        }
+    }
+
+    fn push_hmvp(&mut self, motion: VvcInterMotionInfo) {
+        if let Some(index) = self.hmvp.iter().position(|candidate| *candidate == motion) {
+            self.hmvp.remove(index);
+        } else if self.hmvp.len() == Self::MAX_HMVP_CANDIDATES {
+            self.hmvp.remove(0);
+        }
+        self.hmvp.push(motion);
+    }
+
+    pub(in crate::vvc) fn mvp_candidates(
+        &self,
+        node: VvcCodingTreeNode,
+    ) -> [VvcInterMotionInfo; 2] {
+        let mut candidates = Vec::with_capacity(2);
+        if let Some(left) = self.left_spatial_candidate(node) {
+            candidates.push(left.rounded_translational_amvp());
+        }
+        if let Some(above) = self.above_spatial_candidate(node) {
+            candidates.push(above.rounded_translational_amvp());
+        }
+        if candidates.len() == 2 && candidates[0] == candidates[1] {
+            candidates.pop();
+        }
+        for candidate in &self.hmvp {
+            if candidates.len() >= 2 {
+                break;
+            }
+            candidates.push(candidate.rounded_translational_amvp());
+        }
+        while candidates.len() < 2 {
+            candidates.push(VvcInterMotionInfo::default());
+        }
+        [candidates[0], candidates[1]]
+    }
+
+    fn left_spatial_candidate(&self, node: VvcCodingTreeNode) -> Option<VvcInterMotionInfo> {
+        let x = node.x.checked_sub(1)?;
+        self.motion_at(x, node.y.saturating_add(node.height))
+            .or_else(|| {
+                self.motion_at(
+                    x,
+                    node.y
+                        .saturating_add(node.height)
+                        .saturating_sub(1)
+                        .min(self.height.saturating_sub(1)),
+                )
+            })
+    }
+
+    fn above_spatial_candidate(&self, node: VvcCodingTreeNode) -> Option<VvcInterMotionInfo> {
+        let y = node.y.checked_sub(1)?;
+        self.motion_at(node.x.saturating_add(node.width), y)
+            .or_else(|| {
+                self.motion_at(
+                    node.x
+                        .saturating_add(node.width)
+                        .saturating_sub(1)
+                        .min(self.width.saturating_sub(1)),
+                    y,
+                )
+            })
+            .or_else(|| self.motion_at(node.x.checked_sub(1)?, y))
+    }
+
+    fn motion_at(&self, x: u16, y: u16) -> Option<VvcInterMotionInfo> {
+        let index = self.index(x, y)?;
+        self.inter[index]
+    }
+
+    fn index(&self, x: u16, y: u16) -> Option<usize> {
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        let cell_x = usize::from(x / VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE);
+        let cell_y = usize::from(y / VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE);
+        Some(cell_y * self.cell_width + cell_x)
+    }
+}
+
+fn vvc_inter_motion_saved_for_hmvp(node: VvcCodingTreeNode) -> bool {
+    // SPS log2_parallel_merge_level_minus2 is currently fixed to zero, so the
+    // parallel-merge level is 4 luma samples.
+    const PARALLEL_MERGE_LEVEL: u16 = 4;
+    let mask = !(u32::from(PARALLEL_MERGE_LEVEL) - 1);
+    let crosses_x = ((u32::from(node.x + node.width) ^ u32::from(node.x)) & mask) != 0;
+    let crosses_y = ((u32::from(node.y + node.height) ^ u32::from(node.y)) & mask) != 0;
+    crosses_x && crosses_y
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct VvcChromaNeighbourState {
     width: u16,
@@ -865,6 +1067,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             inter_skip_ctx: 0,
             inter_pred_mode_contexts: None,
             inter_skip_neighbours: None,
+            inter_motion_neighbours: None,
         }
     }
 
@@ -874,11 +1077,13 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         skip_ctx: u8,
         pred_mode_contexts: Option<&'a mut [VvcCabacProbModel; 2]>,
         skip_neighbours: Option<&'a mut VvcInterSkipNeighbourState>,
+        motion_neighbours: Option<&'a mut VvcInterMotionNeighbourState>,
     ) -> Self {
         self.inter_slice = inter_slice;
         self.inter_skip_ctx = skip_ctx.min(2);
         self.inter_pred_mode_contexts = pred_mode_contexts;
         self.inter_skip_neighbours = skip_neighbours;
+        self.inter_motion_neighbours = motion_neighbours;
         self
     }
 
@@ -923,6 +1128,9 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             } => {
                 self.emit_luma_leaf_split_with_ctx(cabac, node, write_split_flag, split_ctx);
                 if self.emit_luma_inter_skip_leaf(cabac, node) {
+                    return;
+                }
+                if self.emit_luma_explicit_inter_leaf(cabac, node, luma_mode_neighbours) {
                     return;
                 }
                 if self.emit_luma_scc_selected_leaf(cabac, node) {
@@ -1186,6 +1394,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
     }
 
     fn emit_luma_ibc_mvd_coding(&mut self, cabac: &mut VvcCabacEncoder, mvd_x: i16, mvd_y: i16) {
+        self.emit_luma_mvd_coding(cabac, i32::from(mvd_x), i32::from(mvd_y));
+    }
+
+    fn emit_luma_mvd_coding(&mut self, cabac: &mut VvcCabacEncoder, mvd_x: i32, mvd_y: i32) {
         let abs_x = i32::from(mvd_x).unsigned_abs();
         let abs_y = i32::from(mvd_y).unsigned_abs();
         self.contexts
@@ -1214,6 +1426,56 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         }
     }
 
+    fn emit_luma_explicit_inter_leaf(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        node: VvcCodingTreeNode,
+        neighbours: &VvcLumaModeNeighbourState,
+    ) -> bool {
+        if !self.inter_slice || self.luma_tu_index >= self.params.luma_tu_count {
+            return false;
+        }
+        let Some(decision) = self.params.luma_tu_inter_decisions[self.luma_tu_index] else {
+            return false;
+        };
+        assert_eq!(
+            node.tree_type,
+            VvcTreeType::SingleTree,
+            "explicit inter leaf requires single-tree P-slice syntax"
+        );
+        assert!(
+            !self.params.luma_tu_inter_skip[self.luma_tu_index],
+            "explicit inter and inter-skip are mutually exclusive for one luma TU"
+        );
+        assert!(
+            !self.slice_config.tools.ibc_enabled && !self.slice_config.tools.palette_enabled,
+            "P-slice SCC inter-mode ordering is not wired for explicit inter leaves"
+        );
+
+        self.emit_luma_inter_slice_prediction_prefix(cabac, node, neighbours, false);
+        self.contexts
+            .encode(cabac, VvcCabacContext::GeneralMergeFlag(0), false);
+        let desired = VvcInterMotionInfo::from_full_pel_decision(decision);
+        let candidates = self
+            .inter_motion_neighbours
+            .as_ref()
+            .map(|neighbours| neighbours.mvp_candidates(node))
+            .unwrap_or([VvcInterMotionInfo::default(); 2]);
+        let mvp_idx = vvc_best_explicit_inter_mvp_index(desired, candidates);
+        let (mvd_x, mvd_y) = desired.signalled_mvd_from(candidates[mvp_idx]);
+        self.emit_luma_mvd_coding(cabac, mvd_x, mvd_y);
+        self.contexts.encode_mvp_idx_flag(cabac, mvp_idx != 0);
+        // rqt_root_cbf / cu_coded_flag = 0: this explicit inter CU has no
+        // residual tree and is reconstructed entirely from list-0 prediction.
+        self.contexts
+            .encode(cabac, VvcCabacContext::CuCodedFlag(0), false);
+        if let Some(neighbours) = self.inter_motion_neighbours.as_mut() {
+            neighbours.mark_leaf(node, desired);
+        }
+        self.luma_tu_index += 1;
+        true
+    }
+
     fn emit_luma_inter_slice_intra_prefix(
         &mut self,
         cabac: &mut VvcCabacEncoder,
@@ -1223,6 +1485,16 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         if !self.inter_slice {
             return;
         }
+        self.emit_luma_inter_slice_prediction_prefix(cabac, node, neighbours, true);
+    }
+
+    fn emit_luma_inter_slice_prediction_prefix(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        node: VvcCodingTreeNode,
+        neighbours: &VvcLumaModeNeighbourState,
+        pred_mode_intra: bool,
+    ) {
         debug_assert_ne!(
             (node.width, node.height),
             (4, 4),
@@ -1240,7 +1512,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             cabac,
             VvcCabacContext::PredModeFlag(pred_mode_ctx),
             &mut pred_mode_contexts[pred_mode_ctx as usize],
-            true,
+            pred_mode_intra,
         );
     }
 
