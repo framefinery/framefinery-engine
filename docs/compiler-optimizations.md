@@ -8211,6 +8211,37 @@ Follow-ups:
 - Run six-vector 50-frame scoring after the next inter-search expansion; this
   checkpoint was accepted only on the local mode-probe set.
 
+### VVC Motion Predictor Rate-Order Rejection
+
+Rejected probe: `vvc-motion-predictor-rate-order-q19-50f`.
+
+External guidance from VTM, x265, AV1, and recent VVC motion-estimation papers
+supports rate-cost-ordered motion probing, but the cost must match the syntax
+actually emitted by the codec. A local attempt sorted the open-loop luma motion
+predictor list by absolute full-pel MV magnitude and delayed exact nonzero early
+exit until all predictors were checked. That is not a valid VVC cost proxy for
+the current explicit-inter subset because the emitted MVD is relative to the
+AMVP candidate derived from neighbouring blocks, not relative to zero. In the
+screen-content exact-inter path, the old spatial predictor order can be cheaper
+than a smaller absolute MV because it preserves coherent neighbour-predicted
+motion.
+
+Focused 50-frame matrix against `vvc-explicit-inter-444-recon-exact-q19-50f`
+with `ENCODE_MATRIX_FAIL_ON_REGRESS=1` rejected the change:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | -0.31 | +0.000 | -0.4 regress |
+| probe_blocks_420 | +0 | -0.29 | +0.000 | -0.3 regress |
+| probe_checker_444 | +6,257 | -0.30 | +0.000 | -0.9 regress |
+| probe_blocks_444 | +0 | -0.21 | +0.000 | -0.4 regress |
+
+Aggregate score was `-0.5`, status `regress`, with no hard row regressions.
+The code change was reverted. The next rate-ordered ME attempt should calculate
+candidate cost against the same AMVP/MVD model used by
+`emit_luma_explicit_inter_leaf`, then use that cost only as a tie-breaker after
+SAD/exactness and validate with the same scorer.
+
 ## References
 
 - Cargo profile settings:
@@ -8251,6 +8282,9 @@ Follow-ups:
   <https://jvet.hhi.fraunhofer.de/trac/vvc/attachment/ticket/74/encoder_randomaccess_vtm.cfg>
 - VTM inter-search implementation:
   <https://raw.githubusercontent.com/ChristianFeldmann/VTM/master/source/Lib/EncoderLib/InterSearch.cpp>
+- VVC integer motion-estimation early termination and rate-cost search-order
+  paper:
+  <https://doi.org/10.1109/access.2025.3623123>
 - VVenC medium random-access fast-tool config:
   <https://raw.githubusercontent.com/fraunhoferhhi/vvenc/master/cfg/randomaccess_medium.cfg>
 - VVenC project and presets:
