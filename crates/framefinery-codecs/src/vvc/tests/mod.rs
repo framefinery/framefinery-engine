@@ -4103,7 +4103,45 @@ fn vvc_lossy_predictive_mixed_yuv422_frame_uses_ctu_slice_fallback() {
 }
 
 #[test]
-fn vvc_lossy_predictive_mixed_yuv444_frame_uses_single_p_slice() {
+fn vvc_explicit_inter_mixed_p_slice_allows_sparse_420_candidates() {
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+
+    assert!(vvc_explicit_inter_decision_count_allows_mixed_p_slice(
+        1, format, 0,
+    ));
+}
+
+#[test]
+fn vvc_explicit_inter_mixed_p_slice_requires_full_444_leaf_coverage() {
+    let geometry = VvcVideoGeometry {
+        width: 128,
+        height: 64,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let eligible_count =
+        vvc_explicit_inter_eligible_luma_leaf_count(geometry, format.chroma_sampling);
+
+    assert_eq!(eligible_count, 128);
+    assert!(!vvc_explicit_inter_decision_count_allows_mixed_p_slice(
+        eligible_count - 1,
+        format,
+        eligible_count,
+    ));
+    assert!(vvc_explicit_inter_decision_count_allows_mixed_p_slice(
+        eligible_count,
+        format,
+        eligible_count,
+    ));
+}
+
+#[test]
+fn vvc_lossy_predictive_mixed_yuv444_frame_uses_ctu_slice_fallback() {
     let geometry = VvcVideoGeometry {
         width: 128,
         height: 64,
@@ -4132,16 +4170,16 @@ fn vvc_lossy_predictive_mixed_yuv444_frame_uses_single_p_slice() {
             .iter()
             .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
             .count(),
-        1,
-        "mixed lossy 4:4:4 predictive output should use one trailing P slice"
+        2,
+        "mixed lossy 4:4:4 predictive output should stay on the CTU-slice fallback unless inter reuse covers the full frame"
     );
     assert_eq!(
         predictive_nals
             .iter()
             .filter(|info| info.nal_unit_type == VvcNalUnitType::PictureHeader as u8)
             .count(),
-        0,
-        "mixed lossy 4:4:4 predictive frames should carry slice state in the single trailing slice"
+        1,
+        "mixed lossy 4:4:4 predictive frames should carry one picture header for CTU-sliced output"
     );
 }
 

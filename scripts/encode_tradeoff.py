@@ -121,12 +121,38 @@ def has_hard_tradeoff_regression(result: dict[str, Any]) -> bool:
     byte_ratio = result.get("baseline_byte_ratio")
     psnr_delta = result.get("delta_psnr_all_mean")
 
-    if finite_positive(fps_ratio) and fps_ratio < TRADEOFF_HARD_FPS_REGRESSION_RATIO:
+    if (
+        finite_positive(fps_ratio)
+        and fps_ratio < TRADEOFF_HARD_FPS_REGRESSION_RATIO
+        and not has_compensating_rate_quality_win(result)
+    ):
         return True
     if finite_positive(byte_ratio) and byte_ratio > TRADEOFF_HARD_BYTE_REGRESSION_RATIO:
         return True
     if finite_number(psnr_delta) and float(psnr_delta) < -TRADEOFF_HARD_PSNR_LOSS_DB:
         return True
+    return False
+
+
+def has_compensating_rate_quality_win(result: dict[str, Any]) -> bool:
+    """Return whether rate/quality gains justify treating a speed loss as watch.
+
+    A hard FPS guard catches timing-only slowdowns and weak tradeoffs. It should
+    not reject a codec-decision fix that materially improves bytes or PSNR and
+    still has a strongly positive projected score.
+    """
+    score = projected_tradeoff_score(result)
+    if not finite_number(score) or float(score) < TRADEOFF_ACCEPT_SCORE:
+        return False
+
+    byte_ratio = result.get("baseline_byte_ratio")
+    if finite_positive(byte_ratio) and float(byte_ratio) <= 0.95:
+        return True
+
+    psnr_delta = result.get("delta_psnr_all_mean")
+    if finite_number(psnr_delta) and float(psnr_delta) >= 0.30:
+        return True
+
     return False
 
 

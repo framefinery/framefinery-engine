@@ -8586,6 +8586,107 @@ TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
   ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
 ```
 
+### VVC 4:4:4 Partial-Inter Safety Gate
+
+Checkpoint: `vvc-444-partial-inter-safe-gate-q19-50f`.
+
+The Wayland screen-capture row exposed a mode-selection bug in the previous
+8-bit 4:4:4 mixed P-slice optimization. The trigger promoted an entire
+4:4:4 frame to the single-tree mixed P-slice path when either sparse explicit
+inter candidates or partial CTU-skip candidates were present. That disabled
+the safer dual-tree intra path for the remaining CTUs and could collapse
+chroma quality on real RGB screen content.
+
+The fix keeps the coding paths unified and changes only the deepest output
+gate:
+
+- 4:2:0 keeps the existing sparse mixed P-slice threshold.
+- 8-bit 4:4:4 explicit inter may use the mixed P-slice path only when exact
+  explicit-inter decisions cover every visible luma leaf.
+- 8-bit 4:4:4 CTU-skip may use the mixed P-slice path only when every CTU is
+  eligible. Partial CTU-skip uses CTU-sliced output only when one-slice-per-CTU
+  partitioning is supported; otherwise CTU-skip reuse is disabled for that
+  frame and the normal predictive intra path is used.
+
+This follows the same practical rule found in VTM/x265/VVenC/SVT-style fast
+decision systems: cheap skip/inter evidence may prune work, but it must not
+select a syntax/reconstruction path whose assumptions are not valid for the
+whole region being coded. The research scan reinforced the next optimization
+direction: use staged predictors, texture/gradient features, adaptive search
+ranges, and early termination, but keep all such decisions behind
+reference-decoder validation and the byte/PSNR/FPS scorer.
+
+The scorer was adjusted in the same pass. A hard FPS-regression guard remains
+for timing-only slowdowns, but it no longer marks a row as a hard regression
+when the projected score is strongly positive and there is a material byte or
+PSNR win. This lets quality/bitrate fixes report as `watch` instead of failing
+the gate solely because FPS is lower than a broken fast baseline.
+
+Wayland 50-frame `gbrp8` result versus the broken
+`vvc-wayland-current-rd-score-q19-50f` baseline:
+
+| Metric | Broken baseline | Fixed gate | Delta |
+|---|---:|---:|---:|
+| Bytes | 5,447,755 | 4,079,843 | -1,367,912 |
+| FPS | 2.56 | 2.08 | -0.49 |
+| PSNR all | 38.781 dB | 58.375 dB | +19.594 dB |
+| Tradeoff | n/a | +155.4 watch | reference-clean |
+
+Wayland versus the older high-PSNR checkpoint
+`vvc-wayland-stats-current-q19-50f`:
+
+| Metric | Older checkpoint | Fixed gate | Delta |
+|---|---:|---:|---:|
+| Bytes | 4,060,779 | 4,079,843 | +19,064 |
+| FPS | 1.46 | 2.07 | +0.61 |
+| PSNR all | 58.997 dB | 58.375 dB | -0.622 dB |
+| Tradeoff | n/a | +0.0 watch | same frontier |
+
+Local 50-frame mode-probe matrix versus
+`vvc-explicit-inter-rd-allows-lossy-distortion-tradeoff-q19-50f` was byte- and
+PSNR-identical on all four rows. Timing-only deltas were mixed:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | -0.09 | +0.000 | -0.1 regress |
+| probe_blocks_420 | +0 | +0.00 | +0.000 | +0.0 watch |
+| probe_checker_444 | +0 | +1.09 | +0.000 | +0.3 watch |
+| probe_blocks_444 | +0 | -0.04 | +0.000 | -0.1 regress |
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp python3 scripts/test_encode_tradeoff.py
+TMPDIR=verification/generated/agent_scratch/tmp python3 scripts/test_benchmark_encode_matrix.py
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=agent-wayland-vvc-50f VALIDATION_REFERENCE_MODE=required \
+  VALIDATION_DIRECT_SOURCE_FILES=1 VALIDATION_FRAMES=50 VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+Near-term optimization implications:
+
+- Do not re-enable partial 4:4:4 mixed single P-slices until the shared
+  single-tree chroma residual path can match the CTU-sliced dual-tree quality
+  and VTM validation on large RGB screen captures.
+- The next motion-search work should add multi-center or hierarchical
+  predictor refinement before widening the current scalar diamond search.
+- The next mode-decision work should use cheap texture/gradient/neighbor
+  evidence to shortlist candidates, then rely on the shared RD/finalization
+  path for the actual decision.
+- Any FPS win that spends bytes or PSNR must pass the projected tradeoff
+  score and still pass VTM-required validation.
+
 ## References
 
 - Cargo profile settings:

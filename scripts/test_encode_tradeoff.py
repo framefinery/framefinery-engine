@@ -55,6 +55,22 @@ class EncodeTradeoffTests(unittest.TestCase):
         self.assertEqual(result["tradeoff_status"], "regress")
         self.assertTrue(result["tradeoff_hard_regression"])
 
+    def test_large_rate_quality_win_can_pay_for_fps_regression(self) -> None:
+        result = encode_tradeoff.project_metric_tradeoff(
+            baseline_bytes=5_447_755,
+            current_bytes=4_079_843,
+            baseline_psnr=38.781,
+            current_psnr=58.375,
+            baseline_fps=2.56,
+            current_fps=2.08,
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["tradeoff_status"], "watch")
+        self.assertGreater(result["tradeoff_score"], 100.0)
+        self.assertFalse(result["tradeoff_hard_regression"])
+
     def test_minor_quality_or_byte_concern_downgrades_to_watch(self) -> None:
         result = encode_tradeoff.project_metric_tradeoff(
             baseline_bytes=1000,

@@ -235,6 +235,13 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
     };
     let transform_skip_quant_tables =
         VvcTransformSkipQuantTables::new(format.bit_depth(), luma_qp, chroma_qp);
+    let explicit_inter_eligible_luma_leaf_count = if stream_format.chroma_sampling
+        == ChromaSampling::Cs444
+    {
+        vvc_explicit_inter_eligible_luma_leaf_count(geometry, stream_format.chroma_sampling)
+    } else {
+        0
+    };
     let emit_base_picture_parameter_set = !predictive_enabled || ctu_sliced_partitioning_supported;
     let mut parameter_sets = Vec::with_capacity(
         1 + usize::from(emit_base_picture_parameter_set)
@@ -408,7 +415,11 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
             .filter_map(Option::as_ref)
             .map(vvc_luma_inter_decision_count)
             .sum::<usize>();
-        let explicit_inter_frame = explicit_luma_inter_decision_count > 0;
+        let explicit_inter_frame = vvc_explicit_inter_decision_count_allows_mixed_p_slice(
+            explicit_luma_inter_decision_count,
+            stream_format,
+            explicit_inter_eligible_luma_leaf_count,
+        );
         let predictive_ctu_inter_skip_enabled = predictive_frame
             && !explicit_inter_frame
             && (lossy_mixed_single_p_slice_supported || ctu_sliced_partitioning_supported)
@@ -447,16 +458,27 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         } else {
             0
         };
-        let predictive_ctu_inter_skip_frame = predictive_ctu_skip_candidate_count > 0
+        let predictive_ctu_inter_skip_candidate_frame = predictive_ctu_skip_candidate_count > 0
             && (residual_mode.is_lossless()
-                || vvc_lossy_predictive_ctu_skip_candidate_count_allows_mixed_p_slice(
+                || vvc_lossy_predictive_ctu_skip_candidate_count_allows_frame_reuse(
                     predictive_ctu_skip_candidate_count,
                     ctu_count,
                 ));
-        let predictive_ctu_slice_frame =
-            !lossy_mixed_single_p_slice_supported && predictive_ctu_inter_skip_frame;
+        let predictive_ctu_inter_skip_single_p_slice =
+            predictive_ctu_inter_skip_candidate_frame
+                && lossy_mixed_single_p_slice_supported
+                && vvc_lossy_predictive_ctu_skip_candidate_count_allows_mixed_p_slice(
+                    predictive_ctu_skip_candidate_count,
+                    ctu_count,
+                    stream_format,
+                );
         let mixed_single_p_slice_frame = lossy_mixed_single_p_slice_supported
-            && (predictive_ctu_inter_skip_frame || explicit_inter_frame);
+            && (predictive_ctu_inter_skip_single_p_slice || explicit_inter_frame);
+        let predictive_ctu_slice_frame = predictive_ctu_inter_skip_candidate_frame
+            && !mixed_single_p_slice_frame
+            && ctu_sliced_partitioning_supported;
+        let predictive_ctu_inter_skip_frame = predictive_ctu_inter_skip_candidate_frame
+            && (mixed_single_p_slice_frame || predictive_ctu_slice_frame);
         {
             let mut frame_bitstream = CountingWriter::new(bitstream);
             let (frame_recon_yuv, next_predictive_cache) = {
@@ -1195,11 +1217,26 @@ fn vvc_predictive_frame_lossless_ctu_inter_skip_candidate_count(
         .count()
 }
 
-fn vvc_lossy_predictive_ctu_skip_candidate_count_allows_mixed_p_slice(
+fn vvc_lossy_predictive_ctu_skip_candidate_count_allows_frame_reuse(
     candidate_count: usize,
     ctu_count: usize,
 ) -> bool {
     candidate_count.saturating_mul(2) >= ctu_count.max(1)
+}
+
+fn vvc_lossy_predictive_ctu_skip_candidate_count_allows_mixed_p_slice(
+    candidate_count: usize,
+    ctu_count: usize,
+    format: VvcPictureFormat,
+) -> bool {
+    if format.chroma_sampling == ChromaSampling::Cs444 {
+        candidate_count >= ctu_count.max(1)
+    } else {
+        vvc_lossy_predictive_ctu_skip_candidate_count_allows_frame_reuse(
+            candidate_count,
+            ctu_count,
+        )
+    }
 }
 
 fn vvc_predictive_luma_inter_decisions_for_ctu(
@@ -1600,11 +1637,51 @@ fn vvc_luma_inter_decision_count(
     decisions.iter().filter(|decision| decision.is_some()).count()
 }
 
+fn vvc_explicit_inter_decision_count_allows_mixed_p_slice(
+    candidate_count: usize,
+    format: VvcPictureFormat,
+    eligible_luma_leaf_count: usize,
+) -> bool {
+    if candidate_count == 0 {
+        return false;
+    }
+    if format.chroma_sampling != ChromaSampling::Cs444 {
+        return true;
+    }
+    eligible_luma_leaf_count > 0 && candidate_count >= eligible_luma_leaf_count
+}
+
+fn vvc_explicit_inter_eligible_luma_leaf_count(
+    geometry: VvcVideoGeometry,
+    chroma_sampling: ChromaSampling,
+) -> usize {
+    vvc_ctu_regions(geometry)
+        .map(|region| {
+            let ctu_shape = VvcCtuPartitionShape {
+                root_width: VVC_CTU_SIZE as u16,
+                root_height: VVC_CTU_SIZE as u16,
+                visible_width: region.geometry.coded_width() as u16,
+                visible_height: region.geometry.coded_height() as u16,
+                chroma_sampling,
+                dual_tree_intra: false,
+            };
+            vvc_luma_transform_nodes(ctu_shape, VVC_CURRENT_MAX_LUMA_LEAF_SIZE)
+                .into_iter()
+                .take(MAX_VVC_LUMA_TUS)
+                .filter_map(|local_node| vvc_global_encode_ctu_node(local_node, region))
+                .filter(|&node| vvc_inter_node_fits_visible_source(geometry, node))
+                .count()
+        })
+        .sum()
+}
+
 fn vvc_lossy_mixed_single_p_slice_supported(format: VvcPictureFormat) -> bool {
     // Mixed InterSkip/Intra P-slices use a single coding tree. The quantizer can
-    // follow that partition order for 4:2:0 and 8-bit 4:4:4. Keep 4:2:2 and
-    // high-depth 4:4:4 on the CTU-slice fallback until their rectangular/chroma
-    // residual tradeoffs are validated.
+    // follow that partition order for 4:2:0. 8-bit 4:4:4 is only admitted by
+    // the narrower full-coverage gates above; partial 4:4:4 reuse must stay on
+    // CTU slices or be disabled for large pictures that cannot signal CTU
+    // slices. Keep 4:2:2 and high-depth 4:4:4 on the CTU-slice fallback until
+    // their rectangular/chroma residual tradeoffs are validated.
     format.chroma_sampling == ChromaSampling::Cs420
         || (format.chroma_sampling == ChromaSampling::Cs444 && format.bit_depth.bits() == 8)
 }
