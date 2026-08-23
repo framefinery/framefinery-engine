@@ -925,6 +925,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                     return;
                 }
                 self.emit_luma_inter_slice_intra_prefix(cabac, node, luma_mode_neighbours);
+                self.emit_luma_scc_regular_intra_prefix(cabac, node);
                 if !self.emit_luma_bdpcm_mode(cabac, node, luma_mode_neighbours) {
                     if !self.emit_luma_mip_mode(cabac, node, luma_mode_neighbours) {
                         self.emit_luma_multi_ref_line(cabac, node);
@@ -1057,6 +1058,33 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             return;
         }
         self.contexts.encode_split_flag(cabac, split_ctx, false);
+    }
+
+    fn emit_luma_scc_regular_intra_prefix(
+        &mut self,
+        cabac: &mut VvcCabacEncoder,
+        node: VvcCodingTreeNode,
+    ) {
+        if self.inter_slice {
+            // Mixed P-slice SCC syntax also has to order pred_mode_flag,
+            // pred_mode_ibc_flag, and pred_mode_plt_flag with inter-mode
+            // eligibility. Keep this preparatory hook scoped to intra slices
+            // until real IBC/palette candidates are introduced there.
+            return;
+        }
+        debug_assert!(matches!(
+            node.tree_type,
+            VvcTreeType::SingleTree | VvcTreeType::DualTreeLuma
+        ));
+        if self.slice_config.tools.ibc_enabled && vvc_scc_ibc_luma_node_allowed(node) {
+            self.contexts.encode_cu_skip_flag(cabac, 0, false);
+            self.contexts
+                .encode(cabac, VvcCabacContext::PredModeIbcFlag(0), false);
+        }
+        if self.slice_config.tools.palette_enabled && vvc_scc_palette_luma_node_allowed(node) {
+            self.contexts
+                .encode(cabac, VvcCabacContext::PredModePltFlag, false);
+        }
     }
 
     fn emit_luma_inter_slice_intra_prefix(
@@ -2315,6 +2343,14 @@ fn vvc_cabac_op_trace_enabled() -> bool {
     *ENABLED.get_or_init(|| {
         std::env::var_os("FRAMEFINERY_CABAC_OP_TRACE").is_some_and(|value| value != "0")
     })
+}
+
+fn vvc_scc_ibc_luma_node_allowed(node: VvcCodingTreeNode) -> bool {
+    node.width <= 64 && node.height <= 64
+}
+
+fn vvc_scc_palette_luma_node_allowed(node: VvcCodingTreeNode) -> bool {
+    node.width <= 64 && node.height <= 64 && u32::from(node.width) * u32::from(node.height) > 16
 }
 
 fn vvc_chroma_inter_skip_active(chroma_tu_inter_skip: &[bool], chroma_tu_count: usize) -> bool {

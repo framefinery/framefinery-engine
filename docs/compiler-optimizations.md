@@ -7636,6 +7636,29 @@ TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs
 TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
 ```
 
+Accepted scaffold: ordinary intra residual CUs can now emit the regular false
+SCC prefix when a slice config explicitly enables IBC or palette tools:
+
+- `cu_skip_flag=0` and `pred_mode_ibc_flag=0` for IBC-capable luma CUs;
+- `pred_mode_plt_flag=0` for palette-capable luma CUs with area greater than
+  16 samples.
+
+This mirrors the VTM CABAC writer ordering for normal intra CUs and keeps the
+existing residual syntax path unified. Product residual configs still leave
+IBC/palette disabled, so this commit is bitstream-neutral for normal encodes.
+The next output-changing SCC step can enable the tools in a controlled probe
+and add an actual palette/IBC payload candidate instead of falling back to a
+separate palette-only frame path.
+
+Validation:
+
+```text
+TMPDIR=verification/generated/agent_scratch/tmp cargo check -p framefinery-codecs --features vvc
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc_ctu_body_ --features vvc
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
 ## References
 
 - Cargo profile settings:

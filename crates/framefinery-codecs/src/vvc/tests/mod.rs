@@ -1807,6 +1807,75 @@ fn vvc_ctu_body_routes_ac_coefficients_without_a_feature_gate() {
 }
 
 #[test]
+fn vvc_ctu_body_emits_scc_regular_intra_prefix_when_tools_are_enabled() {
+    let neutral = quantize_vvc_color(VvcSampledColor {
+        y: 128,
+        u: 128,
+        v: 128,
+    });
+    let params = vvc_ctu_partition_params(
+        VvcVideoGeometry {
+            width: 16,
+            height: 16,
+        },
+        &neutral,
+    )
+    .expect("16x16 partition parameters");
+
+    let mut config = vvc_test_slice_config();
+    config.tools.ibc_enabled = true;
+    config.tools.palette_enabled = true;
+
+    let mut contexts = initial_vvc_cabac_contexts(config);
+    let initial_skip = contexts.cu_skip_flag[0].state();
+    let initial_ibc = contexts.pred_mode_ibc_flag[0].state();
+    let initial_plt = contexts.pred_mode_plt_flag.state();
+    let mut cabac = VvcCabacEncoder::new();
+    cabac.start();
+    encode_ctu_partition_body_with_contexts(&mut cabac, &mut contexts, &params, config);
+
+    assert_ne!(contexts.cu_skip_flag[0].state(), initial_skip);
+    assert_ne!(contexts.pred_mode_ibc_flag[0].state(), initial_ibc);
+    assert_ne!(contexts.pred_mode_plt_flag.state(), initial_plt);
+}
+
+#[test]
+fn vvc_ctu_body_omits_scc_palette_prefix_for_4x4_regular_intra_leaf() {
+    let neutral = quantize_vvc_color(VvcSampledColor {
+        y: 128,
+        u: 128,
+        v: 128,
+    });
+    let params = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
+        VvcVideoGeometry {
+            width: 8,
+            height: 8,
+        },
+        neutral,
+        VVC_LOSSLESS_LUMA_LEAF_SIZE,
+        ChromaSampling::Cs420,
+        true,
+    )
+    .expect("8x8 4x4-leaf partition parameters");
+
+    let mut config = vvc_test_slice_config();
+    config.tools.ibc_enabled = true;
+    config.tools.palette_enabled = true;
+
+    let mut contexts = initial_vvc_cabac_contexts(config);
+    let initial_skip = contexts.cu_skip_flag[0].state();
+    let initial_ibc = contexts.pred_mode_ibc_flag[0].state();
+    let initial_plt = contexts.pred_mode_plt_flag.state();
+    let mut cabac = VvcCabacEncoder::new();
+    cabac.start();
+    encode_ctu_partition_body_with_contexts(&mut cabac, &mut contexts, &params, config);
+
+    assert_ne!(contexts.cu_skip_flag[0].state(), initial_skip);
+    assert_ne!(contexts.pred_mode_ibc_flag[0].state(), initial_ibc);
+    assert_eq!(contexts.pred_mode_plt_flag.state(), initial_plt);
+}
+
+#[test]
 fn vvc_chroma_lm_modes_have_distinct_cabac_syntax() {
     assert_eq!(VvcCabacContext::CclmModeIdx.rtl_context_id(), Some(304));
 
