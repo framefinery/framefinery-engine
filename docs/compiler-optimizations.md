@@ -8296,6 +8296,30 @@ TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
   ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
 ```
 
+Rejected follow-up: `vvc-explicit-inter-rd-amvp-cost-q19-50f`.
+
+A follow-up tried to push the same AMVP-relative syntax-cost estimate back into
+the quantizer's explicit-inter RD gate by maintaining a picture-level
+`VvcInterMotionNeighbourState` during CTU quantization and mirroring cached
+explicit-inter CTUs. This is the correct state shape if the RD gate eventually
+needs emitted MVD cost, but the current exact-motion candidate set did not
+change any selected decisions on the 50-frame local probe. Bytes and PSNR were
+identical on all rows, while the added state/candidate lookup overhead regressed
+the timing score:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.01 | +0.000 | +0.0 watch |
+| probe_blocks_420 | +0 | -0.53 | +0.000 | -0.6 regress |
+| probe_checker_444 | +0 | -1.05 | +0.000 | -1.0 regress |
+| probe_blocks_444 | +0 | -0.35 | +0.000 | -0.7 regress |
+
+Aggregate score was `-0.6`, status `regress`, with no hard regressions. The
+probe passed unit tests and VTM-required smoke validation before scoring, then
+was reverted. Do not reintroduce picture-level AMVP RD-cost tracking until the
+candidate generator can produce alternative inter decisions that need that
+cost to choose between bitrate/quality outcomes.
+
 ## References
 
 - Cargo profile settings:
