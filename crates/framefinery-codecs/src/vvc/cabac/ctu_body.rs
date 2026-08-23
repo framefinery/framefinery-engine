@@ -794,22 +794,71 @@ impl VvcInterMotionInfo {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct VvcExplicitInterMvpChoice {
+    index: usize,
+    mvd_x: i32,
+    mvd_y: i32,
+    mvd_syntax_cost: u64,
+}
+
 fn vvc_round_internal_mv_to_quarter(value: i32) -> i32 {
     ((value + 2) >> 2) << 2
 }
 
-fn vvc_best_explicit_inter_mvp_index(
-    desired: VvcInterMotionInfo,
+fn vvc_explicit_inter_mvp_choice_for_decision(
+    decision: VvcLumaInterDecision,
     candidates: [VvcInterMotionInfo; 2],
-) -> usize {
-    let cost0 = vvc_explicit_inter_mvd_cost(desired, candidates[0]);
-    let cost1 = vvc_explicit_inter_mvd_cost(desired, candidates[1]);
-    usize::from(cost1 < cost0)
+) -> VvcExplicitInterMvpChoice {
+    vvc_explicit_inter_mvp_choice(
+        VvcInterMotionInfo::from_full_pel_decision(decision),
+        candidates,
+    )
 }
 
-fn vvc_explicit_inter_mvd_cost(desired: VvcInterMotionInfo, predictor: VvcInterMotionInfo) -> u32 {
-    let (mvd_x, mvd_y) = desired.signalled_mvd_from(predictor);
-    mvd_x.unsigned_abs() + mvd_y.unsigned_abs()
+fn vvc_explicit_inter_mvp_choice(
+    desired: VvcInterMotionInfo,
+    candidates: [VvcInterMotionInfo; 2],
+) -> VvcExplicitInterMvpChoice {
+    let choice0 = vvc_explicit_inter_mvp_choice_at_index(desired, candidates, 0);
+    let choice1 = vvc_explicit_inter_mvp_choice_at_index(desired, candidates, 1);
+    if choice1.mvd_syntax_cost < choice0.mvd_syntax_cost {
+        choice1
+    } else {
+        choice0
+    }
+}
+
+fn vvc_explicit_inter_mvp_choice_at_index(
+    desired: VvcInterMotionInfo,
+    candidates: [VvcInterMotionInfo; 2],
+    index: usize,
+) -> VvcExplicitInterMvpChoice {
+    let (mvd_x, mvd_y) = desired.signalled_mvd_from(candidates[index]);
+    VvcExplicitInterMvpChoice {
+        index,
+        mvd_x,
+        mvd_y,
+        mvd_syntax_cost: vvc_explicit_inter_mvd_syntax_cost(mvd_x)
+            .saturating_add(vvc_explicit_inter_mvd_syntax_cost(mvd_y)),
+    }
+}
+
+fn vvc_explicit_inter_mvd_syntax_cost(value: i32) -> u64 {
+    let magnitude = u64::from(value.unsigned_abs());
+    if magnitude == 0 {
+        return 1;
+    }
+    2 + vvc_unsigned_magnitude_syntax_cost(magnitude)
+}
+
+fn vvc_unsigned_magnitude_syntax_cost(mut value: u64) -> u64 {
+    let mut bits = 1;
+    while value > 1 {
+        value >>= 1;
+        bits += 2;
+    }
+    bits
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1467,19 +1516,19 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         self.emit_luma_inter_slice_prediction_prefix(cabac, node, neighbours, false);
         self.contexts
             .encode(cabac, VvcCabacContext::GeneralMergeFlag(0), false);
-        let desired = VvcInterMotionInfo::from_full_pel_decision(decision);
         let candidates = self
             .inter_motion_neighbours
             .as_ref()
             .map(|neighbours| neighbours.mvp_candidates(node))
             .unwrap_or([VvcInterMotionInfo::default(); 2]);
-        let mvp_idx = vvc_best_explicit_inter_mvp_index(desired, candidates);
-        let (mvd_x, mvd_y) = desired.signalled_mvd_from(candidates[mvp_idx]);
-        self.emit_luma_mvd_coding(cabac, mvd_x, mvd_y);
-        self.contexts.encode_mvp_idx_flag(cabac, mvp_idx != 0);
+        let mvp_choice = vvc_explicit_inter_mvp_choice_for_decision(decision, candidates);
+        self.emit_luma_mvd_coding(cabac, mvp_choice.mvd_x, mvp_choice.mvd_y);
+        self.contexts
+            .encode_mvp_idx_flag(cabac, mvp_choice.index != 0);
         let residual = self.explicit_inter_leaf_has_residual();
         self.contexts
             .encode(cabac, VvcCabacContext::CuCodedFlag(0), residual);
+        let desired = VvcInterMotionInfo::from_full_pel_decision(decision);
         if let Some(neighbours) = self.inter_motion_neighbours.as_mut() {
             neighbours.mark_leaf(node, desired);
         }
@@ -2796,7 +2845,7 @@ fn vvc_chroma_inter_skip_active(chroma_tu_inter_skip: &[bool], chroma_tu_count: 
 
 #[cfg(test)]
 mod tests {
-    use super::vvc_chroma_inter_skip_active;
+    use super::{vvc_chroma_inter_skip_active, vvc_explicit_inter_mvp_choice, VvcInterMotionInfo};
 
     #[test]
     fn chroma_inter_skip_active_ignores_inactive_tail() {
@@ -2804,5 +2853,52 @@ mod tests {
         assert!(vvc_chroma_inter_skip_active(&[false, true], 2));
         assert!(!vvc_chroma_inter_skip_active(&[false], 4));
         assert!(!vvc_chroma_inter_skip_active(&[], 4));
+    }
+
+    #[test]
+    fn explicit_inter_mvp_choice_uses_mvd_syntax_cost() {
+        let desired = VvcInterMotionInfo {
+            mv_internal_x: 0,
+            mv_internal_y: 0,
+        };
+        let candidates = [
+            VvcInterMotionInfo {
+                mv_internal_x: -8,
+                mv_internal_y: -8,
+            },
+            VvcInterMotionInfo {
+                mv_internal_x: -16,
+                mv_internal_y: 0,
+            },
+        ];
+
+        let choice = vvc_explicit_inter_mvp_choice(desired, candidates);
+
+        assert_eq!(choice.index, 1);
+        assert_eq!((choice.mvd_x, choice.mvd_y), (4, 0));
+        assert_eq!(choice.mvd_syntax_cost, 8);
+    }
+
+    #[test]
+    fn explicit_inter_mvp_choice_keeps_mvp0_on_syntax_cost_tie() {
+        let desired = VvcInterMotionInfo {
+            mv_internal_x: 0,
+            mv_internal_y: 0,
+        };
+        let candidates = [
+            VvcInterMotionInfo {
+                mv_internal_x: -4,
+                mv_internal_y: 0,
+            },
+            VvcInterMotionInfo {
+                mv_internal_x: 0,
+                mv_internal_y: -4,
+            },
+        ];
+
+        let choice = vvc_explicit_inter_mvp_choice(desired, candidates);
+
+        assert_eq!(choice.index, 0);
+        assert_eq!((choice.mvd_x, choice.mvd_y), (1, 0));
     }
 }

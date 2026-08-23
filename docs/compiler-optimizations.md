@@ -8242,6 +8242,60 @@ candidate cost against the same AMVP/MVD model used by
 `emit_luma_explicit_inter_leaf`, then use that cost only as a tie-breaker after
 SAD/exactness and validate with the same scorer.
 
+### VVC Explicit-Inter AMVP Syntax-Cost Choice
+
+Checkpoint: `vvc-explicit-inter-mvp-syntax-cost-q19-50f`.
+
+The CABAC explicit-inter emitter now chooses between the two AMVP candidates
+using the same local MVD syntax-bin estimate as `emit_luma_mvd_coding`, rather
+than the old absolute-MVD sum. This fixes the specific issue found by the
+rejected rate-order probe: VVC motion-vector rate cost is predictor-relative,
+so absolute MV magnitude is not a safe ordering proxy once neighbouring motion
+is available.
+
+This is intentionally scoped to emitted explicit-inter syntax. It does not add
+a separate search path, does not change reconstruction, and does not yet teach
+the quantizer's pre-CABAC RD gate about frame-level AMVP state. The follow-up
+for a broader motion-search pass is to expose a shared AMVP/MVD syntax-cost
+helper only after the quantizer has access to the same neighbour state as CABAC;
+duplicating a local CTU approximation there would make mode selection less
+predictive of the emitted stream.
+
+50-frame local VVC mode-probe matrix versus
+`vvc-explicit-inter-444-recon-exact-q19-50f`:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | -0.19 | +0.000 | -0.3 regress |
+| probe_blocks_420 | +0 | +0.28 | +0.000 | +0.3 watch |
+| probe_checker_444 | +0 | +0.32 | +0.000 | +0.3 watch |
+| probe_blocks_444 | +0 | +0.08 | +0.000 | +0.2 watch |
+
+Aggregate score was `+0.1`, status `watch`, with no hard regressions. Bytes
+and PSNR were unchanged on every row, so the row-level classifications are just
+timing noise. The checkpoint is retained because it makes the final emitted
+MVP/MVD choice rate-aware under the syntax model and removes the absolute-MV
+proxy that already produced a byte regression in the previous probe.
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=local-vvc-mode-probe-50f \
+  ENCODE_MATRIX_RUN=vvc-explicit-inter-mvp-syntax-cost-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc ENCODE_MATRIX_MODES=lossy ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_VVC_LOSSY_QP=19 ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
+  ENCODE_MATRIX_VVC_GOP=-1 \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-explicit-inter-444-recon-exact-q19-50f.json \
+  ENCODE_MATRIX_FAIL_ON_REGRESS=1 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
 ## References
 
 - Cargo profile settings:
