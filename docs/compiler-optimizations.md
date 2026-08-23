@@ -7545,6 +7545,28 @@ next output-changing VVC inter pass should use these counters to decide where a
 real non-skip inter residual candidate is worth testing before broadening the
 search pattern or adding partition pruning.
 
+Accepted scaffold: reusable VVC open-loop luma motion map.
+
+The predictive luma motion probe now materializes a reusable 8x8 source-frame
+motion map before summarizing it. The map keeps each full-pel diamond-search
+candidate and derives non-overlapping 16x16 and 32x32 aggregate summaries from
+the 8x8 SAD cells. The aggregate counters distinguish exact/near regions from
+uniform-MV exact regions, which matters because a larger single-MV inter block
+is only plausible when the underlying 8x8 candidates agree on the same motion
+vector.
+
+New `vvc-stats` counters use these prefixes:
+
+- `predictive_luma_motion_16x16_*`
+- `predictive_luma_motion_32x32_*`
+
+The normal product build and encoded output remain unchanged. The runtime
+32x32 `pattern=color_blocks` q19 probe emitted four 16x16 aggregate candidates
+and one 32x32 aggregate candidate on the second frame; the 32x32 region was
+exact but not uniform-MV, which is useful evidence that future inter search
+should test partitions before assuming a larger translational block. VVC lossy
+smoke validation with VTM required passed 3/3 after this scaffold.
+
 ## References
 
 - Cargo profile settings:

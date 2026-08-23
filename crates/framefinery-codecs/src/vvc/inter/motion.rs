@@ -2,6 +2,8 @@
 
 use super::{VvcCtuRegion, VvcSampledFrame};
 
+const VVC_LUMA_MOTION_BLOCK: usize = 8;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::vvc) struct VvcLumaMotionVector {
     pub(in crate::vvc) x: i32,
@@ -31,6 +33,30 @@ pub(in crate::vvc) struct VvcLumaMotionRegionAnalysis {
     pub(in crate::vvc) nonzero_exact_count: usize,
     pub(in crate::vvc) near_count: usize,
     pub(in crate::vvc) total_sad: u64,
+    pub(in crate::vvc) aggregate_16x16: VvcLumaMotionAggregateSummary,
+    pub(in crate::vvc) aggregate_32x32: VvcLumaMotionAggregateSummary,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(in crate::vvc) struct VvcLumaMotionAggregateSummary {
+    pub(in crate::vvc) candidate_count: usize,
+    pub(in crate::vvc) exact_count: usize,
+    pub(in crate::vvc) nonzero_exact_count: usize,
+    pub(in crate::vvc) uniform_count: usize,
+    pub(in crate::vvc) uniform_exact_count: usize,
+    pub(in crate::vvc) nonzero_uniform_exact_count: usize,
+    pub(in crate::vvc) near_count: usize,
+    pub(in crate::vvc) total_sad: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::vvc) struct VvcLumaMotionMap {
+    origin_x: usize,
+    origin_y: usize,
+    block_size: usize,
+    blocks_x: usize,
+    blocks_y: usize,
+    candidates: Vec<VvcLumaMotionCandidate>,
 }
 
 pub(in crate::vvc) fn vvc_luma_motion_analysis_for_region(
@@ -40,7 +66,25 @@ pub(in crate::vvc) fn vvc_luma_motion_analysis_for_region(
     search_radius: usize,
     near_sad_per_sample: u64,
 ) -> VvcLumaMotionRegionAnalysis {
-    const BLOCK: usize = 8;
+    let Some(map) = vvc_luma_motion_map_for_region(current, reference, region, search_radius)
+    else {
+        return VvcLumaMotionRegionAnalysis::default();
+    };
+    let mut analysis = map.block_analysis(near_sad_per_sample);
+    analysis.aggregate_16x16 = map.aggregate_summary(2, near_sad_per_sample);
+    analysis.aggregate_32x32 = map.aggregate_summary(4, near_sad_per_sample);
+    analysis
+}
+
+pub(in crate::vvc) fn vvc_luma_motion_map_for_region(
+    current: &VvcSampledFrame,
+    reference: &VvcSampledFrame,
+    region: VvcCtuRegion,
+    search_radius: usize,
+) -> Option<VvcLumaMotionMap> {
+    if current.geometry != reference.geometry || current.format != reference.format {
+        return None;
+    }
 
     let x_end = region
         .origin_x
@@ -50,23 +94,25 @@ pub(in crate::vvc) fn vvc_luma_motion_analysis_for_region(
         .origin_y
         .saturating_add(region.geometry.height)
         .min(current.geometry.height);
-    if x_end < region.origin_x + BLOCK || y_end < region.origin_y + BLOCK {
-        return VvcLumaMotionRegionAnalysis::default();
+    if x_end < region.origin_x + VVC_LUMA_MOTION_BLOCK
+        || y_end < region.origin_y + VVC_LUMA_MOTION_BLOCK
+    {
+        return None;
     }
 
-    let blocks_x = (x_end - region.origin_x) / BLOCK;
-    let blocks_y = (y_end - region.origin_y) / BLOCK;
+    let blocks_x = (x_end - region.origin_x) / VVC_LUMA_MOTION_BLOCK;
+    let blocks_y = (y_end - region.origin_y) / VVC_LUMA_MOTION_BLOCK;
     let mut previous_row_mvs = vec![None; blocks_x];
-    let mut analysis = VvcLumaMotionRegionAnalysis::default();
+    let mut candidates = Vec::with_capacity(blocks_x * blocks_y);
 
     for block_y in 0..blocks_y {
         let mut left_mv = None;
         for block_x in 0..blocks_x {
             let block = VvcLumaMotionSearchBlock {
-                origin_x: region.origin_x + block_x * BLOCK,
-                origin_y: region.origin_y + block_y * BLOCK,
-                width: BLOCK,
-                height: BLOCK,
+                origin_x: region.origin_x + block_x * VVC_LUMA_MOTION_BLOCK,
+                origin_y: region.origin_y + block_y * VVC_LUMA_MOTION_BLOCK,
+                width: VVC_LUMA_MOTION_BLOCK,
+                height: VVC_LUMA_MOTION_BLOCK,
             };
             let mut predictor_mvs = [VvcLumaMotionVector { x: 0, y: 0 }; 10];
             let mut predictor_count = 0usize;
@@ -122,29 +168,161 @@ pub(in crate::vvc) fn vvc_luma_motion_analysis_for_region(
                 &predictor_mvs[..predictor_count],
                 search_radius,
             );
-            let Some(candidate) = candidate else {
-                continue;
-            };
-            analysis.block_count += 1;
-            analysis.total_sad = analysis.total_sad.saturating_add(candidate.sad);
-            let near_threshold = near_sad_per_sample
-                .saturating_mul(block.width as u64)
-                .saturating_mul(block.height as u64);
-            if candidate.sad == 0 {
-                analysis.exact_count += 1;
-                if candidate.mv != (VvcLumaMotionVector { x: 0, y: 0 }) {
-                    analysis.nonzero_exact_count += 1;
-                }
-            }
-            if candidate.sad <= near_threshold {
-                analysis.near_count += 1;
-            }
+            let candidate = candidate?;
             left_mv = Some(candidate.mv);
             previous_row_mvs[block_x] = Some(candidate.mv);
+            candidates.push(candidate);
         }
     }
 
-    analysis
+    Some(VvcLumaMotionMap {
+        origin_x: region.origin_x,
+        origin_y: region.origin_y,
+        block_size: VVC_LUMA_MOTION_BLOCK,
+        blocks_x,
+        blocks_y,
+        candidates,
+    })
+}
+
+impl VvcLumaMotionMap {
+    pub(in crate::vvc) const fn origin_x(&self) -> usize {
+        self.origin_x
+    }
+
+    pub(in crate::vvc) const fn origin_y(&self) -> usize {
+        self.origin_y
+    }
+
+    pub(in crate::vvc) const fn block_size(&self) -> usize {
+        self.block_size
+    }
+
+    pub(in crate::vvc) const fn blocks_x(&self) -> usize {
+        self.blocks_x
+    }
+
+    pub(in crate::vvc) const fn blocks_y(&self) -> usize {
+        self.blocks_y
+    }
+
+    pub(in crate::vvc) fn candidate(
+        &self,
+        block_x: usize,
+        block_y: usize,
+    ) -> Option<VvcLumaMotionCandidate> {
+        if block_x >= self.blocks_x || block_y >= self.blocks_y {
+            return None;
+        }
+        self.candidates
+            .get(block_y.checked_mul(self.blocks_x)?.checked_add(block_x)?)
+            .copied()
+    }
+
+    fn block_analysis(&self, near_sad_per_sample: u64) -> VvcLumaMotionRegionAnalysis {
+        let summary = self.aggregate_summary(1, near_sad_per_sample);
+        VvcLumaMotionRegionAnalysis {
+            block_count: summary.candidate_count,
+            exact_count: summary.exact_count,
+            nonzero_exact_count: summary.nonzero_exact_count,
+            near_count: summary.near_count,
+            total_sad: summary.total_sad,
+            aggregate_16x16: VvcLumaMotionAggregateSummary::default(),
+            aggregate_32x32: VvcLumaMotionAggregateSummary::default(),
+        }
+    }
+
+    fn aggregate_summary(
+        &self,
+        blocks_per_side: usize,
+        near_sad_per_sample: u64,
+    ) -> VvcLumaMotionAggregateSummary {
+        if blocks_per_side == 0
+            || self.blocks_x < blocks_per_side
+            || self.blocks_y < blocks_per_side
+        {
+            return VvcLumaMotionAggregateSummary::default();
+        }
+
+        let mut summary = VvcLumaMotionAggregateSummary::default();
+        for block_y in (0..=self.blocks_y - blocks_per_side).step_by(blocks_per_side) {
+            for block_x in (0..=self.blocks_x - blocks_per_side).step_by(blocks_per_side) {
+                let Some(aggregate) =
+                    self.aggregate_area(block_x, block_y, blocks_per_side, blocks_per_side)
+                else {
+                    continue;
+                };
+                summary.candidate_count += 1;
+                summary.total_sad = summary.total_sad.saturating_add(aggregate.total_sad);
+                if aggregate.total_sad == 0 {
+                    summary.exact_count += 1;
+                    if aggregate.has_nonzero_mv {
+                        summary.nonzero_exact_count += 1;
+                    }
+                }
+                if aggregate.uniform_mv {
+                    summary.uniform_count += 1;
+                    if aggregate.total_sad == 0 {
+                        summary.uniform_exact_count += 1;
+                        if aggregate.has_nonzero_mv {
+                            summary.nonzero_uniform_exact_count += 1;
+                        }
+                    }
+                }
+                let samples = blocks_per_side
+                    .saturating_mul(blocks_per_side)
+                    .saturating_mul(self.block_size)
+                    .saturating_mul(self.block_size);
+                if aggregate.total_sad <= motion_near_threshold(near_sad_per_sample, samples) {
+                    summary.near_count += 1;
+                }
+            }
+        }
+        summary
+    }
+
+    fn aggregate_area(
+        &self,
+        block_x: usize,
+        block_y: usize,
+        blocks_w: usize,
+        blocks_h: usize,
+    ) -> Option<VvcLumaMotionAggregateArea> {
+        let mut total_sad = 0u64;
+        let mut first_mv = None;
+        let mut uniform_mv = true;
+        let mut has_nonzero_mv = false;
+        for y in block_y..block_y.checked_add(blocks_h)? {
+            for x in block_x..block_x.checked_add(blocks_w)? {
+                let candidate = self.candidate(x, y)?;
+                total_sad = total_sad.saturating_add(candidate.sad);
+                if candidate.mv != (VvcLumaMotionVector { x: 0, y: 0 }) {
+                    has_nonzero_mv = true;
+                }
+                match first_mv {
+                    Some(mv) if mv != candidate.mv => uniform_mv = false,
+                    Some(_) => {}
+                    None => first_mv = Some(candidate.mv),
+                }
+            }
+        }
+        Some(VvcLumaMotionAggregateArea {
+            total_sad,
+            uniform_mv,
+            has_nonzero_mv,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct VvcLumaMotionAggregateArea {
+    total_sad: u64,
+    uniform_mv: bool,
+    has_nonzero_mv: bool,
+}
+
+fn motion_near_threshold(near_sad_per_sample: u64, samples: usize) -> u64 {
+    near_sad_per_sample.saturating_mul(samples as u64)
 }
 
 fn push_motion_predictor(
@@ -437,6 +615,52 @@ mod tests {
         assert!(analysis.exact_count >= 1);
         assert!(analysis.nonzero_exact_count >= 1);
         assert!(analysis.near_count >= analysis.exact_count);
+    }
+
+    #[test]
+    fn vvc_luma_motion_map_summarizes_larger_uniform_motion_candidates() {
+        let width = 80;
+        let height = 32;
+        let mut reference = motion_test_frame(width, height);
+        for y in 0..32 {
+            for x in 0..32 {
+                reference.luma[y * width + x] = (1200 + y * 37 + x * 11) as VvcSample;
+            }
+        }
+        let mut current = motion_test_frame(width, height);
+        for y in 0..32 {
+            for x in 0..32 {
+                current.luma[y * width + 32 + x] = reference.luma[y * width + x];
+            }
+        }
+
+        let region = VvcCtuRegion {
+            slice_address: 0,
+            origin_x: 0,
+            origin_y: 0,
+            geometry: VvcVideoGeometry { width, height },
+        };
+        let map = vvc_luma_motion_map_for_region(&current, &reference, region, 32)
+            .expect("motion map should cover full 8x8 cells");
+
+        assert_eq!(map.origin_x(), 0);
+        assert_eq!(map.origin_y(), 0);
+        assert_eq!(map.block_size(), 8);
+        assert_eq!(map.blocks_x(), 10);
+        assert_eq!(map.blocks_y(), 4);
+        assert_eq!(
+            map.candidate(4, 0).expect("moved block candidate").mv,
+            VvcLumaMotionVector { x: -32, y: 0 }
+        );
+        assert_eq!(map.candidate(map.blocks_x(), 0), None);
+        assert_eq!(map.candidate(0, map.blocks_y()), None);
+
+        let analysis = vvc_luma_motion_analysis_for_region(&current, &reference, region, 32, 0);
+
+        assert!(analysis.aggregate_16x16.candidate_count >= 4);
+        assert!(analysis.aggregate_16x16.nonzero_uniform_exact_count >= 4);
+        assert!(analysis.aggregate_32x32.candidate_count >= 2);
+        assert!(analysis.aggregate_32x32.nonzero_uniform_exact_count >= 1);
     }
 
     fn motion_test_frame(width: usize, height: usize) -> VvcSampledFrame {

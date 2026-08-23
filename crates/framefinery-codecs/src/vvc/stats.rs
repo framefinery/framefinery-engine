@@ -746,6 +746,40 @@ fn add_vvc_quantized_ctu_counters(stats: &mut VvcFrameStats, quantized: &VvcQuan
 }
 
 #[cfg(feature = "vvc-stats")]
+fn add_vvc_luma_motion_aggregate_counters(
+    stats: &mut VvcFrameStats,
+    prefix: &str,
+    summary: motion::VvcLumaMotionAggregateSummary,
+) {
+    if summary.candidate_count == 0 {
+        return;
+    }
+    stats.add_counter_named(
+        &format!("{prefix}_candidate_count"),
+        summary.candidate_count as u64,
+    );
+    stats.add_counter_named(&format!("{prefix}_exact_count"), summary.exact_count as u64);
+    stats.add_counter_named(
+        &format!("{prefix}_nonzero_exact_count"),
+        summary.nonzero_exact_count as u64,
+    );
+    stats.add_counter_named(
+        &format!("{prefix}_uniform_count"),
+        summary.uniform_count as u64,
+    );
+    stats.add_counter_named(
+        &format!("{prefix}_uniform_exact_count"),
+        summary.uniform_exact_count as u64,
+    );
+    stats.add_counter_named(
+        &format!("{prefix}_nonzero_uniform_exact_count"),
+        summary.nonzero_uniform_exact_count as u64,
+    );
+    stats.add_counter_named(&format!("{prefix}_near_count"), summary.near_count as u64);
+    stats.add_counter_named(&format!("{prefix}_total_sad"), summary.total_sad);
+}
+
+#[cfg(feature = "vvc-stats")]
 #[derive(Debug, Default, Clone, Copy)]
 struct VvcTuResidualCodingCounts {
     luma_transform_skip: usize,
