@@ -324,7 +324,7 @@ impl VvcCtuBitSink {
         let bit_categories = VvcCtuBitCategories::from_symbols(&dump.semantic_symbols);
         let search = quantized.intra_search_stats;
         let line = format!(
-            "{{\"codec\":\"vvc\",\"source\":\"framefinery\",\"path\":\"residual_ctu\",\"frame_index\":{},\"ctu_address\":{},\"sb_x\":{},\"sb_y\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},\"superblock_size\":{},\"chroma_sampling\":\"{:?}\",\"bit_depth\":{},\"lossless\":{},\"slice_qp\":{},\"chroma_qp\":{},\"luma_tu_count\":{},\"chroma_tu_count\":{},\"luma_tu_transform_skip_count\":{},\"luma_tu_transformed_count\":{},\"cb_tu_transform_skip_count\":{},\"cb_tu_transformed_count\":{},\"cr_tu_transform_skip_count\":{},\"cr_tu_transformed_count\":{},\"chroma_tu_transform_skip_count\":{},\"chroma_tu_transformed_count\":{},\"luma_bdpcm_horizontal_count\":{},\"luma_bdpcm_vertical_count\":{},\"chroma_bdpcm_horizontal_count\":{},\"chroma_bdpcm_vertical_count\":{},\"luma_residual_sse_total\":{},\"luma_residual_sse_coded_first4x4\":{},\"luma_residual_sse_uncoded_tail\":{},\"chroma_residual_sse_total\":{},\"chroma_residual_sse_coded_first4x4\":{},\"chroma_residual_sse_uncoded_tail\":{},\"luma_candidate_count\":{},\"luma_candidate_dc\":{},\"luma_candidate_planar\":{},\"luma_candidate_directional\":{},\"luma_candidate_directional_coarse\":{},\"luma_candidate_directional_refinement\":{},\"luma_rd_refinement_attempts\":{},\"luma_rd_refinement_switches\":{},\"chroma_candidate_count\":{},\"chroma_candidate_derived\":{},\"chroma_candidate_explicit\":{},\"chroma_candidate_cclm\":{},\"chroma_rd_refinement_attempts\":{},\"chroma_rd_refinement_switches\":{},\"luma_mode_dc\":{},\"luma_mode_planar\":{},\"luma_mode_horizontal\":{},\"luma_mode_vertical\":{},\"luma_mode_angular\":{},\"chroma_mode_derived\":{},\"chroma_mode_dc\":{},\"chroma_mode_planar\":{},\"chroma_mode_horizontal\":{},\"chroma_mode_vertical\":{},\"chroma_mode_angular\":{},\"chroma_mode_cclm\":{},\"chroma_mode_cclm_linear\":{},\"chroma_mode_mdlm_left\":{},\"chroma_mode_mdlm_top\":{},\"partition_bits\":{},\"luma_mode_bits\":{},\"chroma_mode_bits\":{},\"residual_bits\":{},\"intrabc_bits\":{},\"inter_bits\":{},\"palette_bits\":{},\"other_bits\":{},\"context_bins\":{},\"semantic_symbols\":{},\"bin_engine_events\":{},\"total_symbol_bits\":{}}}",
+            "{{\"codec\":\"vvc\",\"source\":\"framefinery\",\"path\":\"residual_ctu\",\"frame_index\":{},\"ctu_address\":{},\"sb_x\":{},\"sb_y\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},\"superblock_size\":{},\"chroma_sampling\":\"{:?}\",\"bit_depth\":{},\"lossless\":{},\"slice_qp\":{},\"chroma_qp\":{},\"luma_tu_count\":{},\"chroma_tu_count\":{},\"luma_tu_transform_skip_count\":{},\"luma_tu_transformed_count\":{},\"cb_tu_transform_skip_count\":{},\"cb_tu_transformed_count\":{},\"cr_tu_transform_skip_count\":{},\"cr_tu_transformed_count\":{},\"chroma_tu_transform_skip_count\":{},\"chroma_tu_transformed_count\":{},\"luma_bdpcm_horizontal_count\":{},\"luma_bdpcm_vertical_count\":{},\"chroma_bdpcm_horizontal_count\":{},\"chroma_bdpcm_vertical_count\":{},\"luma_residual_sse_total\":{},\"luma_residual_sse_coded_first4x4\":{},\"luma_residual_sse_uncoded_tail\":{},\"chroma_residual_sse_total\":{},\"chroma_residual_sse_coded_first4x4\":{},\"chroma_residual_sse_uncoded_tail\":{},\"luma_candidate_count\":{},\"luma_candidate_dc\":{},\"luma_candidate_planar\":{},\"luma_candidate_directional\":{},\"luma_candidate_directional_coarse\":{},\"luma_candidate_directional_refinement\":{},\"luma_rd_refinement_attempts\":{},\"luma_rd_refinement_switches\":{},\"chroma_candidate_count\":{},\"chroma_candidate_derived\":{},\"chroma_candidate_explicit\":{},\"chroma_candidate_cclm\":{},\"chroma_candidate_cclm_linear\":{},\"chroma_candidate_mdlm_left\":{},\"chroma_candidate_mdlm_top\":{},\"chroma_rd_refinement_attempts\":{},\"chroma_rd_refinement_switches\":{},\"luma_mode_dc\":{},\"luma_mode_planar\":{},\"luma_mode_horizontal\":{},\"luma_mode_vertical\":{},\"luma_mode_angular\":{},\"chroma_mode_derived\":{},\"chroma_mode_dc\":{},\"chroma_mode_planar\":{},\"chroma_mode_horizontal\":{},\"chroma_mode_vertical\":{},\"chroma_mode_angular\":{},\"chroma_mode_cclm\":{},\"chroma_mode_cclm_linear\":{},\"chroma_mode_mdlm_left\":{},\"chroma_mode_mdlm_top\":{},\"partition_bits\":{},\"luma_mode_bits\":{},\"chroma_mode_bits\":{},\"residual_bits\":{},\"intrabc_bits\":{},\"inter_bits\":{},\"palette_bits\":{},\"other_bits\":{},\"context_bins\":{},\"semantic_symbols\":{},\"bin_engine_events\":{},\"total_symbol_bits\":{}}}",
             frame_idx,
             region.slice_address,
             region.origin_x / VVC_CTU_SIZE,
@@ -371,6 +371,9 @@ impl VvcCtuBitSink {
             search.chroma_derived_candidates,
             search.chroma_explicit_candidates,
             search.chroma_cclm_candidates,
+            search.chroma_cclm_linear_candidates,
+            search.chroma_cclm_mdlm_left_candidates,
+            search.chroma_cclm_mdlm_top_candidates,
             search.chroma_rd_refinement_attempts,
             search.chroma_rd_refinement_switches,
             luma_modes.dc,
@@ -581,6 +584,18 @@ fn add_vvc_quantized_ctu_counters(stats: &mut VvcFrameStats, quantized: &VvcQuan
     stats.add_counter(
         "chroma_candidate_cclm",
         search.chroma_cclm_candidates as u64,
+    );
+    stats.add_counter(
+        "chroma_candidate_cclm_linear",
+        search.chroma_cclm_linear_candidates as u64,
+    );
+    stats.add_counter(
+        "chroma_candidate_mdlm_left",
+        search.chroma_cclm_mdlm_left_candidates as u64,
+    );
+    stats.add_counter(
+        "chroma_candidate_mdlm_top",
+        search.chroma_cclm_mdlm_top_candidates as u64,
     );
     stats.add_counter(
         "chroma_rd_refinement_attempts",

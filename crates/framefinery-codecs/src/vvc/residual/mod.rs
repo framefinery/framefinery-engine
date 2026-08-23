@@ -5,6 +5,8 @@ mod recon;
 mod syntax;
 pub(super) mod transform;
 
+#[cfg(feature = "vvc-stats")]
+use super::VvcChromaCclmMode;
 use super::VvcSample;
 use super::{
     VvcBdpcmMode, VvcChromaIntraPredictionMode, VvcIntraPredictionMode, VvcLumaSccDecision,
@@ -133,6 +135,9 @@ pub(super) struct VvcIntraSearchStats {
     pub(super) chroma_derived_candidates: usize,
     pub(super) chroma_explicit_candidates: usize,
     pub(super) chroma_cclm_candidates: usize,
+    pub(super) chroma_cclm_linear_candidates: usize,
+    pub(super) chroma_cclm_mdlm_left_candidates: usize,
+    pub(super) chroma_cclm_mdlm_top_candidates: usize,
     pub(super) chroma_rd_refinement_attempts: usize,
     pub(super) chroma_rd_refinement_switches: usize,
     pub(super) chroma_rd_cached_candidates: usize,
@@ -330,6 +335,15 @@ impl VvcIntraSearchStats {
 
     pub(super) fn add_chroma_cclm(&mut self) {
         self.chroma_cclm_candidates += 1;
+    }
+
+    pub(super) fn add_chroma_cclm_mode(&mut self, mode: VvcChromaCclmMode) {
+        self.add_chroma_cclm();
+        match mode {
+            VvcChromaCclmMode::Linear => self.chroma_cclm_linear_candidates += 1,
+            VvcChromaCclmMode::MdlmLeft => self.chroma_cclm_mdlm_left_candidates += 1,
+            VvcChromaCclmMode::MdlmTop => self.chroma_cclm_mdlm_top_candidates += 1,
+        }
     }
 
     pub(super) fn add_chroma_rd_refinement_attempt(&mut self) {

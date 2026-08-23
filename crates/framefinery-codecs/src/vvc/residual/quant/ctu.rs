@@ -1579,7 +1579,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                         intra_search_stats
                             .add_chroma_mode_score_nanos(vvc_elapsed_nanos(score_start));
                         #[cfg(feature = "vvc-stats")]
-                        intra_search_stats.add_chroma_cclm();
+                        intra_search_stats.add_chroma_cclm_mode(cclm_mode);
                         chroma_candidate_costs =
                             chroma_candidate_costs.with_candidate(chroma_mode, Some(candidate_score));
                         if candidate_score < best_chroma_score {

@@ -7843,6 +7843,27 @@ Hard row guardrails still override the score: FPS below `0.90x`, bytes above
 `>= 2.0` and, when FPS is present, FPS at least `1.10x` baseline. This allows
 small byte/PSNR costs only when the speed win is large enough to matter.
 
+## VVC CCLM Subtype Instrumentation
+
+Checkpoint: `vvc-cclm-subtype-candidate-stats`.
+
+The CCLM path remains a visible hotspot on lossy 4:4:4 screen-content probes,
+but historical 50-frame stats do not justify pruning any subtype globally. Local
+8-bit generated probes often selected no Linear CCLM winners, while AOM/CTC
+10-bit MissionControl rows selected all three CCLM subtypes. A blind Linear or
+MDLM prune would therefore be content- and format-sensitive enough to risk a
+byte/PSNR regression.
+
+The stats path now reports attempted CCLM candidates by subtype:
+
+- `chroma_candidate_cclm_linear`
+- `chroma_candidate_mdlm_left`
+- `chroma_candidate_mdlm_top`
+
+This is intentionally output-neutral. The next CCLM speed probe should use these
+counters with the existing 50-frame six-vector tradeoff scorer before changing
+candidate selection.
+
 ## References
 
 - Cargo profile settings:
