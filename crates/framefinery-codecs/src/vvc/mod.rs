@@ -29,6 +29,8 @@ mod header;
 #[path = "inter/ibc.rs"]
 mod ibc;
 mod interface;
+#[path = "inter/motion.rs"]
+mod motion;
 #[path = "bitstream/nal.rs"]
 mod nal;
 mod palette;
