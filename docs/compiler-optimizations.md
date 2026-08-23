@@ -7513,6 +7513,22 @@ hard guardrail. Current hard row regressions remain FPS below 0.90x, bytes
 above 1.20x, or PSNR below -1.0 dB versus the baseline; minor byte or PSNR
 losses downgrade otherwise-good probes to `watch`.
 
+Checkpoint note: the first output-neutral step is richer VVC motion-field
+instrumentation under `vvc-stats`. The counters now distinguish all nonzero,
+exact nonzero, near nonzero, uniform nonzero, exact uniform nonzero, and near
+uniform nonzero motion candidates at 8x8, 16x16, 32x32, and 64x64 granularity.
+The purpose is to identify where a real coded translational-inter path has a
+high enough prior to test residual coding, and where block-level intra search
+should remain untouched. This matches the practical shape used by VTM/VVenC:
+cheap SAD/MV candidate ordering first, exact residual/CABAC checks only after a
+small candidate set exists.
+
+Do not restart from exact-CABAC local skip RD as the first mode-selection
+change. A previous probe already used final CABAC builders for `InterSkip`
+versus intra cost and was rejected by the 50-frame six-vector scorer. Revisit it
+only after the open-loop motion counters show a cheap precondition that avoids
+running exact bit counting on CTUs where the decision cannot change.
+
 Rejected probe: disable high-depth 4:2:0 mixed single P-slices.
 
 The high-depth 4:4:4 mixed single-P-slice path was previously rejected because

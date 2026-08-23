@@ -465,12 +465,20 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 motion_analysis.exact_count as u64,
                             );
                             frame_stats.add_counter(
+                                "predictive_luma_motion_nonzero_8x8_count",
+                                motion_analysis.nonzero_count as u64,
+                            );
+                            frame_stats.add_counter(
                                 "predictive_luma_motion_nonzero_exact_8x8_count",
                                 motion_analysis.nonzero_exact_count as u64,
                             );
                             frame_stats.add_counter(
                                 "predictive_luma_motion_near_8x8_count",
                                 motion_analysis.near_count as u64,
+                            );
+                            frame_stats.add_counter(
+                                "predictive_luma_motion_nonzero_near_8x8_count",
+                                motion_analysis.nonzero_near_count as u64,
                             );
                             frame_stats.add_counter(
                                 "predictive_luma_motion_total_sad",

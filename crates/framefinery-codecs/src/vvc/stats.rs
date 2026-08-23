@@ -760,12 +760,20 @@ fn add_vvc_luma_motion_aggregate_counters(
     );
     stats.add_counter_named(&format!("{prefix}_exact_count"), summary.exact_count as u64);
     stats.add_counter_named(
+        &format!("{prefix}_nonzero_count"),
+        summary.nonzero_count as u64,
+    );
+    stats.add_counter_named(
         &format!("{prefix}_nonzero_exact_count"),
         summary.nonzero_exact_count as u64,
     );
     stats.add_counter_named(
         &format!("{prefix}_uniform_count"),
         summary.uniform_count as u64,
+    );
+    stats.add_counter_named(
+        &format!("{prefix}_nonzero_uniform_count"),
+        summary.nonzero_uniform_count as u64,
     );
     stats.add_counter_named(
         &format!("{prefix}_uniform_exact_count"),
@@ -776,6 +784,18 @@ fn add_vvc_luma_motion_aggregate_counters(
         summary.nonzero_uniform_exact_count as u64,
     );
     stats.add_counter_named(&format!("{prefix}_near_count"), summary.near_count as u64);
+    stats.add_counter_named(
+        &format!("{prefix}_nonzero_near_count"),
+        summary.nonzero_near_count as u64,
+    );
+    stats.add_counter_named(
+        &format!("{prefix}_uniform_near_count"),
+        summary.uniform_near_count as u64,
+    );
+    stats.add_counter_named(
+        &format!("{prefix}_nonzero_uniform_near_count"),
+        summary.nonzero_uniform_near_count as u64,
+    );
     stats.add_counter_named(&format!("{prefix}_total_sad"), summary.total_sad);
 }
 

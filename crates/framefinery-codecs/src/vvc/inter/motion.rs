@@ -30,8 +30,10 @@ pub(in crate::vvc) struct VvcLumaMotionSearchBlock {
 pub(in crate::vvc) struct VvcLumaMotionRegionAnalysis {
     pub(in crate::vvc) block_count: usize,
     pub(in crate::vvc) exact_count: usize,
+    pub(in crate::vvc) nonzero_count: usize,
     pub(in crate::vvc) nonzero_exact_count: usize,
     pub(in crate::vvc) near_count: usize,
+    pub(in crate::vvc) nonzero_near_count: usize,
     pub(in crate::vvc) total_sad: u64,
     pub(in crate::vvc) aggregate_16x16: VvcLumaMotionAggregateSummary,
     pub(in crate::vvc) aggregate_32x32: VvcLumaMotionAggregateSummary,
@@ -42,11 +44,16 @@ pub(in crate::vvc) struct VvcLumaMotionRegionAnalysis {
 pub(in crate::vvc) struct VvcLumaMotionAggregateSummary {
     pub(in crate::vvc) candidate_count: usize,
     pub(in crate::vvc) exact_count: usize,
+    pub(in crate::vvc) nonzero_count: usize,
     pub(in crate::vvc) nonzero_exact_count: usize,
     pub(in crate::vvc) uniform_count: usize,
+    pub(in crate::vvc) nonzero_uniform_count: usize,
     pub(in crate::vvc) uniform_exact_count: usize,
     pub(in crate::vvc) nonzero_uniform_exact_count: usize,
     pub(in crate::vvc) near_count: usize,
+    pub(in crate::vvc) nonzero_near_count: usize,
+    pub(in crate::vvc) uniform_near_count: usize,
+    pub(in crate::vvc) nonzero_uniform_near_count: usize,
     pub(in crate::vvc) total_sad: u64,
 }
 
@@ -226,8 +233,10 @@ impl VvcLumaMotionMap {
         VvcLumaMotionRegionAnalysis {
             block_count: summary.candidate_count,
             exact_count: summary.exact_count,
+            nonzero_count: summary.nonzero_count,
             nonzero_exact_count: summary.nonzero_exact_count,
             near_count: summary.near_count,
+            nonzero_near_count: summary.nonzero_near_count,
             total_sad: summary.total_sad,
             aggregate_16x16: VvcLumaMotionAggregateSummary::default(),
             aggregate_32x32: VvcLumaMotionAggregateSummary::default(),
@@ -263,8 +272,14 @@ impl VvcLumaMotionMap {
                         summary.nonzero_exact_count += 1;
                     }
                 }
+                if aggregate.has_nonzero_mv {
+                    summary.nonzero_count += 1;
+                }
                 if aggregate.uniform_mv {
                     summary.uniform_count += 1;
+                    if aggregate.has_nonzero_mv {
+                        summary.nonzero_uniform_count += 1;
+                    }
                     if aggregate.total_sad == 0 {
                         summary.uniform_exact_count += 1;
                         if aggregate.has_nonzero_mv {
@@ -278,6 +293,15 @@ impl VvcLumaMotionMap {
                     .saturating_mul(self.block_size);
                 if aggregate.total_sad <= motion_near_threshold(near_sad_per_sample, samples) {
                     summary.near_count += 1;
+                    if aggregate.has_nonzero_mv {
+                        summary.nonzero_near_count += 1;
+                    }
+                    if aggregate.uniform_mv {
+                        summary.uniform_near_count += 1;
+                        if aggregate.has_nonzero_mv {
+                            summary.nonzero_uniform_near_count += 1;
+                        }
+                    }
                 }
             }
         }
@@ -616,8 +640,10 @@ mod tests {
 
         assert_eq!(analysis.block_count, 6);
         assert!(analysis.exact_count >= 1);
+        assert!(analysis.nonzero_count >= analysis.nonzero_exact_count);
         assert!(analysis.nonzero_exact_count >= 1);
         assert!(analysis.near_count >= analysis.exact_count);
+        assert!(analysis.nonzero_near_count >= analysis.nonzero_exact_count);
     }
 
     #[test]
@@ -661,9 +687,13 @@ mod tests {
         let analysis = vvc_luma_motion_analysis_for_region(&current, &reference, region, 32, 0);
 
         assert!(analysis.aggregate_16x16.candidate_count >= 4);
+        assert!(analysis.aggregate_16x16.nonzero_uniform_count >= 4);
         assert!(analysis.aggregate_16x16.nonzero_uniform_exact_count >= 4);
+        assert!(analysis.aggregate_16x16.nonzero_uniform_near_count >= 4);
         assert!(analysis.aggregate_32x32.candidate_count >= 2);
+        assert!(analysis.aggregate_32x32.nonzero_uniform_count >= 1);
         assert!(analysis.aggregate_32x32.nonzero_uniform_exact_count >= 1);
+        assert!(analysis.aggregate_32x32.nonzero_uniform_near_count >= 1);
     }
 
     #[test]
@@ -692,7 +722,9 @@ mod tests {
         let analysis = vvc_luma_motion_analysis_for_region(&current, &reference, region, 8, 0);
 
         assert_eq!(analysis.aggregate_64x64.candidate_count, 1);
+        assert!(analysis.aggregate_64x64.nonzero_uniform_count >= 1);
         assert!(analysis.aggregate_64x64.nonzero_uniform_exact_count >= 1);
+        assert!(analysis.aggregate_64x64.nonzero_uniform_near_count >= 1);
     }
 
     fn motion_test_frame(width: usize, height: usize) -> VvcSampledFrame {
