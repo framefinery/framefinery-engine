@@ -189,6 +189,14 @@ currently fails the aggregate result: FPS below 0.90x, bytes above 1.20x, or
 PSNR below -1.0 dB versus the comparable baseline. Without a hard regression,
 an average score of at least 2.0 is an aggregate `accept`; a non-negative
 average is `watch`; and a negative average is `regress`.
+For optimization probes that should be mechanically rejected when the score
+fails, run the matrix through:
+
+```sh
+make benchmark-encode-matrix \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/<baseline>.json \
+  ENCODE_MATRIX_FAIL_ON_REGRESS=1
+```
 
 `scripts/generate_predictive_sweep.py` creates that local ignored manifest and
 384 local Y4M crops: six AOM CTC B2 screen-content variants, 64 geometries from

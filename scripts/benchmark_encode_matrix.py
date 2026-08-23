@@ -97,6 +97,11 @@ def main() -> int:
         help="optional previous JSON report to include byte/fps deltas",
     )
     parser.add_argument(
+        "--fail-on-regress",
+        action="store_true",
+        help="exit with status 1 when any scored codec/mode aggregate is classified as regress",
+    )
+    parser.add_argument(
         "--av2-stats-dir",
         type=Path,
         help="optional directory for per-case FRAMEFINERY_AV2_STATS JSONL files",
@@ -193,13 +198,14 @@ def main() -> int:
         "cleanup_output": args.cleanup_output,
         "cleanup_vectors": args.cleanup_vectors,
         "write_recon": args.write_recon,
+        "fail_on_regress": args.fail_on_regress,
         "skipped": skipped,
         "results": results,
     }
     write_report_files(report, args.out_dir, skipped)
     if skipped:
         print(f"skipped {skipped} unsupported codec/vector/mode combination(s)")
-    return 0
+    return tradeoff_gate_status(results, args.fail_on_regress)
 
 
 def rerender_report(args: argparse.Namespace) -> int:
@@ -215,6 +221,7 @@ def rerender_report(args: argparse.Namespace) -> int:
     report.setdefault("cleanup_output", False)
     report.setdefault("cleanup_vectors", False)
     report.setdefault("write_recon", True)
+    report["fail_on_regress"] = args.fail_on_regress
     results = report.get("results", [])
     baseline = load_baseline(args.baseline_json)
     for row in results:
@@ -225,7 +232,7 @@ def rerender_report(args: argparse.Namespace) -> int:
     write_report_files(report, args.out_dir, skipped)
     if skipped:
         print(f"skipped {skipped} unsupported codec/vector/mode combination(s)")
-    return 0
+    return tradeoff_gate_status(results, args.fail_on_regress)
 
 
 def clear_derived_metrics(row: dict[str, Any]) -> None:
@@ -638,6 +645,7 @@ def markdown_report(report: dict[str, Any], skipped: int) -> str:
         f"- AV2 GOP: `{report.get('av2_gop', legacy_gop(report.get('av2_predictive', True)))}`",
         f"- VVC GOP: `{report.get('vvc_gop', legacy_gop(report.get('vvc_predictive', True)))}`",
         f"- AV2 lossy QP: `{report['av2_lossy_qp']}`",
+        f"- VVC lossy QP: `{report['vvc_lossy_qp']}`",
         f"- VVC fast search: `{report.get('vvc_fast_search', 'off')}`",
         f"- Write recon: `{report.get('write_recon', True)}`",
         f"- Cleanup recon: `{report.get('cleanup_recon', False)}`",
@@ -824,6 +832,49 @@ def tradeoff_scale_rows(results: list[dict[str, Any]]) -> list[str]:
             f"{summary['hard_regressions']} |"
         )
     return lines
+
+
+def tradeoff_regression_summaries(
+    results: list[dict[str, Any]],
+) -> list[tuple[str, str, dict[str, Any]]]:
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in results:
+        if "tradeoff_score" not in row:
+            continue
+        key = (row["codec"], row["mode"])
+        groups.setdefault(key, []).append(row)
+
+    regressions = []
+    for (codec, mode), rows_for_group in sorted(groups.items()):
+        summary = encode_tradeoff.aggregate_tradeoff_summary(rows_for_group)
+        if summary is None:
+            continue
+        if summary["tradeoff_status"] == TRADEOFF_REGRESS_STATUS:
+            regressions.append((codec, mode, summary))
+    return regressions
+
+
+def tradeoff_gate_status(results: list[dict[str, Any]], fail_on_regress: bool) -> int:
+    if not fail_on_regress:
+        return 0
+    regressions = tradeoff_regression_summaries(results)
+    if not regressions:
+        return 0
+    print("tradeoff gate failed:", file=sys.stderr)
+    for codec, mode, summary in regressions:
+        print(
+            "  {codec} {mode}: average_score={score:+.1f} "
+            "rows={rows} regress={regress} hard_regressions={hard}".format(
+                codec=codec,
+                mode=mode,
+                score=summary["average_score"],
+                rows=summary["rows"],
+                regress=summary["regress"],
+                hard=summary["hard_regressions"],
+            ),
+            file=sys.stderr,
+        )
+    return 1
 
 
 def mode_label(codec: str, mode: str, args: argparse.Namespace) -> str:
