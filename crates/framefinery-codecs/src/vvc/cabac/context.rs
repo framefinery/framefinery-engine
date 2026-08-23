@@ -65,6 +65,7 @@ pub(in crate::vvc) enum VvcCabacContext {
     GeneralMergeFlag(u8),
     AbsMvdGreater0Flag(u8),
     AbsMvdGreater1Flag(u8),
+    MvpIdxFlag,
     CuCodedFlag(u8),
     LastSigCoeffXPrefix(u8),
     LastSigCoeffYPrefix(u8),
@@ -263,6 +264,7 @@ impl VvcCabacContext {
             VvcCabacContext::QtCbfY(1) => Some(301),
             VvcCabacContext::QtCbfCb(1) => Some(302),
             VvcCabacContext::QtCbfCr(2) => Some(303),
+            VvcCabacContext::MvpIdxFlag => Some(314),
             _ => None,
         }
     }
@@ -379,6 +381,10 @@ impl VvcCabacContext {
                 // H.266 Table 111.
                 const I_SLICE_INIT: [u8; 3] = [45, 43, 36];
                 I_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::MvpIdxFlag => {
+                // VTM ContextSetCfg::MVPIdx, initType 0 / I-slice row.
+                34
             }
             VvcCabacContext::LastSigCoeffXPrefix(ctx) => {
                 const I_SLICE_INIT: [u8; 23] = [
@@ -532,6 +538,10 @@ impl VvcCabacContext {
             VvcCabacContext::AbsMvdGreater1Flag(ctx) => {
                 const P_SLICE_INIT: [u8; 3] = [43, 43, 43];
                 P_SLICE_INIT[ctx as usize]
+            }
+            VvcCabacContext::MvpIdxFlag => {
+                // VTM ContextSetCfg::MVPIdx, initType 1 / P-slice row.
+                34
             }
             VvcCabacContext::LastSigCoeffXPrefix(ctx) => {
                 const P_SLICE_INIT: [u8; 23] = [
@@ -689,6 +699,7 @@ impl VvcCabacContext {
                 const LOG2_WINDOW: [u8; 3] = [5, 5, 5];
                 LOG2_WINDOW[ctx as usize]
             }
+            VvcCabacContext::MvpIdxFlag => 12,
             VvcCabacContext::LastSigCoeffXPrefix(ctx) => {
                 const LOG2_WINDOW: [u8; 23] = [
                     8, 5, 4, 5, 4, 4, 5, 4, 1, 0, 4, 1, 0, 0, 0, 0, 1, 0, 0, 0, 5, 4, 4,
@@ -770,6 +781,7 @@ pub(in crate::vvc) struct VvcCabacContexts {
     pub(in crate::vvc) general_merge_flag: [VvcCabacProbModel; 3],
     pub(in crate::vvc) abs_mvd_greater0_flag: [VvcCabacProbModel; 3],
     pub(in crate::vvc) abs_mvd_greater1_flag: [VvcCabacProbModel; 3],
+    pub(in crate::vvc) mvp_idx_flag: VvcCabacProbModel,
     pub(in crate::vvc) cu_coded_flag: [VvcCabacProbModel; 3],
     pub(in crate::vvc) last_sig_coeff_x_prefix: [VvcCabacProbModel; 23],
     pub(in crate::vvc) last_sig_coeff_y_prefix: [VvcCabacProbModel; 23],
@@ -853,6 +865,7 @@ impl VvcCabacContexts {
             abs_mvd_greater1_flag: std::array::from_fn(|idx| {
                 model(VvcCabacContext::AbsMvdGreater1Flag(idx as u8))
             }),
+            mvp_idx_flag: model(VvcCabacContext::MvpIdxFlag),
             cu_coded_flag: std::array::from_fn(|idx| {
                 model(VvcCabacContext::CuCodedFlag(idx as u8))
             }),
@@ -938,6 +951,7 @@ impl VvcCabacContexts {
                 VvcCabacContext::AbsMvdGreater1Flag(idx) => {
                     &self.abs_mvd_greater1_flag[idx as usize]
                 }
+                VvcCabacContext::MvpIdxFlag => &self.mvp_idx_flag,
                 VvcCabacContext::CuCodedFlag(idx) => &self.cu_coded_flag[idx as usize],
                 VvcCabacContext::LastSigCoeffXPrefix(idx) => {
                     &self.last_sig_coeff_x_prefix[idx as usize]
@@ -1032,6 +1046,7 @@ impl VvcCabacContexts {
             VvcCabacContext::AbsMvdGreater1Flag(idx) => {
                 self.abs_mvd_greater1_flag[idx as usize].encode(cabac, bin)
             }
+            VvcCabacContext::MvpIdxFlag => self.mvp_idx_flag.encode(cabac, bin),
             VvcCabacContext::CuCodedFlag(idx) => {
                 self.cu_coded_flag[idx as usize].encode(cabac, bin)
             }
@@ -1443,6 +1458,16 @@ impl VvcCabacContexts {
             cabac,
             VvcCabacContext::AbsLevelGtxFlag(idx),
             &mut self.abs_level_gtx_flag[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_mvp_idx_flag(&mut self, cabac: &mut VvcCabacEncoder, bin: bool) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::MvpIdxFlag,
+            &mut self.mvp_idx_flag,
             bin,
         );
     }

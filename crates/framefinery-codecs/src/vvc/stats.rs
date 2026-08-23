@@ -250,7 +250,7 @@ fn vvc_context_id_bit_category(ctx_id: u16) -> VvcCtuBitCategory {
         13 | 14 | 304 => VvcCtuBitCategory::ChromaMode,
         42..=52 => VvcCtuBitCategory::Palette,
         274..=282 => VvcCtuBitCategory::Intrabc,
-        265..=273 | 283..=294 => VvcCtuBitCategory::Inter,
+        265..=273 | 283..=294 | 314 => VvcCtuBitCategory::Inter,
         5..=12 | 15..=18 | 22 | 23 | 54..=70 | 71..=264 | 295..=303 | 311..=313 => {
             VvcCtuBitCategory::Residual
         }

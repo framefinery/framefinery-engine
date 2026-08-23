@@ -7864,6 +7864,55 @@ This is intentionally output-neutral. The next CCLM speed probe should use these
 counters with the existing 50-frame six-vector tradeoff scorer before changing
 candidate selection.
 
+## VVC motion-search and mode-select checkpoint
+
+Research checkpoint: vvc-me-mode-select-2026-08-23.
+
+External encoder guidance and recent VVC/HEVC papers agree on the same broad
+optimization pattern: generate a cheap predictor/shortlist first, then spend
+full RDO only on candidates that can plausibly beat the current best. VVenC's
+presets expose this explicitly with search-range, fast-diamond ME, QTBT/TT
+speedups, early-CU, fast-merge, fast-subpel, fast-intra, and reduced full-RD
+mode lists. x265 exposes the same tradeoff family through ME method, subpel
+depth, max merge candidates, early skip, limit-modes, reference-count limits,
+and analysis reuse. VVC fast-partition and fast-intra papers report the largest
+time wins from early split termination and intra/mode shortlist pruning, while
+TZSearch papers focus on predictor-centered search starts, dynamic search-range
+selection, and early termination around center-biased motion.
+
+For FrameFinery VVC, the current blocker is more basic than the search pattern:
+the production path can emit intra CUs and a constrained zero-MV InterSkip case,
+but it cannot yet emit a regular non-merge translational L0 inter CU. The luma
+motion-map code is therefore still analysis-only. Do not spend optimization time
+on hierarchical ME, hex/TZ variants, or adaptive windows until regular explicit
+inter prediction can use the unified CTU reconstruction/residual/entropy path.
+
+The first compliant subset to wire is:
+
+- P slice, list0 only, one active reference;
+- non-merge regular inter CU with `cu_skip_flag=0`, `pred_mode_flag=0`,
+  `general_merge_flag=0`;
+- integer-pel translational MVD converted to VVC quarter-pel signal units;
+- `mvp_l0_flag=0` against the VTM-compatible AMVP context;
+- `cu_coded_flag=0` only for exact/no-residual copies at first.
+
+This pass adds the missing `MVPIdx` CABAC context scaffold required by that
+subset. It is intentionally output-neutral; it should not be scored as a speed
+or compression improvement. A future explicit-inter attempt must be evaluated
+with `scripts/encode_tradeoff.py`, whose row score currently projects local
+metrics as:
+
+```text
+score = 10*log2(current_fps / baseline_fps)
+      +  4*log2(baseline_bytes / current_bytes)
+      +  8*(current_psnr_db - baseline_psnr_db)
+```
+
+Reject any candidate crossing the hard guards already encoded by that script:
+FPS below 0.90x baseline, bytes above 1.20x baseline, or PSNR below baseline by
+more than 1.0 dB. Treat candidates with >5% byte growth or >0.30 dB PSNR loss
+as watch-list items even if the scalar score is positive.
+
 ## References
 
 - Cargo profile settings:

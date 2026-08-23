@@ -1360,6 +1360,8 @@ fn vvc_contexts_include_residual_init_tables() {
     assert_eq!(VvcCabacContext::AbsLevelGtxFlag(71).init_value(), 3);
     assert_eq!(VvcCabacContext::AbsLevelGtxFlag(71).log2_window_size(), 1);
     assert_eq!(VvcCabacContext::CoeffSignFlag(5).log2_window_size(), 8);
+    assert_eq!(VvcCabacContext::MvpIdxFlag.init_value(), 34);
+    assert_eq!(VvcCabacContext::MvpIdxFlag.log2_window_size(), 12);
 
     let mut ctx = VvcCabacContexts::new();
     let initial_state = ctx.transform_skip_flag[0].state();
@@ -1367,6 +1369,10 @@ fn vvc_contexts_include_residual_init_tables() {
     cabac.start();
     ctx.encode(&mut cabac, VvcCabacContext::TransformSkipFlag(0), false);
     assert_ne!(ctx.transform_skip_flag[0].state(), initial_state);
+
+    let initial_mvp_state = ctx.mvp_idx_flag.state();
+    ctx.encode_mvp_idx_flag(&mut cabac, false);
+    assert_ne!(ctx.mvp_idx_flag.state(), initial_mvp_state);
 }
 
 #[test]
@@ -1396,6 +1402,7 @@ fn vvc_contexts_include_p_slice_intra_residual_init_rows() {
     assert_eq!(VvcCabacContext::PredModeIbcFlag(2).init_value_for(p), 44);
     assert_eq!(VvcCabacContext::CuCodedFlag(0).init_value_for(p), 5);
     assert_eq!(VvcCabacContext::AbsMvdGreater0Flag(0).init_value_for(p), 44);
+    assert_eq!(VvcCabacContext::MvpIdxFlag.init_value_for(p), 34);
     assert_eq!(
         VvcCabacContext::LastSigCoeffXPrefix(20).init_value_for(p),
         12
@@ -2611,6 +2618,7 @@ fn vvc_ctu_bit_categories_classify_context_and_bypass_bins() {
         VvcCabacDumpSymbol::bin_ctx(false, 13),
         VvcCabacDumpSymbol::bin_ctx(true, 56),
         VvcCabacDumpSymbol::bin_ctx(false, 274),
+        VvcCabacDumpSymbol::bin_ctx(false, 314),
         VvcCabacDumpSymbol {
             kind: VvcCabacDumpSymbol::BINS_EP,
             data: 5,
@@ -2626,7 +2634,7 @@ fn vvc_ctu_bit_categories_classify_context_and_bypass_bins() {
     assert_eq!(categories.chroma_mode_bits, 1);
     assert_eq!(categories.residual_bits, 6);
     assert_eq!(categories.intrabc_bits, 1);
-    assert_eq!(categories.inter_bits, 0);
+    assert_eq!(categories.inter_bits, 1);
     assert_eq!(categories.palette_bits, 0);
     assert_eq!(categories.other_bits, 1);
 }
