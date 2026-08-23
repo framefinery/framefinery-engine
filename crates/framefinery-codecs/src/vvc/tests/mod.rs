@@ -4481,6 +4481,113 @@ fn vvc_palette_444_uses_ibc_for_repeated_8x8_block() {
 }
 
 #[test]
+fn vvc_ibc_hash_search_tracks_ctu_local_state_for_nonzero_origin() {
+    let geometry = VvcVideoGeometry {
+        width: 88,
+        height: 8,
+    };
+    let mut luma = vec![0; geometry.luma_samples()];
+    let mut cb = vec![0; geometry.luma_samples()];
+    let mut cr = vec![0; geometry.luma_samples()];
+    for y in 0..8 {
+        for x in 0..8 {
+            let base = y * 8 + x;
+            let color_index = base % 16;
+            let color_y = (color_index * 3 + 11) as u8;
+            let color_cb = (color_index * 5 + 17) as u8;
+            let color_cr = (color_index * 7 + 23) as u8;
+            for block_x in [64, 72, 80] {
+                let dst = y * geometry.width + block_x + x;
+                luma[dst] = color_y;
+                cb[dst] = color_cb;
+                cr[dst] = color_cr;
+            }
+        }
+    }
+    let frame = VvcSampledFrame {
+        geometry,
+        format: VvcPictureFormat {
+            chroma_sampling: ChromaSampling::Cs444,
+            bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+        },
+        luma: luma.iter().copied().map(u16::from).collect(),
+        cb: cb.iter().copied().map(u16::from).collect(),
+        cr: cr.iter().copied().map(u16::from).collect(),
+        chroma_len: geometry.luma_samples(),
+    };
+
+    let mut ibc_search = super::ibc::VvcIbcHashSearch::new_for_ctu(64, 0);
+    ibc_search.record_palette_8x8(&frame, 64, 0);
+    let first_decision = ibc_search
+        .decide_8x8(&frame, 72, 0)
+        .expect("second block should match the first block inside the nonzero-origin CTU");
+    assert_eq!(first_decision.ref_origin_x, 64);
+    assert_eq!(first_decision.mvd_x, -8);
+    assert_eq!(first_decision.pred_mode_ibc_ctx, 0);
+    ibc_search.record_ibc_8x8(&frame, first_decision);
+
+    let second_decision = ibc_search
+        .decide_8x8(&frame, 80, 0)
+        .expect("third block should match the second block inside the nonzero-origin CTU");
+    assert_eq!(second_decision.ref_origin_x, 72);
+    assert_eq!(second_decision.mvd_x, 0);
+    assert_eq!(second_decision.pred_mode_ibc_ctx, 1);
+}
+
+#[cfg(feature = "vvc-stats")]
+#[test]
+fn vvc_scc_analysis_reports_palette_and_ibc_opportunities_for_nonzero_ctu() {
+    let geometry = VvcVideoGeometry {
+        width: 88,
+        height: 8,
+    };
+    let mut luma = vec![0; geometry.luma_samples()];
+    let mut cb = vec![0; geometry.luma_samples()];
+    let mut cr = vec![0; geometry.luma_samples()];
+    for y in 0..8 {
+        for x in 0..8 {
+            let base = y * 8 + x;
+            let color_index = base % 16;
+            let color_y = (color_index * 3 + 11) as u8;
+            let color_cb = (color_index * 5 + 17) as u8;
+            let color_cr = (color_index * 7 + 23) as u8;
+            for block_x in [64, 72, 80] {
+                let dst = y * geometry.width + block_x + x;
+                luma[dst] = color_y;
+                cb[dst] = color_cb;
+                cr[dst] = color_cr;
+            }
+        }
+    }
+    let frame = VvcSampledFrame {
+        geometry,
+        format: VvcPictureFormat {
+            chroma_sampling: ChromaSampling::Cs444,
+            bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+        },
+        luma: luma.iter().copied().map(u16::from).collect(),
+        cb: cb.iter().copied().map(u16::from).collect(),
+        cr: cr.iter().copied().map(u16::from).collect(),
+        chroma_len: geometry.luma_samples(),
+    };
+    let region = VvcCtuRegion {
+        slice_address: 1,
+        origin_x: 64,
+        origin_y: 0,
+        geometry: VvcVideoGeometry {
+            width: 24,
+            height: 8,
+        },
+    };
+
+    let analysis = super::ibc::vvc_scc_analysis_for_region(&frame, region);
+    assert_eq!(analysis.block_count, 3);
+    assert_eq!(analysis.palette_no_escape_8x8_count, 3);
+    assert_eq!(analysis.palette_escape_8x8_count, 0);
+    assert_eq!(analysis.ibc_exact_8x8_count, 2);
+}
+
+#[test]
 fn vvc_palette_444_uses_transform_skip_residual_for_left_ibc_delta() {
     let geometry = VvcVideoGeometry {
         width: 16,

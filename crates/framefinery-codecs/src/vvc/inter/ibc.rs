@@ -1,5 +1,9 @@
+#[cfg(feature = "vvc-stats")]
+use crate::picture::ChromaSampling;
 use crate::picture::SampleBitDepth;
 
+#[cfg(feature = "vvc-stats")]
+use super::{VvcCtuRegion, VvcSampledColor};
 use super::{VvcSample, VvcSampledFrame, VVC_CTU_SIZE};
 
 const VVC_IBC_CU_SIZE: usize = 8;
@@ -35,6 +39,8 @@ struct VvcIbcBv {
 
 #[derive(Debug, Clone)]
 pub(super) struct VvcIbcHashSearch {
+    ctu_origin_x: usize,
+    ctu_origin_y: usize,
     entries: Vec<VvcIbcHashEntry>,
     ibc_mode_by_cu: [bool; VVC_IBC_CUS_PER_CTU],
     bv_by_cu: [VvcIbcBv; VVC_IBC_CUS_PER_CTU],
@@ -43,7 +49,13 @@ pub(super) struct VvcIbcHashSearch {
 
 impl VvcIbcHashSearch {
     pub(super) fn new() -> Self {
+        Self::new_for_ctu(0, 0)
+    }
+
+    pub(super) fn new_for_ctu(ctu_origin_x: usize, ctu_origin_y: usize) -> Self {
         Self {
+            ctu_origin_x,
+            ctu_origin_y,
             entries: Vec::with_capacity(VVC_IBC_CUS_PER_CTU),
             ibc_mode_by_cu: [false; VVC_IBC_CUS_PER_CTU],
             bv_by_cu: [VvcIbcBv { x: 0, y: 0 }; VVC_IBC_CUS_PER_CTU],
@@ -115,7 +127,8 @@ impl VvcIbcHashSearch {
         origin_x: usize,
         origin_y: usize,
     ) -> Option<VvcIbcCuDecision> {
-        if origin_x < VVC_IBC_CU_SIZE || !vvc_ibc_full_8x8_is_visible(frame, origin_x, origin_y) {
+        let (local_x, _) = self.local_origin(origin_x, origin_y)?;
+        if local_x < VVC_IBC_CU_SIZE || !vvc_ibc_full_8x8_is_visible(frame, origin_x, origin_y) {
             return None;
         }
 
@@ -189,16 +202,19 @@ impl VvcIbcHashSearch {
     }
 
     fn bvp_for(&self, origin_x: usize, origin_y: usize) -> VvcIbcBv {
+        let Some((local_x, local_y)) = self.local_origin(origin_x, origin_y) else {
+            return VvcIbcBv { x: 0, y: 0 };
+        };
         // H.266 8.6.2.2 constructs the IBC BVP list as A1, B1, HMVP, then zero.
         // The current SPS sets MaxNumIbcMergeCand to 1, so only the first
         // available candidate is used and mvp_l0_flag is not present.
-        if origin_x >= VVC_IBC_CU_SIZE {
-            if let Some(bv) = self.ibc_bv_at(origin_x - VVC_IBC_CU_SIZE, origin_y) {
+        if local_x >= VVC_IBC_CU_SIZE {
+            if let Some(bv) = self.ibc_bv_at_local(local_x - VVC_IBC_CU_SIZE, local_y) {
                 return bv;
             }
         }
-        if origin_y >= VVC_IBC_CU_SIZE {
-            if let Some(bv) = self.ibc_bv_at(origin_x, origin_y - VVC_IBC_CU_SIZE) {
+        if local_y >= VVC_IBC_CU_SIZE {
+            if let Some(bv) = self.ibc_bv_at_local(local_x, local_y - VVC_IBC_CU_SIZE) {
                 return bv;
             }
         }
@@ -206,7 +222,10 @@ impl VvcIbcHashSearch {
     }
 
     fn record_mode(&mut self, origin_x: usize, origin_y: usize, bv: Option<VvcIbcBv>) {
-        let Some(index) = vvc_ibc_cu_index(origin_x, origin_y) else {
+        let Some((local_x, local_y)) = self.local_origin(origin_x, origin_y) else {
+            return;
+        };
+        let Some(index) = vvc_ibc_cu_index(local_x, local_y) else {
             return;
         };
         self.ibc_mode_by_cu[index] = bv.is_some();
@@ -234,21 +253,22 @@ impl VvcIbcHashSearch {
         origin_y: usize,
         hash: u32,
     ) -> Option<VvcIbcHashEntry> {
-        if origin_x >= VVC_IBC_CU_SIZE {
+        let (local_x, local_y) = self.local_origin(origin_x, origin_y)?;
+        if local_x >= VVC_IBC_CU_SIZE {
             if let Some(entry) = self.hash_entry_at(origin_x - VVC_IBC_CU_SIZE, origin_y) {
                 if entry.hash == hash {
                     return Some(entry);
                 }
             }
         }
-        if origin_y >= VVC_IBC_CU_SIZE {
+        if local_y >= VVC_IBC_CU_SIZE {
             if let Some(entry) = self.hash_entry_at(origin_x, origin_y - VVC_IBC_CU_SIZE) {
                 if entry.hash == hash {
                     return Some(entry);
                 }
             }
         }
-        if origin_x >= VVC_IBC_CU_SIZE && origin_y >= VVC_IBC_CU_SIZE {
+        if local_x >= VVC_IBC_CU_SIZE && local_y >= VVC_IBC_CU_SIZE {
             if let Some(entry) =
                 self.hash_entry_at(origin_x - VVC_IBC_CU_SIZE, origin_y - VVC_IBC_CU_SIZE)
             {
@@ -270,13 +290,20 @@ impl VvcIbcHashSearch {
     }
 
     fn ibc_mode_at(&self, origin_x: usize, origin_y: usize) -> bool {
-        vvc_ibc_cu_index(origin_x, origin_y)
+        let Some((local_x, local_y)) = self.local_origin(origin_x, origin_y) else {
+            return false;
+        };
+        self.ibc_mode_at_local(local_x, local_y)
+    }
+
+    fn ibc_mode_at_local(&self, local_x: usize, local_y: usize) -> bool {
+        vvc_ibc_cu_index(local_x, local_y)
             .map(|index| self.ibc_mode_by_cu[index])
             .unwrap_or(false)
     }
 
-    fn ibc_bv_at(&self, origin_x: usize, origin_y: usize) -> Option<VvcIbcBv> {
-        let index = vvc_ibc_cu_index(origin_x, origin_y)?;
+    fn ibc_bv_at_local(&self, local_x: usize, local_y: usize) -> Option<VvcIbcBv> {
+        let index = vvc_ibc_cu_index(local_x, local_y)?;
         self.ibc_mode_by_cu[index].then_some(self.bv_by_cu[index])
     }
 
@@ -286,6 +313,99 @@ impl VvcIbcHashSearch {
             .find(|entry| entry.origin_x == origin_x && entry.origin_y == origin_y)
             .copied()
     }
+
+    fn local_origin(&self, origin_x: usize, origin_y: usize) -> Option<(usize, usize)> {
+        let local_x = origin_x.checked_sub(self.ctu_origin_x)?;
+        let local_y = origin_y.checked_sub(self.ctu_origin_y)?;
+        (local_x < VVC_CTU_SIZE && local_y < VVC_CTU_SIZE).then_some((local_x, local_y))
+    }
+}
+
+#[cfg(feature = "vvc-stats")]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct VvcSccCtuAnalysis {
+    pub(super) block_count: usize,
+    pub(super) palette_solid_8x8_count: usize,
+    pub(super) palette_no_escape_8x8_count: usize,
+    pub(super) palette_escape_8x8_count: usize,
+    pub(super) ibc_exact_8x8_count: usize,
+    pub(super) ibc_left_residual_8x8_count: usize,
+}
+
+#[cfg(feature = "vvc-stats")]
+pub(super) fn vvc_scc_analysis_for_region(
+    frame: &VvcSampledFrame,
+    region: VvcCtuRegion,
+) -> VvcSccCtuAnalysis {
+    if frame.format.chroma_sampling != ChromaSampling::Cs444 {
+        return VvcSccCtuAnalysis::default();
+    }
+
+    let mut analysis = VvcSccCtuAnalysis::default();
+    let mut ibc_search = VvcIbcHashSearch::new_for_ctu(region.origin_x, region.origin_y);
+    let x_end = region
+        .origin_x
+        .saturating_add(region.geometry.width)
+        .min(frame.geometry.width);
+    let y_end = region
+        .origin_y
+        .saturating_add(region.geometry.height)
+        .min(frame.geometry.height);
+    for origin_y in (region.origin_y..y_end).step_by(VVC_IBC_CU_SIZE) {
+        if origin_y + VVC_IBC_CU_SIZE > y_end {
+            continue;
+        }
+        for origin_x in (region.origin_x..x_end).step_by(VVC_IBC_CU_SIZE) {
+            if origin_x + VVC_IBC_CU_SIZE > x_end {
+                continue;
+            }
+            analysis.block_count += 1;
+            let unique_colors = vvc_unique_color_count_8x8(frame, origin_x, origin_y);
+            if unique_colors == 1 {
+                analysis.palette_solid_8x8_count += 1;
+            }
+            if unique_colors <= 31 {
+                analysis.palette_no_escape_8x8_count += 1;
+            } else {
+                analysis.palette_escape_8x8_count += 1;
+            }
+            if let Some(decision) = ibc_search.decide_8x8(frame, origin_x, origin_y) {
+                analysis.ibc_exact_8x8_count += 1;
+                ibc_search.record_ibc_8x8(frame, decision);
+            } else {
+                if ibc_search
+                    .decide_left_8x8(frame, origin_x, origin_y)
+                    .is_some()
+                {
+                    analysis.ibc_left_residual_8x8_count += 1;
+                }
+                ibc_search.record_palette_8x8(frame, origin_x, origin_y);
+            }
+        }
+    }
+    analysis
+}
+
+#[cfg(feature = "vvc-stats")]
+fn vvc_unique_color_count_8x8(frame: &VvcSampledFrame, origin_x: usize, origin_y: usize) -> usize {
+    let mut colors = Vec::<VvcSampledColor>::with_capacity(32);
+    for y_off in 0..VVC_IBC_CU_SIZE {
+        for x_off in 0..VVC_IBC_CU_SIZE {
+            let index = (origin_y + y_off) * frame.geometry.width + origin_x + x_off;
+            let color = VvcSampledColor {
+                y: frame.luma[index],
+                u: frame.cb[index],
+                v: frame.cr[index],
+            };
+            if colors.iter().all(|entry| *entry != color) {
+                colors.push(color);
+                if colors.len() > 31 {
+                    return colors.len();
+                }
+            }
+        }
+    }
+    colors.len()
 }
 
 fn vvc_ibc_full_8x8_is_visible(frame: &VvcSampledFrame, origin_x: usize, origin_y: usize) -> bool {

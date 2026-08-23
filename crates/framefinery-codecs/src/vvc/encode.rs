@@ -493,6 +493,15 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             );
                         }
                     }
+                    #[cfg(feature = "vvc-stats")]
+                    if slice_config.profile.allows_palette() && slice_config.profile.allows_ibc() {
+                        let scc_start = StageStart::now();
+                        let scc_analysis = ibc::vvc_scc_analysis_for_region(&source_frame, region);
+                        frame_stats.add_elapsed("scc_analyze", scc_start);
+                        if scc_analysis.block_count > 0 {
+                            add_vvc_scc_analysis_counters(&mut frame_stats, scc_analysis);
+                        }
+                    }
                     let cached_exact_ctu = if predictive_frame
                         && vvc_predictive_intra_ctu_reuse_enabled_for_mode(residual_mode)
                     {

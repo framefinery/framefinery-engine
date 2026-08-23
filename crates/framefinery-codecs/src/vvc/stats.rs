@@ -780,6 +780,34 @@ fn add_vvc_luma_motion_aggregate_counters(
 }
 
 #[cfg(feature = "vvc-stats")]
+fn add_vvc_scc_analysis_counters(
+    stats: &mut VvcFrameStats,
+    analysis: ibc::VvcSccCtuAnalysis,
+) {
+    stats.add_counter("scc_8x8_block_count", analysis.block_count as u64);
+    stats.add_counter(
+        "scc_palette_solid_8x8_count",
+        analysis.palette_solid_8x8_count as u64,
+    );
+    stats.add_counter(
+        "scc_palette_no_escape_8x8_count",
+        analysis.palette_no_escape_8x8_count as u64,
+    );
+    stats.add_counter(
+        "scc_palette_escape_8x8_count",
+        analysis.palette_escape_8x8_count as u64,
+    );
+    stats.add_counter(
+        "scc_ibc_exact_8x8_count",
+        analysis.ibc_exact_8x8_count as u64,
+    );
+    stats.add_counter(
+        "scc_ibc_left_residual_8x8_count",
+        analysis.ibc_left_residual_8x8_count as u64,
+    );
+}
+
+#[cfg(feature = "vvc-stats")]
 #[derive(Debug, Default, Clone, Copy)]
 struct VvcTuResidualCodingCounts {
     luma_transform_skip: usize,

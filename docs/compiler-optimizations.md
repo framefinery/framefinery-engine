@@ -7602,6 +7602,40 @@ before trying residual-coded inter candidates.
 The normal product build and bitstreams remain unchanged; these counters are
 behind `vvc-stats`.
 
+### VVC Shared-Path SCC Opportunity Counters
+
+Accepted scaffold: the CTU-local IBC hash search now tracks mode/context state
+relative to the active CTU origin instead of assuming CTU `(0,0)`. This is
+needed before IBC can become a normal CTU-mode candidate on multi-CTU pictures:
+left-neighbor BVP/context derivation must work identically for a CTU starting
+at x/y offsets other than zero.
+
+The `vvc-stats` build also runs a lightweight 4:4:4 SCC analysis from the
+normal encode loop and emits:
+
+- `scc_8x8_block_count`
+- `scc_palette_solid_8x8_count`
+- `scc_palette_no_escape_8x8_count`
+- `scc_palette_escape_8x8_count`
+- `scc_ibc_exact_8x8_count`
+- `scc_ibc_left_residual_8x8_count`
+
+This still does not enable palette/IBC in production residual slices. It
+measures where the shared CTU decision path should consider those candidates
+next, without reviving the separate palette-only frame path. A tiny 88x8
+`pattern=color_blocks` stats run confirmed that the counters flow through the
+normal encode loop. The ad hoc output and stats artifacts from that check were
+removed.
+
+Validation:
+
+```text
+TMPDIR=verification/generated/agent_scratch/tmp cargo check -p framefinery-codecs --features vvc
+TMPDIR=verification/generated/agent_scratch/tmp cargo check -p framefinery-codecs --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
 ## References
 
 - Cargo profile settings:
