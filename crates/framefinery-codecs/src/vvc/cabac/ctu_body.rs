@@ -821,6 +821,13 @@ pub(in crate::vvc) struct VvcInterMotionNeighbourState {
     hmvp: Vec<VvcInterMotionInfo>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VvcExplicitInterLeafSyntax {
+    NotInter,
+    NoResidual,
+    Residual,
+}
+
 impl VvcInterMotionNeighbourState {
     const MAX_HMVP_CANDIDATES: usize = 5;
 
@@ -1130,8 +1137,13 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                 if self.emit_luma_inter_skip_leaf(cabac, node) {
                     return;
                 }
-                if self.emit_luma_explicit_inter_leaf(cabac, node, luma_mode_neighbours) {
-                    return;
+                match self.emit_luma_explicit_inter_leaf(cabac, node, luma_mode_neighbours) {
+                    VvcExplicitInterLeafSyntax::NotInter => {}
+                    VvcExplicitInterLeafSyntax::NoResidual => return,
+                    VvcExplicitInterLeafSyntax::Residual => {
+                        self.emit_transform_unit_residual(cabac, node);
+                        return;
+                    }
                 }
                 if self.emit_luma_scc_selected_leaf(cabac, node) {
                     return;
@@ -1431,12 +1443,12 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         cabac: &mut VvcCabacEncoder,
         node: VvcCodingTreeNode,
         neighbours: &VvcLumaModeNeighbourState,
-    ) -> bool {
+    ) -> VvcExplicitInterLeafSyntax {
         if !self.inter_slice || self.luma_tu_index >= self.params.luma_tu_count {
-            return false;
+            return VvcExplicitInterLeafSyntax::NotInter;
         }
         let Some(decision) = self.params.luma_tu_inter_decisions[self.luma_tu_index] else {
-            return false;
+            return VvcExplicitInterLeafSyntax::NotInter;
         };
         assert_eq!(
             node.tree_type,
@@ -1465,15 +1477,39 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         let (mvd_x, mvd_y) = desired.signalled_mvd_from(candidates[mvp_idx]);
         self.emit_luma_mvd_coding(cabac, mvd_x, mvd_y);
         self.contexts.encode_mvp_idx_flag(cabac, mvp_idx != 0);
-        // rqt_root_cbf / cu_coded_flag = 0: this explicit inter CU has no
-        // residual tree and is reconstructed entirely from list-0 prediction.
+        let residual = self.explicit_inter_leaf_has_residual();
         self.contexts
-            .encode(cabac, VvcCabacContext::CuCodedFlag(0), false);
+            .encode(cabac, VvcCabacContext::CuCodedFlag(0), residual);
         if let Some(neighbours) = self.inter_motion_neighbours.as_mut() {
             neighbours.mark_leaf(node, desired);
         }
+        if residual {
+            return VvcExplicitInterLeafSyntax::Residual;
+        }
         self.luma_tu_index += 1;
-        true
+        if node.tree_type == VvcTreeType::SingleTree
+            && self.params.chroma_sampling != ChromaSampling::Monochrome
+        {
+            self.chroma_tu_index += 1;
+        }
+        VvcExplicitInterLeafSyntax::NoResidual
+    }
+
+    fn explicit_inter_leaf_has_residual(&self) -> bool {
+        let luma_tu_idx = self.luma_tu_index;
+        let luma_residual = self.params.luma_tu_dc_levels[luma_tu_idx] != 0
+            || self.params.luma_tu_has_ac[luma_tu_idx];
+        if luma_residual || self.params.chroma_sampling == ChromaSampling::Monochrome {
+            return luma_residual;
+        }
+        let chroma_tu_idx = self.chroma_tu_index;
+        if chroma_tu_idx >= self.params.chroma_tu_count {
+            return luma_residual;
+        }
+        self.params.cb_tu_dc_levels[chroma_tu_idx] != 0
+            || self.params.cb_tu_has_ac[chroma_tu_idx]
+            || self.params.cr_tu_dc_levels[chroma_tu_idx] != 0
+            || self.params.cr_tu_has_ac[chroma_tu_idx]
     }
 
     fn emit_luma_inter_slice_intra_prefix(

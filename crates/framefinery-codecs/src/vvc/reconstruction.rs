@@ -171,6 +171,72 @@ impl VvcReconstructionFrame {
         );
     }
 
+    fn predict_luma_node_from_inter_motion_into(
+        previous: &Self,
+        predicted: &mut Vec<VvcSample>,
+        node: VvcCodingTreeNode,
+        decision: VvcLumaInterDecision,
+    ) -> bool {
+        let Some(src_x) = offset_vvc_inter_origin(usize::from(node.x), decision.mv_x) else {
+            return false;
+        };
+        let Some(src_y) = offset_vvc_inter_origin(usize::from(node.y), decision.mv_y) else {
+            return false;
+        };
+        copy_vvc_plane_region_into_prediction(
+            predicted,
+            &previous.luma,
+            previous.luma_width(),
+            src_x,
+            src_y,
+            usize::from(node.width),
+            usize::from(node.height),
+        )
+    }
+
+    fn predict_chroma_node_from_inter_motion_into(
+        previous: &Self,
+        predicted_cb: &mut Vec<VvcSample>,
+        predicted_cr: &mut Vec<VvcSample>,
+        node: VvcCodingTreeNode,
+        decision: VvcLumaInterDecision,
+    ) -> bool {
+        let subsample_x = chroma_subsample_x(previous.format.chroma_sampling);
+        let subsample_y = chroma_subsample_y(previous.format.chroma_sampling);
+        if i32::from(decision.mv_x).rem_euclid(subsample_x as i32) != 0
+            || i32::from(decision.mv_y).rem_euclid(subsample_y as i32) != 0
+        {
+            return false;
+        }
+        let dst_x = usize::from(node.x) / subsample_x;
+        let dst_y = usize::from(node.y) / subsample_y;
+        let Some(src_x) = offset_vvc_inter_origin(dst_x, decision.mv_x / subsample_x as i16) else {
+            return false;
+        };
+        let Some(src_y) = offset_vvc_inter_origin(dst_y, decision.mv_y / subsample_y as i16) else {
+            return false;
+        };
+        let width = usize::from(node.width) / subsample_x;
+        let height = usize::from(node.height) / subsample_y;
+        copy_vvc_plane_region_into_prediction(
+            predicted_cb,
+            &previous.cb,
+            previous.chroma_width(),
+            src_x,
+            src_y,
+            width,
+            height,
+        ) && copy_vvc_plane_region_into_prediction(
+            predicted_cr,
+            &previous.cr,
+            previous.chroma_width(),
+            src_x,
+            src_y,
+            width,
+            height,
+        )
+    }
+
     fn coded_geometry(&self) -> VvcVideoGeometry {
         VvcVideoGeometry {
             width: self.luma_width(),
@@ -285,6 +351,44 @@ fn copy_vvc_plane_region(
         let start = row + start_x;
         let end = start + width;
         dst[start..end].copy_from_slice(&src[start..end]);
+    }
+}
+
+fn copy_vvc_plane_region_into_prediction(
+    predicted: &mut Vec<VvcSample>,
+    src: &[VvcSample],
+    src_stride: usize,
+    src_x: usize,
+    src_y: usize,
+    width: usize,
+    height: usize,
+) -> bool {
+    predicted.clear();
+    if width == 0 || height == 0 {
+        return true;
+    }
+    if src_x.checked_add(width).is_none_or(|end| end > src_stride) {
+        return false;
+    }
+    let Some(src_rows) = src_stride.checked_mul(src_y.saturating_add(height)) else {
+        return false;
+    };
+    if src_rows > src.len() {
+        return false;
+    }
+    predicted.reserve(width * height);
+    for y in 0..height {
+        let row_start = (src_y + y) * src_stride + src_x;
+        predicted.extend_from_slice(&src[row_start..row_start + width]);
+    }
+    true
+}
+
+fn offset_vvc_inter_origin(origin: usize, delta: i16) -> Option<usize> {
+    if delta >= 0 {
+        origin.checked_add(delta as usize)
+    } else {
+        origin.checked_sub(delta.unsigned_abs() as usize)
     }
 }
 

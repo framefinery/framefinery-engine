@@ -2060,6 +2060,194 @@ fn vvc_ctu_body_emits_explicit_inter_leaf_from_partition_decision() {
 }
 
 #[test]
+fn vvc_ctu_body_emits_residual_coded_explicit_inter_leaf() {
+    let neutral = quantize_vvc_color(VvcSampledColor {
+        y: 128,
+        u: 128,
+        v: 128,
+    });
+    let mut params = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
+        VvcVideoGeometry {
+            width: 8,
+            height: 8,
+        },
+        neutral,
+        VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+        ChromaSampling::Cs420,
+        false,
+    )
+    .expect("8x8 single-tree 4:2:0 partition parameters");
+    params.luma_tu_inter_decisions[0] = Some(VvcLumaInterDecision { mv_x: -1, mv_y: 0 });
+    params.luma_tu_dc_levels[0] = 1;
+
+    let config = VvcSliceSyntaxConfig::yuv420_residual().with_inter_enabled();
+    let geometry = VvcVideoGeometry {
+        width: 8,
+        height: 8,
+    };
+    let mut frame_state = VvcFrameCtuCabacState::new(geometry, config, true);
+    let mut cabac = VvcCabacEncoder::new_with_dump();
+    cabac.start();
+    frame_state.encode_ctu(&mut cabac, 0, &params, config);
+
+    let context_bins: Vec<(u16, bool)> = cabac
+        .context_events
+        .iter()
+        .map(|event| (event.ctx_id, event.bin))
+        .collect();
+
+    assert!(
+        context_bins.contains(&(
+            VvcCabacContext::CuCodedFlag(0).rtl_context_id().unwrap(),
+            true
+        )),
+        "residual-coded explicit inter leaves must signal transform_tree syntax"
+    );
+    assert!(
+        context_bins.contains(&(VvcCabacContext::QtCbfY(0).rtl_context_id().unwrap(), true)),
+        "residual-coded explicit inter leaves must emit luma residual CBF"
+    );
+    assert!(
+        !context_bins.iter().any(|(ctx_id, _)| {
+            *ctx_id == VvcCabacContext::IntraLumaMpmFlag.rtl_context_id().unwrap()
+        }),
+        "explicit inter leaves must not emit intra prediction syntax before residuals"
+    );
+}
+
+#[test]
+fn vvc_predictive_exact_inter_selector_finds_chroma_safe_shifted_luma_leaves() {
+    let geometry = VvcVideoGeometry {
+        width: 16,
+        height: 8,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let mut previous_luma = vec![0; geometry.luma_samples()];
+    let mut current_luma = vec![0; geometry.luma_samples()];
+    for y in 0..geometry.height {
+        for x in 0..geometry.width {
+            previous_luma[y * geometry.width + x] = ((x * 17 + y * 11) & 0xff) as VvcSample;
+        }
+        for x in 0..8 {
+            current_luma[y * geometry.width + x] = previous_luma[y * geometry.width + 8 + x];
+            current_luma[y * geometry.width + 8 + x] = previous_luma[y * geometry.width + x];
+        }
+    }
+    let chroma_len = (geometry.width / 2) * (geometry.height / 2);
+    let mut previous_cb = vec![0; chroma_len];
+    let mut previous_cr = vec![0; chroma_len];
+    let mut current_cb = vec![0; chroma_len];
+    let mut current_cr = vec![0; chroma_len];
+    let chroma_width = geometry.width / 2;
+    for y in 0..geometry.height / 2 {
+        for x in 0..chroma_width {
+            previous_cb[y * chroma_width + x] = ((x * 23 + y * 7 + 19) & 0xff) as VvcSample;
+            previous_cr[y * chroma_width + x] = ((x * 29 + y * 5 + 31) & 0xff) as VvcSample;
+        }
+        for x in 0..4 {
+            current_cb[y * chroma_width + x] = previous_cb[y * chroma_width + 4 + x];
+            current_cr[y * chroma_width + x] = previous_cr[y * chroma_width + 4 + x];
+            current_cb[y * chroma_width + 4 + x] = previous_cb[y * chroma_width + x];
+            current_cr[y * chroma_width + 4 + x] = previous_cr[y * chroma_width + x];
+        }
+    }
+    let previous = VvcSampledFrame {
+        geometry,
+        format,
+        luma: previous_luma,
+        cb: previous_cb,
+        cr: previous_cr,
+        chroma_len,
+    };
+    let current = VvcSampledFrame {
+        geometry,
+        format,
+        luma: current_luma,
+        cb: current_cb,
+        cr: current_cr,
+        chroma_len,
+    };
+    let mut previous_reconstruction = VvcReconstructionFrame::new_neutral(geometry, format);
+    previous_reconstruction.luma.clone_from(&previous.luma);
+    previous_reconstruction.cb.clone_from(&previous.cb);
+    previous_reconstruction.cr.clone_from(&previous.cr);
+    let left_node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
+    let mut right_node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
+    right_node.x = 8;
+    assert!(vvc_inter_chroma_source_motion_is_exact(
+        &current,
+        &previous,
+        left_node,
+        VvcLumaInterDecision { mv_x: 8, mv_y: 0 },
+    ));
+    assert!(vvc_inter_chroma_source_motion_is_exact(
+        &current,
+        &previous,
+        right_node,
+        VvcLumaInterDecision { mv_x: -8, mv_y: 0 },
+    ));
+    let region = VvcCtuRegion {
+        slice_address: 0,
+        origin_x: 0,
+        origin_y: 0,
+        geometry,
+    };
+
+    let decisions = vvc_predictive_luma_inter_decisions_for_ctu(
+        &current,
+        &previous,
+        &previous_reconstruction,
+        region,
+        VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+        format,
+    )
+    .expect("swapped 8x8 blocks should produce exact explicit inter decisions");
+
+    assert_eq!(
+        decisions[0],
+        Some(VvcLumaInterDecision { mv_x: 8, mv_y: 0 })
+    );
+    assert_eq!(
+        decisions[1],
+        Some(VvcLumaInterDecision { mv_x: -8, mv_y: 0 })
+    );
+
+    let mut frame_recon = VvcReconstructionFrame::new_neutral(geometry, format);
+    let policy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy)
+        .with_dual_tree_intra(false);
+    let mut luma_mode_search_state = VvcLumaModeSearchState::new_for_geometry(geometry);
+    let chroma_qp = vvc_lossy_chroma_qp_for_slice_qp(VVC_DEFAULT_LOSSY_LUMA_QP);
+    let transform_skip_quant_tables =
+        VvcTransformSkipQuantTables::new(format.bit_depth, VVC_DEFAULT_LOSSY_LUMA_QP, chroma_qp);
+    let mut scratch = VvcCtuQuantScratch::default();
+    let quantized = quantize_vvc_ctu_with_luma_leaf_selection(
+        &current,
+        &mut frame_recon,
+        region,
+        policy,
+        VVC_DEFAULT_LOSSY_LUMA_QP,
+        chroma_qp,
+        &mut luma_mode_search_state,
+        &transform_skip_quant_tables,
+        &mut scratch,
+        VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+        None,
+        None,
+        Some(&decisions),
+        Some(&previous_reconstruction),
+        None,
+    );
+    assert_eq!(quantized.luma_tu_inter_decisions[0], decisions[0]);
+    assert_eq!(quantized.luma_tu_inter_decisions[1], decisions[1]);
+    assert_eq!(frame_recon.luma, current.luma);
+    assert_eq!(frame_recon.cb, current.cb);
+    assert_eq!(frame_recon.cr, current.cr);
+}
+
+#[test]
 fn vvc_ctu_body_omits_scc_palette_prefix_for_4x4_regular_intra_leaf() {
     let neutral = quantize_vvc_color(VvcSampledColor {
         y: 128,

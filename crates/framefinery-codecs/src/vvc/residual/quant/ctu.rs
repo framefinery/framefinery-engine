@@ -184,6 +184,9 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         None,
         None,
         None,
+        None,
+        None,
+        None,
     )
 }
 
@@ -329,6 +332,116 @@ fn vvc_temporal_mode_hint_max_avg_abs_residual_8bit(
             Some(VVC_LOSSY_TEMPORAL_MODE_HINT_MAX_AVG_ABS_RESIDUAL_8BIT)
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn select_vvc_luma_explicit_inter_candidate(
+    decision: VvcLumaInterDecision,
+    intra_mode: VvcIntraPredictionMode,
+    intra_coding_decision: VvcLumaTuCodingDecision,
+    intra_residual: Option<VvcScoredSelectedLumaResidual>,
+    left: Option<VvcIntraPredictionMode>,
+    above: Option<VvcIntraPredictionMode>,
+    policy: VvcResidualCodingPolicy,
+    source_frame: &VvcSampledFrame,
+    inter_reference: &VvcReconstructionFrame,
+    node: VvcCodingTreeNode,
+    luma_qp: i32,
+    luma_ts_quant: &VvcTransformSkipQuantTable,
+    inter_prediction: &mut Vec<VvcSample>,
+    inter_residuals: &mut Vec<i16>,
+    stats: &mut VvcIntraSearchStats,
+    transform_scratch: &mut VvcInverseTransformScratch,
+    reconstructed_residual: &mut Vec<i16>,
+) -> Option<VvcScoredSelectedLumaResidual> {
+    let intra_residual = intra_residual?;
+    if !VvcReconstructionFrame::predict_luma_node_from_inter_motion_into(
+        inter_reference,
+        inter_prediction,
+        node,
+        decision,
+    ) {
+        return None;
+    }
+    #[cfg(feature = "vvc-stats")]
+    let residual_start = StageStart::now();
+    residual_luma_tu_at_into(
+        inter_residuals,
+        source_frame,
+        usize::from(node.x),
+        usize::from(node.y),
+        usize::from(node.width),
+        usize::from(node.height),
+        inter_prediction,
+    );
+    #[cfg(feature = "vvc-stats")]
+    stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+
+    let inter_coding_decision =
+        policy.select_luma_tu_coding_decision(node, VvcIntraPredictionMode::Dc);
+    #[cfg(feature = "vvc-stats")]
+    let score_start = StageStart::now();
+    let inter_residual = select_vvc_scored_luma_residual_block_with_mts(
+        inter_coding_decision.residual_coding,
+        inter_coding_decision.mts_index,
+        inter_residuals,
+        node.width,
+        node.height,
+        source_frame.format.bit_depth,
+        luma_qp,
+        luma_ts_quant,
+        true,
+        VvcLumaResidualQuantizationSearch::Full,
+        stats,
+        transform_scratch,
+        reconstructed_residual,
+    );
+    #[cfg(feature = "vvc-stats")]
+    stats.add_luma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
+    let inter_residual = VvcScoredSelectedLumaResidual::from_scored_block(inter_residual);
+    let intra_score = vvc_scored_luma_quantized_residual_score(
+        intra_residual,
+        vvc_luma_regular_prediction_syntax_cost(
+            node,
+            intra_mode,
+            left,
+            above,
+            intra_coding_decision,
+        ),
+    );
+    let inter_score = vvc_scored_luma_quantized_residual_score(
+        inter_residual,
+        vvc_luma_explicit_inter_syntax_cost(decision),
+    );
+    inter_score
+        .selects_over(intra_score)
+        .then_some(inter_residual)
+}
+
+fn vvc_luma_explicit_inter_syntax_cost(decision: VvcLumaInterDecision) -> u64 {
+    // Conservative local estimate for explicit inter leaf signalling:
+    // pred_mode_flag/inter-mode prefix, merge flag, MVP flag, coded flag, and
+    // two signed MVD components. Residual coefficient cost is already carried
+    // by VvcScoredSelectedLumaResidual.
+    4 + vvc_explicit_inter_mvd_syntax_cost(decision.mv_x)
+        + vvc_explicit_inter_mvd_syntax_cost(decision.mv_y)
+}
+
+fn vvc_explicit_inter_mvd_syntax_cost(value: i16) -> u64 {
+    let magnitude = u64::from(value.unsigned_abs());
+    if magnitude == 0 {
+        return 1;
+    }
+    2 + vvc_unsigned_magnitude_syntax_cost(magnitude)
+}
+
+fn vvc_unsigned_magnitude_syntax_cost(mut value: u64) -> u64 {
+    let mut bits = 1;
+    while value > 1 {
+        value >>= 1;
+        bits += 2;
+    }
+    bits
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -707,6 +820,9 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     scratch: &mut VvcCtuQuantScratch,
     luma_inter_skip: Option<&[bool; MAX_VVC_LUMA_TUS]>,
     chroma_inter_skip: Option<&[bool; MAX_VVC_CHROMA_TUS]>,
+    luma_inter_decisions: Option<&[Option<VvcLumaInterDecision>; MAX_VVC_LUMA_TUS]>,
+    inter_reference: Option<&VvcReconstructionFrame>,
+    selected_luma_inter_decisions: Option<&mut [Option<VvcLumaInterDecision>; MAX_VVC_LUMA_TUS]>,
     temporal_mode_hints: Option<&VvcQuantizedColor>,
 ) -> VvcQuantizedColor {
     let mut luma_tu_remainders = [0; MAX_VVC_LUMA_TUS];
@@ -729,6 +845,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     let mut cr_tu_transform_skip = [false; MAX_VVC_CHROMA_TUS];
     let mut chroma_tu_bdpcm_modes = [VvcBdpcmMode::None; MAX_VVC_CHROMA_TUS];
     let mut chroma_tu_intra_modes = [VvcChromaIntraPredictionMode::Derived; MAX_VVC_CHROMA_TUS];
+    let mut applied_luma_inter_decisions = [None; MAX_VVC_LUMA_TUS];
     let mut luma_nodes = std::mem::take(&mut scratch.luma_nodes);
     let mut chroma_nodes = std::mem::take(&mut scratch.chroma_nodes);
     let mut prediction_scratch = std::mem::take(&mut scratch.prediction_scratch);
@@ -1182,8 +1299,46 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         }
         #[cfg(feature = "vvc-stats")]
         intra_search_stats.add_luma_bdpcm_nanos(luma_bdpcm_start.elapsed().as_nanos() as u64);
+        let mut selected_luma_inter_decision = None;
+        if let Some(decision) = luma_inter_decisions
+            .and_then(|decisions| decisions.get(luma_tu_count))
+            .copied()
+            .flatten()
+        {
+            if let Some(reference) = inter_reference {
+                if let Some(inter_residual) = select_vvc_luma_explicit_inter_candidate(
+                    decision,
+                    luma_mode,
+                    luma_coding_decision,
+                    selected_luma_residual,
+                    left_luma_mode,
+                    above_luma_mode,
+                    policy,
+                    source_frame,
+                    reference,
+                    node,
+                    luma_qp,
+                    luma_ts_quant,
+                    &mut candidate_luma_prediction,
+                    &mut candidate_luma_residuals,
+                    &mut intra_search_stats,
+                    &mut transform_scratch,
+                    &mut reconstructed_residual,
+                ) {
+                    luma_mode = VvcIntraPredictionMode::Dc;
+                    luma_coding_decision =
+                        policy.select_luma_tu_coding_decision(node, luma_mode);
+                    selected_luma_residual = Some(inter_residual);
+                    selected_luma_inter_decision = Some(decision);
+                    std::mem::swap(&mut predicted_luma, &mut candidate_luma_prediction);
+                    std::mem::swap(&mut luma_residuals, &mut candidate_luma_residuals);
+                }
+            }
+        }
         luma_tu_intra_modes[luma_tu_count] = luma_mode;
-        luma_mode_search_state.mark_node(node, luma_mode);
+        if selected_luma_inter_decision.is_none() {
+            luma_mode_search_state.mark_node(node, luma_mode);
+        }
         #[cfg(feature = "vvc-stats")]
         residual_energy_stats.add_luma_residuals(
             &luma_residuals,
@@ -1218,6 +1373,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         luma_tu_bdpcm_modes[luma_tu_count] = luma_tu.bdpcm_mode;
         luma_tu_mrl_index[luma_tu_count] = luma_tu.mrl_index;
         luma_tu_mts_index[luma_tu_count] = luma_tu.mts_index;
+        applied_luma_inter_decisions[luma_tu_count] = selected_luma_inter_decision;
         #[cfg(feature = "vvc-stats")]
         write_vvc_luma_tu_trace(
             tu_trace_sink.as_mut(),
@@ -1253,6 +1409,109 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         let chroma_height = usize::from(node.height) / subsample_y;
         let co_located_luma_mode = luma_mode_search_state.co_located_mode_for_chroma_node(node);
         let cclm_syntax_enabled = vvc_chroma_cclm_node_allowed(node);
+        if let Some(decision) = applied_luma_inter_decisions
+            .get(chroma_tu_count)
+            .copied()
+            .flatten()
+        {
+            if let Some(reference) = inter_reference {
+                if VvcReconstructionFrame::predict_chroma_node_from_inter_motion_into(
+                    reference,
+                    &mut predicted_cb,
+                    &mut predicted_cr,
+                    node,
+                    decision,
+                ) {
+                    #[cfg(feature = "vvc-stats")]
+                    let residual_start = StageStart::now();
+                    residual_chroma_tu_at_into(
+                        &mut cb_residuals,
+                        &source_frame.cb,
+                        source_frame.geometry,
+                        source_frame.format,
+                        chroma_x,
+                        chroma_y,
+                        chroma_width,
+                        chroma_height,
+                        &predicted_cb,
+                    );
+                    #[cfg(feature = "vvc-stats")]
+                    intra_search_stats
+                        .add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+                    #[cfg(feature = "vvc-stats")]
+                    let residual_start = StageStart::now();
+                    residual_chroma_tu_at_into(
+                        &mut cr_residuals,
+                        &source_frame.cr,
+                        source_frame.geometry,
+                        source_frame.format,
+                        chroma_x,
+                        chroma_y,
+                        chroma_width,
+                        chroma_height,
+                        &predicted_cr,
+                    );
+                    #[cfg(feature = "vvc-stats")]
+                    intra_search_stats
+                        .add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+                    let chroma_coding_decision = policy.select_chroma_tu_coding_decision(
+                        node,
+                        VvcChromaIntraPredictionMode::Derived,
+                    );
+                    #[cfg(feature = "vvc-stats")]
+                    residual_energy_stats.add_chroma_residuals(
+                        &cb_residuals,
+                        chroma_width,
+                        chroma_height,
+                    );
+                    #[cfg(feature = "vvc-stats")]
+                    residual_energy_stats.add_chroma_residuals(
+                        &cr_residuals,
+                        chroma_width,
+                        chroma_height,
+                    );
+                    #[cfg(feature = "vvc-stats")]
+                    let chroma_finalize_start = StageStart::now();
+                    let chroma_tu = finalize_vvc_chroma_tu(
+                        chroma_coding_decision,
+                        source_frame,
+                        frame_recon,
+                        node,
+                        &predicted_cb,
+                        &predicted_cr,
+                        &cb_residuals,
+                        &cr_residuals,
+                        chroma_width,
+                        chroma_height,
+                        chroma_qp,
+                        chroma_ts_quant,
+                        vvc_transform_skip_qp_reconstructs_exact(
+                            source_frame.format.bit_depth,
+                            chroma_qp,
+                        ),
+                        None,
+                        &mut intra_search_stats,
+                        &mut transform_scratch,
+                        &mut reconstructed_residual,
+                    );
+                    #[cfg(feature = "vvc-stats")]
+                    intra_search_stats.add_chroma_finalize_nanos(
+                        chroma_finalize_start.elapsed().as_nanos() as u64,
+                    );
+                    cb_tu_dc_levels[chroma_tu_count] = chroma_tu.cb_dc_level;
+                    cr_tu_dc_levels[chroma_tu_count] = chroma_tu.cr_dc_level;
+                    cb_tu_ac_levels[chroma_tu_count] = chroma_tu.cb_ac_levels;
+                    cr_tu_ac_levels[chroma_tu_count] = chroma_tu.cr_ac_levels;
+                    cb_tu_has_ac[chroma_tu_count] = chroma_tu.cb_has_ac;
+                    cr_tu_has_ac[chroma_tu_count] = chroma_tu.cr_has_ac;
+                    cb_tu_transform_skip[chroma_tu_count] = chroma_tu.cb_transform_skip;
+                    cr_tu_transform_skip[chroma_tu_count] = chroma_tu.cr_transform_skip;
+                    chroma_tu_bdpcm_modes[chroma_tu_count] = chroma_tu.bdpcm_mode;
+                    chroma_tu_count += 1;
+                    continue;
+                }
+            }
+        }
         if chroma_inter_skip
             .and_then(|mask| mask.get(chroma_tu_count))
             .copied()
@@ -1853,6 +2112,9 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     scratch.chroma_rd_cache = chroma_rd_cache;
     scratch.luma_nodes = luma_nodes;
     scratch.chroma_nodes = chroma_nodes;
+    if let Some(selected) = selected_luma_inter_decisions {
+        *selected = applied_luma_inter_decisions;
+    }
     quantized
 }
 

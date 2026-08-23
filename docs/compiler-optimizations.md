@@ -7922,6 +7922,98 @@ FPS below 0.90x baseline, bytes above 1.20x baseline, or PSNR below baseline by
 more than 1.0 dB. Treat candidates with >5% byte growth or >0.30 dB PSNR loss
 as watch-list items even if the scalar score is positive.
 
+### VVC Residual-Coded Explicit Inter, 4:2:0-Gated
+
+Checkpoint: `vvc-residual-explicit-inter-420-entry-gate-q19-50f`.
+
+The explicit-inter scaffold is now wired through production quantization for a
+strict 4:2:0 subset. The selector still starts from source-exact full-pel luma
+motion over 8x8 leaves, but a leaf is only emitted as explicit inter when:
+
+- the chroma format is 4:2:0;
+- the chroma source motion is co-located with the luma motion;
+- the previous reconstruction predicts the chroma samples exactly for that
+  leaf;
+- the inter luma residual beats the already-selected intra luma residual under
+  the shared quantized residual RD score.
+
+This keeps the coding path unified: intra mode search, MRL/BDPCM, residual
+quantization, reconstruction, and CABAC residual emission remain shared. Inter
+is only a leaf-level candidate selected after the normal intra candidate exists.
+The CABAC body now emits either no-residual explicit inter or explicit inter
+followed by the normal transform-unit residual writer. The no-residual branch
+also advances the chroma TU index, fixing the older luma/chroma index skew for
+single-tree inter leaves.
+
+Rejected probe:
+
+- Ungated 4:4:4 explicit inter looked attractive in bytes, but it hid a hard
+  chroma PSNR regression on `probe_checker_444` and `probe_blocks_444`. The
+  immediate cause was using previous reconstruction as the chroma predictor
+  without a chroma RD decision. The release path is therefore 4:2:0-only until
+  explicit inter can compare luma+chroma cost together.
+
+50-frame local VVC mode-probe matrix versus `vvc-pre-rd-chroma-bdpcm-q19-50f`:
+
+| Vector | Previous bytes | Current bytes | Byte delta | Previous FPS | Current FPS | FPS delta | Previous PSNR | Current PSNR | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| probe_gradient_420 | 3,873,167 | 3,875,490 | +2,323 | 10.57 | 9.72 | -0.85 | 43.731 | 43.727 | -0.004 | -1.3 regress |
+| probe_blocks_420 | 2,331,853 | 1,911,857 | -419,996 | 12.41 | 12.18 | -0.23 | 42.461 | 43.834 | +1.373 | +11.9 watch |
+| probe_checker_444 | 2,340,887 | 2,340,887 | 0 | 10.75 | 10.09 | -0.67 | 94.486 | 94.486 | 0.000 | -0.9 regress |
+| probe_blocks_444 | 2,499,854 | 2,499,854 | 0 | 7.37 | 6.99 | -0.37 | 49.653 | 49.653 | 0.000 | -0.7 regress |
+
+Aggregate score was `+2.2`, status `watch`, with no hard regressions. The 4:4:4
+rows are unchanged in bytes and PSNR; their negative row scores are timing noise
+from the local run. A stats-enabled 5-frame 4:2:0 color-block probe confirmed
+production selection (`predictive_luma_explicit_inter_count` rose from 19 on
+frame 2 to 139 on frame 5).
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=local-vvc-mode-probe-50f \
+  ENCODE_MATRIX_RUN=vvc-residual-explicit-inter-420-entry-gate-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc ENCODE_MATRIX_MODES=lossy ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_VVC_LOSSY_QP=19 ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
+  ENCODE_MATRIX_VVC_GOP=-1 \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-pre-rd-chroma-bdpcm-q19-50f.json \
+  ENCODE_MATRIX_FAIL_ON_REGRESS=1 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
+External-encoder notes for the next pass:
+
+- VTM exposes full, diamond, selective, and enhanced-diamond/TZ-style motion
+  search plus adaptive search range and Hadamard ME. The current FrameFinery
+  selector is much narrower: full-pel, source-exact, 8x8/aggregate motion only.
+- x265's search ladder (`dia`, `hex`, `umh`, `star`, `sea`, `full`) and HME
+  controls are a useful template for staged speed/quality settings. Its docs
+  also note that chroma residual cost is only included at higher subpel
+  refinement levels, which matches the 4:4:4 failure here: chroma must be a
+  deliberate mode-decision input, not an afterthought.
+- VVenC presets and changelog point to practical speed work around fast inter
+  mode decision, merge/affine search pruning, SCC detection, memory reuse, and
+  inter-frame parallelism. The next local implementation should prioritize
+  legal mixed P-slice intra+inter syntax, merge/skip candidate RD, then
+  diamond/TZ-style non-exact full-pel search with a luma+chroma score.
+
+Follow-ups:
+
+- Add a luma+chroma explicit-inter RD candidate so 4:4:4 and 4:2:2 can be
+  reconsidered without chroma PSNR regressions.
+- Replace the source-exact-only candidate with diamond/TZ search around AMVP,
+  zero, and spatial/HMVP predictors; keep source-exact as an early-accept case.
+- Add merge/skip candidate selection before explicit MVD when the legal
+  single-slice mixed P-tree path is complete.
+- Run six-vector 50-frame scoring after the next inter-search expansion; this
+  checkpoint was accepted only on the local mode-probe set.
+
 ## References
 
 - Cargo profile settings:
