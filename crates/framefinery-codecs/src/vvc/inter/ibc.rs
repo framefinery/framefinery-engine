@@ -79,46 +79,24 @@ impl VvcIbcHashSearch {
         // so the RTL can resolve a CU as soon as its TU samples arrive instead
         // of synthesizing a 64-way CTU hash search: A1, then B1, then B0.
         let reference = self.local_hash_candidate(origin_x, origin_y, hash)?;
-        let predictor = self.bvp_for(origin_x, origin_y);
-        let bv = VvcIbcBv {
-            x: ((reference.origin_x as i16 - origin_x as i16) << 4),
-            y: ((reference.origin_y as i16 - origin_y as i16) << 4),
-        };
-        let bvd = VvcIbcBv {
-            x: bv.x - predictor.x,
-            y: bv.y - predictor.y,
-        };
+        self.decision_for_reference(origin_x, origin_y, reference)
+    }
 
-        if (bvd.x & 15) != 0 || (bvd.y & 15) != 0 {
-            return None;
-        }
-        let mvd = VvcIbcBv {
-            x: bvd.x >> 4,
-            y: bvd.y >> 4,
-        };
-
-        // H.266 7.3.11.8 codes lMvd before the IBC AMVR scaling specified by
-        // H.266 Table 16. Our 8x8 hash search uses integer-sample BVs, so the
-        // coded MVD is the 1/16-sample BVD divided by 16. The current CTU-local
-        // table is far inside the [-2^17, 2^17-1] range, but keep the guard
-        // here so a later picture-wide IBC virtual buffer has a clear failure
-        // point.
-        if !vvc_ibc_mvd_component_is_supported(mvd.x) || !vvc_ibc_mvd_component_is_supported(mvd.y)
-        {
+    #[cfg(feature = "vvc-stats")]
+    pub(super) fn decide_ctu_hash_8x8(
+        &self,
+        frame: &VvcSampledFrame,
+        origin_x: usize,
+        origin_y: usize,
+    ) -> Option<VvcIbcCuDecision> {
+        if !vvc_ibc_full_8x8_is_visible(frame, origin_x, origin_y) {
             return None;
         }
 
-        Some(VvcIbcCuDecision {
-            origin_x,
-            origin_y,
-            ref_origin_x: reference.origin_x,
-            ref_origin_y: reference.origin_y,
-            bv_x: bv.x,
-            bv_y: bv.y,
-            mvd_x: mvd.x,
-            mvd_y: mvd.y,
-            pred_mode_ibc_ctx: self.pred_mode_ibc_ctx(origin_x, origin_y),
-        })
+        let hash = vvc_ibc_hash_8x8(frame, origin_x, origin_y);
+        self.ctu_hash_candidates(origin_x, origin_y, hash)
+            .filter_map(|reference| self.decision_for_reference(origin_x, origin_y, reference))
+            .min_by_key(|decision| vvc_ibc_decision_search_cost(*decision))
     }
 
     pub(super) fn decide_left_8x8(
@@ -314,6 +292,68 @@ impl VvcIbcHashSearch {
             .copied()
     }
 
+    #[cfg(feature = "vvc-stats")]
+    fn ctu_hash_candidates(
+        &self,
+        origin_x: usize,
+        origin_y: usize,
+        hash: u32,
+    ) -> impl Iterator<Item = VvcIbcHashEntry> + '_ {
+        self.entries.iter().copied().filter(move |entry| {
+            entry.hash == hash
+                && (entry.origin_y < origin_y
+                    || (entry.origin_y == origin_y && entry.origin_x < origin_x))
+        })
+    }
+
+    fn decision_for_reference(
+        &self,
+        origin_x: usize,
+        origin_y: usize,
+        reference: VvcIbcHashEntry,
+    ) -> Option<VvcIbcCuDecision> {
+        let predictor = self.bvp_for(origin_x, origin_y);
+        let bv = VvcIbcBv {
+            x: ((reference.origin_x as i16 - origin_x as i16) << 4),
+            y: ((reference.origin_y as i16 - origin_y as i16) << 4),
+        };
+        let bvd = VvcIbcBv {
+            x: bv.x - predictor.x,
+            y: bv.y - predictor.y,
+        };
+
+        if (bvd.x & 15) != 0 || (bvd.y & 15) != 0 {
+            return None;
+        }
+        let mvd = VvcIbcBv {
+            x: bvd.x >> 4,
+            y: bvd.y >> 4,
+        };
+
+        // H.266 7.3.11.8 codes lMvd before the IBC AMVR scaling specified by
+        // H.266 Table 16. Our 8x8 hash search uses integer-sample BVs, so the
+        // coded MVD is the 1/16-sample BVD divided by 16. The current CTU-local
+        // table is far inside the [-2^17, 2^17-1] range, but keep the guard
+        // here so a later picture-wide IBC virtual buffer has a clear failure
+        // point.
+        if !vvc_ibc_mvd_component_is_supported(mvd.x) || !vvc_ibc_mvd_component_is_supported(mvd.y)
+        {
+            return None;
+        }
+
+        Some(VvcIbcCuDecision {
+            origin_x,
+            origin_y,
+            ref_origin_x: reference.origin_x,
+            ref_origin_y: reference.origin_y,
+            bv_x: bv.x,
+            bv_y: bv.y,
+            mvd_x: mvd.x,
+            mvd_y: mvd.y,
+            pred_mode_ibc_ctx: self.pred_mode_ibc_ctx(origin_x, origin_y),
+        })
+    }
+
     fn local_origin(&self, origin_x: usize, origin_y: usize) -> Option<(usize, usize)> {
         let local_x = origin_x.checked_sub(self.ctu_origin_x)?;
         let local_y = origin_y.checked_sub(self.ctu_origin_y)?;
@@ -329,6 +369,8 @@ pub(super) struct VvcSccCtuAnalysis {
     pub(super) palette_no_escape_8x8_count: usize,
     pub(super) palette_escape_8x8_count: usize,
     pub(super) ibc_exact_8x8_count: usize,
+    pub(super) ibc_ctu_exact_8x8_count: usize,
+    pub(super) ibc_ctu_extra_exact_8x8_count: usize,
     pub(super) ibc_left_residual_8x8_count: usize,
 }
 
@@ -371,8 +413,16 @@ pub(super) fn vvc_scc_analysis_for_region(
             }
             if let Some(decision) = ibc_search.decide_8x8(frame, origin_x, origin_y) {
                 analysis.ibc_exact_8x8_count += 1;
+                analysis.ibc_ctu_exact_8x8_count += 1;
                 ibc_search.record_ibc_8x8(frame, decision);
             } else {
+                if ibc_search
+                    .decide_ctu_hash_8x8(frame, origin_x, origin_y)
+                    .is_some()
+                {
+                    analysis.ibc_ctu_exact_8x8_count += 1;
+                    analysis.ibc_ctu_extra_exact_8x8_count += 1;
+                }
                 if ibc_search
                     .decide_left_8x8(frame, origin_x, origin_y)
                     .is_some()
@@ -421,6 +471,20 @@ fn vvc_ibc_cu_index(origin_x: usize, origin_y: usize) -> Option<usize> {
     } else {
         None
     }
+}
+
+#[cfg(feature = "vvc-stats")]
+fn vvc_ibc_decision_search_cost(decision: VvcIbcCuDecision) -> (u32, u32, usize, usize) {
+    let mvd_cost = u32::from(decision.mvd_x.unsigned_abs())
+        .saturating_add(u32::from(decision.mvd_y.unsigned_abs()));
+    let bv_cost = u32::from(decision.bv_x.unsigned_abs())
+        .saturating_add(u32::from(decision.bv_y.unsigned_abs()));
+    (
+        mvd_cost,
+        bv_cost,
+        decision.ref_origin_y,
+        decision.ref_origin_x,
+    )
 }
 
 fn vvc_ibc_hash_8x8(frame: &VvcSampledFrame, origin_x: usize, origin_y: usize) -> u32 {

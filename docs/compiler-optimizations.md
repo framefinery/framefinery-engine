@@ -7699,6 +7699,42 @@ TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs
   vvc_luma_motion_map --features vvc
 TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
   vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp PYTHONPATH=scripts \
+  python3 -m unittest scripts/test_encode_tradeoff.py
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
+### VVC CTU-Wide IBC Opportunity Counters
+
+Accepted scaffold: the VVC IBC search object now has a stats-only CTU-wide
+exact-hash probe. The production IBC decision path is still the adjacent
+A1/B1/B0 subset, but the instrumentation can now count repeated 8x8 4:4:4
+screen-content blocks that are already coded elsewhere in the current CTU.
+The counters separate currently reachable adjacent IBC from broader opportunity:
+
+- `scc_ibc_exact_8x8_count`: current adjacent exact-hash IBC path.
+- `scc_ibc_ctu_exact_8x8_count`: all CTU-local exact-hash opportunities seen
+  by the shared IBC search object.
+- `scc_ibc_ctu_extra_exact_8x8_count`: non-adjacent CTU opportunities beyond
+  the current A1/B1/B0 subset.
+
+This is output-neutral. It is meant to decide whether full CTU-local IBC search
+is worth enabling in the normal CTU decision graph for screen-content lossy and
+lossless encodes. It reuses the same BVP/MVD legality checks as the adjacent
+IBC path so a future output-changing patch can promote the candidate without
+forking IBC analysis from IBC syntax/reconstruction.
+
+Validation:
+
+```text
+TMPDIR=verification/generated/agent_scratch/tmp cargo fmt
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_scc_analysis --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc --features "vvc vvc-stats"
 TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
   VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
   VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \

@@ -822,6 +822,14 @@ fn add_vvc_scc_analysis_counters(
         analysis.ibc_exact_8x8_count as u64,
     );
     stats.add_counter(
+        "scc_ibc_ctu_exact_8x8_count",
+        analysis.ibc_ctu_exact_8x8_count as u64,
+    );
+    stats.add_counter(
+        "scc_ibc_ctu_extra_exact_8x8_count",
+        analysis.ibc_ctu_extra_exact_8x8_count as u64,
+    );
+    stats.add_counter(
         "scc_ibc_left_residual_8x8_count",
         analysis.ibc_left_residual_8x8_count as u64,
     );

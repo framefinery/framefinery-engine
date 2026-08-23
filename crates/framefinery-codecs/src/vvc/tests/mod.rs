@@ -4654,6 +4654,73 @@ fn vvc_scc_analysis_reports_palette_and_ibc_opportunities_for_nonzero_ctu() {
     assert_eq!(analysis.palette_no_escape_8x8_count, 3);
     assert_eq!(analysis.palette_escape_8x8_count, 0);
     assert_eq!(analysis.ibc_exact_8x8_count, 2);
+    assert_eq!(analysis.ibc_ctu_exact_8x8_count, 2);
+    assert_eq!(analysis.ibc_ctu_extra_exact_8x8_count, 0);
+}
+
+#[cfg(feature = "vvc-stats")]
+#[test]
+fn vvc_scc_analysis_counts_non_adjacent_ctu_hash_ibc_opportunities() {
+    let geometry = VvcVideoGeometry {
+        width: 24,
+        height: 8,
+    };
+    let mut luma = vec![0; geometry.luma_samples()];
+    let mut cb = vec![0; geometry.luma_samples()];
+    let mut cr = vec![0; geometry.luma_samples()];
+    for y in 0..8 {
+        for x in 0..8 {
+            let base = y * 8 + x;
+            for block_x in [0, 16] {
+                let dst = y * geometry.width + block_x + x;
+                luma[dst] = (base * 3 + 11) as u8;
+                cb[dst] = (base * 5 + 17) as u8;
+                cr[dst] = (base * 7 + 23) as u8;
+            }
+            let middle = y * geometry.width + 8 + x;
+            luma[middle] = (base * 13 + 19) as u8;
+            cb[middle] = (base * 17 + 29) as u8;
+            cr[middle] = (base * 19 + 31) as u8;
+        }
+    }
+    let frame = VvcSampledFrame {
+        geometry,
+        format: VvcPictureFormat {
+            chroma_sampling: ChromaSampling::Cs444,
+            bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+        },
+        luma: luma.iter().copied().map(u16::from).collect(),
+        cb: cb.iter().copied().map(u16::from).collect(),
+        cr: cr.iter().copied().map(u16::from).collect(),
+        chroma_len: geometry.luma_samples(),
+    };
+
+    let mut ibc_search = super::ibc::VvcIbcHashSearch::new();
+    ibc_search.record_palette_8x8(&frame, 0, 0);
+    ibc_search.record_palette_8x8(&frame, 8, 0);
+    assert!(
+        ibc_search.decide_8x8(&frame, 16, 0).is_none(),
+        "adjacent-only IBC should not see the repeated non-adjacent block"
+    );
+    let ctu_decision = ibc_search
+        .decide_ctu_hash_8x8(&frame, 16, 0)
+        .expect("CTU-wide IBC probe should find the earlier matching block");
+    assert_eq!(ctu_decision.ref_origin_x, 0);
+    assert_eq!(ctu_decision.ref_origin_y, 0);
+    assert_eq!(ctu_decision.mvd_x, -16);
+    assert_eq!(ctu_decision.mvd_y, 0);
+
+    let region = VvcCtuRegion {
+        slice_address: 0,
+        origin_x: 0,
+        origin_y: 0,
+        geometry,
+    };
+    let analysis = super::ibc::vvc_scc_analysis_for_region(&frame, region);
+    assert_eq!(analysis.block_count, 3);
+    assert_eq!(analysis.ibc_exact_8x8_count, 0);
+    assert_eq!(analysis.ibc_ctu_exact_8x8_count, 1);
+    assert_eq!(analysis.ibc_ctu_extra_exact_8x8_count, 1);
 }
 
 #[test]
