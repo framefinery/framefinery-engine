@@ -8503,6 +8503,24 @@ Aggregate score was `+0.1`, status `watch`, with no hard regressions. Bytes
 and PSNR were unchanged on every row. The useful signal remains the exact
 4:4:4 checker path; the other row deltas are timing noise.
 
+Rejected follow-up: `vvc-chroma-residual-zero-short-circuit-q19-50f`.
+
+A micro-probe changed the tracked-zero loop from unconditional
+`all_zero &= residual == 0` to a short-circuit update after the first nonzero
+sample. The output stayed byte- and PSNR-identical, but the 50-frame scorer
+measured a small FPS drop on every local mode-probe row:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | -0.08 | +0.000 | -0.1 regress |
+| probe_blocks_420 | +0 | -0.03 | +0.000 | -0.0 regress |
+| probe_checker_444 | +0 | -0.25 | +0.000 | -0.1 regress |
+| probe_blocks_444 | +0 | -0.19 | +0.000 | -0.4 regress |
+
+Aggregate score was `-0.2`, status `regress`, with no hard regressions. The
+source diff was reverted; LLVM likely handles the unconditional boolean-and
+better than the extra branch on this workload.
+
 Validation:
 
 ```sh
