@@ -8379,6 +8379,92 @@ TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
   ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
 ```
 
+### VVC Explicit-Inter Chroma Zero-Residual Finalize
+
+Checkpoint: `vvc-explicit-inter-chroma-zero-residual-finalize-q19-50f`.
+
+The exact 4:4:4 explicit-inter luma shortcut still left chroma finalization
+doing transform/quant/RD work on residual buffers that were often entirely
+zero. That is the same class of early-exit used by production encoders: x265
+checks merge candidates for no-residual skip before continuing expensive inter
+search, and SVT-AV1 separates cheap open-loop motion estimation from later
+mode-decision refinement. Recent VVC papers follow the same general pattern:
+use cheap content or parent/neighbor decisions to avoid expensive RD traversal,
+then validate the rate/distortion cost.
+
+This change keeps the residual path unified. It still builds the Cb/Cr
+residuals with `residual_chroma_tu_at_into()`, then, if both residual buffers
+are already all zero, passes an explicit all-zero transform-skip residual into
+`finalize_vvc_chroma_tu()`. CABAC only emits chroma residual syntax when CBF is
+nonzero, so the transform-skip marker is reconstruction metadata for this
+zero-CBF case and does not invent a new bitstream path.
+
+Rejected variant before the final gate:
+
+- `vvc-exact-explicit-inter-chroma-zero-finalize-q19-50f` first compared
+  source samples with predicted samples before residual construction. It
+  improved the exact checker row but double-scanned non-exact explicit-inter
+  chroma blocks. The aggregate was only `+0.4` (`watch`) and non-exact rows had
+  avoidable timing overhead. The accepted variant checks the residual buffers
+  after the existing shared residual builder instead.
+
+50-frame local VVC mode-probe matrix versus
+`vvc-exact-explicit-inter-444-early-finalize-q19-50f`:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.18 | +0.000 | +0.3 watch |
+| probe_blocks_420 | +0 | -0.04 | +0.000 | -0.0 regress |
+| probe_checker_444 | +0 | +1.96 | +0.000 | +0.7 watch |
+| probe_blocks_444 | +0 | -0.03 | +0.000 | -0.1 regress |
+
+Aggregate score was `+0.2`, status `watch`, with no hard regressions. Bytes
+and PSNR were unchanged on every row. The retained signal is the exact
+4:4:4 checker path, where chroma finalization no longer quantizes known-zero
+residuals. The small negative row scores are timing noise or the tiny all-zero
+scan on nonzero residuals; this should be revisited only if a future matrix
+shows persistent non-exact 4:4:4 overhead.
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=local-vvc-mode-probe-50f \
+  ENCODE_MATRIX_RUN=vvc-explicit-inter-chroma-zero-residual-finalize-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc ENCODE_MATRIX_MODES=lossy ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_VVC_LOSSY_QP=19 ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
+  ENCODE_MATRIX_VVC_GOP=-1 \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-exact-explicit-inter-444-early-finalize-q19-50f.json \
+  ENCODE_MATRIX_FAIL_ON_REGRESS=1 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
+Near-term motion/mode-search direction from the current literature and encoder
+scan:
+
+- Add staged motion search, not exhaustive full search: seed with zero,
+  spatial/temporal predictors, and the current exact-source candidate; refine
+  with diamond/hex/TZ-style local search only when SAD and syntax cost justify
+  it.
+- Keep AMVP/MVD rate cost predictor-relative. Absolute MV magnitude already
+  failed locally because VVC emits MVD against a selected AMVP candidate.
+- Use hard early exits only for provably decisive cases: exact no-residual
+  inter, all-zero residual, or current-best SAD limits. Learned/texture
+  partition gates can come later, but they must be behind the byte/PSNR/FPS
+  scorer and VTM-required decode validation.
+- Prefer shared scoring/finalization hooks over separate lossy/lossless or
+  RGB/YUV paths. This keeps compression changes local to feature gates rather
+  than duplicating encoder logic.
+
 ## References
 
 - Cargo profile settings:

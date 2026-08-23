@@ -432,6 +432,31 @@ fn vvc_luma_prediction_matches_source(
     true
 }
 
+fn vvc_zero_chroma_preselected_residual() -> VvcScoredSelectedChromaResidual {
+    VvcScoredSelectedChromaResidual {
+        residual: VvcSelectedChromaResidual {
+            cb: VvcFinalizedResidualBlock {
+                dc_level: 0,
+                ac_levels: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
+                has_ac: false,
+                transform_skip: true,
+                bdpcm_mode: VvcBdpcmMode::None,
+            },
+            cr: VvcFinalizedResidualBlock {
+                dc_level: 0,
+                ac_levels: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
+                has_ac: false,
+                transform_skip: true,
+                bdpcm_mode: VvcBdpcmMode::None,
+            },
+        },
+        score: VvcResidualBlockScore {
+            distortion: 0,
+            rate_cost: 0,
+        },
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn select_vvc_luma_explicit_inter_candidate(
     decision: VvcLumaInterDecision,
@@ -1618,6 +1643,13 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                     #[cfg(feature = "vvc-stats")]
                     intra_search_stats
                         .add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+                    let preselected_residual = if cb_residuals.iter().all(|residual| *residual == 0)
+                        && cr_residuals.iter().all(|residual| *residual == 0)
+                    {
+                        Some(vvc_zero_chroma_preselected_residual())
+                    } else {
+                        None
+                    };
                     let chroma_coding_decision = policy.select_chroma_tu_coding_decision(
                         node,
                         VvcChromaIntraPredictionMode::Derived,
@@ -1653,7 +1685,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                             source_frame.format.bit_depth,
                             chroma_qp,
                         ),
-                        None,
+                        preselected_residual,
                         &mut intra_search_stats,
                         &mut transform_scratch,
                         &mut reconstructed_residual,
