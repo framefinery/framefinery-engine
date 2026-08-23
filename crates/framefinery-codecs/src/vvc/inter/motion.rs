@@ -57,6 +57,18 @@ pub(in crate::vvc) struct VvcLumaMotionAggregateSummary {
     pub(in crate::vvc) total_sad: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::vvc) struct VvcLumaMotionAggregateCandidate {
+    pub(in crate::vvc) origin_x: usize,
+    pub(in crate::vvc) origin_y: usize,
+    pub(in crate::vvc) width: usize,
+    pub(in crate::vvc) height: usize,
+    pub(in crate::vvc) ref_origin_x: usize,
+    pub(in crate::vvc) ref_origin_y: usize,
+    pub(in crate::vvc) mv: VvcLumaMotionVector,
+    pub(in crate::vvc) total_sad: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::vvc) struct VvcLumaMotionMap {
     origin_x: usize,
@@ -228,6 +240,52 @@ impl VvcLumaMotionMap {
             .copied()
     }
 
+    pub(in crate::vvc) fn uniform_aggregate_candidate(
+        &self,
+        block_x: usize,
+        block_y: usize,
+        blocks_per_side: usize,
+    ) -> Option<VvcLumaMotionAggregateCandidate> {
+        self.uniform_aggregate_rect_candidate(block_x, block_y, blocks_per_side, blocks_per_side)
+    }
+
+    pub(in crate::vvc) fn uniform_aggregate_rect_candidate(
+        &self,
+        block_x: usize,
+        block_y: usize,
+        blocks_w: usize,
+        blocks_h: usize,
+    ) -> Option<VvcLumaMotionAggregateCandidate> {
+        if blocks_w == 0 || blocks_h == 0 {
+            return None;
+        }
+        let aggregate = self.aggregate_area(block_x, block_y, blocks_w, blocks_h)?;
+        if !aggregate.uniform_mv {
+            return None;
+        }
+        let mv = aggregate.mv?;
+        let origin_x = self
+            .origin_x
+            .checked_add(block_x.checked_mul(self.block_size)?)?;
+        let origin_y = self
+            .origin_y
+            .checked_add(block_y.checked_mul(self.block_size)?)?;
+        let width = blocks_w.checked_mul(self.block_size)?;
+        let height = blocks_h.checked_mul(self.block_size)?;
+        let ref_origin_x = offset_origin(origin_x, mv.x)?;
+        let ref_origin_y = offset_origin(origin_y, mv.y)?;
+        Some(VvcLumaMotionAggregateCandidate {
+            origin_x,
+            origin_y,
+            width,
+            height,
+            ref_origin_x,
+            ref_origin_y,
+            mv,
+            total_sad: aggregate.total_sad,
+        })
+    }
+
     fn block_analysis(&self, near_sad_per_sample: u64) -> VvcLumaMotionRegionAnalysis {
         let summary = self.aggregate_summary(1, near_sad_per_sample);
         VvcLumaMotionRegionAnalysis {
@@ -337,6 +395,7 @@ impl VvcLumaMotionMap {
             total_sad,
             uniform_mv,
             has_nonzero_mv,
+            mv: first_mv,
         })
     }
 }
@@ -346,6 +405,7 @@ struct VvcLumaMotionAggregateArea {
     total_sad: u64,
     uniform_mv: bool,
     has_nonzero_mv: bool,
+    mv: Option<VvcLumaMotionVector>,
 }
 
 fn motion_near_threshold(near_sad_per_sample: u64, samples: usize) -> u64 {
@@ -618,6 +678,7 @@ mod tests {
         let mut current = motion_test_frame(24, 16);
         for y in 0..8 {
             for x in 0..8 {
+                current.luma[y * 24 + x] = reference.luma[y * 24 + x];
                 current.luma[y * 24 + 8 + x] = reference.luma[y * 24 + x];
             }
         }
@@ -694,6 +755,19 @@ mod tests {
         assert!(analysis.aggregate_32x32.nonzero_uniform_count >= 1);
         assert!(analysis.aggregate_32x32.nonzero_uniform_exact_count >= 1);
         assert!(analysis.aggregate_32x32.nonzero_uniform_near_count >= 1);
+
+        let aggregate = map
+            .uniform_aggregate_candidate(4, 0, 4)
+            .expect("shifted 32x32 region has one uniform motion vector");
+        assert_eq!(aggregate.origin_x, 32);
+        assert_eq!(aggregate.origin_y, 0);
+        assert_eq!(aggregate.width, 32);
+        assert_eq!(aggregate.height, 32);
+        assert_eq!(aggregate.ref_origin_x, 0);
+        assert_eq!(aggregate.ref_origin_y, 0);
+        assert_eq!(aggregate.mv, VvcLumaMotionVector { x: -32, y: 0 });
+        assert_eq!(aggregate.total_sad, 0);
+        assert_eq!(map.uniform_aggregate_candidate(4, 0, 0), None);
     }
 
     #[test]
@@ -725,6 +799,45 @@ mod tests {
         assert!(analysis.aggregate_64x64.nonzero_uniform_count >= 1);
         assert!(analysis.aggregate_64x64.nonzero_uniform_exact_count >= 1);
         assert!(analysis.aggregate_64x64.nonzero_uniform_near_count >= 1);
+    }
+
+    #[test]
+    fn vvc_luma_motion_map_rejects_mixed_mv_aggregate_candidate() {
+        let mut reference = motion_test_frame(24, 16);
+        for y in 0..8 {
+            for x in 0..8 {
+                reference.luma[y * 24 + x] = (900 + y * 31 + x * 7) as VvcSample;
+            }
+        }
+        let mut current = motion_test_frame(24, 16);
+        for y in 0..8 {
+            for x in 0..8 {
+                current.luma[y * 24 + x] = reference.luma[y * 24 + x];
+                current.luma[y * 24 + 8 + x] = reference.luma[y * 24 + x];
+            }
+        }
+
+        let region = VvcCtuRegion {
+            slice_address: 0,
+            origin_x: 0,
+            origin_y: 0,
+            geometry: VvcVideoGeometry {
+                width: 24,
+                height: 16,
+            },
+        };
+        let map = vvc_luma_motion_map_for_region(&current, &reference, region, 8)
+            .expect("motion map should cover full 8x8 cells");
+
+        assert_eq!(
+            map.candidate(0, 0).expect("static block").mv,
+            VvcLumaMotionVector { x: 0, y: 0 }
+        );
+        assert_eq!(
+            map.candidate(1, 0).expect("shifted block").mv,
+            VvcLumaMotionVector { x: -8, y: 0 }
+        );
+        assert_eq!(map.uniform_aggregate_candidate(0, 0, 2), None);
     }
 
     fn motion_test_frame(width: usize, height: usize) -> VvcSampledFrame {

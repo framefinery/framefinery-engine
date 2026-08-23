@@ -7675,6 +7675,36 @@ TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs
 TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
 ```
 
+### VVC Reusable Aggregate Motion Candidates
+
+Accepted scaffold: the open-loop luma motion map now exposes uniform aggregate
+motion candidates in addition to counters. A caller can ask for a 16x16,
+32x32, 64x64, or rectangular aggregate candidate and receive the current
+origin, reference origin, full-pel MV, dimensions, and summed SAD only when all
+covered 8x8 cells agree on the same MV. Mixed-MV regions return `None`.
+
+This is still output-neutral; no normal VVC bitstream decision changes. The
+purpose is to make the next translational-inter probe consume the already-built
+source-frame motion map instead of rerunning a parallel search or starting from
+an exhaustive full-frame ME pass. That keeps future non-skip inter work aligned
+with the same cheap-first search shape used by VTM/VVenC/x265/AOM: cheap
+full-pel luma evidence first, exact residual/CABAC only for a small validated
+candidate set.
+
+Validation:
+
+```text
+TMPDIR=verification/generated/agent_scratch/tmp cargo fmt
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc_luma_motion_map --features vvc
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs \
+  vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+```
+
 ## References
 
 - Cargo profile settings:
