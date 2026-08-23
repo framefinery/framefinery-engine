@@ -8472,6 +8472,60 @@ scan:
   RGB/YUV paths. This keeps compression changes local to feature gates rather
   than duplicating encoder logic.
 
+### VVC Chroma Residual Zero-Flag Helper
+
+Checkpoint: `vvc-chroma-residual-zero-tracked-helper-q19-50f`.
+
+The previous zero-residual finalize checkpoint still built Cb/Cr residuals and
+then scanned both vectors to detect the all-zero case. This follow-up keeps the
+normal `residual_chroma_tu_at_into()` API unchanged and adds a tracked-zero
+helper for the explicit-inter chroma branch only. The helper shares the same
+safe residual construction loop but accumulates an `all_zero` flag while
+pushing samples, so exact inter chroma no longer pays an additional residual
+buffer scan.
+
+An earlier local shape returned the zero flag from the common residual builder.
+That also kept bytes and PSNR unchanged, but it made every chroma residual
+build track zero status even when the caller ignored it. The accepted helper
+limits the extra bookkeeping to the path that consumes the flag.
+
+50-frame local VVC mode-probe matrix versus
+`vvc-explicit-inter-chroma-zero-residual-finalize-q19-50f`:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | -0.07 | +0.000 | -0.1 regress |
+| probe_blocks_420 | +0 | +0.04 | +0.000 | +0.0 watch |
+| probe_checker_444 | +0 | +1.37 | +0.000 | +0.5 watch |
+| probe_blocks_444 | +0 | -0.01 | +0.000 | -0.0 regress |
+
+Aggregate score was `+0.1`, status `watch`, with no hard regressions. Bytes
+and PSNR were unchanged on every row. The useful signal remains the exact
+4:4:4 checker path; the other row deltas are timing noise.
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=local-vvc-mode-probe-50f \
+  ENCODE_MATRIX_RUN=vvc-chroma-residual-zero-tracked-helper-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc ENCODE_MATRIX_MODES=lossy ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_VVC_LOSSY_QP=19 ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
+  ENCODE_MATRIX_VVC_GOP=-1 \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-explicit-inter-chroma-zero-residual-finalize-q19-50f.json \
+  ENCODE_MATRIX_FAIL_ON_REGRESS=1 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
 ## References
 
 - Cargo profile settings:

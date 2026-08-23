@@ -1613,7 +1613,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 ) {
                     #[cfg(feature = "vvc-stats")]
                     let residual_start = StageStart::now();
-                    residual_chroma_tu_at_into(
+                    let cb_residuals_all_zero = residual_chroma_tu_at_into_and_detect_zero(
                         &mut cb_residuals,
                         &source_frame.cb,
                         source_frame.geometry,
@@ -1629,7 +1629,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                         .add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
                     #[cfg(feature = "vvc-stats")]
                     let residual_start = StageStart::now();
-                    residual_chroma_tu_at_into(
+                    let cr_residuals_all_zero = residual_chroma_tu_at_into_and_detect_zero(
                         &mut cr_residuals,
                         &source_frame.cr,
                         source_frame.geometry,
@@ -1643,9 +1643,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                     #[cfg(feature = "vvc-stats")]
                     intra_search_stats
                         .add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-                    let preselected_residual = if cb_residuals.iter().all(|residual| *residual == 0)
-                        && cr_residuals.iter().all(|residual| *residual == 0)
-                    {
+                    let preselected_residual = if cb_residuals_all_zero && cr_residuals_all_zero {
                         Some(vvc_zero_chroma_preselected_residual())
                     } else {
                         None

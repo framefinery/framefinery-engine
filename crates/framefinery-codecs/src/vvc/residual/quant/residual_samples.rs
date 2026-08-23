@@ -55,6 +55,38 @@ pub(in crate::vvc) fn residual_chroma_tu_at_into(
     height: usize,
     predicted: &[VvcSample],
 ) {
+    let _ = residual_chroma_tu_at_into_impl::<false>(
+        residuals, samples, geometry, format, origin_x, origin_y, width, height, predicted,
+    );
+}
+
+pub(in crate::vvc) fn residual_chroma_tu_at_into_and_detect_zero(
+    residuals: &mut Vec<i16>,
+    samples: &[VvcSample],
+    geometry: VvcVideoGeometry,
+    format: VvcPictureFormat,
+    origin_x: usize,
+    origin_y: usize,
+    width: usize,
+    height: usize,
+    predicted: &[VvcSample],
+) -> bool {
+    residual_chroma_tu_at_into_impl::<true>(
+        residuals, samples, geometry, format, origin_x, origin_y, width, height, predicted,
+    )
+}
+
+fn residual_chroma_tu_at_into_impl<const TRACK_ZERO: bool>(
+    residuals: &mut Vec<i16>,
+    samples: &[VvcSample],
+    geometry: VvcVideoGeometry,
+    format: VvcPictureFormat,
+    origin_x: usize,
+    origin_y: usize,
+    width: usize,
+    height: usize,
+    predicted: &[VvcSample],
+) -> bool {
     debug_assert_eq!(predicted.len(), width * height);
     let chroma_width = geometry.width / chroma_subsample_x(format.chroma_sampling);
     let chroma_height = geometry.height / chroma_subsample_y(format.chroma_sampling);
@@ -63,6 +95,7 @@ pub(in crate::vvc) fn residual_chroma_tu_at_into(
     residuals.clear();
     if copy_width == width && copy_height == height {
         residuals.reserve(predicted.len());
+        let mut all_zero = true;
         for y in 0..height {
             let src = (origin_y + y) * chroma_width + origin_x;
             let dst = y * width;
@@ -70,28 +103,35 @@ pub(in crate::vvc) fn residual_chroma_tu_at_into(
                 .iter()
                 .zip(&predicted[dst..dst + width])
             {
-                residuals.push(vvc_sample_delta_i16(*sample, *predicted));
+                let residual = vvc_sample_delta_i16(*sample, *predicted);
+                if TRACK_ZERO {
+                    all_zero &= residual == 0;
+                }
+                residuals.push(residual);
             }
         }
         debug_assert_eq!(residuals.len(), predicted.len());
-        return;
+        return all_zero;
     }
     residuals.reserve(predicted.len());
     let max_x = chroma_width - 1;
     let max_y = chroma_height - 1;
+    let mut all_zero = true;
     for y in 0..height {
         let src_y = (origin_y + y).min(max_y);
         let src_row = src_y * chroma_width;
         let dst = y * width;
         for x in 0..width {
             let src_x = (origin_x + x).min(max_x);
-            residuals.push(vvc_sample_delta_i16(
-                samples[src_row + src_x],
-                predicted[dst + x],
-            ));
+            let residual = vvc_sample_delta_i16(samples[src_row + src_x], predicted[dst + x]);
+            if TRACK_ZERO {
+                all_zero &= residual == 0;
+            }
+            residuals.push(residual);
         }
     }
     debug_assert_eq!(residuals.len(), predicted.len());
+    all_zero
 }
 
 fn vvc_sample_delta_i16(sample: VvcSample, predicted: VvcSample) -> i16 {
