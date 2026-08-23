@@ -8003,6 +8003,57 @@ External-encoder notes for the next pass:
   legal mixed P-slice intra+inter syntax, merge/skip candidate RD, then
   diamond/TZ-style non-exact full-pel search with a luma+chroma score.
 
+### VVC Small Exact-Motion Search Early Exit
+
+Checkpoint: `vvc-motion-small-exact-early-exit-q19-50f`.
+
+The explicit-inter motion map now stops diamond refinement when the current
+best full-pel candidate has zero SAD and a small MV tie cost. This mirrors the
+production-encoder pattern of accepting decisive cheap motion candidates
+instead of continuing a wider local search. The gate is intentionally narrow:
+zero-SAD is required, and the Manhattan MV tie cost must be at most 8. Larger
+or non-exact candidates still use the existing diamond refinement path.
+
+This is a mode-search heuristic only. It does not create a separate lossy or
+lossless path, does not change reconstruction logic, and remains protected by
+the explicit-inter leaf RD selector. If the early-exited MV has worse syntax
+cost than intra, the shared selector can still reject it.
+
+50-frame local VVC mode-probe matrix versus
+`vvc-residual-explicit-inter-420-entry-gate-q19-50f`:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.04 | +0.000 | +0.1 watch |
+| probe_blocks_420 | +0 | +1.38 | +0.000 | +1.5 watch |
+| probe_checker_444 | +0 | -0.03 | +0.000 | -0.0 regress |
+| probe_blocks_444 | +0 | -0.12 | +0.000 | -0.3 regress |
+
+Aggregate score was `+0.3`, status `watch`, with no hard regressions. The
+4:4:4 rows are byte/PSNR-identical and do not use the accepted 4:2:0
+explicit-inter path; their negative row scores are timing noise from the local
+run. The useful signal is `probe_blocks_420`, where exact small-MV blocks avoid
+unneeded search work without changing bytes or PSNR.
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=local-vvc-mode-probe-50f \
+  ENCODE_MATRIX_RUN=vvc-motion-small-exact-early-exit-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc ENCODE_MATRIX_MODES=lossy ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_VVC_LOSSY_QP=19 ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
+  ENCODE_MATRIX_VVC_GOP=-1 \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-residual-explicit-inter-420-entry-gate-q19-50f.json \
+  ENCODE_MATRIX_FAIL_ON_REGRESS=1 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
 Follow-ups:
 
 - Add a luma+chroma explicit-inter RD candidate so 4:4:4 and 4:2:2 can be

@@ -3,6 +3,7 @@
 use super::{VvcCtuRegion, VvcSampledFrame};
 
 const VVC_LUMA_MOTION_BLOCK: usize = 8;
+const VVC_LUMA_EXACT_MOTION_EARLY_EXIT_MAX_TIE_COST: u64 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::vvc) struct VvcLumaMotionVector {
@@ -448,6 +449,9 @@ pub(in crate::vvc) fn vvc_luma_diamond_motion_search(
 
     let mut best =
         vvc_luma_motion_candidate_at(current, reference, block, block.origin_x, block.origin_y)?;
+    if vvc_exact_motion_candidate_allows_early_exit(best) {
+        return Some(best);
+    }
     for predictor in predictor_mvs {
         if predictor.x.unsigned_abs() as usize > search_radius
             || predictor.y.unsigned_abs() as usize > search_radius
@@ -465,6 +469,9 @@ pub(in crate::vvc) fn vvc_luma_diamond_motion_search(
         {
             if candidate.is_better_than(best) {
                 best = candidate;
+                if vvc_exact_motion_candidate_allows_early_exit(best) {
+                    return Some(best);
+                }
             }
         }
     }
@@ -494,6 +501,9 @@ pub(in crate::vvc) fn vvc_luma_diamond_motion_search(
             };
             if candidate.is_better_than(best) {
                 best = candidate;
+                if vvc_exact_motion_candidate_allows_early_exit(best) {
+                    return Some(best);
+                }
                 improved = true;
                 break;
             }
@@ -502,6 +512,11 @@ pub(in crate::vvc) fn vvc_luma_diamond_motion_search(
             return Some(best);
         }
     }
+}
+
+fn vvc_exact_motion_candidate_allows_early_exit(candidate: VvcLumaMotionCandidate) -> bool {
+    candidate.sad == 0
+        && motion_vector_tie_cost(candidate.mv) <= VVC_LUMA_EXACT_MOTION_EARLY_EXIT_MAX_TIE_COST
 }
 
 impl VvcLumaMotionCandidate {
