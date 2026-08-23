@@ -364,6 +364,20 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
             sample_vvc_yuv_frame(&frame_buf, VvcEncodeParams { frames: 1 }, geometry, format)?;
         #[cfg(feature = "vvc-stats")]
         frame_stats.add_elapsed("sample_frame", stage_start);
+        #[cfg(feature = "vvc-stats")]
+        let previous_motion_source_frame = if predictive_frame && !residual_mode.is_lossless() {
+            previous_predictive_cache.as_ref().and_then(|cache| {
+                sample_vvc_yuv_frame(
+                    &cache.source,
+                    VvcEncodeParams { frames: 1 },
+                    geometry,
+                    format,
+                )
+                .ok()
+            })
+        } else {
+            None
+        };
         let lossy_mixed_single_p_slice_supported =
             !residual_mode.is_lossless() && vvc_lossy_mixed_single_p_slice_supported(stream_format);
         let predictive_ctu_inter_skip_enabled = predictive_frame
@@ -428,6 +442,42 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 for region in vvc_ctu_regions(geometry) {
                     #[cfg(feature = "vvc-stats")]
                     let stage_start = StageStart::now();
+                    #[cfg(feature = "vvc-stats")]
+                    if let Some(previous_source_frame) = previous_motion_source_frame.as_ref() {
+                        let motion_start = StageStart::now();
+                        let motion_analysis = motion::vvc_luma_motion_analysis_for_region(
+                            &source_frame,
+                            previous_source_frame,
+                            region,
+                            16,
+                            u64::from(vvc_lossy_predictive_skip_max_abs_delta(
+                                stream_format.bit_depth,
+                            )),
+                        );
+                        frame_stats.add_elapsed("predictive_luma_motion_analyze", motion_start);
+                        if motion_analysis.block_count > 0 {
+                            frame_stats.add_counter(
+                                "predictive_luma_motion_8x8_block_count",
+                                motion_analysis.block_count as u64,
+                            );
+                            frame_stats.add_counter(
+                                "predictive_luma_motion_exact_8x8_count",
+                                motion_analysis.exact_count as u64,
+                            );
+                            frame_stats.add_counter(
+                                "predictive_luma_motion_nonzero_exact_8x8_count",
+                                motion_analysis.nonzero_exact_count as u64,
+                            );
+                            frame_stats.add_counter(
+                                "predictive_luma_motion_near_8x8_count",
+                                motion_analysis.near_count as u64,
+                            );
+                            frame_stats.add_counter(
+                                "predictive_luma_motion_total_sad",
+                                motion_analysis.total_sad,
+                            );
+                        }
+                    }
                     let cached_exact_ctu = if predictive_frame
                         && vvc_predictive_intra_ctu_reuse_enabled_for_mode(residual_mode)
                     {

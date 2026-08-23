@@ -1,6 +1,6 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
-use super::VvcSampledFrame;
+use super::{VvcCtuRegion, VvcSampledFrame};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::vvc) struct VvcLumaMotionVector {
@@ -22,6 +22,141 @@ pub(in crate::vvc) struct VvcLumaMotionSearchBlock {
     pub(in crate::vvc) origin_y: usize,
     pub(in crate::vvc) width: usize,
     pub(in crate::vvc) height: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(in crate::vvc) struct VvcLumaMotionRegionAnalysis {
+    pub(in crate::vvc) block_count: usize,
+    pub(in crate::vvc) exact_count: usize,
+    pub(in crate::vvc) nonzero_exact_count: usize,
+    pub(in crate::vvc) near_count: usize,
+    pub(in crate::vvc) total_sad: u64,
+}
+
+pub(in crate::vvc) fn vvc_luma_motion_analysis_for_region(
+    current: &VvcSampledFrame,
+    reference: &VvcSampledFrame,
+    region: VvcCtuRegion,
+    search_radius: usize,
+    near_sad_per_sample: u64,
+) -> VvcLumaMotionRegionAnalysis {
+    const BLOCK: usize = 8;
+
+    let x_end = region
+        .origin_x
+        .saturating_add(region.geometry.width)
+        .min(current.geometry.width);
+    let y_end = region
+        .origin_y
+        .saturating_add(region.geometry.height)
+        .min(current.geometry.height);
+    if x_end < region.origin_x + BLOCK || y_end < region.origin_y + BLOCK {
+        return VvcLumaMotionRegionAnalysis::default();
+    }
+
+    let blocks_x = (x_end - region.origin_x) / BLOCK;
+    let blocks_y = (y_end - region.origin_y) / BLOCK;
+    let mut previous_row_mvs = vec![None; blocks_x];
+    let mut analysis = VvcLumaMotionRegionAnalysis::default();
+
+    for block_y in 0..blocks_y {
+        let mut left_mv = None;
+        for block_x in 0..blocks_x {
+            let block = VvcLumaMotionSearchBlock {
+                origin_x: region.origin_x + block_x * BLOCK,
+                origin_y: region.origin_y + block_y * BLOCK,
+                width: BLOCK,
+                height: BLOCK,
+            };
+            let mut predictor_mvs = [VvcLumaMotionVector { x: 0, y: 0 }; 10];
+            let mut predictor_count = 0usize;
+            if let Some(mv) = left_mv {
+                push_motion_predictor(&mut predictor_mvs, &mut predictor_count, mv);
+            }
+            if let Some(mv) = previous_row_mvs[block_x] {
+                push_motion_predictor(&mut predictor_mvs, &mut predictor_count, mv);
+            }
+            let coarse_step = 8.min(search_radius) as i32;
+            if coarse_step > 0 {
+                for mv in [
+                    VvcLumaMotionVector {
+                        x: -coarse_step,
+                        y: 0,
+                    },
+                    VvcLumaMotionVector {
+                        x: coarse_step,
+                        y: 0,
+                    },
+                    VvcLumaMotionVector {
+                        x: 0,
+                        y: -coarse_step,
+                    },
+                    VvcLumaMotionVector {
+                        x: 0,
+                        y: coarse_step,
+                    },
+                    VvcLumaMotionVector {
+                        x: -coarse_step,
+                        y: -coarse_step,
+                    },
+                    VvcLumaMotionVector {
+                        x: coarse_step,
+                        y: -coarse_step,
+                    },
+                    VvcLumaMotionVector {
+                        x: -coarse_step,
+                        y: coarse_step,
+                    },
+                    VvcLumaMotionVector {
+                        x: coarse_step,
+                        y: coarse_step,
+                    },
+                ] {
+                    push_motion_predictor(&mut predictor_mvs, &mut predictor_count, mv);
+                }
+            }
+            let candidate = vvc_luma_diamond_motion_search(
+                current,
+                reference,
+                block,
+                &predictor_mvs[..predictor_count],
+                search_radius,
+            );
+            let Some(candidate) = candidate else {
+                continue;
+            };
+            analysis.block_count += 1;
+            analysis.total_sad = analysis.total_sad.saturating_add(candidate.sad);
+            let near_threshold = near_sad_per_sample
+                .saturating_mul(block.width as u64)
+                .saturating_mul(block.height as u64);
+            if candidate.sad == 0 {
+                analysis.exact_count += 1;
+                if candidate.mv != (VvcLumaMotionVector { x: 0, y: 0 }) {
+                    analysis.nonzero_exact_count += 1;
+                }
+            }
+            if candidate.sad <= near_threshold {
+                analysis.near_count += 1;
+            }
+            left_mv = Some(candidate.mv);
+            previous_row_mvs[block_x] = Some(candidate.mv);
+        }
+    }
+
+    analysis
+}
+
+fn push_motion_predictor(
+    predictors: &mut [VvcLumaMotionVector],
+    count: &mut usize,
+    mv: VvcLumaMotionVector,
+) {
+    if *count >= predictors.len() || predictors[..*count].contains(&mv) {
+        return;
+    }
+    predictors[*count] = mv;
+    *count += 1;
 }
 
 pub(in crate::vvc) fn vvc_luma_diamond_motion_search(
@@ -265,6 +400,43 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn vvc_luma_motion_analysis_counts_exact_nonzero_motion() {
+        let mut reference = motion_test_frame(24, 16);
+        for y in 0..8 {
+            for x in 0..8 {
+                reference.luma[y * 24 + x] = (900 + y * 31 + x * 7) as VvcSample;
+            }
+        }
+        let mut current = motion_test_frame(24, 16);
+        for y in 0..8 {
+            for x in 0..8 {
+                current.luma[y * 24 + 8 + x] = reference.luma[y * 24 + x];
+            }
+        }
+
+        let analysis = vvc_luma_motion_analysis_for_region(
+            &current,
+            &reference,
+            VvcCtuRegion {
+                slice_address: 0,
+                origin_x: 0,
+                origin_y: 0,
+                geometry: VvcVideoGeometry {
+                    width: 24,
+                    height: 16,
+                },
+            },
+            8,
+            0,
+        );
+
+        assert_eq!(analysis.block_count, 6);
+        assert!(analysis.exact_count >= 1);
+        assert!(analysis.nonzero_exact_count >= 1);
+        assert!(analysis.near_count >= analysis.exact_count);
     }
 
     fn motion_test_frame(width: usize, height: usize) -> VvcSampledFrame {

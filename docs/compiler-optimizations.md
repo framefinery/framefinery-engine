@@ -7524,6 +7524,27 @@ identical PSNR. The tradeoff score is negative because the small measured speed
 gain does not justify a 7.35% byte increase, so the current gate stays enabled
 for all 4:2:0 bit depths.
 
+Accepted scaffold: compile-gated VVC predictive luma motion counters.
+
+The normal VVC encode path does not yet have a legal non-skip translational
+inter payload, so motion-search work cannot safely change bitstream decisions
+until that syntax/reconstruction path exists. As a measured bridge, the
+`vvc-stats` build now runs an integer-pel 8x8 luma diamond search over
+predictive lossy CTU regions and emits:
+
+- `predictive_luma_motion_8x8_block_count`
+- `predictive_luma_motion_exact_8x8_count`
+- `predictive_luma_motion_nonzero_exact_8x8_count`
+- `predictive_luma_motion_near_8x8_count`
+- `predictive_luma_motion_total_sad`
+
+The probe is stats-only and leaves normal product builds and encoded output
+unchanged. A 2-frame `pattern=color_blocks` runtime check at 32x32/q19 emitted
+16 analysed luma blocks on the second frame, all exact nonzero-MV matches. The
+next output-changing VVC inter pass should use these counters to decide where a
+real non-skip inter residual candidate is worth testing before broadening the
+search pattern or adding partition pruning.
+
 ## References
 
 - Cargo profile settings:
