@@ -8407,6 +8407,13 @@ Rejected variant before the final gate:
   chroma blocks. The aggregate was only `+0.4` (`watch`) and non-exact rows had
   avoidable timing overhead. The accepted variant checks the residual buffers
   after the existing shared residual builder instead.
+- `vvc-lossy-cclm-near-exact-gate-q19-50f` tried to skip CCLM in lossy
+  `lossless-speed` 4:4:4 when the pre-CCLM chroma mode score was below the
+  existing near-exact threshold. The 50-frame scorer rejected it: `checker_444`
+  lost roughly 3.0 dB PSNR and `blocks_444` grew by 56,449 bytes. The code was
+  reverted. CCLM cannot be gated by a simple low-residual threshold on these
+  screen-content vectors; any future CCLM reduction needs a direction/texture
+  or luma-chroma-correlation model and must retain the full byte/PSNR/FPS gate.
 
 50-frame local VVC mode-probe matrix versus
 `vvc-exact-explicit-inter-444-early-finalize-q19-50f`:
