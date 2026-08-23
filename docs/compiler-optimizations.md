@@ -8003,6 +8003,31 @@ External-encoder notes for the next pass:
   legal mixed P-slice intra+inter syntax, merge/skip candidate RD, then
   diamond/TZ-style non-exact full-pel search with a luma+chroma score.
 
+Rejected probe: 4:2:0 near-SAD luma motion admission.
+
+Stats showed that `probe_gradient_420` has many uniform near-motion regions but
+almost no source-exact aggregate motion, while `probe_blocks_420` already has
+source-exact motion. A narrow probe allowed 4:2:0 explicit-inter candidates
+when aggregate luma SAD was within the existing lossy predictive-skip per-sample
+delta budget, leaving 4:4:4 exact-only and relying on the shared residual RD
+selector for final acceptance.
+
+The 50-frame local q19 matrix against
+`vvc-explicit-inter-444-recon-exact-q19-50f` rejected the change:
+
+```text
+probe_gradient_420: bytes +0, PSNR +0.000, FPS -0.16, score -0.2 regress
+probe_blocks_420:   bytes +0, PSNR +0.000, FPS +0.07, score +0.1 watch
+probe_checker_444:  bytes +0, PSNR +0.000, FPS +0.09, score +0.1 watch
+probe_blocks_444:   bytes +0, PSNR +0.000, FPS -0.12, score -0.2 regress
+aggregate:          average score -0.1 regress, no hard row regressions
+```
+
+The probe did not change any accepted byte/PSNR decisions and only added timing
+noise. Do not retry near-SAD admission as a standalone gate. The non-exact
+motion path still needs a true luma+chroma candidate score before the
+quantizer/CABAC residual work, not a luma-only admission threshold.
+
 ### VVC Small Exact-Motion Search Early Exit
 
 Checkpoint: `vvc-motion-small-exact-early-exit-q19-50f`.
