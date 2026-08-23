@@ -8320,6 +8320,65 @@ was reverted. Do not reintroduce picture-level AMVP RD-cost tracking until the
 candidate generator can produce alternative inter decisions that need that
 cost to choose between bitrate/quality outcomes.
 
+### VVC 4:4:4 Exact Explicit-Inter Early Finalize
+
+Checkpoint: `vvc-exact-explicit-inter-444-early-finalize-q19-50f`.
+
+The 4:4:4 no-residual explicit-inter path now terminates luma mode search early
+when a nonzero-motion inter candidate already predicts the source luma exactly
+from the previous reconstruction. This mirrors the production-encoder
+early-skip pattern for decisive inter candidates, but stays narrow:
+
+- only 4:4:4 candidates are eligible;
+- zero MV is excluded so flat/current-position ties keep the normal RD path;
+- the helper first materializes the same inter prediction the existing explicit
+  inter path would use, then requires visible luma samples to match the source;
+- final reconstruction still goes through `finalize_vvc_luma_tu()` with an
+  explicit all-zero transform-skip residual, so luma reconstruction bookkeeping
+  remains shared.
+
+This does not change candidate generation, bitstream syntax, or selected
+bytes/PSNR. It only avoids full intra mode search and residual scoring on exact
+4:4:4 inter leaves that would later be selected anyway.
+
+50-frame local VVC mode-probe matrix versus
+`vvc-explicit-inter-mvp-syntax-cost-q19-50f`:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | -0.06 | +0.000 | -0.1 regress |
+| probe_blocks_420 | +0 | -0.03 | +0.000 | -0.0 regress |
+| probe_checker_444 | +0 | +24.58 | +0.000 | +13.2 accept |
+| probe_blocks_444 | +0 | -0.00 | +0.000 | -0.0 regress |
+
+Aggregate score was `+3.3`, status `watch`, with no hard regressions. The
+4:2:0 rows and the non-exact 4:4:4 row are byte/PSNR-identical and show only
+local timing noise. The useful signal is `probe_checker_444`, which improves
+from 16.43 fps to 41.01 fps with identical bytes and PSNR.
+
+Validation:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp cargo test -p framefinery-codecs vvc --features "vvc vvc-stats"
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=smoke VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
+  VALIDATION_SET=regression VALIDATION_REFERENCE_MODE=required VALIDATION_FORCE_LOSSY=1 \
+  VALIDATION_SETTINGS="qp=19 gop=-1 fast-search=lossless-speed" \
+  VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
+TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
+  ENCODE_MATRIX_SET=local-vvc-mode-probe-50f \
+  ENCODE_MATRIX_RUN=vvc-exact-explicit-inter-444-early-finalize-q19-50f \
+  ENCODE_MATRIX_CODECS=vvc ENCODE_MATRIX_MODES=lossy ENCODE_MATRIX_FRAMES=50 \
+  ENCODE_MATRIX_VVC_LOSSY_QP=19 ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
+  ENCODE_MATRIX_VVC_GOP=-1 \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-explicit-inter-mvp-syntax-cost-q19-50f.json \
+  ENCODE_MATRIX_FAIL_ON_REGRESS=1 \
+  ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
+```
+
 ## References
 
 - Cargo profile settings:

@@ -335,6 +335,104 @@ fn vvc_temporal_mode_hint_max_avg_abs_residual_8bit(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn finalize_vvc_luma_exact_explicit_inter_candidate(
+    decision: VvcLumaInterDecision,
+    policy: VvcResidualCodingPolicy,
+    source_frame: &VvcSampledFrame,
+    inter_reference: &VvcReconstructionFrame,
+    frame_recon: &mut VvcReconstructionFrame,
+    node: VvcCodingTreeNode,
+    luma_qp: i32,
+    luma_ts_quant: &VvcTransformSkipQuantTable,
+    inter_prediction: &mut Vec<VvcSample>,
+    inter_residuals: &mut Vec<i16>,
+    stats: &mut VvcIntraSearchStats,
+    transform_scratch: &mut VvcInverseTransformScratch,
+    reconstructed_residual: &mut Vec<i16>,
+) -> Option<VvcFinalizedLumaTu> {
+    if source_frame.format.chroma_sampling != ChromaSampling::Cs444 {
+        return None;
+    }
+    if decision.mv_x == 0 && decision.mv_y == 0 {
+        return None;
+    }
+    if !VvcReconstructionFrame::predict_luma_node_from_inter_motion_into(
+        inter_reference,
+        inter_prediction,
+        node,
+        decision,
+    ) {
+        return None;
+    }
+    if !vvc_luma_prediction_matches_source(source_frame, node, inter_prediction) {
+        return None;
+    }
+    let residual_len = usize::from(node.width) * usize::from(node.height);
+    inter_residuals.clear();
+    inter_residuals.resize(residual_len, 0);
+    let zero_residual = VvcScoredSelectedLumaResidual {
+        residual: VvcSelectedLumaResidual {
+            block: VvcFinalizedResidualBlock {
+                dc_level: 0,
+                ac_levels: [0; VVC_LUMA_AC_COEFFS_PER_TU],
+                has_ac: false,
+                transform_skip: true,
+                bdpcm_mode: VvcBdpcmMode::None,
+            },
+            mts_index: 0,
+        },
+        score: VvcResidualBlockScore {
+            distortion: 0,
+            rate_cost: 0,
+        },
+    };
+    Some(finalize_vvc_luma_tu(
+        policy.select_luma_tu_coding_decision(node, VvcIntraPredictionMode::Dc),
+        source_frame,
+        frame_recon,
+        node,
+        inter_prediction,
+        inter_residuals,
+        luma_qp,
+        luma_ts_quant,
+        vvc_transform_skip_qp_reconstructs_exact(source_frame.format.bit_depth, luma_qp),
+        Some(zero_residual),
+        stats,
+        transform_scratch,
+        reconstructed_residual,
+    ))
+}
+
+fn vvc_luma_prediction_matches_source(
+    source_frame: &VvcSampledFrame,
+    node: VvcCodingTreeNode,
+    predicted_luma: &[VvcSample],
+) -> bool {
+    let node_width = usize::from(node.width);
+    let node_height = usize::from(node.height);
+    if predicted_luma.len() < node_width.saturating_mul(node_height) {
+        return false;
+    }
+    let start_x = usize::from(node.x);
+    let start_y = usize::from(node.y);
+    let visible_width = node_width.min(source_frame.geometry.width.saturating_sub(start_x));
+    let visible_height = node_height.min(source_frame.geometry.height.saturating_sub(start_y));
+    if visible_width == 0 || visible_height == 0 {
+        return false;
+    }
+    for row in 0..visible_height {
+        let source_start = (start_y + row) * source_frame.geometry.width + start_x;
+        let predicted_start = row * node_width;
+        if source_frame.luma[source_start..source_start + visible_width]
+            != predicted_luma[predicted_start..predicted_start + visible_width]
+        {
+            return false;
+        }
+    }
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
 fn select_vvc_luma_explicit_inter_candidate(
     decision: VvcLumaInterDecision,
     intra_mode: VvcIntraPredictionMode,
@@ -998,6 +1096,66 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 );
                 luma_tu_count += 1;
                 continue;
+            }
+        }
+        if let Some(decision) = luma_inter_decisions
+            .and_then(|decisions| decisions.get(luma_tu_count))
+            .copied()
+            .flatten()
+        {
+            if let Some(reference) = inter_reference {
+                #[cfg(feature = "vvc-stats")]
+                let luma_finalize_start = StageStart::now();
+                if let Some(luma_tu) = finalize_vvc_luma_exact_explicit_inter_candidate(
+                    decision,
+                    policy,
+                    source_frame,
+                    reference,
+                    frame_recon,
+                    node,
+                    luma_qp,
+                    luma_ts_quant,
+                    &mut candidate_luma_prediction,
+                    &mut candidate_luma_residuals,
+                    &mut intra_search_stats,
+                    &mut transform_scratch,
+                    &mut reconstructed_residual,
+                ) {
+                    #[cfg(feature = "vvc-stats")]
+                    intra_search_stats
+                        .add_luma_finalize_nanos(luma_finalize_start.elapsed().as_nanos() as u64);
+                    let luma_mode = VvcIntraPredictionMode::Dc;
+                    luma_tu_intra_modes[luma_tu_count] = luma_mode;
+                    #[cfg(feature = "vvc-stats")]
+                    residual_energy_stats.add_luma_residuals(
+                        &candidate_luma_residuals,
+                        usize::from(node.width),
+                        usize::from(node.height),
+                    );
+                    luma_tu_remainders[luma_tu_count] = luma_tu.abs_remainder;
+                    luma_tu_negative[luma_tu_count] = luma_tu.negative;
+                    luma_tu_dc_levels[luma_tu_count] = luma_tu.dc_level;
+                    luma_tu_ac_levels[luma_tu_count] = luma_tu.ac_levels;
+                    luma_tu_has_ac[luma_tu_count] = luma_tu.has_ac;
+                    luma_tu_transform_skip[luma_tu_count] = luma_tu.transform_skip;
+                    luma_tu_bdpcm_modes[luma_tu_count] = luma_tu.bdpcm_mode;
+                    luma_tu_mrl_index[luma_tu_count] = luma_tu.mrl_index;
+                    luma_tu_mts_index[luma_tu_count] = luma_tu.mts_index;
+                    applied_luma_inter_decisions[luma_tu_count] = Some(decision);
+                    #[cfg(feature = "vvc-stats")]
+                    write_vvc_luma_tu_trace(
+                        tu_trace_sink.as_mut(),
+                        region,
+                        luma_tu_count,
+                        node,
+                        luma_mode,
+                        luma_tu,
+                        &candidate_luma_prediction,
+                        &candidate_luma_residuals,
+                    );
+                    luma_tu_count += 1;
+                    continue;
+                }
             }
         }
         #[cfg(feature = "vvc-stats")]
