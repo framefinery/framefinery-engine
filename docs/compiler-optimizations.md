@@ -8521,6 +8521,48 @@ Aggregate score was `-0.2`, status `regress`, with no hard regressions. The
 source diff was reverted; LLVM likely handles the unconditional boolean-and
 better than the extra branch on this workload.
 
+### VVC Explicit-Inter Lossy RD Gate Cleanup
+
+Checkpoint: `vvc-explicit-inter-rd-allows-lossy-distortion-tradeoff-q19-50f`.
+
+The 4:2:0 residual-coded explicit-inter selector already compares the intra and
+inter candidates through the shared quantized residual score, but it also had a
+separate lossy guard that rejected inter whenever inter distortion was larger
+than the selected intra distortion. That was stricter than the score policy and
+could block valid lossy rate/distortion tradeoffs. This checkpoint removes only
+that extra distortion-only guard and lets the existing score decide.
+
+The 4:4:4 safety gate remains intact: residual-coded explicit inter is still
+rejected unless the luma inter reconstruction is exact. Exact 4:4:4 inter still
+uses the existing no-residual path before normal intra search.
+
+50-frame local VVC mode-probe matrix versus
+`vvc-chroma-residual-zero-tracked-helper-q19-50f`:
+
+| Vector | Bytes delta | FPS delta | PSNR delta | Tradeoff |
+|---|---:|---:|---:|---|
+| probe_gradient_420 | +0 | +0.10 | +0.000 | +0.1 watch |
+| probe_blocks_420 | +0 | -0.13 | +0.000 | -0.1 regress |
+| probe_checker_444 | +0 | +0.57 | +0.000 | +0.2 watch |
+| probe_blocks_444 | +0 | -0.06 | +0.000 | -0.1 regress |
+
+Aggregate score was `+0.0`, status `watch`, with no hard regressions. Bytes and
+PSNR were unchanged on every local row, so this is retained as a mode-policy
+cleanup rather than a measured local compression win. The next inter-selection
+work still needs a broader source set to prove actual output changes.
+
+Rejected probes from the same pass:
+
+- `vvc-444-zero-mv-exact-inter-early-finalize-q19-50f`: allowing zero-MV
+  4:4:4 exact inter into the early finalizer and blocking the later residual
+  path passed unit tests only after preserving the mixed P-slice case, but the
+  50-frame scorer rejected it with aggregate score `-0.7` and no byte/PSNR
+  changes. The source diff was reverted.
+- `vvc-explicit-inter-rd-internal-mvd-cost-q19-50f`: scaling the local explicit
+  inter MVD cost estimate to VVC internal motion units was more syntactically
+  conservative, but it did not change selected bytes/PSNR and regressed timing
+  on the local probe with aggregate score `-0.2`. The source diff was reverted.
+
 Validation:
 
 ```sh
@@ -8535,11 +8577,11 @@ TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
   VALIDATION_CLEANUP_RECON=1 VALIDATION_CLEANUP_OUTPUT=1 VALIDATION_CLEANUP_VECTORS=1
 TMPDIR=verification/generated/agent_scratch/tmp make benchmark-encode-matrix \
   ENCODE_MATRIX_SET=local-vvc-mode-probe-50f \
-  ENCODE_MATRIX_RUN=vvc-chroma-residual-zero-tracked-helper-q19-50f \
+  ENCODE_MATRIX_RUN=vvc-explicit-inter-rd-allows-lossy-distortion-tradeoff-q19-50f \
   ENCODE_MATRIX_CODECS=vvc ENCODE_MATRIX_MODES=lossy ENCODE_MATRIX_FRAMES=50 \
   ENCODE_MATRIX_VVC_LOSSY_QP=19 ENCODE_MATRIX_VVC_FAST_SEARCH=lossless-speed \
   ENCODE_MATRIX_VVC_GOP=-1 \
-  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-explicit-inter-chroma-zero-residual-finalize-q19-50f.json \
+  ENCODE_MATRIX_BASELINE=verification/generated/encode_matrix/vvc-chroma-residual-zero-tracked-helper-q19-50f.json \
   ENCODE_MATRIX_FAIL_ON_REGRESS=1 \
   ENCODE_MATRIX_CLEANUP_RECON=1 ENCODE_MATRIX_CLEANUP_OUTPUT=1 ENCODE_MATRIX_CLEANUP_VECTORS=1
 ```
