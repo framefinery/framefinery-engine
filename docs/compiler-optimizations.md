@@ -7317,13 +7317,14 @@ Ranked next work:
    benchmark movement or removes a confirmed hotspot. Several allocation and
    candidate-list cleanups were byte-identical but slower after measurement.
 
-Accepted probe: mixed single P-slice for lossy 4:4:4 VVC.
+Accepted probe: mixed single P-slice for lossy 8-bit 4:4:4 VVC.
 
 The previous release path allowed mixed CTU-level InterSkip/Intra P-slices only
 for 4:2:0 and kept both 4:2:2 and 4:4:4 on one-slice-per-CTU fallback. That was
-too conservative for 4:4:4: single-tree luma/chroma geometry is aligned there,
-so the same unified CTU quantization and CABAC path used by 4:2:0 can carry
-mixed 4:4:4 frames without introducing a separate encoder implementation.
+too conservative for 8-bit 4:4:4: single-tree luma/chroma geometry is aligned
+there, so the same unified CTU quantization and CABAC path used by 4:2:0 can
+carry mixed 8-bit 4:4:4 frames without introducing a separate encoder
+implementation.
 
 A focused 128x64 50-frame 4:4:4 probe changed the left half of the frame while
 keeping the right half repeatable, forcing the mixed InterSkip/Intra decision.
@@ -7336,9 +7337,26 @@ projected tradeoff:      about +4.5, accept, no hard regression
 ```
 
 VTM 24.0 decoded the final 50-frame bitstream and the decoded reconstruction
-matched the encoder reconstruction byte-for-byte. Keep 4:2:2 on the CTU-slice
-fallback until its rectangular chroma residual quality/rate tradeoff is
-validated separately.
+matched the encoder reconstruction byte-for-byte. Keep 4:2:2 and high-depth
+4:4:4 on the CTU-slice fallback until their rectangular/high-depth chroma
+residual quality/rate tradeoffs are validated separately.
+
+Rejected probe: mixed single P-slice for lossy high-depth 4:4:4 VVC.
+
+The 4:4:4 mixed-slice gate was initially chroma-sampling based, which also
+enabled the path for 10-bit 4:4:4. A focused 128x64 10-frame 10-bit 4:4:4 probe
+with constant chroma showed that this was too broad. VTM decoded the fallback
+stream and matched the internal reconstruction, but the single P-slice probe
+collapsed Cr quality after the first frame.
+
+```text
+single P-slice probe:    16,633 bytes, Cr PSNR 16.292 dB after frame 0
+old CTU-slice fallback:  1,139 bytes, PSNR inf on every frame
+```
+
+The implementation now limits the 4:4:4 mixed single P-slice optimization to
+8-bit streams. Do not re-enable high-depth 4:4:4 there until the high-depth
+chroma residual decision is fixed inside the shared quantization path.
 
 Rejected probe: mixed single P-slice for lossy 4:2:2 VVC.
 

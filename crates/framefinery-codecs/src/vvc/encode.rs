@@ -1068,13 +1068,11 @@ fn vvc_lossy_predictive_ctu_skip_candidate_count_allows_mixed_p_slice(
 
 fn vvc_lossy_mixed_single_p_slice_supported(format: VvcPictureFormat) -> bool {
     // Mixed InterSkip/Intra P-slices use a single coding tree. The quantizer can
-    // follow that partition order for 4:2:0 and 4:4:4. Keep 4:2:2 on the
-    // CTU-slice fallback until the rectangular chroma residual tradeoff is
-    // validated.
-    matches!(
-        format.chroma_sampling,
-        ChromaSampling::Cs420 | ChromaSampling::Cs444
-    )
+    // follow that partition order for 4:2:0 and 8-bit 4:4:4. Keep 4:2:2 and
+    // high-depth 4:4:4 on the CTU-slice fallback until their rectangular/chroma
+    // residual tradeoffs are validated.
+    format.chroma_sampling == ChromaSampling::Cs420
+        || (format.chroma_sampling == ChromaSampling::Cs444 && format.bit_depth.bits() == 8)
 }
 
 fn vvc_predictive_ctu_dependencies_reused(

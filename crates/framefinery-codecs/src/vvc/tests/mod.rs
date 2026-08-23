@@ -3551,6 +3551,50 @@ fn vvc_lossy_predictive_mixed_yuv444_frame_uses_single_p_slice() {
 }
 
 #[test]
+fn vvc_lossy_predictive_mixed_yuv444_high_depth_frame_uses_ctu_slice_fallback() {
+    let geometry = VvcVideoGeometry {
+        width: 128,
+        height: 64,
+    };
+    let format = PixelFormat::yuv444(10).expect("valid 10-bit 4:4:4 format");
+    let input = yuv444p10_two_frame_right_half_repeated(geometry.width, geometry.height);
+    let predictive = vvc_yuv_encode_artifacts_from_input_with_options(
+        &input,
+        VvcEncodeParams { frames: 2 },
+        geometry,
+        format,
+        VvcEncodeOptions {
+            qp: Some(19),
+            gop: crate::settings::GopMode::Infinite,
+            ..VvcEncodeOptions::default()
+        },
+    )
+    .expect("predictive high-depth 4:4:4 VVC encode should succeed");
+
+    assert_eq!(
+        predictive.reconstruction.len(),
+        Picture::expected_len(geometry.width, geometry.height, format) * 2
+    );
+    let predictive_nals = parse_annex_b_nal_units(&predictive.bitstream).unwrap();
+    assert_eq!(
+        predictive_nals
+            .iter()
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::Trail as u8)
+            .count(),
+        2,
+        "mixed lossy high-depth 4:4:4 predictive output should stay on the CTU-slice fallback until high-depth chroma residual quality is fixed"
+    );
+    assert_eq!(
+        predictive_nals
+            .iter()
+            .filter(|info| info.nal_unit_type == VvcNalUnitType::PictureHeader as u8)
+            .count(),
+        1,
+        "mixed lossy high-depth 4:4:4 predictive frames should carry one picture header for CTU-sliced output"
+    );
+}
+
+#[test]
 fn vvc_lossy_predictive_near_skip_uses_bounded_sample_delta() {
     let geometry = VvcVideoGeometry {
         width: 64,
@@ -4745,6 +4789,16 @@ fn yuv444p8_two_frame_right_half_repeated(width: usize, height: usize) -> Vec<u8
     out
 }
 
+fn yuv444p10_two_frame_right_half_repeated(width: usize, height: usize) -> Vec<u8> {
+    assert_eq!(width, 128);
+    assert_eq!(height, 64);
+    let format = PixelFormat::yuv444(10).expect("valid 10-bit 4:4:4 format");
+    let mut out = Vec::with_capacity(Picture::expected_len(width, height, format) * 2);
+    append_yuv444p10_split_luma_frame(&mut out, width, height, 288, 288, 512, 768);
+    append_yuv444p10_split_luma_frame(&mut out, width, height, 384, 288, 512, 768);
+    out
+}
+
 fn yuv420p8_two_frame_one_luma_block_changed(width: usize, height: usize) -> Vec<u8> {
     assert_eq!(width, 64);
     assert_eq!(height, 64);
@@ -4829,6 +4883,33 @@ fn append_yuv444p8_split_luma_frame(
     let chroma = width * height;
     out.extend(std::iter::repeat_n(u, chroma));
     out.extend(std::iter::repeat_n(v, chroma));
+}
+
+fn append_yuv444p10_split_luma_frame(
+    out: &mut Vec<u8>,
+    width: usize,
+    height: usize,
+    left_y: u16,
+    right_y: u16,
+    u: u16,
+    v: u16,
+) {
+    let half_width = width / 2;
+    for _ in 0..height {
+        for _ in 0..half_width {
+            out.extend(left_y.to_le_bytes());
+        }
+        for _ in half_width..width {
+            out.extend(right_y.to_le_bytes());
+        }
+    }
+    let chroma = width * height;
+    for _ in 0..chroma {
+        out.extend(u.to_le_bytes());
+    }
+    for _ in 0..chroma {
+        out.extend(v.to_le_bytes());
+    }
 }
 
 fn solid_yuv444p8_geometry(
