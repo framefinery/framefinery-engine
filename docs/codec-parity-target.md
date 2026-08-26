@@ -224,6 +224,13 @@ remained 2,701,924 bytes with mean PSNR 51.146, but the controlled profile was
 4.274 s versus the 4.243 s baseline. The production shortcut and its test were
 reverted because the representative workload did not demonstrate a gain.
 
+The AV2 source-variance temporary-elision probe (2026-08-26) computed the
+existing variance formula directly from the 8/10/12-bit source samples instead
+of first copying them into an integer array. It preserved the exact arithmetic
+and all six output byte counts and PSNR values, but measured 4.301 s versus the
+4.243 s baseline. The change was reverted; the next experiment should address
+larger reuse across repeated mode analyses rather than this small temporary.
+
 The AV2 tail-candidate score-gate probe (2026-08-26) was rejected. It moved
 the existing extra-SSE bound ahead of coefficient-rate scoring for tail-pruned
 regular-DCT candidates, without changing candidate order or tie behavior. The
