@@ -47,3 +47,13 @@ coding path, or replace a syntax fix with an unchecked index clamp.
 - After those correctness blockers, benchmark motion search and mode selection
   changes using a combined byte/PSNR/FPS report, with exact lossless checksums
   and required AVM/VTM decode validation on every retained change.
+
+## Optimization probe log
+
+The first post-checkpoint probe (2026-08-26) replaced repeated sorting of the
+small luma RD candidate list with a stable in-place insertion pass. It was
+rejected: the maintained VVC microbenchmark showed no statistically meaningful
+change on most cases, while 10-bit lossy showed a noisy slowdown. The probe was
+reverted, leaving candidate ordering and all coding paths unchanged. This is
+intentional evidence that a micro-optimization was measured and not retained
+without a representative gain.
