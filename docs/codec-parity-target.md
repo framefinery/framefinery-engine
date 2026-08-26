@@ -553,3 +553,9 @@ the experimental code unified without emitting unverified edge syntax.
 Required VTM decoding now passes for both focused fixtures, including the
 4:4:4 crop and 4:2:0 multi-CTU sequence. The partial-edge mixed-P case remains
 a documented optimization/compliance follow-up, not a hidden fallback.
+The AV2 hotspot follow-up (2026-08-26) successfully profiled the committed
+local smoke set in lossy mode: the shared `lossy_tile_payload` stage consumed
+84.92% of measured wall time across the three vectors. The six-vector profile
+was intentionally not substituted with smoke data because its manifest
+requires the caller-provided `AOMCTC_ROOT`; no AV2 optimization or performance
+claim is retained from the undersized smoke sample.
