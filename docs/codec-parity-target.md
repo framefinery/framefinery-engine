@@ -407,3 +407,22 @@ PSNR 51.839 exactly, but the unchanged baseline measured 3.318 s / 1.507 FPS
 and the probe measured 3.321 s / 1.505 FPS in two runs. The guard was reverted:
 its correctness is straightforward, but it adds no demonstrated throughput
 benefit on the motion workload, so it is not retained as code-quality noise.
+
+The VVC near-motion admission probe (2026-08-26) allowed small nonzero-SAD
+motion candidates from the existing luma motion map to reach the shared
+explicit-inter/RD path. On the five-frame predictive 4:2:0 probe it changed
+771,733 bytes to 771,725 with unchanged 51.839 dB PSNR, but required VTM
+decoding failed at the final CABAC terminating-bit check. The experiment was
+reverted; no output-changing motion optimization is acceptable without
+reference-decoder agreement.
+
+The same required-reference check then failed for the restored exact-only
+baseline: a one-frame GOP-30 stream decoded, while the otherwise identical
+two-frame and five-frame streams failed when the first P slice was decoded.
+Temporarily disabling explicit-inter candidate production did not remove the
+failure, so the defect is broader than the rejected near-motion candidate. It
+currently isolates to the multi-frame predictive VVC syntax/CABAC path and is
+a release-blocking compliance issue. The next investigation must compare the
+P-slice mode, root-CBF, residual, and terminating-bit sequence against VTM and
+add a multi-frame required-reference regression before further motion-search
+optimization.
