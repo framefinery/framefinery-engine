@@ -37,9 +37,12 @@ coding path, or replace a syntax fix with an unchecked index clamp.
   tile modes can desynchronize AVM entropy decoding. A safe uniform-mode probe
   was reference-clean but byte-neutral on the six vectors, so it was not kept as
   an optimization.
-- VVC predictive partition/slice classification and edge geometry are now
-  reference-clean for the mixed multi-CTU and 270x480 smoke cases, with exact
-  reconstruction. The checkpoint is commit `fed05b4`.
+- VVC predictive partition/slice classification and edge geometry remain
+  reference-clean for the previously covered mixed multi-CTU and 270x480
+  smoke cases, with exact reconstruction. A new multi-frame GOP-30 probe has
+  exposed a separate P-slice CABAC compliance failure; see the probe log below
+  and do not treat the earlier checkpoint (`fed05b4`) as full predictive
+  compliance.
 - `make dead-code-audit` currently reaches the inventory but fails on the
   repository's existing collection of intentionally public validation and
   experimental helpers. Those APIs need an explicit audit policy or feature
