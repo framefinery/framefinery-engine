@@ -376,3 +376,12 @@ instrumented run. Required VTM validation passed for all six vectors, and the
 focused transform suite passed all 23 tests. The change is limited to
 avoiding discarded work; no syntax, mode, profile, or reconstruction path was
 forked.
+
+The AV2 zero-quantized regular-DCT probe (2026-08-26) attempted to skip
+dequantization and IDCT after the quantizer produced an all-zero coefficient
+set. The repeated six-vector profiles produced the same 2,702,877 bytes and
+mean PSNR 51.146, versus the retained 2,701,924-byte baseline, so the
+bitstream changed despite the expected zero residual. The first run measured
+1.421 aggregate lossy FPS and the repeat 1.402, which is not a reliable gain.
+The candidate and its helper refactor were reverted; the byte delta is
+treated as a correctness investigation item rather than an optimization.
