@@ -291,3 +291,11 @@ focused strip sweep and rejected because neither restored the AVM
 reconstruction. The source tree was restored after each probe; no speculative
 workaround is part of the encoder. The focused sweep and the full workspace
 tests must pass before this defect can be considered resolved.
+
+A follow-up isolation probe then zeroed only the first V-plane TX_4X8 candidate
+in the same 64x16 strip. The resulting stream decoded exactly through AVM,
+including the unchanged second V band. This confirms that the failure is
+triggered by the first V block's entropy coding or state evolution; it is not a
+general predictor, geometry, or inverse-transform failure. The probe was
+removed after the result was recorded, and the next fix must preserve the
+shared coefficient writer while reconciling that state with AVM.
