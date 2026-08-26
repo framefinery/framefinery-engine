@@ -281,3 +281,13 @@ any predictive zero-motion tile is reached; the next AV2 work item is to
 reconcile the TX_4X8 key-path arithmetic and syntax with AVM before re-running
 this quality experiment. The temporary transform probe and generated outputs
 were removed from the working tree.
+
+The follow-up TX_4X8 audit narrowed the failure to the V plane of the second
+vertical band: the 4:2:2 8-bit Y and U planes match AVM, while V differs only in
+the affected 4x8 blocks. Standalone TX_4X8 blocks and the lossless 4:2:2 path
+remain reference-clean. A rectangular left-context correction and a
+high-bit-depth reciprocal DC-divider experiment were both run against the
+focused strip sweep and rejected because neither restored the AVM
+reconstruction. The source tree was restored after each probe; no speculative
+workaround is part of the encoder. The focused sweep and the full workspace
+tests must pass before this defect can be considered resolved.
