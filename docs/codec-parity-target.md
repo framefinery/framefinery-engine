@@ -57,3 +57,13 @@ change on most cases, while 10-bit lossy showed a noisy slowdown. The probe was
 reverted, leaving candidate ordering and all coding paths unchanged. This is
 intentional evidence that a micro-optimization was measured and not retained
 without a representative gain.
+
+The follow-up RD-cache probe (2026-08-26) removed redundant sorting from the
+shared luma and chroma winner caches. The caches now scan only for the current
+worst entry, preserving the candidate membership contract while avoiding
+reordering work that no later stage observes. The six-vector lossy checkpoint
+kept all 6 byte counts and PSNR values identical; the maintained microbenchmark
+showed a 3--5% gain on the 10-bit lossy case, with the other cases within
+measurement noise. Lossless cache behavior is unchanged because its cache limit
+is zero. The mixed predictive 128x64 stream passed VTM decode with an exact
+reconstruction match.

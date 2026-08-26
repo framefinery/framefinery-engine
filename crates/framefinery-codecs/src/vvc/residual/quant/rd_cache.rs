@@ -44,21 +44,30 @@ impl VvcLumaModeRdCache {
         {
             if score < self.candidates[existing].score {
                 self.candidates[existing].replace(mode, score, residuals);
-                self.sort();
             }
             return;
         }
         if self.count < self.limit {
             self.candidates[self.count].replace(mode, score, residuals);
             self.count += 1;
-            self.sort();
             return;
         }
-        let worst = self.count - 1;
+        let worst = self.worst_index();
         if score < self.candidates[worst].score {
             self.candidates[worst].replace(mode, score, residuals);
-            self.sort();
         }
+    }
+
+    fn worst_index(&self) -> usize {
+        let mut worst = 0;
+        for index in 1..self.count {
+            // Keep the last equal-cost entry as the replacement target. This
+            // matches the stable sort's former tail selection exactly.
+            if self.candidates[index].score >= self.candidates[worst].score {
+                worst = index;
+            }
+        }
+        worst
     }
 
     fn get(&self, mode: VvcIntraPredictionMode) -> Option<&VvcCachedLumaModeRdCandidate> {
@@ -67,9 +76,6 @@ impl VvcLumaModeRdCache {
             .find(|candidate| candidate.mode.luma_mode_index() == mode.luma_mode_index())
     }
 
-    fn sort(&mut self) {
-        self.candidates[..self.count].sort_by_key(|candidate| candidate.score);
-    }
 }
 
 struct VvcCachedLumaModeRdCandidate {
@@ -147,21 +153,28 @@ impl VvcChromaModeRdCache {
         {
             if score < self.candidates[existing].score {
                 self.candidates[existing].replace(mode, score, cb_residuals, cr_residuals);
-                self.sort();
             }
             return;
         }
         if self.count < self.limit {
             self.candidates[self.count].replace(mode, score, cb_residuals, cr_residuals);
             self.count += 1;
-            self.sort();
             return;
         }
-        let worst = self.count - 1;
+        let worst = self.worst_index();
         if score < self.candidates[worst].score {
             self.candidates[worst].replace(mode, score, cb_residuals, cr_residuals);
-            self.sort();
         }
+    }
+
+    fn worst_index(&self) -> usize {
+        let mut worst = 0;
+        for index in 1..self.count {
+            if self.candidates[index].score >= self.candidates[worst].score {
+                worst = index;
+            }
+        }
+        worst
     }
 
     fn get(&self, mode: VvcChromaIntraPredictionMode) -> Option<&VvcCachedChromaModeRdCandidate> {
@@ -170,9 +183,6 @@ impl VvcChromaModeRdCache {
             .find(|candidate| candidate.mode == mode)
     }
 
-    fn sort(&mut self) {
-        self.candidates[..self.count].sort_by_key(|candidate| candidate.score);
-    }
 }
 
 struct VvcCachedChromaModeRdCandidate {
