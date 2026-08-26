@@ -39,10 +39,9 @@ coding path, or replace a syntax fix with an unchecked index clamp.
   an optimization.
 - VVC predictive partition/slice classification and edge geometry remain
   reference-clean for the previously covered mixed multi-CTU and 270x480
-  smoke cases, with exact reconstruction. A new multi-frame GOP-30 probe has
-  exposed a separate P-slice CABAC compliance failure; see the probe log below
-  and do not treat the earlier checkpoint (`fed05b4`) as full predictive
-  compliance.
+  smoke cases, with exact reconstruction. The multi-frame GOP-30 P-slice
+  failure described in the probe log was resolved in the current working
+  change, but the broader predictive validation matrix is still pending.
 - `make dead-code-audit` currently reaches the inventory but fails on the
   repository's existing collection of intentionally public validation and
   experimental helpers. Those APIs need an explicit audit policy or feature
@@ -467,3 +466,16 @@ intentional experimental helpers and instrumentation, so that result remains
 visible as maintenance debt rather than being hidden with blanket lint
 allowances. Temporary reference builds and traces remain outside version
 control.
+
+The VVC predictive compliance repair (2026-08-26) corrected three related
+syntax issues in the shared CABAC path: inter 32/64-sample leaves now retain
+their explicit no-split signaling, explicit inter residuals emit the required
+`rqt_root_cbf` with its own initialized context, and inter transform-depth-zero
+units infer luma CBF when both chroma CBFs are zero. The focused two-frame
+128x64 fixture now decodes through the reference decoder, and its reference
+reconstruction SHA-256 matches the internal reconstruction exactly
+(`06e5228d75f9b7aa336e27407b789105b0ec271356d46af51beb7b2c8324483c`). The
+VVC smoke set passed all three required-reference cases, `make clippy-perf`
+passed, and the focused predictive suite passed all nine tests. This repair is
+kept as a correctness checkpoint; it is not yet a claim that the complete
+predictive validation matrix is release-clean.

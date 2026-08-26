@@ -1808,16 +1808,6 @@ impl VvcCtuCabacOp {
         {
             return false;
         }
-        // H.266 6.4.2: inter coding does not signal BT for the smallest
-        // 32-sample and 64-sample luma CUs. Keep this restriction at the
-        // availability boundary so quantization and CABAC share one tree.
-        if node.tree_type == VvcTreeType::SingleTree
-            && node.parent_split != VvcPartSplit::None
-            && (u32::from(node.width) * u32::from(node.height) == 32
-                || u32::from(node.width) * u32::from(node.height) == 64)
-        {
-            return false;
-        }
         let crosses_right = node.x + node.width > visible_width;
         let crosses_bottom = node.y + node.height > visible_height;
         if vertical && crosses_bottom {

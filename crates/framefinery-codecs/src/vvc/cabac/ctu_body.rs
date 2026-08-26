@@ -1518,8 +1518,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         self.contexts
             .encode_mvp_idx_flag(cabac, mvp_choice.index != 0);
         let residual = self.explicit_inter_leaf_has_residual();
-        self.contexts
-            .encode(cabac, VvcCabacContext::CuCodedFlag(0), residual);
+        self.contexts.encode_qt_root_cbf(cabac, residual);
         let desired = VvcInterMotionInfo::from_full_pel_decision(decision);
         if let Some(neighbours) = self.inter_motion_neighbours.as_mut() {
             neighbours.mark_leaf(node, desired);
@@ -1908,7 +1907,18 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         let luma_dc_level = self.params.luma_tu_dc_levels[luma_tu_idx];
         let cbf_luma = luma_dc_level != 0 || self.params.luma_tu_has_ac[luma_tu_idx];
         let luma_bdpcm_mode = self.params.luma_tu_bdpcm_modes[luma_tu_idx];
-        self.emit_luma_cbf(cabac, node, cbf_luma, luma_bdpcm_mode.is_enabled());
+        // H.266 7.3.11.10: for an inter CU at transform depth zero, when
+        // neither chroma component has residual, luma CBF is inferred true
+        // from root_cbf and is not signalled. Keep this inference here at the
+        // shared transform-tree syntax boundary so intra and inter use the
+        // same residual path.
+        let infer_inter_luma_cbf =
+            self.params.luma_tu_inter_decisions[luma_tu_idx].is_some() && !cbf_cb && !cbf_cr;
+        if infer_inter_luma_cbf {
+            assert!(cbf_luma, "inter root CBF requires an inferred luma CBF");
+        } else {
+            self.emit_luma_cbf(cabac, node, cbf_luma, luma_bdpcm_mode.is_enabled());
+        }
 
         if cbf_luma {
             let log2_width = node.width.ilog2() as u8;

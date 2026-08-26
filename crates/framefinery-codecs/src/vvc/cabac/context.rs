@@ -52,6 +52,7 @@ pub(in crate::vvc) enum VvcCabacContext {
     CclmModeFlag,
     CclmModeIdx,
     IntraChromaPredMode(u8),
+    QtRootCbf,
     QtCbfY(u8),
     QtCbfCb(u8),
     QtCbfCr(u8),
@@ -316,6 +317,7 @@ impl VvcCabacContext {
                 const I_SLICE_INIT: [u8; 2] = [34, 34];
                 I_SLICE_INIT[ctx as usize]
             }
+            VvcCabacContext::QtRootCbf => 12,
             VvcCabacContext::QtCbfY(ctx) => {
                 const I_SLICE_INIT: [u8; 4] = [15, 12, 5, 7];
                 I_SLICE_INIT[ctx as usize]
@@ -487,6 +489,7 @@ impl VvcCabacContext {
                 const P_SLICE_INIT: [u8; 2] = [25, 25];
                 P_SLICE_INIT[ctx as usize]
             }
+            VvcCabacContext::QtRootCbf => 5,
             VvcCabacContext::QtCbfY(ctx) => {
                 const P_SLICE_INIT: [u8; 4] = [23, 5, 20, 7];
                 P_SLICE_INIT[ctx as usize]
@@ -642,6 +645,7 @@ impl VvcCabacContext {
                 const LOG2_WINDOW: [u8; 2] = [5, 5];
                 LOG2_WINDOW[ctx as usize]
             }
+            VvcCabacContext::QtRootCbf => 4,
             VvcCabacContext::QtCbfY(ctx) => {
                 const LOG2_WINDOW: [u8; 4] = [5, 1, 8, 9];
                 LOG2_WINDOW[ctx as usize]
@@ -769,6 +773,7 @@ pub(in crate::vvc) struct VvcCabacContexts {
     pub(in crate::vvc) cclm_mode_flag: VvcCabacProbModel,
     pub(in crate::vvc) cclm_mode_idx: VvcCabacProbModel,
     pub(in crate::vvc) intra_chroma_pred_mode: [VvcCabacProbModel; 2],
+    pub(in crate::vvc) qt_root_cbf: VvcCabacProbModel,
     pub(in crate::vvc) qt_cbf_y: [VvcCabacProbModel; 4],
     pub(in crate::vvc) qt_cbf_cb: [VvcCabacProbModel; 2],
     pub(in crate::vvc) qt_cbf_cr: [VvcCabacProbModel; 3],
@@ -844,6 +849,7 @@ impl VvcCabacContexts {
             intra_chroma_pred_mode: std::array::from_fn(|idx| {
                 model(VvcCabacContext::IntraChromaPredMode(idx as u8))
             }),
+            qt_root_cbf: model(VvcCabacContext::QtRootCbf),
             qt_cbf_y: std::array::from_fn(|idx| model(VvcCabacContext::QtCbfY(idx as u8))),
             qt_cbf_cb: std::array::from_fn(|idx| model(VvcCabacContext::QtCbfCb(idx as u8))),
             qt_cbf_cr: std::array::from_fn(|idx| model(VvcCabacContext::QtCbfCr(idx as u8))),
@@ -951,6 +957,7 @@ impl VvcCabacContexts {
                 VvcCabacContext::IntraChromaPredMode(idx) => {
                     &self.intra_chroma_pred_mode[idx as usize]
                 }
+                VvcCabacContext::QtRootCbf => &self.qt_root_cbf,
                 VvcCabacContext::QtCbfY(idx) => &self.qt_cbf_y[idx as usize],
                 VvcCabacContext::QtCbfCb(idx) => &self.qt_cbf_cb[idx as usize],
                 VvcCabacContext::QtCbfCr(idx) => &self.qt_cbf_cr[idx as usize],
@@ -1038,6 +1045,7 @@ impl VvcCabacContexts {
             VvcCabacContext::IntraChromaPredMode(idx) => {
                 self.intra_chroma_pred_mode[idx as usize].encode(cabac, bin)
             }
+            VvcCabacContext::QtRootCbf => self.qt_root_cbf.encode(cabac, bin),
             VvcCabacContext::QtCbfY(idx) => self.qt_cbf_y[idx as usize].encode(cabac, bin),
             VvcCabacContext::QtCbfCb(idx) => self.qt_cbf_cb[idx as usize].encode(cabac, bin),
             VvcCabacContext::QtCbfCr(idx) => self.qt_cbf_cr[idx as usize].encode(cabac, bin),
@@ -1279,6 +1287,16 @@ impl VvcCabacContexts {
             cabac,
             VvcCabacContext::QtCbfY(idx),
             &mut self.qt_cbf_y[idx as usize],
+            bin,
+        );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_qt_root_cbf(&mut self, cabac: &mut VvcCabacEncoder, bin: bool) {
+        Self::encode_model(
+            cabac,
+            VvcCabacContext::QtRootCbf,
+            &mut self.qt_root_cbf,
             bin,
         );
     }
