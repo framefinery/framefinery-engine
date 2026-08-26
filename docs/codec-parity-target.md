@@ -399,3 +399,11 @@ Runtime was within measurement noise but slightly slower: lossless measured
 1.399 and 1.400 versus 1.414. The code was reverted and the probe is rejected;
 the audit requirement is to retain equivalent output and demonstrate a stable
 runtime gain before accepting this class of kernel shortcut.
+
+The VVC motion-search duplicate-candidate probe (2026-08-26) skipped a second
+SAD evaluation when a spatial predictor repeated the search's initial zero
+vector. A five-frame predictive 4:2:0 probe preserved 771,733 bytes and mean
+PSNR 51.839 exactly, but the unchanged baseline measured 3.318 s / 1.507 FPS
+and the probe measured 3.321 s / 1.505 FPS in two runs. The guard was reverted:
+its correctness is straightforward, but it adds no demonstrated throughput
+benefit on the motion workload, so it is not retained as code-quality noise.
