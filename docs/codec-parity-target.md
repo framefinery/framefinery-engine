@@ -348,3 +348,12 @@ The local AOM CTC profiling manifests were also corrected to describe derived
 `${AOMCTC_ROOT}`. This keeps cleanup safe: profiling can regenerate the
 derived clips after removing them, instead of depending on stale generated
 paths from a previous run.
+
+The VVC residual-buffer write probe (2026-08-26) replaced the shared residual
+extraction loops' `push` operations with indexed writes after one allocation.
+The change preserved the scalar arithmetic and edge clamping, and required
+reference validation passed, but the six-vector instrumented profile moved
+from the recorded 1.141 to 1.111 aggregate lossless FPS and from 0.723 to
+0.707 lossy FPS. Because the result was not a demonstrated improvement, the
+probe was reverted. This is retained as an accountability record so a future
+optimization does not circle back to the same unproductive change.
