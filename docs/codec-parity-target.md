@@ -90,3 +90,16 @@ the coding path and syntax choice unified. The six-vector lossy run again kept
 all byte counts and PSNR values unchanged; the instrumented lossy tile time
 fell from 4437 ms to 4221 ms (about 4.9%), and the AVM smoke reference checks
 remained exact.
+
+The VVC exact-residual probe (2026-08-26) added the corresponding early exit
+to the shared transformed luma and chroma quantizers. A predictor-exact block
+now returns the ordinary transformed zero block without DC search, coefficient
+generation, or scratch-buffer mutation; lossless transform-skip code and all
+other coding paths remain shared. The six-vector lossy A/B run kept all six
+byte counts and PSNR values identical. With the same `qp=19`,
+`gop=-1`, and `fast-search=lossless-speed` settings, total wall time fell
+from 8.553 s to 8.152 s (0.702 to 0.736 aggregate FPS), while measured
+`ctu_quantize` time fell from 7343.507 ms to 6978.623 ms. Required VTM smoke
+validation passed for all three lossy and all three lossless vectors, and the
+focused codec suite passed 350 tests. The generated A/B profiles are retained
+under `verification/generated/profiling/hotspots/` for review.

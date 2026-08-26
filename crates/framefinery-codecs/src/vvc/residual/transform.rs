@@ -236,6 +236,17 @@ fn quantize_vvc_luma_residual_greedy_with_qp_and_mts_inner(
     debug_assert!([4, 8, 16, 32].contains(&width));
     debug_assert!([4, 8, 16, 32].contains(&height));
     debug_assert!((0..=63).contains(&qp));
+    if residuals.iter().all(|&residual| residual == 0) {
+        // An exact predictor match cannot produce a nonzero coded level.
+        // Preserve the normal transformed syntax contract while avoiding
+        // DC search, coefficient transforms, and scratch-buffer mutation.
+        return VvcQuantizedLumaTransformBlock {
+            reconstructed_dc_coeff: 0,
+            reconstructed_ac_coeffs: [0; VVC_LUMA_AC_COEFFS_PER_TU],
+            has_ac: false,
+            abs_remainder: 0,
+        };
+    }
     let mts_index = normalize_vvc_luma_mts_index(mts_index);
 
     let dc_level = quantize_vvc_luma_residual_dc_by_search_with_mts(
@@ -1023,6 +1034,16 @@ pub(in crate::vvc) fn quantize_vvc_chroma_residual_greedy_with_qp(
     debug_assert!([4, 8, 16, 32].contains(&width));
     debug_assert!([4, 8, 16, 32].contains(&height));
     debug_assert!((0..=63).contains(&chroma_qp));
+    if residuals.iter().all(|&residual| residual == 0) {
+        // Keep the regular transformed chroma path's zero block without
+        // entering DC search or AC analysis for an exact predictor match.
+        return VvcQuantizedChromaTransformBlock {
+            reconstructed_dc_coeff: 0,
+            reconstructed_ac_coeffs: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
+            has_ac: false,
+            abs_remainder: 0,
+        };
+    }
 
     let dc_level =
         quantize_vvc_chroma_residual_dc_with_qp(residuals, width, height, bit_depth, chroma_qp);

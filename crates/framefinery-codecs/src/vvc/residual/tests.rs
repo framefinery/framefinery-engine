@@ -89,6 +89,36 @@ fn vvc_luma_mts_quantization_supports_non_dct2() {
 }
 
 #[test]
+fn vvc_zero_residual_quantization_keeps_all_levels_zero() {
+    let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
+    let luma = quantize_vvc_luma_residual_greedy_with_qp_and_mts(
+        &[0; 64],
+        8,
+        8,
+        bit_depth,
+        VVC_DEFAULT_LOSSY_LUMA_QP,
+        2,
+    );
+    assert_eq!(luma.reconstructed_dc_coeff, 0);
+    assert!(!luma.has_ac);
+    assert!(luma.reconstructed_ac_coeffs.iter().all(|level| *level == 0));
+
+    let chroma = quantize_vvc_chroma_residual_greedy_with_qp(
+        &[0; 16],
+        4,
+        4,
+        bit_depth,
+        VVC_DEFAULT_LOSSY_CHROMA_QP,
+    );
+    assert_eq!(chroma.reconstructed_dc_coeff, 0);
+    assert!(!chroma.has_ac);
+    assert!(chroma
+        .reconstructed_ac_coeffs
+        .iter()
+        .all(|level| *level == 0));
+}
+
+#[test]
 fn vvc_luma_mts_inverse_supports_non_dct2() {
     let mut residuals = Vec::new();
     let mut scratch = VvcInverseTransformScratch::default();
