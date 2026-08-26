@@ -41,7 +41,8 @@ coding path, or replace a syntax fix with an unchecked index clamp.
   reference-clean for the previously covered mixed multi-CTU and 270x480
   smoke cases, with exact reconstruction. The multi-frame GOP-30 P-slice
   failure described in the probe log was resolved in the current working
-  change, but the broader predictive validation matrix is still pending.
+  change; the unusual-geometry and multi-CTU reference sets now pass, while
+  the complete predictive validation matrix is still pending.
 - `make dead-code-audit` currently reaches the inventory but fails on the
   repository's existing collection of intentionally public validation and
   experimental helpers. Those APIs need an explicit audit policy or feature
@@ -479,3 +480,11 @@ VVC smoke set passed all three required-reference cases, `make clippy-perf`
 passed, and the focused predictive suite passed all nine tests. This repair is
 kept as a correctness checkpoint; it is not yet a claim that the complete
 predictive validation matrix is release-clean.
+
+The follow-up reference sweep passed `unusual-geometry-smoke` (7/7) and
+`multictu-regression` (4/4) for VVC with `VALIDATION_REFERENCE_MODE=required`.
+These cases cover odd visible dimensions, 4:2:0/4:2:2/4:4:4, RGB, multiple
+CTUs, multiple frames, and 10-bit input. Every case matched the encoder's
+internal reconstruction, and the lossless multi-CTU cases also matched the
+source exactly. The full release matrix and performance comparison remain
+separate gates.
