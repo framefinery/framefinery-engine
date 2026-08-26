@@ -138,3 +138,23 @@ Required VTM validation passed for all three lossless smoke vectors, and the
 new direct helper test covers ordinary and BDPCM blocks in both luma and
 chroma. This is a small throughput improvement with no mode-selection or
 syntax-policy change.
+
+The lossy VVC audit checkpoint `goal-audit-20260826` profiled one frame of the
+six-vector set with `qp=19`, predictive GOP settings, and lossless-speed search.
+The run measured 2,225,429 bytes, 8.259 seconds, 0.726 aggregate FPS, and mean
+PSNR 54.130. The largest codec-local module was the shared chroma mode path at
+22.35% inclusive time, followed by chroma residual scoring at 13.39% and luma
+mode selection at 8.64%. The largest stage counters were chroma mode search
+(1,778.748 ms), chroma RD scoring (1,255.336 ms), and chroma BDPCM selection
+(832.439 ms). No mode was disabled and no speculative shortcut was retained
+from this audit. The next experiment must first establish a behavior-preserving
+BDPCM candidate refactor, then measure any optimization against this checkpoint.
+
+Accountability for the parity goal includes `cargo fmt`, workspace checks and
+tests, `clippy-perf`, the feature matrix, `git diff --check`, and the existing
+dead-code audit. The dead-code audit is intentionally still allowed to report
+the repository's known public/experimental inventory failures; those findings
+must be resolved by ownership or feature-policy changes rather than hidden by
+blanket lint suppression. Generated profiles remain under
+`verification/generated/profiling/hotspots/` and are not release inputs unless
+their evidence is summarized here.
