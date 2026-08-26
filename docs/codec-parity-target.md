@@ -181,3 +181,12 @@ without quantized scoring. The six-vector lossy result remained 2,225,429
 bytes with mean PSNR 54.130; the observed total fell from 8.172 s to 8.092 s
 (0.734 to 0.741 aggregate FPS). Required VTM validation passed in both lossy
 and lossless smoke modes, and the focused codec suite remained at 351 tests.
+
+The AV2 transform-zero probe `goal-av2-transform-20260826` was rejected after
+measurement. It added an exact-residual early return to the shared 4x4
+transform candidate, preserving the transform candidate kind and zero syntax.
+The six-vector lossy output stayed at 2,701,924 bytes with mean PSNR 51.146,
+but the controlled run measured 4.266 s versus the 4.243 s fresh audit run.
+Because the result was within run-to-run variation and slightly slower, the
+change was reverted. This keeps the AV2 hot path free of shortcuts that are not
+supported by representative evidence.
