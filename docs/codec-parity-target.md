@@ -216,6 +216,14 @@ being claimed as equivalent. `perf` is present but cannot access hardware
 performance counters under the current kernel policy, so the retained timing
 evidence uses the repository's reproducible hotspot profiler instead.
 
+The AV2 DC-only inverse-transform probe (2026-08-26) added a specialized
+integer reconstruction for the already-selected regular-DCT DC-only candidate.
+An exhaustive sampled test across 8-, 10-, and 12-bit ranges matched the full
+inverse transform, including clipping and rounding. The six-vector output
+remained 2,701,924 bytes with mean PSNR 51.146, but the controlled profile was
+4.274 s versus the 4.243 s baseline. The production shortcut and its test were
+reverted because the representative workload did not demonstrate a gain.
+
 The AV2 tail-candidate score-gate probe (2026-08-26) was rejected. It moved
 the existing extra-SSE bound ahead of coefficient-rate scoring for tail-pruned
 regular-DCT candidates, without changing candidate order or tie behavior. The
