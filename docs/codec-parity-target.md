@@ -37,10 +37,13 @@ coding path, or replace a syntax fix with an unchecked index clamp.
   tile modes can desynchronize AVM entropy decoding. A safe uniform-mode probe
   was reference-clean but byte-neutral on the six vectors, so it was not kept as
   an optimization.
-- VVC can panic on the second lossy frame of the vertical A5 vector when the
-  partition walker emits a split operation with no legal split alternatives.
-  The fix must correct partition availability and syntax emission, not clamp a
-  CABAC context index.
+- VVC predictive partition/slice classification and edge geometry are now
+  reference-clean for the mixed multi-CTU and 270x480 smoke cases, with exact
+  reconstruction. The checkpoint is commit `fed05b4`.
+- `make dead-code-audit` currently reaches the inventory but fails on the
+  repository's existing collection of intentionally public validation and
+  experimental helpers. Those APIs need an explicit audit policy or feature
+  ownership cleanup; the gate must not be weakened with blanket suppression.
 - After those correctness blockers, benchmark motion search and mode selection
   changes using a combined byte/PSNR/FPS report, with exact lossless checksums
   and required AVM/VTM decode validation on every retained change.

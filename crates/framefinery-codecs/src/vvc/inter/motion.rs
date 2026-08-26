@@ -1,4 +1,4 @@
-#![cfg_attr(not(test), allow(dead_code))]
+#![cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
 
 use super::{VvcCtuRegion, VvcSampledFrame};
 
