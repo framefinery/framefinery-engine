@@ -355,105 +355,24 @@ fn select_vvc_chroma_bdpcm_prediction(
     {
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_bdpcm_direct_candidate();
-        #[cfg(feature = "vvc-stats")]
-        let prediction_start = StageStart::now();
-        predict_vvc_chroma_bdpcm_block_into_with_availability(
-            candidate_cb_prediction,
-            prediction_scratch,
-            bdpcm_mode,
-            &frame_recon.cb,
-            frame_recon.coded_geometry(),
+        let (residual, candidate_score) = score_vvc_chroma_bdpcm_candidate(
             node,
-            source_frame.format.chroma_sampling,
-            source_frame.format.bit_depth,
-            Some(frame_recon.cb_availability()),
-        );
-        predict_vvc_chroma_bdpcm_block_into_with_availability(
-            candidate_cr_prediction,
-            prediction_scratch,
             bdpcm_mode,
-            &frame_recon.cr,
-            frame_recon.coded_geometry(),
-            node,
-            source_frame.format.chroma_sampling,
-            source_frame.format.bit_depth,
-            Some(frame_recon.cr_availability()),
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_prediction_nanos(
-            VvcChromaPredictionStatsFamily::Bdpcm,
-            vvc_elapsed_nanos(prediction_start),
-        );
-        let chroma_x =
-            usize::from(node.x) / chroma_subsample_x(source_frame.format.chroma_sampling);
-        let chroma_y =
-            usize::from(node.y) / chroma_subsample_y(source_frame.format.chroma_sampling);
-        #[cfg(feature = "vvc-stats")]
-        let residual_start = StageStart::now();
-        residual_chroma_tu_at_into(
-            candidate_cb_residuals,
-            &source_frame.cb,
-            source_frame.geometry,
-            source_frame.format,
-            chroma_x,
-            chroma_y,
+            source_frame,
+            frame_recon,
             chroma_width,
             chroma_height,
-            candidate_cb_prediction,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-        #[cfg(feature = "vvc-stats")]
-        let residual_start = StageStart::now();
-        residual_chroma_tu_at_into(
-            candidate_cr_residuals,
-            &source_frame.cr,
-            source_frame.geometry,
-            source_frame.format,
-            chroma_x,
-            chroma_y,
-            chroma_width,
-            chroma_height,
-            candidate_cr_prediction,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-        #[cfg(feature = "vvc-stats")]
-        let score_start = StageStart::now();
-        let residual = VvcSelectedChromaResidual {
-            cb: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
-                candidate_cb_residuals,
-                chroma_width,
-                chroma_height,
-                chroma_ts_quant,
-                bdpcm_mode,
-            ),
-            cr: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
-                candidate_cr_residuals,
-                chroma_width,
-                chroma_height,
-                chroma_ts_quant,
-                bdpcm_mode,
-            ),
-        };
-        let residual = VvcScoredSelectedChromaResidual::new(
-            candidate_cb_residuals,
-            candidate_cr_residuals,
-            chroma_width,
-            chroma_height,
-            source_frame.format.bit_depth,
             chroma_qp,
             chroma_ts_quant,
-            residual,
+            stats,
+            prediction_scratch,
+            candidate_cb_prediction,
+            candidate_cr_prediction,
+            candidate_cb_residuals,
+            candidate_cr_residuals,
             transform_scratch,
             reconstructed_residual,
         );
-        let candidate_score = vvc_scored_chroma_quantized_residual_score(
-            residual,
-            u64::from(vvc_bdpcm_mode_syntax_bin_count(bdpcm_mode)),
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
         let direct_bdpcm_safe = vvc_chroma_direct_bdpcm_residual_is_safe(
             selected_cb_residuals,
             selected_cr_residuals,
@@ -489,105 +408,24 @@ fn select_vvc_chroma_bdpcm_prediction(
     {
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_bdpcm_regular_candidate();
-        #[cfg(feature = "vvc-stats")]
-        let prediction_start = StageStart::now();
-        predict_vvc_chroma_bdpcm_block_into_with_availability(
-            candidate_cb_prediction,
-            prediction_scratch,
-            bdpcm_mode,
-            &frame_recon.cb,
-            frame_recon.coded_geometry(),
+        let (residual, candidate_score) = score_vvc_chroma_bdpcm_candidate(
             node,
-            source_frame.format.chroma_sampling,
-            source_frame.format.bit_depth,
-            Some(frame_recon.cb_availability()),
-        );
-        predict_vvc_chroma_bdpcm_block_into_with_availability(
-            candidate_cr_prediction,
-            prediction_scratch,
             bdpcm_mode,
-            &frame_recon.cr,
-            frame_recon.coded_geometry(),
-            node,
-            source_frame.format.chroma_sampling,
-            source_frame.format.bit_depth,
-            Some(frame_recon.cr_availability()),
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_prediction_nanos(
-            VvcChromaPredictionStatsFamily::Bdpcm,
-            vvc_elapsed_nanos(prediction_start),
-        );
-        let chroma_x =
-            usize::from(node.x) / chroma_subsample_x(source_frame.format.chroma_sampling);
-        let chroma_y =
-            usize::from(node.y) / chroma_subsample_y(source_frame.format.chroma_sampling);
-        #[cfg(feature = "vvc-stats")]
-        let residual_start = StageStart::now();
-        residual_chroma_tu_at_into(
-            candidate_cb_residuals,
-            &source_frame.cb,
-            source_frame.geometry,
-            source_frame.format,
-            chroma_x,
-            chroma_y,
+            source_frame,
+            frame_recon,
             chroma_width,
             chroma_height,
-            candidate_cb_prediction,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-        #[cfg(feature = "vvc-stats")]
-        let residual_start = StageStart::now();
-        residual_chroma_tu_at_into(
-            candidate_cr_residuals,
-            &source_frame.cr,
-            source_frame.geometry,
-            source_frame.format,
-            chroma_x,
-            chroma_y,
-            chroma_width,
-            chroma_height,
-            candidate_cr_prediction,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-        #[cfg(feature = "vvc-stats")]
-        let score_start = StageStart::now();
-        let residual = VvcSelectedChromaResidual {
-            cb: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
-                candidate_cb_residuals,
-                chroma_width,
-                chroma_height,
-                chroma_ts_quant,
-                bdpcm_mode,
-            ),
-            cr: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
-                candidate_cr_residuals,
-                chroma_width,
-                chroma_height,
-                chroma_ts_quant,
-                bdpcm_mode,
-            ),
-        };
-        let residual = VvcScoredSelectedChromaResidual::new(
-            candidate_cb_residuals,
-            candidate_cr_residuals,
-            chroma_width,
-            chroma_height,
-            source_frame.format.bit_depth,
             chroma_qp,
             chroma_ts_quant,
-            residual,
+            stats,
+            prediction_scratch,
+            candidate_cb_prediction,
+            candidate_cr_prediction,
+            candidate_cb_residuals,
+            candidate_cr_residuals,
             transform_scratch,
             reconstructed_residual,
         );
-        let candidate_score = vvc_scored_chroma_quantized_residual_score(
-            residual,
-            u64::from(vvc_bdpcm_mode_syntax_bin_count(bdpcm_mode)),
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
         if candidate_score.selects_over(best_score) {
             #[cfg(feature = "vvc-stats")]
             stats.add_chroma_bdpcm_regular_best_update();
@@ -606,6 +444,128 @@ fn select_vvc_chroma_bdpcm_prediction(
     }
 
     best
+}
+
+fn score_vvc_chroma_bdpcm_candidate(
+    node: VvcCodingTreeNode,
+    bdpcm_mode: VvcBdpcmMode,
+    source_frame: &VvcSampledFrame,
+    frame_recon: &VvcReconstructionFrame,
+    chroma_width: usize,
+    chroma_height: usize,
+    chroma_qp: i32,
+    chroma_ts_quant: &VvcTransformSkipQuantTable,
+    stats: &mut VvcIntraSearchStats,
+    prediction_scratch: &mut VvcDcPredictionScratch,
+    candidate_cb_prediction: &mut Vec<VvcSample>,
+    candidate_cr_prediction: &mut Vec<VvcSample>,
+    candidate_cb_residuals: &mut Vec<i16>,
+    candidate_cr_residuals: &mut Vec<i16>,
+    transform_scratch: &mut VvcInverseTransformScratch,
+    reconstructed_residual: &mut Vec<i16>,
+) -> (VvcScoredSelectedChromaResidual, VvcChromaQuantizedResidualScore) {
+    #[cfg(not(feature = "vvc-stats"))]
+    let _ = stats;
+    #[cfg(feature = "vvc-stats")]
+    let prediction_start = StageStart::now();
+    predict_vvc_chroma_bdpcm_block_into_with_availability(
+        candidate_cb_prediction,
+        prediction_scratch,
+        bdpcm_mode,
+        &frame_recon.cb,
+        frame_recon.coded_geometry(),
+        node,
+        source_frame.format.chroma_sampling,
+        source_frame.format.bit_depth,
+        Some(frame_recon.cb_availability()),
+    );
+    predict_vvc_chroma_bdpcm_block_into_with_availability(
+        candidate_cr_prediction,
+        prediction_scratch,
+        bdpcm_mode,
+        &frame_recon.cr,
+        frame_recon.coded_geometry(),
+        node,
+        source_frame.format.chroma_sampling,
+        source_frame.format.bit_depth,
+        Some(frame_recon.cr_availability()),
+    );
+    #[cfg(feature = "vvc-stats")]
+    stats.add_chroma_prediction_nanos(
+        VvcChromaPredictionStatsFamily::Bdpcm,
+        vvc_elapsed_nanos(prediction_start),
+    );
+
+    let chroma_x = usize::from(node.x) / chroma_subsample_x(source_frame.format.chroma_sampling);
+    let chroma_y = usize::from(node.y) / chroma_subsample_y(source_frame.format.chroma_sampling);
+    #[cfg(feature = "vvc-stats")]
+    let residual_start = StageStart::now();
+    residual_chroma_tu_at_into(
+        candidate_cb_residuals,
+        &source_frame.cb,
+        source_frame.geometry,
+        source_frame.format,
+        chroma_x,
+        chroma_y,
+        chroma_width,
+        chroma_height,
+        candidate_cb_prediction,
+    );
+    #[cfg(feature = "vvc-stats")]
+    stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+    #[cfg(feature = "vvc-stats")]
+    let residual_start = StageStart::now();
+    residual_chroma_tu_at_into(
+        candidate_cr_residuals,
+        &source_frame.cr,
+        source_frame.geometry,
+        source_frame.format,
+        chroma_x,
+        chroma_y,
+        chroma_width,
+        chroma_height,
+        candidate_cr_prediction,
+    );
+    #[cfg(feature = "vvc-stats")]
+    stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+
+    #[cfg(feature = "vvc-stats")]
+    let score_start = StageStart::now();
+    let finalized = VvcSelectedChromaResidual {
+        cb: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
+            candidate_cb_residuals,
+            chroma_width,
+            chroma_height,
+            chroma_ts_quant,
+            bdpcm_mode,
+        ),
+        cr: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
+            candidate_cr_residuals,
+            chroma_width,
+            chroma_height,
+            chroma_ts_quant,
+            bdpcm_mode,
+        ),
+    };
+    let residual = VvcScoredSelectedChromaResidual::new(
+        candidate_cb_residuals,
+        candidate_cr_residuals,
+        chroma_width,
+        chroma_height,
+        source_frame.format.bit_depth,
+        chroma_qp,
+        chroma_ts_quant,
+        finalized,
+        transform_scratch,
+        reconstructed_residual,
+    );
+    let score = vvc_scored_chroma_quantized_residual_score(
+        residual,
+        u64::from(vvc_bdpcm_mode_syntax_bin_count(bdpcm_mode)),
+    );
+    #[cfg(feature = "vvc-stats")]
+    stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
+    (residual, score)
 }
 
 fn vvc_chroma_bdpcm_candidate_modes(

@@ -158,3 +158,15 @@ must be resolved by ownership or feature-policy changes rather than hidden by
 blanket lint suppression. Generated profiles remain under
 `verification/generated/profiling/hotspots/` and are not release inputs unless
 their evidence is summarized here.
+
+The VVC BDPCM candidate refactor checkpoint `goal-bdpcm-refactor-20260826`
+removed duplicated chroma prediction, residual construction, transform-skip
+finalization, and scoring code shared by the direct and regular BDPCM loops.
+The policy loops remain separate, including the direct residual-safety gate and
+the regular best-candidate update, so no legal mode or syntax decision was
+removed. The six-vector lossy output remained 2,225,429 bytes with mean PSNR
+54.130; the observed 8.172-second run versus the 8.259-second audit run is
+within normal measurement variation and is not claimed as a speed gain.
+Required VTM validation passed for all three lossy and all three lossless smoke
+vectors with matching reconstruction checksums. This establishes the shared
+helper as the maintainable base for a later measured BDPCM optimization.
