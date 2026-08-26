@@ -519,3 +519,13 @@ existing condition so full palettes would skip membership scans. It preserved
 the palette output, but the 64x64 microbenchmark improvement stayed within
 noise and the 128x128 case showed no gain. The probe was reverted; a retained
 palette optimization must improve the complete size and content mix.
+
+The predictive-tree audit (2026-08-26) found that the encoder could quantize
+an inter-slice CTU with the single-tree partition while constructing its CABAC
+parameters as dual-tree. The resulting shared traversal consumed different
+numbers of chroma transform leaves and could panic on longer 4:4:4/RGB
+streams. Parameter construction now derives the tree choice from the same
+inter-slice contract used by quantization. A 50-frame 2560x1440 RGB stream
+no longer panics; the maintained required-reference smoke and unusual-geometry
+sets remain clean. A separate later-frame VTM coefficient-range failure in
+that desktop stream remains under investigation and is not hidden by this fix.

@@ -1111,7 +1111,7 @@ fn vvc_intra_ctu_payload_from_quantized(
         quantized,
         luma_max_leaf_size,
         slice_config.coding_tree.chroma_sampling,
-        slice_config.coding_tree.dual_tree_intra,
+        slice_config.coding_tree.dual_tree_intra && !inter_slice_partition,
         if inter_slice_partition {
             VvcLumaSplitAvailabilityKind::Inter
         } else {
