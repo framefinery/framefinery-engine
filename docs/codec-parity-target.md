@@ -447,3 +447,12 @@ guard was removed. The remaining audit scope is the shared lossy P-slice
 intra residual/partition syntax and its CABAC context evolution; a future
 optimization must not be accepted until this path decodes over multiple
 frames.
+
+To remove slice-type ambiguity, a forced-P control kept the second picture as
+P while suppressing explicit-inter selection. VTM still rejected the stream,
+and the P picture grew from 91 to 108 coded bytes only because the same
+lossy residual path remained active; this confirms that a valid P-slice cannot
+yet be claimed merely from payload-derived slice classification. The force
+and suppression hooks were removed immediately after the probe. The required
+regression must assert decoding of a genuinely multi-frame lossy P-slice,
+not only a one-frame or all-skip stream.
