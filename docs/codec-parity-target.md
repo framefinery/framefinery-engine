@@ -190,3 +190,28 @@ but the controlled run measured 4.266 s versus the 4.243 s fresh audit run.
 Because the result was within run-to-run variation and slightly slower, the
 change was reverted. This keeps the AV2 hot path free of shortcuts that are not
 supported by representative evidence.
+
+The follow-up AV2 detailed audit `goal-av2-detailed-audit-runtime-20260826`
+enabled the existing runtime statistics on the six-vector lossy set. In the
+1920x1080 samples, every luma and chroma transform block used the regular-DCT
+candidate family; selected spatial, refined-spatial, transform, and FSC
+candidates were zero in the recorded regions. The selected luma modes were
+content-dependent DC, horizontal, vertical, directional, Paeth, and smooth
+intra modes, while chroma selected DC, horizontal, vertical, and Paeth. The
+audit therefore does not justify removing legal residual candidates or
+replacing mode search with a separate fast path. It does identify regular-DCT
+candidate construction and scoring as the next AV2-specific investigation
+area, with any pruning required to preserve the shared candidate path and
+reference-decoder validation. The run reproduced 2,701,924 bytes and mean
+PSNR 51.146; its instrumented runtime is not a speed baseline because the
+per-region statistics deliberately add logging overhead.
+
+The accountability tool inventory was also checked for this goal. The
+repository-provided gates are `cargo fmt`, workspace check/test, `make
+clippy-perf`, `make feature-matrix`, `make dead-code-audit`, `git diff --check`,
+and required AVM/VTM decode validation. `cargo audit` is not installed in the
+current environment, so dependency auditing remains an explicit follow-up
+when that tool is available; no substitute lint or blanket suppression is
+being claimed as equivalent. `perf` is present but cannot access hardware
+performance counters under the current kernel policy, so the retained timing
+evidence uses the repository's reproducible hotspot profiler instead.
