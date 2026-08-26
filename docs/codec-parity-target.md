@@ -388,3 +388,14 @@ that the earlier 2,701,924-byte comparison came from regenerated-vector state
 rather than this code change. The probe remains rejected because it did not
 produce a reliable speed gain; future zero-candidate work must compare
 candidate state with a same-input baseline.
+
+The follow-up AV2 zero-dequantization probe (2026-08-26) skipped only the
+dequantization loop when every regular-DCT coefficient was already zero, while
+retaining the existing IDCT, reconstruction, candidate identity, and syntax
+selection. Both profiles reproduced the restored baseline exactly at
+5,922,076 lossless bytes and 2,702,877 lossy bytes with mean lossy PSNR 51.146.
+Runtime was within measurement noise but slightly slower: lossless measured
+2.825 and 2.813 aggregate FPS versus the baseline's 2.892, and lossy measured
+1.399 and 1.400 versus 1.414. The code was reverted and the probe is rejected;
+the audit requirement is to retain equivalent output and demonstrate a stable
+runtime gain before accepting this class of kernel shortcut.
