@@ -931,6 +931,17 @@ impl<'a> Av2LossySubsampledTileState<'a> {
             analysis.source_variance,
         );
         let transform = self.regular_dct_candidate_from_qcoeff(analysis, &qcoeff);
+        if qcoeff[1..].iter().all(|&coefficient| coefficient == 0) {
+            // The tail-pruned and DC-only candidates would reconstruct and
+            // score identically here. Keep the regular-DCT candidate so the
+            // existing strict tie break and syntax path remain unchanged.
+            return Av2LossyRegularDctCandidates {
+                transform,
+                tail_pruned: None,
+                double_tail_pruned: None,
+                dc_only: transform,
+            };
+        }
         let mut tail_pruned_qcoeff = qcoeff;
         let tail_pruned = (prune_regular_dct_trailing_unit_acs(&mut tail_pruned_qcoeff, 1) == 1)
             .then(|| {

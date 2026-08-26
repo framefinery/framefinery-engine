@@ -75,3 +75,10 @@ palette construction accounted for 3.29% and 0.86%. The next AV2 probe should
 therefore focus on the shared lossy tile mode/transform evaluation, with the
 current lossless palette and IBC paths left intact until a representative gain
 is demonstrated.
+
+The AV2 DC-only residual probe (2026-08-26) added an exact early return after
+regular DCT quantization when every AC level is zero. It retained the same
+regular-DCT candidate and strict tie behavior, so the six-vector lossy run kept
+all six byte counts and PSNR values unchanged. The instrumented six-vector
+profile reduced lossy tile time from 4598 ms to 4437 ms (about 3.5%), and all
+three lossy smoke streams matched the AVM reference reconstruction exactly.
