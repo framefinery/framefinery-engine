@@ -925,19 +925,12 @@ impl<'a> Av2LossySubsampledTileState<'a> {
             // the regular-DCT kind and its zero candidate so the syntax path
             // and strict tie behavior remain identical without running the
             // transform and inverse transform.
-            let mut predictor = [0i32; TX4X4_SAMPLES];
-            for (dst, &sample) in predictor.iter_mut().zip(analysis.predictor.iter()) {
-                *dst = i32::from(sample);
-            }
             let zero = Av2LossyQuantizedResidualCandidate {
                 kind: Av2LossyResidualCandidateKind::RegularDct,
                 residual: [0; TX4X4_SAMPLES],
                 coefficients: [0; TX4X4_SAMPLES],
                 sse: 0,
-                variance_loss: txb_recon_variance_loss(
-                    analysis.source_variance,
-                    &predictor,
-                ),
+                variance_loss: 0,
             };
             return Av2LossyRegularDctCandidates {
                 transform: zero,
