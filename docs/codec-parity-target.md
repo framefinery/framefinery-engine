@@ -67,3 +67,11 @@ showed a 3--5% gain on the 10-bit lossy case, with the other cases within
 measurement noise. Lossless cache behavior is unchanged because its cache limit
 is zero. The mixed predictive 128x64 stream passed VTM decode with an exact
 reconstruction match.
+
+The AV2 hotspot checkpoint `goal-av2-hotspot-20260826` measured both modes on
+the six-vector set. Lossy tile payload accounted for 68.26% of measured time;
+lossless tile payload accounted for 24.83%, while lossless IBC search and
+palette construction accounted for 3.29% and 0.86%. The next AV2 probe should
+therefore focus on the shared lossy tile mode/transform evaluation, with the
+current lossless palette and IBC paths left intact until a representative gain
+is demonstrated.
