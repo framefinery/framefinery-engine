@@ -239,6 +239,8 @@ fn vvc_chroma_temporal_mode_hint(
 ) -> Option<VvcChromaTemporalModeHint> {
     let hints = hints?;
     if !vvc_temporal_mode_hints_allowed(policy)
+        || (policy.residual_mode() == VvcResidualCodingMode::Lossy
+            && policy.chroma_sampling() == ChromaSampling::Cs444)
         || hints.chroma_tu_count != expected_tu_count
         || tu_idx >= hints.chroma_tu_count
     {

@@ -529,3 +529,14 @@ inter-slice contract used by quantization. A 50-frame 2560x1440 RGB stream
 no longer panics; the maintained required-reference smoke and unusual-geometry
 sets remain clean. A separate later-frame VTM coefficient-range failure in
 that desktop stream remains under investigation and is not hidden by this fix.
+
+The follow-up P-slice state audit found a second boundary: reusing prior
+chroma intra modes in lossy 4:4:4 predictive CTUs can produce a VTM
+coefficient-range failure on a changed desktop frame. The shared chroma mode
+selector now declines that reuse for lossy 4:4:4 while retaining the hint path
+for subsampled formats. A fresh two-frame reproducer still fails on a later
+changed P frame even with temporal hints and explicit inter decisions removed,
+so the remaining defect is in the broader lossy predictive residual/partition
+path. The all-intra control and maintained geometry gates remain
+reference-decodable; this longer changed-P case remains a compliance blocker
+for claiming fast predictive parity.
