@@ -513,3 +513,9 @@ order and palette contents in the unit suite. The 4:4:4 palette microbenchmark
 instead regressed by about 3% at 64x64 and showed no improvement at 128x128,
 so the probe was reverted. The existing linear scan remains until a measured
 replacement improves both palette sizes without changing selection behavior.
+
+The AV2 palette capacity short-circuit probe (2026-08-26) reordered the
+existing condition so full palettes would skip membership scans. It preserved
+the palette output, but the 64x64 microbenchmark improvement stayed within
+noise and the 128x128 case showed no gain. The probe was reverted; a retained
+palette optimization must improve the complete size and content mix.
