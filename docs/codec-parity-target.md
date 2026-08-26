@@ -379,9 +379,12 @@ forked.
 
 The AV2 zero-quantized regular-DCT probe (2026-08-26) attempted to skip
 dequantization and IDCT after the quantizer produced an all-zero coefficient
-set. The repeated six-vector profiles produced the same 2,702,877 bytes and
-mean PSNR 51.146, versus the retained 2,701,924-byte baseline, so the
-bitstream changed despite the expected zero residual. The first run measured
+set. The repeated six-vector profiles produced 2,702,877 bytes and mean PSNR
+51.146. The first run measured
 1.421 aggregate lossy FPS and the repeat 1.402, which is not a reliable gain.
-The candidate and its helper refactor were reverted; the byte delta is
-treated as a correctness investigation item rather than an optimization.
+The candidate and its helper refactor were reverted. A restored-baseline
+profile on the unchanged tree reproduced 2,702,877 bytes exactly, showing
+that the earlier 2,701,924-byte comparison came from regenerated-vector state
+rather than this code change. The probe remains rejected because it did not
+produce a reliable speed gain; future zero-candidate work must compare
+candidate state with a same-input baseline.
