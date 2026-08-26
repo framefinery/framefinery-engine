@@ -261,3 +261,15 @@ intra scorer. It preserved all six byte counts and PSNR values, but increased
 the controlled six-vector runtime from 4.243 s to 4.455 s. The temporary arrays
 were removed; this confirms that larger-looking reuse is not automatically a
 win when it adds storage traffic to 4x4 scoring.
+
+The AV2 predictive zero-motion residual probe (2026-08-26) replaced the
+lossless zero-motion tile payload with the shared lossy inter residual writer.
+On the 50-frame predictive six-vector run it improved mean PSNR from 53.573 to
+56.367 dB, but increased bytes by 6.88% and reduced aggregate FPS by 19.2%.
+More importantly, required AVM validation exposed an existing 4:2:2 key-frame
+reconstruction mismatch, so the probe was reverted rather than accepted on
+incomplete compliance evidence. A controlled one-frame 4:2:2 run fails before
+any predictive zero-motion tile is reached; the next AV2 work item is to
+reconcile the TX_4X8 key-path arithmetic and syntax with AVM before re-running
+this quality experiment. The temporary transform probe and generated outputs
+were removed from the working tree.
