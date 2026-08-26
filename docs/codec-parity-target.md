@@ -429,3 +429,12 @@ a release-blocking compliance issue. The next investigation must compare the
 P-slice mode, root-CBF, residual, and terminating-bit sequence against VTM and
 add a multi-frame required-reference regression before further motion-search
 optimization.
+
+A follow-up root-CBF context probe tested that hypothesis against the same
+ mixed two-frame fixture. The reference `QtRootCbf` initialization is 12 for
+ I-slices and 5 for P-slices, whereas the existing `CuCodedFlag` scaffold uses
+ a different I-slice row. Introducing a separate root-CBF model and routing
+ the explicit-inter/IBC no-residual decisions through it produced byte-for-
+ byte identical output and did not change the VTM failure. The probe was
+ reverted: the remaining divergence is not explained by that context alone,
+ and no speculative CABAC context alias is retained.
