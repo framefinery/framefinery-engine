@@ -322,3 +322,14 @@ the existing inspector limitation and is not evidence that the decoder accepts
 or rejects the stream; ordinary AVM decoding remains the authority for this
 investigation. The accounting attempt and its generated files stay in the
 ignored agent scratch area rather than becoming a validation dependency.
+
+The subsequent AV2 TX4X8 differential probe compared all eight V-plane blocks
+from the focused 64x16 4:2:2 stream. The signed coefficient levels emitted by
+the Rust writer and read by AVM matched block-for-block, and the decoder's
+dequantized coefficients also matched the Rust candidate values. A width sweep
+from 64 through 704 pixels reproduced the first mismatch at the rightmost
+4x8 block of the second vertical band. This supersedes the earlier entropy-only
+hypothesis: the remaining audit must compare block traversal, edge predictor
+availability, and reconstructed samples at that boundary. The diagnostic
+instrumentation was removed from both production and reference trees after
+each probe; no workaround is retained without a focused reference test.
