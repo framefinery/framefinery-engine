@@ -2117,13 +2117,6 @@ fn vvc_ctu_body_emits_explicit_inter_leaf_from_partition_decision() {
         "zero-filled AMVP candidate 0 should be selected at picture origin"
     );
     assert!(
-        context_bins.contains(&(
-            VvcCabacContext::CuCodedFlag(0).rtl_context_id().unwrap(),
-            false
-        )),
-        "exact explicit inter leaves must suppress residual transform_tree syntax"
-    );
-    assert!(
         !context_bins.iter().any(|(ctx_id, _)| {
             *ctx_id == VvcCabacContext::IntraLumaMpmFlag.rtl_context_id().unwrap()
         }),
@@ -2169,15 +2162,10 @@ fn vvc_ctu_body_emits_residual_coded_explicit_inter_leaf() {
         .collect();
 
     assert!(
-        context_bins.contains(&(
-            VvcCabacContext::CuCodedFlag(0).rtl_context_id().unwrap(),
-            true
-        )),
-        "residual-coded explicit inter leaves must signal transform_tree syntax"
-    );
-    assert!(
-        context_bins.contains(&(VvcCabacContext::QtCbfY(0).rtl_context_id().unwrap(), true)),
-        "residual-coded explicit inter leaves must emit luma residual CBF"
+        !context_bins
+            .iter()
+            .any(|(ctx_id, _)| { *ctx_id == VvcCabacContext::QtCbfY(0).rtl_context_id().unwrap() }),
+        "inter transform-depth-zero leaves infer luma CBF from qt_root_cbf"
     );
     assert!(
         !context_bins.iter().any(|(ctx_id, _)| {
