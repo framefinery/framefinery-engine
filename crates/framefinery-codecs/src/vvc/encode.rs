@@ -614,6 +614,12 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             && vvc_predictive_inter_skip_region(region))
                             || preselected_lossy_inter_skip_ctu.is_some();
                     let intra_reuse_allowed = cached_exact_ctu_available
+                        && (!predictive_frame
+                            || cached_exact_ctu
+                                .is_some_and(|cached| {
+                                    cached.decision.luma_split_kind
+                                        == VvcLumaSplitAvailabilityKind::Inter
+                                }))
                         && vvc_predictive_ctu_dependencies_reused(
                             region,
                             ctu_cols,
@@ -682,6 +688,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 slice_config,
                                 None,
                                 None,
+                                predictive_frame && !residual_mode.is_lossless(),
                             )?
                         }
                     } else {
@@ -689,8 +696,19 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             frame_recon.clear_availability();
                             luma_mode_search_state.clear();
                         }
+                        // CTU-sliced fallback gives each non-skipped CTU its
+                        // own intra slice.  Its partition must therefore use
+                        // the intra tree even when the surrounding frame is
+                        // predictive; only a mixed single-slice P picture
+                        // needs the inter partition contract for every CTU.
+                        let inter_slice_partition = predictive_frame
+                            && !residual_mode.is_lossless()
+                            && !predictive_ctu_slice_frame;
                         let ctu_residual_policy = residual_policy
-                            .with_dual_tree_intra(!mixed_single_p_slice_frame);
+                            .with_inter_slice_partition(inter_slice_partition)
+                            .with_dual_tree_intra(
+                                !inter_slice_partition && !mixed_single_p_slice_frame,
+                            );
                         let luma_max_leaf_size = if explicit_inter_frame {
                             VVC_CURRENT_MAX_LUMA_LEAF_SIZE
                         } else {
@@ -831,6 +849,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 slice_config,
                                 luma_inter_skip_mask.as_ref(),
                                 chroma_inter_skip_mask.as_ref(),
+                                predictive_frame && !residual_mode.is_lossless(),
                             )?;
                             if let Some((cached, skip_distortion)) = cached_lossy_skip_ctu {
                                 if predictive_ctu_inter_skip_frame
@@ -859,6 +878,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 quantized,
                                 luma_max_leaf_size,
                                 luma_tu_inter_decisions: _,
+                                ..
                             } = decision;
                             vvc_intra_ctu_payload_from_quantized(
                                 region,
@@ -867,6 +887,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 slice_config,
                                 luma_inter_skip_mask.as_ref(),
                                 chroma_inter_skip_mask.as_ref(),
+                                inter_slice_partition,
                             )?
                         }
                     };
@@ -1059,6 +1080,7 @@ fn vvc_intra_ctu_payload_from_decision(
     slice_config: VvcSliceSyntaxConfig,
     luma_inter_skip: Option<&[bool; MAX_VVC_LUMA_TUS]>,
     chroma_inter_skip: Option<&[bool; MAX_VVC_CHROMA_TUS]>,
+    inter_slice_partition: bool,
 ) -> Result<VvcQuantizedCtuPayload, String> {
     let mut payload = vvc_intra_ctu_payload_from_quantized(
         region,
@@ -1067,6 +1089,7 @@ fn vvc_intra_ctu_payload_from_decision(
         slice_config,
         luma_inter_skip,
         chroma_inter_skip,
+        inter_slice_partition,
     )?;
     if let VvcQuantizedCtuPayload::Intra(params) = &mut payload {
         params.luma_tu_inter_decisions = decision.luma_tu_inter_decisions;
@@ -1081,13 +1104,19 @@ fn vvc_intra_ctu_payload_from_quantized(
     slice_config: VvcSliceSyntaxConfig,
     luma_inter_skip: Option<&[bool; MAX_VVC_LUMA_TUS]>,
     chroma_inter_skip: Option<&[bool; MAX_VVC_CHROMA_TUS]>,
+    inter_slice_partition: bool,
 ) -> Result<VvcQuantizedCtuPayload, String> {
-    let Some(mut params) = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
+    let Some(mut params) = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma_for_kind(
         region.geometry,
         quantized,
         luma_max_leaf_size,
         slice_config.coding_tree.chroma_sampling,
         slice_config.coding_tree.dual_tree_intra,
+        if inter_slice_partition {
+            VvcLumaSplitAvailabilityKind::Inter
+        } else {
+            VvcLumaSplitAvailabilityKind::Intra
+        },
     ) else {
         return Err(format!(
             "VVC frame CABAC CTU {} has unsupported coded geometry {}x{}",
@@ -1271,7 +1300,11 @@ fn vvc_predictive_luma_inter_decisions_for_ctu(
     };
     let mut decisions = [None; MAX_VVC_LUMA_TUS];
     let mut any = false;
-    for (tu_idx, local_node) in vvc_luma_transform_nodes(ctu_shape, luma_max_leaf_size)
+    for (tu_idx, local_node) in vvc_luma_transform_nodes_for_kind(
+        ctu_shape,
+        luma_max_leaf_size,
+        VvcLumaSplitAvailabilityKind::Inter,
+    )
         .into_iter()
         .take(MAX_VVC_LUMA_TUS)
         .enumerate()
@@ -1665,7 +1698,11 @@ fn vvc_explicit_inter_eligible_luma_leaf_count(
                 chroma_sampling,
                 dual_tree_intra: false,
             };
-            vvc_luma_transform_nodes(ctu_shape, VVC_CURRENT_MAX_LUMA_LEAF_SIZE)
+            vvc_luma_transform_nodes_for_kind(
+                ctu_shape,
+                VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+                VvcLumaSplitAvailabilityKind::Inter,
+            )
                 .into_iter()
                 .take(MAX_VVC_LUMA_TUS)
                 .filter_map(|local_node| vvc_global_encode_ctu_node(local_node, region))
@@ -1897,7 +1934,11 @@ fn vvc_predictive_luma_leaf_inter_skip_mask(
         chroma_sampling,
         dual_tree_intra,
     };
-    let nodes = vvc_luma_transform_nodes(shape, luma_max_leaf_size);
+    let nodes = vvc_luma_transform_nodes_for_kind(
+        shape,
+        luma_max_leaf_size,
+        VvcLumaSplitAvailabilityKind::Inter,
+    );
     if nodes.is_empty() || nodes.len() > MAX_VVC_LUMA_TUS {
         return None;
     }

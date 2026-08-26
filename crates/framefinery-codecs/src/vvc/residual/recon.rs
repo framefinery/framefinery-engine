@@ -1,9 +1,10 @@
 use crate::picture::{ChromaSampling, PlanarYuvGeometry, SampleBitDepth};
 
 use super::super::{
-    chroma_subsample_x, chroma_subsample_y, vvc_chroma_transform_nodes, vvc_luma_transform_nodes,
-    vvc_neutral_sample, VvcChromaIntraPredictionMode, VvcCodingTreeNode, VvcCtuPartitionParams,
-    VvcIntraPredictionMode, VvcSample, VvcSampledFrame, VvcVideoGeometry,
+    chroma_subsample_x, chroma_subsample_y, vvc_chroma_transform_nodes,
+    vvc_luma_transform_nodes_for_kind, vvc_neutral_sample, VvcChromaIntraPredictionMode,
+    VvcCodingTreeNode, VvcCtuPartitionParams, VvcIntraPredictionMode, VvcSample, VvcSampledFrame,
+    VvcVideoGeometry,
 };
 use super::quant::{
     reconstruct_vvc_chroma_bdpcm_transform_skip_residuals_into_with_qp,
@@ -84,7 +85,11 @@ fn reconstruct_vvc_residual_frame_planar(
     let mut transform_scratch = VvcInverseTransformScratch::default();
     let mut residuals = Vec::new();
     let shape = partition_params.shape();
-    let luma_nodes = vvc_luma_transform_nodes(shape, partition_params.luma_max_leaf_size);
+    let luma_nodes = vvc_luma_transform_nodes_for_kind(
+        shape,
+        partition_params.luma_max_leaf_size,
+        partition_params.luma_split_kind,
+    );
     for node in luma_nodes.iter().copied() {
         let luma_bdpcm_mode = quantized.luma_tu_bdpcm_modes[tu_idx];
         if luma_bdpcm_mode.is_enabled() {

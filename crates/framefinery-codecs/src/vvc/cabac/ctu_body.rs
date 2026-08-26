@@ -1,5 +1,5 @@
 use super::binarization::vvc_encode_exp_golomb_ep_combined;
-use super::context::{VvcCabacInitType, VvcCabacProbModel};
+use super::context::VvcCabacInitType;
 use super::ctu_split::{
     vvc_chroma_height, vvc_chroma_split_availability, vvc_chroma_width, VvcChromaSplitAvailability,
     VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams, VvcCtuPartitionShape,
@@ -340,11 +340,10 @@ pub(in crate::vvc) fn initial_vvc_cabac_contexts_for_init_type(
     slice_config: VvcSliceSyntaxConfig,
     init_type: VvcCabacInitType,
 ) -> VvcCabacContexts {
-    if slice_config.tools.transform_skip_enabled {
-        VvcCabacContexts::with_slice_qp_and_init_type(slice_config.slice_qp, init_type)
-    } else {
-        VvcCabacContexts::with_slice_qp_and_init_type(VvcCabacContexts::DEFAULT_SLICE_QP, init_type)
-    }
+    // H.266 initializes every active CABAC context set from the slice QP.
+    // This must also apply when transform skip is disabled; using the
+    // fallback QP there leaves predictive slices out of sync with decoders.
+    VvcCabacContexts::with_slice_qp_and_init_type(slice_config.slice_qp, init_type)
 }
 
 pub(in crate::vvc) fn encode_ctu_partition_body_with_contexts(
@@ -381,7 +380,6 @@ pub(in crate::vvc) struct VvcFrameCtuCabacState {
     inter_skip_neighbours: VvcInterSkipNeighbourState,
     inter_motion_neighbours: VvcInterMotionNeighbourState,
     skip_neighbours: Vec<bool>,
-    pred_mode_contexts: Option<[VvcCabacProbModel; 2]>,
     inter_slice: bool,
     picture_width: u16,
     picture_height: u16,
@@ -420,14 +418,6 @@ impl VvcFrameCtuCabacState {
                 picture_geometry.coded_width().div_ceil(VVC_CTU_SIZE)
                     * picture_geometry.coded_height().div_ceil(VVC_CTU_SIZE)
             ],
-            pred_mode_contexts: inter_slice.then(|| {
-                std::array::from_fn(|idx| {
-                    VvcCabacProbModel::from_context(
-                        VvcCabacContext::PredModeFlag(idx as u8),
-                        slice_config.slice_qp,
-                    )
-                })
-            }),
             inter_slice,
             picture_width,
             picture_height,
@@ -447,7 +437,6 @@ impl VvcFrameCtuCabacState {
         let origin_x = (ctu_x * VVC_CTU_SIZE) as u16;
         let origin_y = (ctu_y * VVC_CTU_SIZE) as u16;
         let skip_ctx = self.skip_ctx(slice_address);
-        let pred_mode_contexts = self.pred_mode_contexts.as_mut();
         let luma_neighbours = &mut self.luma_neighbours;
         let luma_mode_neighbours = &mut self.luma_mode_neighbours;
         let chroma_neighbours = &mut self.chroma_neighbours;
@@ -461,7 +450,6 @@ impl VvcFrameCtuCabacState {
             .with_inter_slice(
                 self.inter_slice,
                 skip_ctx,
-                pred_mode_contexts,
                 Some(&mut self.inter_skip_neighbours),
                 Some(inter_motion_neighbours),
             );
@@ -561,7 +549,6 @@ pub(in crate::vvc) struct VvcCtuCabacGenerator<'a, 'p> {
     slice_config: VvcSliceSyntaxConfig,
     inter_slice: bool,
     inter_skip_ctx: u8,
-    inter_pred_mode_contexts: Option<&'a mut [VvcCabacProbModel; 2]>,
     inter_skip_neighbours: Option<&'a mut VvcInterSkipNeighbourState>,
     inter_motion_neighbours: Option<&'a mut VvcInterMotionNeighbourState>,
 }
@@ -1121,7 +1108,6 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             slice_config,
             inter_slice: false,
             inter_skip_ctx: 0,
-            inter_pred_mode_contexts: None,
             inter_skip_neighbours: None,
             inter_motion_neighbours: None,
         }
@@ -1131,13 +1117,11 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         mut self,
         inter_slice: bool,
         skip_ctx: u8,
-        pred_mode_contexts: Option<&'a mut [VvcCabacProbModel; 2]>,
         skip_neighbours: Option<&'a mut VvcInterSkipNeighbourState>,
         motion_neighbours: Option<&'a mut VvcInterMotionNeighbourState>,
     ) -> Self {
         self.inter_slice = inter_slice;
         self.inter_skip_ctx = skip_ctx.min(2);
-        self.inter_pred_mode_contexts = pred_mode_contexts;
         self.inter_skip_neighbours = skip_neighbours;
         self.inter_motion_neighbours = motion_neighbours;
         self
@@ -1267,7 +1251,11 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         else {
             unreachable!("emit_bt_split expects a binary split operation");
         };
-        debug_assert!(node.cqt_depth >= 1 || node.mtt_depth > 0 || (node.x == 0 && node.y == 0));
+        debug_assert!(
+            node.cqt_depth >= 1
+                || node.mtt_depth > 0
+                || (node.x % VVC_CTU_SIZE as u16 == 0 && node.y % VVC_CTU_SIZE as u16 == 0)
+        );
         debug_assert!(matches!(
             node.tree_type,
             VvcTreeType::SingleTree | VvcTreeType::DualTreeLuma
@@ -1321,7 +1309,11 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         write_split_flag: bool,
         split_ctx: u8,
     ) {
-        debug_assert!(node.cqt_depth >= 1 || node.mtt_depth > 0 || (node.x == 0 && node.y == 0));
+        debug_assert!(
+            node.cqt_depth >= 1
+                || node.mtt_depth > 0
+                || (node.x % VVC_CTU_SIZE as u16 == 0 && node.y % VVC_CTU_SIZE as u16 == 0)
+        );
         debug_assert!(node.mtt_depth <= VVC_CURRENT_MAX_LUMA_MTT_DEPTH + node.depth_offset);
         debug_assert!(matches!(
             node.tree_type,
@@ -1589,14 +1581,9 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         self.contexts.encode_cu_skip_flag(cabac, skip_ctx, false);
         let pred_mode_ctx =
             u8::from(neighbours.left_of(node).is_some() || neighbours.above_of(node).is_some());
-        let pred_mode_contexts = self
-            .inter_pred_mode_contexts
-            .as_mut()
-            .expect("P-slice intra prefix requires pred_mode_flag contexts");
-        VvcCabacContexts::encode_model(
+        self.contexts.encode(
             cabac,
             VvcCabacContext::PredModeFlag(pred_mode_ctx),
-            &mut pred_mode_contexts[pred_mode_ctx as usize],
             pred_mode_intra,
         );
     }
@@ -1828,7 +1815,14 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         self.luma_tu_index += 1;
         assert!(
             tu_idx < self.params.luma_tu_count,
-            "missing luma TU coefficient data for coding-tree leaf {tu_idx}"
+            "missing luma TU coefficient data for coding-tree leaf {tu_idx} (available {}, node {}x{} at {},{}, split {:?}, max leaf {})",
+            self.params.luma_tu_count,
+            node.width,
+            node.height,
+            node.x,
+            node.y,
+            self.params.luma_split_kind,
+            self.params.luma_max_leaf_size,
         );
         let dc_level = self.params.luma_tu_dc_levels[tu_idx];
         let cbf = dc_level != 0 || self.params.luma_tu_has_ac[tu_idx];
@@ -2562,7 +2556,15 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         let tu_idx = self.chroma_tu_index;
         assert!(
             tu_idx < self.params.chroma_tu_count,
-            "missing chroma TU coefficient data for coding-tree leaf {tu_idx}"
+            "missing chroma TU coefficient data for coding-tree leaf {tu_idx} (available {}, node {}x{} at {},{}, sampling {:?}, dual_tree {}, inter {})",
+            self.params.chroma_tu_count,
+            node.width,
+            node.height,
+            node.x,
+            node.y,
+            self.params.chroma_sampling,
+            self.params.dual_tree_intra,
+            self.inter_slice,
         );
         if self.inter_slice && self.chroma_inter_skip_active {
             let chroma_inter_skip = self.params.chroma_tu_inter_skip[tu_idx];

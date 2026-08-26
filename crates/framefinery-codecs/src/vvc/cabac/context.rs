@@ -778,6 +778,7 @@ pub(in crate::vvc) struct VvcCabacContexts {
     pub(in crate::vvc) lfnst_idx: [VvcCabacProbModel; 3],
     pub(in crate::vvc) cu_skip_flag: [VvcCabacProbModel; 3],
     pub(in crate::vvc) pred_mode_ibc_flag: [VvcCabacProbModel; 9],
+    pub(in crate::vvc) pred_mode_flag: [VvcCabacProbModel; 2],
     pub(in crate::vvc) general_merge_flag: [VvcCabacProbModel; 3],
     pub(in crate::vvc) abs_mvd_greater0_flag: [VvcCabacProbModel; 3],
     pub(in crate::vvc) abs_mvd_greater1_flag: [VvcCabacProbModel; 3],
@@ -818,7 +819,7 @@ impl VvcCabacContexts {
                 ctx.log2_window_size(),
             )
         };
-        Self {
+        let mut contexts = Self {
             split_flag: std::array::from_fn(|idx| model(VvcCabacContext::SplitFlag(idx as u8))),
             split_qt_flag: std::array::from_fn(|idx| {
                 model(VvcCabacContext::SplitQtFlag(idx as u8))
@@ -855,6 +856,9 @@ impl VvcCabacContexts {
             cu_skip_flag: std::array::from_fn(|idx| model(VvcCabacContext::CuSkipFlag(idx as u8))),
             pred_mode_ibc_flag: std::array::from_fn(|idx| {
                 model(VvcCabacContext::PredModeIbcFlag(idx as u8))
+            }),
+            pred_mode_flag: std::array::from_fn(|idx| {
+                model(VvcCabacContext::PredModeFlag(idx as u8))
             }),
             general_merge_flag: std::array::from_fn(|idx| {
                 model(VvcCabacContext::GeneralMergeFlag(idx as u8))
@@ -896,7 +900,22 @@ impl VvcCabacContexts {
             run_copy_flag: std::array::from_fn(|idx| {
                 model(VvcCabacContext::RunCopyFlag(idx as u8))
             }),
+        };
+        // pred_mode_flag is a P-slice-only context set.  Keep it in the
+        // shared context dispatcher, but initialize it from the actual slice
+        // QP as required by the P-slice context table.  The other context
+        // groups retain the existing fallback-QP policy used by this encoder
+        // when transform skip is disabled.
+        if matches!(init_type, VvcCabacInitType::P) {
+            contexts.pred_mode_flag = std::array::from_fn(|idx| {
+                VvcCabacProbModel::from_init_value(
+                    VvcCabacContext::PredModeFlag(idx as u8).init_value_for(init_type),
+                    slice_qp,
+                    VvcCabacContext::PredModeFlag(idx as u8).log2_window_size(),
+                )
+            });
         }
+        contexts
     }
 
     pub(in crate::vvc) fn encode(
@@ -941,9 +960,7 @@ impl VvcCabacContexts {
                 VvcCabacContext::LfnstIdx(idx) => &self.lfnst_idx[idx as usize],
                 VvcCabacContext::CuSkipFlag(idx) => &self.cu_skip_flag[idx as usize],
                 VvcCabacContext::PredModeIbcFlag(idx) => &self.pred_mode_ibc_flag[idx as usize],
-                VvcCabacContext::PredModeFlag(_) => {
-                    panic!("pred_mode_flag uses standalone P-slice context models")
-                }
+                VvcCabacContext::PredModeFlag(idx) => &self.pred_mode_flag[idx as usize],
                 VvcCabacContext::GeneralMergeFlag(idx) => &self.general_merge_flag[idx as usize],
                 VvcCabacContext::AbsMvdGreater0Flag(idx) => {
                     &self.abs_mvd_greater0_flag[idx as usize]
@@ -1034,8 +1051,8 @@ impl VvcCabacContexts {
             VvcCabacContext::PredModeIbcFlag(idx) => {
                 self.pred_mode_ibc_flag[idx as usize].encode(cabac, bin)
             }
-            VvcCabacContext::PredModeFlag(_) => {
-                panic!("pred_mode_flag uses standalone P-slice context models")
+            VvcCabacContext::PredModeFlag(idx) => {
+                self.pred_mode_flag[idx as usize].encode(cabac, bin)
             }
             VvcCabacContext::GeneralMergeFlag(idx) => {
                 self.general_merge_flag[idx as usize].encode(cabac, bin)

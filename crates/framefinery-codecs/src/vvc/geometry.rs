@@ -191,9 +191,9 @@ impl VvcQuantizedCtuPayload {
             Self::InterSkip => true,
             Self::Intra(params) => params
                 .luma_tu_inter_decisions
-                .iter()
-                .take(params.luma_tu_count)
-                .any(Option::is_some),
+                    .iter()
+                    .take(params.luma_tu_count)
+                    .any(Option::is_some),
         }
     }
 }

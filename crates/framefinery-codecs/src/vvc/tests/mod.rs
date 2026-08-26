@@ -1,4 +1,4 @@
-use super::cabac::VvcCabacInitType;
+use super::cabac::{VvcCabacInitType, VvcLumaNeighbourState};
 use super::*;
 
 fn vvc_test_slice_config() -> VvcSliceSyntaxConfig {
@@ -1347,6 +1347,78 @@ fn vvc_luma_transform_nodes_match_cabac_luma_leaves() {
 }
 
 #[test]
+fn vvc_inter_transform_nodes_match_cabac_luma_leaves_at_edge_ctu() {
+    for (visible_width, visible_height) in [(64, 64), (14, 64), (64, 32), (14, 32)] {
+        let shape = VvcCtuPartitionShape {
+            root_width: VVC_CTU_SIZE as u16,
+            root_height: VVC_CTU_SIZE as u16,
+            visible_width,
+            visible_height,
+            chroma_sampling: ChromaSampling::Cs420,
+            dual_tree_intra: false,
+        };
+        let cabac_luma_nodes: Vec<_> =
+            VvcCtuCabacOp::inter_skip_ctu_partition(shape, VVC_CURRENT_MAX_LUMA_LEAF_SIZE)
+                .into_iter()
+                .filter_map(|op| match op {
+                    VvcCtuCabacOp::LumaLeafWithSplitCtx { node, .. } => Some(node),
+                    _ => None,
+                })
+                .collect();
+        assert_eq!(
+            vvc_luma_transform_nodes_for_kind(
+                shape,
+                VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+                VvcLumaSplitAvailabilityKind::Inter,
+            ),
+            cabac_luma_nodes,
+            "{visible_width}x{visible_height}",
+        );
+    }
+}
+
+#[test]
+fn vvc_inter_transform_nodes_match_global_edge_ctu_coordinates() {
+    let shape = VvcCtuPartitionShape {
+        root_width: VVC_CTU_SIZE as u16,
+        root_height: VVC_CTU_SIZE as u16,
+        visible_width: 16,
+        visible_height: 64,
+        chroma_sampling: ChromaSampling::Cs420,
+        dual_tree_intra: false,
+    };
+    let local_nodes = vvc_luma_transform_nodes_for_kind(
+        shape,
+        VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+        VvcLumaSplitAvailabilityKind::Inter,
+    );
+    let mut neighbours = VvcLumaNeighbourState::new(272, 480);
+    let mut global_nodes = Vec::new();
+    VvcCtuCabacOp::visit_inter_skip_ctu_partition_with_luma_neighbours(
+        &mut neighbours,
+        shape,
+        256,
+        0,
+        272,
+        480,
+        VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+        |op| {
+            if let VvcCtuCabacOp::LumaLeafWithSplitCtx { node, .. } = op {
+                global_nodes.push(node);
+            }
+        },
+    );
+    let expected_global_nodes = local_nodes
+        .into_iter()
+        .map(|mut node| {
+            node.x += 256;
+            node
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(global_nodes, expected_global_nodes);
+}
+
+#[test]
 fn vvc_contexts_derive_split_probability_from_init_tables() {
     let mut ctx = VvcCabacContexts::new();
     let split0 = &ctx.split_flag[0];
@@ -2532,6 +2604,7 @@ fn vvc_ctu_cabac_generator_uses_one_recursive_luma_base() {
             visible_height,
             chroma_sampling: ChromaSampling::Cs420,
             dual_tree_intra: true,
+            luma_split_kind: VvcLumaSplitAvailabilityKind::Intra,
             luma_max_leaf_size: VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
             chroma_tu_count: (visible_width * visible_height) / 16,
             luma_tu_count: 0,
@@ -3333,6 +3406,7 @@ fn vvc_ctu_chroma_tree_uses_luma_coordinate_root() {
             visible_height: 64,
             chroma_sampling,
             dual_tree_intra: true,
+            luma_split_kind: VvcLumaSplitAvailabilityKind::Intra,
             luma_max_leaf_size: VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
             chroma_tu_count: 0,
             luma_tu_count: 0,

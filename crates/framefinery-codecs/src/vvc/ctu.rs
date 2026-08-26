@@ -2,6 +2,7 @@
 struct VvcQuantizedCtuLeafDecision {
     quantized: VvcQuantizedColor,
     luma_max_leaf_size: u16,
+    luma_split_kind: VvcLumaSplitAvailabilityKind,
     luma_tu_inter_decisions: [Option<VvcLumaInterDecision>; MAX_VVC_LUMA_TUS],
 }
 
@@ -24,7 +25,10 @@ fn quantize_vvc_ctu_with_luma_leaf_selection(
 ) -> VvcQuantizedCtuLeafDecision {
     let policy = policy.with_luma_max_leaf_size(luma_max_leaf_size);
     let temporal_mode_hint = temporal_mode_hint
-        .filter(|hint| hint.luma_max_leaf_size == luma_max_leaf_size)
+        .filter(|hint| {
+            hint.luma_max_leaf_size == luma_max_leaf_size
+                && hint.luma_split_kind == policy.luma_split_kind()
+        })
         .map(|hint| &hint.quantized);
     let mut selected_luma_inter_decisions = [None; MAX_VVC_LUMA_TUS];
     let quantized = quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes_and_scratch_with_mode_hints(
@@ -47,6 +51,7 @@ fn quantize_vvc_ctu_with_luma_leaf_selection(
     VvcQuantizedCtuLeafDecision {
         quantized,
         luma_max_leaf_size,
+        luma_split_kind: policy.luma_split_kind(),
         luma_tu_inter_decisions: selected_luma_inter_decisions,
     }
 }

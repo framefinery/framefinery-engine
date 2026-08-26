@@ -41,10 +41,12 @@ use cabac::VvcFrameCtuCabacState;
 use cabac::{
     encode_ctu_partition_body, vvc_chroma_intra_mode_syntax_bin_count, vvc_chroma_transform_nodes,
     vvc_chroma_transform_nodes_into, vvc_luma_intra_mode_is_mpm,
-    vvc_luma_intra_mode_syntax_bin_count, vvc_luma_transform_nodes, vvc_luma_transform_nodes_into,
-    VvcCabacContext, VvcCabacContexts, VvcCabacDumpContextEvent, VvcCabacDumpSymbol,
-    VvcCabacEncoder, VvcCabacPayload, VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams,
-    VvcCtuPartitionShape, VvcLastSigCoeffPrefixCtxInput, VvcPartSplit,
+    vvc_luma_intra_mode_syntax_bin_count, vvc_luma_transform_nodes,
+    vvc_luma_transform_nodes_for_kind, vvc_luma_transform_nodes_into,
+    vvc_luma_transform_nodes_into_for_kind, VvcCabacContext, VvcCabacContexts,
+    VvcCabacDumpContextEvent, VvcCabacDumpSymbol, VvcCabacEncoder, VvcCabacPayload,
+    VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams, VvcCtuPartitionShape,
+    VvcLastSigCoeffPrefixCtxInput, VvcLumaSplitAvailabilityKind, VvcPartSplit,
 };
 #[cfg(test)]
 use cabac::{

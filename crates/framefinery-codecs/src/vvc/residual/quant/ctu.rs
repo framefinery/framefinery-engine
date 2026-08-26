@@ -1030,7 +1030,12 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     };
 
     let mut luma_tu_count = 0usize;
-    vvc_luma_transform_nodes_into(&mut luma_nodes, ctu_shape, luma_max_leaf_size);
+    vvc_luma_transform_nodes_into_for_kind(
+        &mut luma_nodes,
+        ctu_shape,
+        luma_max_leaf_size,
+        policy.luma_split_kind(),
+    );
     for local_node in luma_nodes.iter().copied() {
         if luma_tu_count >= MAX_VVC_LUMA_TUS {
             break;
@@ -2487,3 +2492,4 @@ fn vvc_chroma_fast_search_low_residual_score(
     vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
         .saturating_mul(4)
 }
+use crate::vvc::cabac::vvc_luma_transform_nodes_into_for_kind;

@@ -93,6 +93,24 @@ fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
     chroma_sampling: ChromaSampling,
     dual_tree_intra: bool,
 ) -> Option<VvcCtuPartitionParams> {
+    vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma_for_kind(
+        geometry,
+        color,
+        luma_max_leaf_size,
+        chroma_sampling,
+        dual_tree_intra,
+        VvcLumaSplitAvailabilityKind::Intra,
+    )
+}
+
+fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma_for_kind(
+    geometry: VvcVideoGeometry,
+    color: VvcQuantizedColor,
+    luma_max_leaf_size: u16,
+    chroma_sampling: ChromaSampling,
+    dual_tree_intra: bool,
+    luma_split_kind: VvcLumaSplitAvailabilityKind,
+) -> Option<VvcCtuPartitionParams> {
     let coded = geometry.coded();
     if coded.width > VVC_CTU_SIZE
         || coded.height > VVC_CTU_SIZE
@@ -160,7 +178,13 @@ fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
     }
     if luma_tu_count <= 1 {
         let leaf_count =
-            vvc_luma_leaf_count(coded, chroma_sampling, dual_tree_intra, luma_max_leaf_size);
+            vvc_luma_leaf_count_for_kind(
+                coded,
+                chroma_sampling,
+                dual_tree_intra,
+                luma_max_leaf_size,
+                luma_split_kind,
+            );
         luma_tu_count = leaf_count;
         for idx in 0..leaf_count.min(MAX_VVC_LUMA_TUS) {
             luma_tu_intra_modes[idx] = luma_tu_intra_modes[0];
@@ -183,6 +207,7 @@ fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
         visible_height: coded.height,
         chroma_sampling,
         dual_tree_intra,
+        luma_split_kind,
         luma_max_leaf_size,
         chroma_tu_count,
         luma_tu_count,
@@ -221,6 +246,22 @@ fn vvc_luma_leaf_count(
     dual_tree_intra: bool,
     luma_max_leaf_size: u16,
 ) -> usize {
+    vvc_luma_leaf_count_for_kind(
+        coded,
+        chroma_sampling,
+        dual_tree_intra,
+        luma_max_leaf_size,
+        VvcLumaSplitAvailabilityKind::Intra,
+    )
+}
+
+fn vvc_luma_leaf_count_for_kind(
+    coded: VvcCodedGeometry,
+    chroma_sampling: ChromaSampling,
+    dual_tree_intra: bool,
+    luma_max_leaf_size: u16,
+    luma_split_kind: VvcLumaSplitAvailabilityKind,
+) -> usize {
     let shape = VvcCtuPartitionShape {
         root_width: VVC_CTU_SIZE as u16,
         root_height: VVC_CTU_SIZE as u16,
@@ -229,5 +270,5 @@ fn vvc_luma_leaf_count(
         chroma_sampling,
         dual_tree_intra,
     };
-    vvc_luma_transform_nodes(shape, luma_max_leaf_size).len()
+    vvc_luma_transform_nodes_for_kind(shape, luma_max_leaf_size, luma_split_kind).len()
 }

@@ -75,6 +75,7 @@ pub(in crate::vvc) struct VvcChromaTuCodingDecision {
 pub(in crate::vvc) struct VvcResidualCodingPolicy {
     context: VvcResidualModeDecisionContext,
     luma_max_leaf_size: u16,
+    luma_split_kind: VvcLumaSplitAvailabilityKind,
     dual_tree_intra: bool,
     score_metric: VvcResidualScoreMetric,
     chroma_syntax_tie_breaker: bool,
@@ -403,6 +404,7 @@ impl VvcResidualCodingPolicy {
         Self {
             context,
             luma_max_leaf_size: select_vvc_luma_max_leaf_size(context),
+            luma_split_kind: VvcLumaSplitAvailabilityKind::Intra,
             dual_tree_intra: true,
             score_metric: select_vvc_residual_score_metric(context),
             chroma_syntax_tie_breaker: select_vvc_chroma_mode_syntax_tie_breaker(context),
@@ -417,6 +419,21 @@ impl VvcResidualCodingPolicy {
     const fn with_luma_max_leaf_size(mut self, luma_max_leaf_size: u16) -> Self {
         self.luma_max_leaf_size = luma_max_leaf_size;
         self
+    }
+
+    pub(in crate::vvc) const fn with_inter_slice_partition(mut self, inter_slice: bool) -> Self {
+        self.luma_split_kind = if inter_slice {
+            VvcLumaSplitAvailabilityKind::Inter
+        } else {
+            VvcLumaSplitAvailabilityKind::Intra
+        };
+        self
+    }
+
+    pub(in crate::vvc) const fn luma_split_kind(
+        self,
+    ) -> VvcLumaSplitAvailabilityKind {
+        self.luma_split_kind
     }
 
     pub(in crate::vvc) const fn with_dual_tree_intra(mut self, dual_tree_intra: bool) -> Self {
