@@ -123,6 +123,14 @@ from 4271.647 ms to 4093.910 ms. Required AVM smoke validation passed for all
 three lossy vectors. The shortcut changes no syntax or mode decision and
 keeps the existing 4x4/8x8 coding paths shared.
 
+The AV2 DPCM exact-residual probe (2026-08-26) was rejected. It bypassed
+quantized, refined, and transformed DPCM candidate construction when the DPCM
+predictor was exact, while preserving the existing zero-coefficient syntax.
+The six-vector A/B outputs were identical, but wall time changed only from
+4.276 s to 4.263 s and `lossy_tile_payload` from 4081.453 ms to 4069.022 ms,
+which is within run-to-run noise. The implementation was reverted and no
+performance claim is attached to it.
+
 The VVC lossless transform-skip probe (2026-08-26) applied the same exact-zero
 early exit to ordinary and BDPCM luma/chroma transform-skip finalization. The
 six-vector A/B run kept all 5,092,336 bytes and exact reconstruction results
