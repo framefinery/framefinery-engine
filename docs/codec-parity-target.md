@@ -456,3 +456,14 @@ yet be claimed merely from payload-derived slice classification. The force
 and suppression hooks were removed immediately after the probe. The required
 regression must assert decoding of a genuinely multi-frame lossy P-slice,
 not only a one-frame or all-skip stream.
+
+The accountability baseline on 2026-08-26 passed `make clippy-perf`, every
+`make feature-matrix` product configuration, and the focused nine-test
+predictive VVC suite. A fresh trace-enabled VTM decoder was configured and
+built under `verification/generated/agent_scratch`; it reproduced the
+multi-frame P-slice failure and produced a CABAC trace for the next comparison.
+The strict `make dead-code-audit` gate still fails on the known inventory of
+intentional experimental helpers and instrumentation, so that result remains
+visible as maintenance debt rather than being hidden with blanket lint
+allowances. Temporary reference builds and traces remain outside version
+control.
