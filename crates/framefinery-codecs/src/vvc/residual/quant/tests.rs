@@ -1136,6 +1136,42 @@ fn vvc_chroma_lossy_exact_prediction_stops_mode_search() {
 }
 
 #[test]
+fn vvc_zero_transform_skip_residuals_keep_zero_levels() {
+    let bit_depth = SampleBitDepth::new(10).expect("valid bit depth");
+    let quant_table = VvcTransformSkipQuantTable::new(bit_depth, 19);
+
+    let luma = finalize_vvc_luma_transform_skip_residual_block(&[0; 64], 8, 8, &quant_table);
+    assert_eq!(luma.dc_level, 0);
+    assert!(!luma.has_ac);
+    assert!(luma.ac_levels.iter().all(|level| *level == 0));
+
+    let luma_bdpcm = finalize_vvc_luma_bdpcm_transform_skip_residual_block(
+        &[0; 32],
+        4,
+        8,
+        &quant_table,
+        VvcBdpcmMode::Horizontal,
+    );
+    assert_eq!(luma_bdpcm.dc_level, 0);
+    assert!(!luma_bdpcm.has_ac);
+
+    let chroma = finalize_vvc_chroma_transform_skip_residual_block(&[0; 16], 4, 4, &quant_table);
+    assert_eq!(chroma.dc_level, 0);
+    assert!(!chroma.has_ac);
+    assert!(chroma.ac_levels.iter().all(|level| *level == 0));
+
+    let chroma_bdpcm = finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
+        &[0; 16],
+        4,
+        4,
+        &quant_table,
+        VvcBdpcmMode::Vertical,
+    );
+    assert_eq!(chroma_bdpcm.dc_level, 0);
+    assert!(!chroma_bdpcm.has_ac);
+}
+
+#[test]
 fn vvc_direct_luma_transform_skip_sse_matches_reconstruction() {
     let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
     let qp = super::super::VVC_DEFAULT_LOSSY_LUMA_QP;

@@ -103,3 +103,13 @@ from 8.553 s to 8.152 s (0.702 to 0.736 aggregate FPS), while measured
 validation passed for all three lossy and all three lossless vectors, and the
 focused codec suite passed 350 tests. The generated A/B profiles are retained
 under `verification/generated/profiling/hotspots/` for review.
+
+The VVC lossless transform-skip probe (2026-08-26) applied the same exact-zero
+early exit to ordinary and BDPCM luma/chroma transform-skip finalization. The
+six-vector A/B run kept all 5,092,336 bytes and exact reconstruction results
+identical; wall time fell from 5.225 s to 5.177 s (1.148 to 1.159 aggregate
+FPS), and measured `ctu_quantize` time fell from 3668.599 ms to 3585.331 ms.
+Required VTM validation passed for all three lossless smoke vectors, and the
+new direct helper test covers ordinary and BDPCM blocks in both luma and
+chroma. This is a small throughput improvement with no mode-selection or
+syntax-policy change.

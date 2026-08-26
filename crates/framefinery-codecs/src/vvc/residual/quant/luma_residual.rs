@@ -985,6 +985,15 @@ fn finalize_vvc_luma_transform_skip_residual_block(
     quant_table: &VvcTransformSkipQuantTable,
 ) -> VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU> {
     debug_assert_eq!(residuals.len(), usize::from(width) * usize::from(height));
+    if residuals.iter().all(|&residual| residual == 0) {
+        return VvcFinalizedResidualBlock {
+            dc_level: 0,
+            ac_levels: [0; VVC_LUMA_AC_COEFFS_PER_TU],
+            has_ac: false,
+            transform_skip: true,
+            bdpcm_mode: VvcBdpcmMode::None,
+        };
+    }
     let dc_level = residuals
         .first()
         .copied()
@@ -1010,6 +1019,15 @@ fn finalize_vvc_luma_bdpcm_transform_skip_residual_block(
 ) -> VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU> {
     debug_assert!(bdpcm_mode.is_enabled());
     debug_assert_eq!(residuals.len(), usize::from(width) * usize::from(height));
+    if residuals.iter().all(|&residual| residual == 0) {
+        return VvcFinalizedResidualBlock {
+            dc_level: 0,
+            ac_levels: [0; VVC_LUMA_AC_COEFFS_PER_TU],
+            has_ac: false,
+            transform_skip: true,
+            bdpcm_mode,
+        };
+    }
     let (active_width, active_height) =
         vvc_luma_transform_skip_active_extent(usize::from(width), usize::from(height));
     let mut quantized_levels = [0i16; 64];

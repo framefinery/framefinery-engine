@@ -798,6 +798,15 @@ fn finalize_vvc_chroma_transform_skip_residual_block(
     quant_table: &VvcTransformSkipQuantTable,
 ) -> VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU> {
     debug_assert_eq!(residuals.len(), width * height);
+    if residuals.iter().all(|&residual| residual == 0) {
+        return VvcFinalizedResidualBlock {
+            dc_level: 0,
+            ac_levels: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
+            has_ac: false,
+            transform_skip: true,
+            bdpcm_mode: VvcBdpcmMode::None,
+        };
+    }
     let dc_level = residuals
         .first()
         .copied()
@@ -823,6 +832,15 @@ fn finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
 ) -> VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU> {
     debug_assert!(bdpcm_mode.is_enabled());
     debug_assert_eq!(residuals.len(), width * height);
+    if residuals.iter().all(|&residual| residual == 0) {
+        return VvcFinalizedResidualBlock {
+            dc_level: 0,
+            ac_levels: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
+            has_ac: false,
+            transform_skip: true,
+            bdpcm_mode,
+        };
+    }
     let active_width = width.min(4);
     let active_height = height.min(4);
     let mut quantized_levels = [0i16; 16];
