@@ -82,3 +82,11 @@ regular-DCT candidate and strict tie behavior, so the six-vector lossy run kept
 all six byte counts and PSNR values unchanged. The instrumented six-vector
 profile reduced lossy tile time from 4598 ms to 4437 ms (about 3.5%), and all
 three lossy smoke streams matched the AVM reference reconstruction exactly.
+
+The follow-up AV2 predictor-exact residual probe (2026-08-26) bypassed FDCT,
+quantization, and IDCT when a 4x4 block's predictor already matches every
+source sample. It retains the regular-DCT zero candidate and therefore keeps
+the coding path and syntax choice unified. The six-vector lossy run again kept
+all byte counts and PSNR values unchanged; the instrumented lossy tile time
+fell from 4437 ms to 4221 ms (about 4.9%), and the AVM smoke reference checks
+remained exact.

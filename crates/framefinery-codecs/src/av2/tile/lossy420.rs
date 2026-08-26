@@ -920,6 +920,32 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         &self,
         analysis: &Av2LossyTxbAnalysis,
     ) -> Av2LossyRegularDctCandidates {
+        if analysis.residual.iter().all(|&residual| residual == 0) {
+            // A predictor-exact TXB cannot produce any coded coefficient. Keep
+            // the regular-DCT kind and its zero candidate so the syntax path
+            // and strict tie behavior remain identical without running the
+            // transform and inverse transform.
+            let mut predictor = [0i32; TX4X4_SAMPLES];
+            for (dst, &sample) in predictor.iter_mut().zip(analysis.predictor.iter()) {
+                *dst = i32::from(sample);
+            }
+            let zero = Av2LossyQuantizedResidualCandidate {
+                kind: Av2LossyResidualCandidateKind::RegularDct,
+                residual: [0; TX4X4_SAMPLES],
+                coefficients: [0; TX4X4_SAMPLES],
+                sse: 0,
+                variance_loss: txb_recon_variance_loss(
+                    analysis.source_variance,
+                    &predictor,
+                ),
+            };
+            return Av2LossyRegularDctCandidates {
+                transform: zero,
+                tail_pruned: None,
+                double_tail_pruned: None,
+                dc_only: zero,
+            };
+        }
         let coefficients = av2_fdct4x4(&analysis.residual);
         let (mut qcoeff, _) =
             av2_regular_quantize_dct4x4(&coefficients, self.base_qindex, self.bit_depth);
