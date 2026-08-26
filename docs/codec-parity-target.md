@@ -358,6 +358,13 @@ from the recorded 1.141 to 1.111 aggregate lossless FPS and from 0.723 to
 probe was reverted. This is retained as an accountability record so a future
 optimization does not circle back to the same unproductive change.
 
+The follow-up VVC MTS DC-basis hoist probe (2026-08-26) moved the invariant
+horizontal `k=0` transform lookup out of the sample loop. It preserved output
+bytes, PSNR, and all MTS tests, but the six-vector instrumented profile moved
+from 1.157 to 1.142 aggregate lossless FPS and from 0.726 to 0.722 lossy FPS.
+The change was reverted because it did not produce a measurable gain on the
+representative workload.
+
 The VVC luma quantization audit then found an unconditional duplicate: the
 legacy AC transform was computed even when fast mode, a nonzero MTS index, a
 non-8x8 TU, or an AC-free block made that candidate ineligible. The legacy
