@@ -333,3 +333,12 @@ hypothesis: the remaining audit must compare block traversal, edge predictor
 availability, and reconstructed samples at that boundary. The diagnostic
 instrumentation was removed from both production and reference trees after
 each probe; no workaround is retained without a focused reference test.
+
+The AV2 DC predictor correction (`df61e02`, 2026-08-26) mirrors AVM's
+reciprocal-divisor entries for small edge counts and routes both reconstruction
+and mode-scoring DC averages through that helper. The focused 4:2:2 width
+sweep (64, 128, 256, 384, 512, 640, and 704 pixels) now matches AVM exactly;
+the one-frame required-reference release six-vector checks pass for all AV2
+and VVC rows, and the full workspace test suite passes. The helper has a
+direct regression test for the non-power-of-two 12-sample case that exposed
+the original drift.
