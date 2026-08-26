@@ -438,3 +438,12 @@ A follow-up root-CBF context probe tested that hypothesis against the same
  byte identical output and did not change the VTM failure. The probe was
  reverted: the remaining divergence is not explained by that context alone,
  and no speculative CABAC context alias is retained.
+
+A controlled lossy P-slice probe then disabled every explicit-inter candidate
+while leaving the shared P-slice partition and residual writer active. The
+resulting stream grew from 255 to 272 bytes and still failed VTM, so explicit
+motion signaling is not sufficient to explain the defect. The production
+guard was removed. The remaining audit scope is the shared lossy P-slice
+intra residual/partition syntax and its CABAC context evolution; a future
+optimization must not be accepted until this path decodes over multiple
+frames.
