@@ -385,7 +385,8 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
             None
         };
         let lossy_mixed_single_p_slice_supported =
-            !residual_mode.is_lossless() && vvc_lossy_mixed_single_p_slice_supported(stream_format);
+            !residual_mode.is_lossless()
+                && vvc_lossy_mixed_single_p_slice_supported(stream_format, geometry);
         let explicit_luma_inter_decisions_by_ctu = if predictive_frame
             && lossy_mixed_single_p_slice_supported
         {
@@ -701,9 +702,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         // the intra tree even when the surrounding frame is
                         // predictive; only a mixed single-slice P picture
                         // needs the inter partition contract for every CTU.
-                        let inter_slice_partition = predictive_frame
-                            && !residual_mode.is_lossless()
-                            && !predictive_ctu_slice_frame;
+                        let inter_slice_partition = mixed_single_p_slice_frame;
                         let ctu_residual_policy = residual_policy
                             .with_inter_slice_partition(inter_slice_partition)
                             .with_dual_tree_intra(
@@ -849,7 +848,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 slice_config,
                                 luma_inter_skip_mask.as_ref(),
                                 chroma_inter_skip_mask.as_ref(),
-                                predictive_frame && !residual_mode.is_lossless(),
+                                mixed_single_p_slice_frame,
                             )?;
                             if let Some((cached, skip_distortion)) = cached_lossy_skip_ctu {
                                 if predictive_ctu_inter_skip_frame
@@ -1712,15 +1711,18 @@ fn vvc_explicit_inter_eligible_luma_leaf_count(
         .sum()
 }
 
-fn vvc_lossy_mixed_single_p_slice_supported(format: VvcPictureFormat) -> bool {
-    // Mixed InterSkip/Intra P-slices use a single coding tree. The quantizer can
-    // follow that partition order for 4:2:0. 8-bit 4:4:4 is only admitted by
-    // the narrower full-coverage gates above; partial 4:4:4 reuse must stay on
-    // CTU slices or be disabled for large pictures that cannot signal CTU
-    // slices. Keep 4:2:2 and high-depth 4:4:4 on the CTU-slice fallback until
-    // their rectangular/chroma residual tradeoffs are validated.
+fn vvc_lossy_mixed_single_p_slice_supported(
+    format: VvcPictureFormat,
+    geometry: VvcVideoGeometry,
+) -> bool {
+    // The mixed InterSkip/Intra P-slice experiment is kept behind this single
+    // policy gate until its complete partition and CABAC contract is covered
+    // by required-reference multi-CTU tests. This preserves the shared
+    // quantize/emit path and falls back to ordinary intra predictive pictures
+    // rather than emitting partially modelled mixed syntax.
     format.chroma_sampling == ChromaSampling::Cs420
-        || (format.chroma_sampling == ChromaSampling::Cs444 && format.bit_depth.bits() == 8)
+        && geometry.width % VVC_CTU_SIZE == 0
+        && geometry.height % VVC_CTU_SIZE == 0
 }
 
 fn vvc_predictive_ctu_dependencies_reused(

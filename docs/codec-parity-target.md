@@ -540,3 +540,16 @@ so the remaining defect is in the broader lossy predictive residual/partition
 path. The all-intra control and maintained geometry gates remain
 reference-decodable; this longer changed-P case remains a compliance blocker
 for claiming fast predictive parity.
+
+The predictive partition regression audit (2026-08-26) compared the current
+stream against the last known-good pre-mixed-P revision using the exact
+two-frame 4:4:4 crop and three-frame 4:2:0 multi-CTU fixtures. It found that
+decision-to-CABAC conversion was passing the predictive-frame flag even when
+the emitted fallback slice was an I slice, causing quantization and entropy
+traversal to use different tree contracts. The shared handoff now uses the
+actual mixed-P policy. Mixed-P eligibility is also limited to full-CTU 4:2:0
+pictures until partial-edge syntax is fully reference-validated; this keeps
+the experimental code unified without emitting unverified edge syntax.
+Required VTM decoding now passes for both focused fixtures, including the
+4:4:4 crop and 4:2:0 multi-CTU sequence. The partial-edge mixed-P case remains
+a documented optimization/compliance follow-up, not a hidden fallback.
