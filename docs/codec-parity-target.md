@@ -313,3 +313,12 @@ transition; the shared Exp-Golomb helper itself was compared with AVM and left
 unchanged after a candidate alteration produced a corrupt stream.
 Simple -1/0/+1 DC high-range value-bias probes also failed to restore the
 reference reconstruction, so the problem is not an obvious level offset.
+
+The AVM accounting inspector was rebuilt on 2026-08-26 with accounting and
+inspection enabled, while disabling the optional ML partition dependencies.
+It still segfaults before producing output for both the native AV2 OBU and a
+synthetic AV02 IVF wrapper around the same one-frame stream. This reproduces
+the existing inspector limitation and is not evidence that the decoder accepts
+or rejects the stream; ordinary AVM decoding remains the authority for this
+investigation. The accounting attempt and its generated files stay in the
+ignored agent scratch area rather than becoming a validation dependency.
