@@ -215,3 +215,11 @@ when that tool is available; no substitute lint or blanket suppression is
 being claimed as equivalent. `perf` is present but cannot access hardware
 performance counters under the current kernel policy, so the retained timing
 evidence uses the repository's reproducible hotspot profiler instead.
+
+The AV2 tail-candidate score-gate probe (2026-08-26) was rejected. It moved
+the existing extra-SSE bound ahead of coefficient-rate scoring for tail-pruned
+regular-DCT candidates, without changing candidate order or tie behavior. The
+six-vector output remained 2,701,924 bytes with mean PSNR 51.146, but the
+controlled profile measured 4.319 s versus the 4.243 s baseline. The probe was
+reverted; the small tail-candidate population does not justify retaining the
+additional branch in the hot path.
