@@ -311,3 +311,5 @@ DC high-range extension and then decoded exactly through AVM. This isolates the
 next comparison to the V TX4X8 DC high-range condition/codeword and its state
 transition; the shared Exp-Golomb helper itself was compared with AVM and left
 unchanged after a candidate alteration produced a corrupt stream.
+Simple -1/0/+1 DC high-range value-bias probes also failed to restore the
+reference reconstruction, so the problem is not an obvious level offset.
