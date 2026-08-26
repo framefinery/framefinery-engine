@@ -498,3 +498,11 @@ and lossy throughput varied more between runs than the observed change. The
 probe was reverted. Future kernel changes must show a stable improvement over
 repeated runs before being retained; correctness-only refactors should be
 accepted separately from performance claims.
+
+The chroma transform-skip zero-scan probe (2026-08-26) removed a full residual
+block all-zero scan because the coefficient extraction pass already produces
+the same zero block. The residual test suite passed, but Criterion showed
+mode- and format-dependent results: some 4:2:0/8-bit and 4:4:4/10-bit cases
+improved while other 4:4:4/10-bit and lossy cases regressed. The probe was
+reverted. This remains a possible targeted optimization only if a future
+policy can demonstrate a stable benefit for the complete supported matrix.
