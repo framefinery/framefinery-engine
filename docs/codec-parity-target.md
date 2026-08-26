@@ -488,3 +488,13 @@ CTUs, multiple frames, and 10-bit input. Every case matched the encoder's
 internal reconstruction, and the lossless multi-CTU cases also matched the
 source exactly. The full release matrix and performance comparison remain
 separate gates.
+
+The paired chroma-residual loop probe (2026-08-26) consolidated Cb and Cr
+residual construction into one helper while preserving residual values in a
+direct equivalence test. Required-reference unusual-geometry (7/7) and
+multi-CTU (4/4) validation remained clean, but two one-frame profiling runs
+were inconclusive: lossless aggregate throughput was effectively unchanged
+and lossy throughput varied more between runs than the observed change. The
+probe was reverted. Future kernel changes must show a stable improvement over
+repeated runs before being retained; correctness-only refactors should be
+accepted separately from performance claims.
