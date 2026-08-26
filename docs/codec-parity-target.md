@@ -170,3 +170,14 @@ within normal measurement variation and is not claimed as a speed gain.
 Required VTM validation passed for all three lossy and all three lossless smoke
 vectors with matching reconstruction checksums. This establishes the shared
 helper as the maintainable base for a later measured BDPCM optimization.
+
+The follow-up VVC direct-BDPCM safety probe `goal-bdpcm-safety-20260826`
+performed the existing raw-SSE safety test immediately after candidate
+prediction and residual construction, before transform-skip finalization and
+RD scoring. This is safe because the old selection condition required that
+same safety predicate as well as the scored candidate comparison. On the
+screen vector, 6,062 of 217,665 direct candidates were therefore rejected
+without quantized scoring. The six-vector lossy result remained 2,225,429
+bytes with mean PSNR 54.130; the observed total fell from 8.172 s to 8.092 s
+(0.734 to 0.741 aggregate FPS). Required VTM validation passed in both lossy
+and lossless smoke modes, and the focused codec suite remained at 351 tests.
