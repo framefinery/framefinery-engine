@@ -357,3 +357,15 @@ from the recorded 1.141 to 1.111 aggregate lossless FPS and from 0.723 to
 0.707 lossy FPS. Because the result was not a demonstrated improvement, the
 probe was reverted. This is retained as an accountability record so a future
 optimization does not circle back to the same unproductive change.
+
+The VVC luma quantization audit then found an unconditional duplicate: the
+legacy AC transform was computed even when fast mode, a nonzero MTS index, a
+non-8x8 TU, or an AC-free block made that candidate ineligible. The legacy
+candidate is now materialized only in the single shared branch that compares
+it with the alternate transform. The six-vector profile kept identical bytes
+and PSNR and improved aggregate FPS from 1.111 to 1.157 for lossless (+4.1%)
+and from 0.707 to 0.726 for lossy (+2.7%) against the immediately preceding
+instrumented run. Required VTM validation passed for all six vectors, and the
+focused transform suite passed all 23 tests. The change is limited to
+avoiding discarded work; no syntax, mode, profile, or reconstruction path was
+forked.

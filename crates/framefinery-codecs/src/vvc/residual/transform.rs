@@ -1100,7 +1100,6 @@ fn quantize_direct_luma_ac_coeffs_into(
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
 ) -> ([i16; VVC_LUMA_AC_COEFFS_PER_TU], bool) {
-    let legacy = quantize_legacy_luma_ac_coeffs(residuals, width, height, qp);
     if ac_search == VvcLumaAcCandidateSearch::FastModeDecision
         || !VVC_ENABLE_LUMA_DCT_COEFF_SELECTION
         || mts_index != 0
@@ -1110,11 +1109,12 @@ fn quantize_direct_luma_ac_coeffs_into(
     {
         if mts_index == 0 {
             let _selector_inputs = (bit_depth, dc_level);
-            return legacy;
+            return quantize_legacy_luma_ac_coeffs(residuals, width, height, qp);
         }
         return quantize_transform_luma_ac_coeffs(residuals, width, height, qp, mts_index);
     }
 
+    let legacy = quantize_legacy_luma_ac_coeffs(residuals, width, height, qp);
     let dct = quantize_transform_luma_ac_coeffs(residuals, width, height, qp, 0);
     select_luma_ac_coeff_candidate_into(
         residuals,
