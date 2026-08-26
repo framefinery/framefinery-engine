@@ -131,6 +131,13 @@ The six-vector A/B outputs were identical, but wall time changed only from
 which is within run-to-run noise. The implementation was reverted and no
 performance claim is attached to it.
 
+The VVC residual-selector zero-block probe (2026-08-26) was also rejected.
+Although it preserved all six lossy byte counts and PSNR values, moving the
+zero-residual test above the selector's transform-skip and MTS decisions made
+the controlled run slightly slower: 8.074 s versus the 8.015 s baseline. The
+lower-level quantizer shortcuts already remove the expensive work, so the
+additional selector scan was reverted.
+
 The VVC lossless transform-skip probe (2026-08-26) applied the same exact-zero
 early exit to ordinary and BDPCM luma/chroma transform-skip finalization. The
 six-vector A/B run kept all 5,092,336 bytes and exact reconstruction results
