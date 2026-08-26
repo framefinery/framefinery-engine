@@ -299,3 +299,9 @@ triggered by the first V block's entropy coding or state evolution; it is not a
 general predictor, geometry, or inverse-transform failure. The probe was
 removed after the result was recorded, and the next fix must preserve the
 shared coefficient writer while reconciling that state with AVM.
+
+Disabling frame-level CDF adaptation for the focused stream did not remove the
+mismatch, so the defect is not caused solely by adaptive CDF updates. That
+experiment was reverted as well; the remaining audit target is the exact
+TX_4X8 V-plane symbol/context mapping and its interaction with the first block
+of the following vertical band.
