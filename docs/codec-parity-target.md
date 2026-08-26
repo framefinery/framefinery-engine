@@ -239,6 +239,14 @@ controlled profile measured 4.319 s versus the 4.243 s baseline. The probe was
 reverted; the small tail-candidate population does not justify retaining the
 additional branch in the hot path.
 
+The VVC direct chroma-BDPCM best-of-two probe (2026-08-26) evaluated every
+safe horizontal/vertical fast-search candidate before returning instead of
+stopping at the first candidate that beat the baseline. The six-vector lossy
+run remained byte-identical at 2,225,429 bytes with mean PSNR 54.130 and
+measured 8.015 s, with no change in selected-candidate counts. It was reverted
+because the broader behavior had no demonstrated benefit on the representative
+set.
+
 The AV2 intra-score reconstruction reuse probe (2026-08-26) consolidated
 per-pixel clamping and Paeth predictor work across the two passes of the shared
 intra scorer. It preserved all six byte counts and PSNR values, but increased
