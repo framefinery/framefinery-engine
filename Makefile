@@ -268,7 +268,7 @@ CODE_BROWSER_PROFILE_FLAG := $(if $(strip $(CODE_BROWSER_PROFILE_JSON)),--profil
 GEOMETRY_SWEEP_AV2_SETTINGS_FLAG := $(foreach setting,$(GEOMETRY_SWEEP_AV2_SETTINGS),--setting $(setting))
 GPROF_PROFILE_SETTINGS_FLAG := $(foreach setting,$(GPROF_PROFILE_SETTINGS),--set "$(setting)")
 
-.PHONY: help check-tools fmt fmt-check check feature-matrix dead-code-audit clippy-perf test doc api-docs api-docs-strict package-list build debug run code-browser wasm-check wasm-build wasm-screen-demo reference-list reference-setup test-vector-sets test-vectors validate-set validate-release-aomctc pre-release-validation release-performance-table compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check ci ci-encode-smoke
+.PHONY: help check-tools fmt fmt-check check feature-matrix dead-code-audit dependency-audit clippy-perf test doc api-docs api-docs-strict package-list build debug run code-browser wasm-check wasm-build wasm-screen-demo reference-list reference-setup test-vector-sets test-vectors validate-set validate-release-aomctc pre-release-validation release-performance-table compare-compression benchmark-encode-matrix benchmark-external-encoders benchmark-external-driver-list bench-av2-micro bench-vvc-micro build-pgo llvm-vector-remarks profile-hotspots profile-vvc-hotspots summarize-hotspots summarize-vvc-hotspots validate-geometry-sweep profile-av2-i-lossless regression clean release-check ci ci-encode-smoke
 
 help:
 	@printf '%s\n' \
@@ -279,6 +279,7 @@ help:
 		'  make check            Type-check the Rust workspace' \
 		'  make feature-matrix   Check AV2-only and VVC-only product builds' \
 		'  make dead-code-audit  Fail stale internal helpers in the all-product build' \
+		'  make dependency-audit  Audit Cargo dependencies with cargo-audit' \
 		'  make clippy-perf      Run Clippy performance lints on product features' \
 		'  make test             Run Rust tests' \
 		'  make doc              Build generated Rustdoc API reference' \
@@ -410,6 +411,10 @@ feature-matrix:
 
 dead-code-audit:
 	RUSTFLAGS="-F dead_code" $(CARGO) check --workspace --features "$(PRODUCT_FEATURES) framefinery-codecs/dead-code-audit"
+
+dependency-audit:
+	@command -v cargo-audit >/dev/null 2>&1 || { printf '%s\n' 'error: cargo-audit is required for dependency-audit (install it separately, then rerun)'; exit 2; }
+	$(CARGO) audit
 
 clippy-perf:
 	$(CARGO) clippy --workspace --features "$(PRODUCT_FEATURES)" -- -A clippy::all -W clippy::perf

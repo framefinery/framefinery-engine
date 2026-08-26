@@ -211,11 +211,12 @@ per-region statistics deliberately add logging overhead.
 
 The accountability tool inventory was also checked for this goal. The
 repository-provided gates are `cargo fmt`, workspace check/test, `make
-clippy-perf`, `make feature-matrix`, `make dead-code-audit`, `git diff --check`,
-and required AVM/VTM decode validation. `cargo audit` is not installed in the
-current environment, so dependency auditing remains an explicit follow-up
-when that tool is available; no substitute lint or blanket suppression is
-being claimed as equivalent. `perf` is present but cannot access hardware
+clippy-perf`, `make feature-matrix`, `make dead-code-audit`,
+`make dependency-audit`, `git diff --check`, and required AVM/VTM decode
+validation. `make dependency-audit` is an explicit gate backed by
+`cargo-audit`; it fails clearly when that tool is not installed rather than
+silently skipping dependency review. No substitute lint or blanket suppression
+is being claimed as equivalent. `perf` is present but cannot access hardware
 performance counters under the current kernel policy, so the retained timing
 evidence uses the repository's reproducible hotspot profiler instead.
 
@@ -559,3 +560,13 @@ local smoke set in lossy mode: the shared `lossy_tile_payload` stage consumed
 was intentionally not substituted with smoke data because its manifest
 requires the caller-provided `AOMCTC_ROOT`; no AV2 optimization or performance
 claim is retained from the undersized smoke sample.
+
+The accountability-gate rerun (2026-08-26) passed formatting, workspace check,
+Clippy performance lints, the feature matrix, `git diff --check`, and all 356
+codec tests. The strict dead-code audit still reports the known experimental
+and public-helper inventory, so it remains an actionable ownership audit rather
+than a pass. The new `make dependency-audit` target makes dependency review
+explicit and reports a clear setup failure when `cargo-audit` is unavailable;
+the tool is not installed in this environment. The maintained VVC microbench
+also completed without a statistically meaningful change, so no speculative
+VVC optimization was retained from that run.
