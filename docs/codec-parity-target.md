@@ -342,3 +342,9 @@ the one-frame required-reference release six-vector checks pass for all AV2
 and VVC rows, and the full workspace test suite passes. The helper has a
 direct regression test for the non-power-of-two 12-sample case that exposed
 the original drift.
+
+The local AOM CTC profiling manifests were also corrected to describe derived
+4:2:2 and 4:4:4 rows as `source_y4m_convert` entries rooted at
+`${AOMCTC_ROOT}`. This keeps cleanup safe: profiling can regenerate the
+derived clips after removing them, instead of depending on stale generated
+paths from a previous run.

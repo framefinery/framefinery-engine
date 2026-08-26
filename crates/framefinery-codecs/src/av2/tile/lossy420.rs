@@ -111,7 +111,7 @@ pub(super) fn av2_reference_dc_average(sum: u32, count: u32) -> Av2Sample {
         14 => (293, 12),
         15 => (273, 12),
         16 => (512, 13),
-        _ => return ((sum + count / 2) / count) as Av2Sample,
+        _ => unreachable!("AV2 intra DC edge count exceeds supported block size"),
     };
     ((u64::from(sum) * u64::from(scale) + (1u64 << (shift - 1))) >> shift) as Av2Sample
 }
