@@ -88,6 +88,34 @@ struct Av2LossyLeafPredictorContext<'a> {
     coded_mi_context: &'a Av2CodedMiContext,
 }
 
+// AVM uses its reciprocal-division table for intra DC predictors.  The
+// approximation is observable for non-power-of-two edge counts (for example,
+// 2156 / 12 rounds to 179 with AVM's multiplier, while integer division gives
+// 180), so use the same small-count entries for encoder reconstruction.
+#[inline]
+pub(super) fn av2_reference_dc_average(sum: u32, count: u32) -> Av2Sample {
+    let (scale, shift) = match count {
+        1 => (512u32, 9u8),
+        2 => (512, 10),
+        3 => (341, 10),
+        4 => (512, 11),
+        5 => (410, 11),
+        6 => (341, 11),
+        7 => (293, 11),
+        8 => (512, 12),
+        9 => (455, 12),
+        10 => (410, 12),
+        11 => (372, 12),
+        12 => (341, 12),
+        13 => (315, 12),
+        14 => (293, 12),
+        15 => (273, 12),
+        16 => (512, 13),
+        _ => return ((sum + count / 2) / count) as Av2Sample,
+    };
+    ((u64::from(sum) * u64::from(scale) + (1u64 << (shift - 1))) >> shift) as Av2Sample
+}
+
 impl<'a> Av2LossySubsampledTileState<'a> {
     fn new(
         geometry: Av2VideoGeometry,
@@ -210,7 +238,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
                 count += 1;
             }
         }
-        ((sum + count / 2) / count) as Av2Sample
+        av2_reference_dc_average(sum, count)
     }
 
     fn h_predictor(&self, plane: Av2LossyPlane, x0: usize, y0: usize, local_y: usize) -> Av2Sample {
@@ -663,20 +691,22 @@ impl<'a> Av2LossySubsampledTileState<'a> {
                 let mut count = 0u32;
                 if have_top {
                     for x in leaf_x0..(leaf_x0 + visible_width) {
-                        sum += u32::from(self.recon_sample(plane, x, leaf_y0 - 1));
+                        let sample = self.recon_sample(plane, x, leaf_y0 - 1);
+                        sum += u32::from(sample);
                         count += 1;
                     }
                 }
                 if have_left {
                     for y in leaf_y0..(leaf_y0 + visible_height) {
-                        sum += u32::from(self.recon_sample(plane, leaf_x0 - 1, y));
+                        let sample = self.recon_sample(plane, leaf_x0 - 1, y);
+                        sum += u32::from(sample);
                         count += 1;
                     }
                 }
                 if count == 0 {
                     av2_lossless_dc_predictor(self.bit_depth)
                 } else {
-                    ((sum + count / 2) / count) as Av2Sample
+                    av2_reference_dc_average(sum, count)
                 }
             }
         } else {
@@ -2470,7 +2500,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
                 count += 1;
             }
         }
-        ((sum + count / 2) / count) as Av2Sample
+        av2_reference_dc_average(sum, count)
     }
 
     fn h_predictor_for_score(

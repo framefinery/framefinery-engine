@@ -30,6 +30,13 @@ fn av2_accepts_non_mi_aligned_request_shape() {
 }
 
 #[test]
+fn av2_dc_average_matches_reference_reciprocal_rounding() {
+    assert_eq!(tile::av2_reference_dc_average(2_156, 12), 179);
+    assert_eq!(tile::av2_reference_dc_average(2_184, 12), 182);
+    assert_eq!(tile::av2_reference_dc_average(1_512, 12), 126);
+}
+
+#[test]
 fn av2_rejects_empty_request_shape() {
     let request = Av2EncodeRequest {
         params: Av2EncodeParams { frames: 1 },
