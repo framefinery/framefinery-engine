@@ -561,6 +561,15 @@ was intentionally not substituted with smoke data because its manifest
 requires the caller-provided `AOMCTC_ROOT`; no AV2 optimization or performance
 claim is retained from the undersized smoke sample.
 
+The VVC adaptive motion-seed probe (2026-08-26) replaced the fixed 8-pixel
+seed ring with the outer search-radius ring before unit-diamond refinement.
+This followed the source audit's bounded/coarse-search direction, but the
+five-frame 1920x1080 predictive screen-content A/B was negative: both versions
+produced 355,622 bytes with identical per-frame PSNR, while the probe took
+1.35 s versus 1.20 s for the fixed-8 baseline. The probe was reverted. The
+predictive two-frame 4:2:0 fixture and the unusual-geometry and multi-CTU
+required-reference sets remained clean during the experiment.
+
 The accountability-gate rerun (2026-08-26) passed formatting, workspace check,
 Clippy performance lints, the feature matrix, `git diff --check`, and all 356
 codec tests. The strict dead-code audit still reports the known experimental
