@@ -216,6 +216,14 @@ being claimed as equivalent. `perf` is present but cannot access hardware
 performance counters under the current kernel policy, so the retained timing
 evidence uses the repository's reproducible hotspot profiler instead.
 
+On 2026-08-26, the accountability rerun passed `make clippy-perf` and
+`make feature-matrix` after the AV2 TX_4X8 investigation. The strict
+`make dead-code-audit` gate still reports the repository's known intentional
+public/experimental inventory (183 errors under `-F dead_code`); it remains a
+visibility audit rather than a release pass, and no blanket allowance was
+added. The failing 4:2:2 reference-reconstruction case is therefore tracked
+as an unresolved codec defect, not accepted as an optimization result.
+
 The AV2 DC-only inverse-transform probe (2026-08-26) added a specialized
 integer reconstruction for the already-selected regular-DCT DC-only candidate.
 An exhaustive sampled test across 8-, 10-, and 12-bit ranges matched the full
