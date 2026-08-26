@@ -305,3 +305,9 @@ mismatch, so the defect is not caused solely by adaptive CDF updates. That
 experiment was reverted as well; the remaining audit target is the exact
 TX_4X8 V-plane symbol/context mapping and its interaction with the first block
 of the following vertical band.
+
+The latest controlled probe retained all first-block V coefficients except its
+DC high-range extension and then decoded exactly through AVM. This isolates the
+next comparison to the V TX4X8 DC high-range condition/codeword and its state
+transition; the shared Exp-Golomb helper itself was compared with AVM and left
+unchanged after a candidate alteration produced a corrupt stream.
