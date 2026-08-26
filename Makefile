@@ -179,6 +179,9 @@ HOTSPOT_MATRIX_DIR ?= $(HOTSPOT_RUN_DIR)/encode_matrix
 HOTSPOT_STATS_DIR ?= $(HOTSPOT_RUN_DIR)/stats
 HOTSPOT_BASELINE ?=
 HOTSPOT_LIMIT ?=
+HOTSPOT_FRAMES ?= 1
+HOTSPOT_AV2_GOP ?= -1
+HOTSPOT_VVC_GOP ?= -1
 HOTSPOT_VISUALIZE ?= 0
 HOTSPOT_BROWSER_OUT ?= $(HOTSPOT_RUN_DIR)/code_browser.html
 GEOMETRY_SWEEP_SETS ?= screenshot-sweep-444 screenshot-sweep-444-10bit screenshot-sweep-420-10bit-canary
@@ -255,6 +258,8 @@ HOTSPOT_CODECS_FLAG := $(foreach codec,$(HOTSPOT_CODECS),--codec "$(codec)")
 HOTSPOT_MODES_FLAG := $(foreach mode,$(HOTSPOT_MODES),--mode "$(mode)")
 HOTSPOT_BASELINE_FLAG := $(if $(strip $(HOTSPOT_BASELINE)),--baseline-json "$(HOTSPOT_BASELINE)",)
 HOTSPOT_LIMIT_FLAG := $(if $(strip $(HOTSPOT_LIMIT)),--limit "$(HOTSPOT_LIMIT)",)
+HOTSPOT_AV2_GOP_FLAG := --av2-gop "$(HOTSPOT_AV2_GOP)"
+HOTSPOT_VVC_GOP_FLAG := --vvc-gop "$(HOTSPOT_VVC_GOP)"
 HOTSPOT_AV2_STATS_FLAG := $(if $(filter av2,$(HOTSPOT_CODECS)),--av2-stats-dir "$(HOTSPOT_STATS_DIR)",)
 HOTSPOT_VVC_STATS_FLAG := $(if $(filter vvc,$(HOTSPOT_CODECS)),--vvc-stats-dir "$(HOTSPOT_STATS_DIR)",)
 HOTSPOT_BUILD_AV2_STATS := $(if $(filter av2,$(HOTSPOT_CODECS)),1,0)
@@ -529,7 +534,7 @@ llvm-vector-remarks:
 
 profile-hotspots:
 	$(MAKE) build AV2_STATS=$(HOTSPOT_BUILD_AV2_STATS) VVC_STATS=$(HOTSPOT_BUILD_VVC_STATS)
-	$(PYTHON) scripts/benchmark_encode_matrix.py "$(HOTSPOT_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(HOTSPOT_MATRIX_DIR)" --run-name "$(HOTSPOT_RUN)" $(HOTSPOT_CODECS_FLAG) $(HOTSPOT_MODES_FLAG) --frames 1 --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(HOTSPOT_AV2_STATS_FLAG) $(HOTSPOT_VVC_STATS_FLAG) $(HOTSPOT_BASELINE_FLAG) $(HOTSPOT_LIMIT_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG) --cleanup-vectors
+	$(PYTHON) scripts/benchmark_encode_matrix.py "$(HOTSPOT_SET)" --ff "$(abspath $(BUILD_BINARY))" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --out-dir "$(HOTSPOT_MATRIX_DIR)" --run-name "$(HOTSPOT_RUN)" $(HOTSPOT_CODECS_FLAG) $(HOTSPOT_MODES_FLAG) --frames "$(HOTSPOT_FRAMES)" --av2-lossy-qp "$(ENCODE_MATRIX_AV2_LOSSY_QP)" --vvc-lossy-qp "$(ENCODE_MATRIX_VVC_LOSSY_QP)" $(ENCODE_MATRIX_VVC_FAST_SEARCH_FLAG) $(HOTSPOT_AV2_GOP_FLAG) $(HOTSPOT_VVC_GOP_FLAG) $(HOTSPOT_AV2_STATS_FLAG) $(HOTSPOT_VVC_STATS_FLAG) $(HOTSPOT_BASELINE_FLAG) $(HOTSPOT_LIMIT_FLAG) $(ENCODE_MATRIX_DIRECT_SOURCE_FILES_FLAG) $(ENCODE_MATRIX_WRITE_RECON_FLAG) $(ENCODE_MATRIX_CLEANUP_RECON_FLAG) --cleanup-vectors
 	$(PYTHON) scripts/summarize_hotspots.py "$(HOTSPOT_RUN_DIR)" --encode-matrix-json "$(HOTSPOT_MATRIX_DIR)/$(HOTSPOT_RUN).json" $(HOTSPOT_CODECS_FLAG)
 	@if [ "$(HOTSPOT_VISUALIZE)" = "1" ] || [ "$(HOTSPOT_VISUALIZE)" = "true" ] || [ "$(HOTSPOT_VISUALIZE)" = "yes" ]; then \
 		$(PYTHON) scripts/generate_rust_code_browser.py --root . --output "$(HOTSPOT_BROWSER_OUT)" --title "FrameFinery Engine Hotspots: $(HOTSPOT_RUN)" --profile-json "$(HOTSPOT_RUN_DIR)/hotspots_profile.json"; \

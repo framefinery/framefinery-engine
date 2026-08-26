@@ -247,6 +247,14 @@ measured 8.015 s, with no change in selected-candidate counts. It was reverted
 because the broader behavior had no demonstrated benefit on the representative
 set.
 
+The hotspot profiler now accepts `HOTSPOT_FRAMES`, `HOTSPOT_AV2_GOP`, and
+`HOTSPOT_VVC_GOP`. Its quick-probe defaults remain one frame and infinite GOP,
+while a predictive parity profile can explicitly use, for example,
+`HOTSPOT_FRAMES=50 HOTSPOT_AV2_GOP=-1 HOTSPOT_VVC_GOP=-1`. This closes the
+previous accountability gap where hotspot timing could not be requested for a
+full predictive stream; generated profiles must record the selected frame and
+GOP settings before being used as release evidence.
+
 The AV2 intra-score reconstruction reuse probe (2026-08-26) consolidated
 per-pixel clamping and Paeth predictor work across the two passes of the shared
 intra scorer. It preserved all six byte counts and PSNR values, but increased
