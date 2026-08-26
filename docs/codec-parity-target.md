@@ -506,3 +506,10 @@ mode- and format-dependent results: some 4:2:0/8-bit and 4:4:4/10-bit cases
 improved while other 4:4:4/10-bit and lossy cases regressed. The probe was
 reverted. This remains a possible targeted optimization only if a future
 policy can demonstrate a stable benefit for the complete supported matrix.
+
+The AV2 palette first-occurrence probe (2026-08-26) replaced the per-sample
+palette `contains` scan with a histogram count check, preserving insertion
+order and palette contents in the unit suite. The 4:4:4 palette microbenchmark
+instead regressed by about 3% at 64x64 and showed no improvement at 128x128,
+so the probe was reverted. The existing linear scan remains until a measured
+replacement improves both palette sizes without changing selection behavior.
