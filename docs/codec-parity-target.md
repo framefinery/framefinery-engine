@@ -195,6 +195,16 @@ corroborating rather than standalone evidence. Required VTM validation passed
 for all three lossy and all three lossless smoke vectors, and all 356 codec
 tests passed.
 
+The follow-up VVC chroma proxy-admission probes (2026-08-26) tested the same
+idea against the three-entry lossy `lossless-speed` chroma shortlist. The 2×
+threshold cut cached chroma scoring calls by about 40% and scoring time by
+9.8%, but increased the four-vector output by about 0.30% with no meaningful
+PSNR gain. A 4× threshold reduced the rate penalty to about 0.21%, but still
+changed the compression frontier and did not provide isolated end-to-end
+evidence beyond timing noise. Both variants were reverted; chroma candidate
+selection remains complete until a content-adaptive gate can protect rate as
+well as speed.
+
 The VVC exact-residual probe (2026-08-26) added the corresponding early exit
 to the shared transformed luma and chroma quantizers. A predictor-exact block
 now returns the ordinary transformed zero block without DC search, coefficient
