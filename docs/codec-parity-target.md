@@ -836,3 +836,13 @@ chroma mode search, chroma RD scoring, and chroma RD refinement accounted for
 3/3 with exact reconstruction matches. This profile selects shared chroma
 candidate evaluation as the next investigation target; no speculative mode
 gate or alternate coding path was retained from the profile.
+
+The VVC chroma-prediction cache probe (2026-08-26) extended the existing
+shared RD shortlist cache with the Cb/Cr predictions it had already scored, so
+cached winners could avoid a second predictor pass. It preserved all six
+bitstreams and PSNR values, but the controlled six-vector, 10-frame-per-row
+run increased from 29.989 s (2.001 FPS) to 30.178 s (1.988 FPS). The extra
+sample copies outweighed the saved prediction work, so the source change was
+reverted. The existing residual-only cache remains the simpler policy; a
+future prediction-reuse attempt needs a workload with a higher cached-winner
+hit rate or a lower-copy representation.
