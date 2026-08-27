@@ -996,3 +996,11 @@ required AV2/VVC smoke validation passed 3/3 for each codec. The external
 comparison harness was also checked, but a fresh six-vector run was not counted
 as a checkpoint because the local AOM CTC media root was not supplied and the
 dependent rows could not be materialized.
+
+The VVC zero-chroma-score probe (2026-08-27) tried to skip residual
+quantization and reconstruction scoring after detecting an all-zero chroma
+residual. It preserved the transformed-versus-transform-skip rate-cost tie
+behavior and passed its focused test, but the full six-case VVC microbenchmark
+showed no statistically meaningful end-to-end change in any lossless or lossy
+case. The extra residual scan can offset the saved work, so the probe was
+reverted and no new fast path was retained.
