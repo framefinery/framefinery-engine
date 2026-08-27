@@ -1,5 +1,5 @@
 use super::cabac::{VvcCabacInitType, VvcLumaNeighbourState};
-use super::ibc::VvcIbcCuDecision;
+use super::ibc::{VvcIbcCuDecision, VvcIbcHashSearch};
 use super::*;
 
 fn vvc_test_slice_config() -> VvcSliceSyntaxConfig {
@@ -5944,4 +5944,45 @@ fn vvc_ibc_reconstruction_requires_available_444_reference() {
         ..decision
     };
     assert!(!reconstruction.copy_ibc_444_8x8(unavailable));
+}
+
+#[test]
+fn vvc_ibc_search_uses_only_available_reconstructed_reference_blocks() {
+    let geometry = VvcVideoGeometry {
+        width: 16,
+        height: 16,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let mut reconstruction = VvcReconstructionFrame::new_neutral(geometry, format);
+    for plane in [
+        &mut reconstruction.luma,
+        &mut reconstruction.cb,
+        &mut reconstruction.cr,
+    ] {
+        for y in 0..8 {
+            for x in 0..8 {
+                let sample = (y * 8 + x + 1) as VvcSample;
+                plane[y * 16 + x] = sample;
+                plane[(y + 8) * 16 + x + 8] = sample;
+            }
+        }
+    }
+
+    let mut unavailable_search = VvcIbcHashSearch::new_for_ctu(0, 0);
+    unavailable_search.record_palette_8x8(&reconstruction, 0, 0);
+    assert!(unavailable_search
+        .decide_8x8(&reconstruction, 8, 8)
+        .is_none());
+
+    let mut source_node = VvcCodingTreeNode::root(8, 8, VvcTreeType::SingleTree);
+    source_node.x = 0;
+    source_node.y = 0;
+    reconstruction.mark_luma_node_available(source_node);
+    reconstruction.mark_chroma_node_available(source_node);
+    let mut available_search = VvcIbcHashSearch::new_for_ctu(0, 0);
+    available_search.record_palette_8x8(&reconstruction, 0, 0);
+    assert!(available_search.decide_8x8(&reconstruction, 8, 8).is_some());
 }

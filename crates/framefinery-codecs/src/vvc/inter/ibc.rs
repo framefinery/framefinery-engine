@@ -2,14 +2,99 @@
 use crate::picture::ChromaSampling;
 use crate::picture::SampleBitDepth;
 
+use super::{
+    vvc_plane_region_is_available, VvcLumaIbcDecision, VvcLumaSccDecision, VvcReconstructionFrame,
+    VvcSample, VvcSampledFrame, VVC_CTU_SIZE,
+};
 #[cfg(feature = "vvc-stats")]
 use super::{VvcCtuRegion, VvcSampledColor};
-use super::{VvcLumaIbcDecision, VvcLumaSccDecision, VvcSample, VvcSampledFrame, VVC_CTU_SIZE};
 
 const VVC_IBC_CU_SIZE: usize = 8;
 const VVC_IBC_CUS_PER_CTU: usize =
     (VVC_CTU_SIZE / VVC_IBC_CU_SIZE) * (VVC_CTU_SIZE / VVC_IBC_CU_SIZE);
 const VVC_IBC_HASH_OFFSET: u32 = 0x811c_9dc5;
+
+pub(in crate::vvc) trait VvcIbcFrameView {
+    fn visible_width(&self) -> usize;
+    fn visible_height(&self) -> usize;
+    fn stride(&self) -> usize;
+    fn bit_depth(&self) -> SampleBitDepth;
+    fn planes(&self) -> [&[VvcSample]; 3];
+    fn block_available(&self, origin_x: usize, origin_y: usize) -> bool;
+}
+
+impl VvcIbcFrameView for VvcSampledFrame {
+    fn visible_width(&self) -> usize {
+        self.geometry.width
+    }
+
+    fn visible_height(&self) -> usize {
+        self.geometry.height
+    }
+
+    fn stride(&self) -> usize {
+        self.geometry.width
+    }
+
+    fn bit_depth(&self) -> SampleBitDepth {
+        self.format.bit_depth
+    }
+
+    fn planes(&self) -> [&[VvcSample]; 3] {
+        [&self.luma, &self.cb, &self.cr]
+    }
+
+    fn block_available(&self, _origin_x: usize, _origin_y: usize) -> bool {
+        true
+    }
+}
+
+impl VvcIbcFrameView for VvcReconstructionFrame {
+    fn visible_width(&self) -> usize {
+        self.geometry.width
+    }
+
+    fn visible_height(&self) -> usize {
+        self.geometry.height
+    }
+
+    fn stride(&self) -> usize {
+        self.luma_width()
+    }
+
+    fn bit_depth(&self) -> SampleBitDepth {
+        self.format.bit_depth
+    }
+
+    fn planes(&self) -> [&[VvcSample]; 3] {
+        [&self.luma, &self.cb, &self.cr]
+    }
+
+    fn block_available(&self, origin_x: usize, origin_y: usize) -> bool {
+        vvc_plane_region_is_available(
+            &self.luma_available,
+            self.luma_width(),
+            origin_x,
+            origin_y,
+            VVC_IBC_CU_SIZE,
+            VVC_IBC_CU_SIZE,
+        ) && vvc_plane_region_is_available(
+            &self.cb_available,
+            self.chroma_width(),
+            origin_x,
+            origin_y,
+            VVC_IBC_CU_SIZE,
+            VVC_IBC_CU_SIZE,
+        ) && vvc_plane_region_is_available(
+            &self.cr_available,
+            self.chroma_width(),
+            origin_x,
+            origin_y,
+            VVC_IBC_CU_SIZE,
+            VVC_IBC_CU_SIZE,
+        )
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct VvcIbcCuDecision {
@@ -75,9 +160,9 @@ impl VvcIbcHashSearch {
         }
     }
 
-    pub(super) fn decide_8x8(
+    pub(super) fn decide_8x8<F: VvcIbcFrameView>(
         &self,
-        frame: &VvcSampledFrame,
+        frame: &F,
         origin_x: usize,
         origin_y: usize,
     ) -> Option<VvcIbcCuDecision> {
@@ -95,9 +180,9 @@ impl VvcIbcHashSearch {
     }
 
     #[cfg(feature = "vvc-stats")]
-    pub(super) fn decide_ctu_hash_8x8(
+    pub(super) fn decide_ctu_hash_8x8<F: VvcIbcFrameView>(
         &self,
-        frame: &VvcSampledFrame,
+        frame: &F,
         origin_x: usize,
         origin_y: usize,
     ) -> Option<VvcIbcCuDecision> {
@@ -111,9 +196,9 @@ impl VvcIbcHashSearch {
             .min_by_key(|decision| vvc_ibc_decision_search_cost(*decision))
     }
 
-    pub(super) fn decide_left_8x8(
+    pub(super) fn decide_left_8x8<F: VvcIbcFrameView>(
         &self,
-        frame: &VvcSampledFrame,
+        frame: &F,
         origin_x: usize,
         origin_y: usize,
     ) -> Option<VvcIbcCuDecision> {
@@ -124,6 +209,9 @@ impl VvcIbcHashSearch {
 
         let ref_origin_x = origin_x - VVC_IBC_CU_SIZE;
         let ref_origin_y = origin_y;
+        if !frame.block_available(ref_origin_x, ref_origin_y) {
+            return None;
+        }
         let predictor = self.bvp_for(origin_x, origin_y);
         let bv = VvcIbcBv {
             x: -((VVC_IBC_CU_SIZE as i16) << 4),
@@ -160,9 +248,9 @@ impl VvcIbcHashSearch {
         })
     }
 
-    pub(super) fn record_palette_8x8(
+    pub(super) fn record_palette_8x8<F: VvcIbcFrameView>(
         &mut self,
-        frame: &VvcSampledFrame,
+        frame: &F,
         origin_x: usize,
         origin_y: usize,
     ) {
@@ -170,7 +258,11 @@ impl VvcIbcHashSearch {
         self.record_hash_if_full_visible(frame, origin_x, origin_y);
     }
 
-    pub(super) fn record_ibc_8x8(&mut self, frame: &VvcSampledFrame, decision: VvcIbcCuDecision) {
+    pub(super) fn record_ibc_8x8<F: VvcIbcFrameView>(
+        &mut self,
+        frame: &F,
+        decision: VvcIbcCuDecision,
+    ) {
         let bv = VvcIbcBv {
             x: decision.bv_x,
             y: decision.bv_y,
@@ -222,13 +314,15 @@ impl VvcIbcHashSearch {
         self.bv_by_cu[index] = bv.unwrap_or(VvcIbcBv { x: 0, y: 0 });
     }
 
-    fn record_hash_if_full_visible(
+    fn record_hash_if_full_visible<F: VvcIbcFrameView>(
         &mut self,
-        frame: &VvcSampledFrame,
+        frame: &F,
         origin_x: usize,
         origin_y: usize,
     ) {
-        if vvc_ibc_full_8x8_is_visible(frame, origin_x, origin_y) {
+        if vvc_ibc_full_8x8_is_visible(frame, origin_x, origin_y)
+            && frame.block_available(origin_x, origin_y)
+        {
             self.entries.push(VvcIbcHashEntry {
                 hash: vvc_ibc_hash_8x8(frame, origin_x, origin_y),
                 origin_x,
@@ -449,15 +543,20 @@ pub(super) fn vvc_scc_analysis_for_region(
 }
 
 #[cfg(feature = "vvc-stats")]
-fn vvc_unique_color_count_8x8(frame: &VvcSampledFrame, origin_x: usize, origin_y: usize) -> usize {
+fn vvc_unique_color_count_8x8<F: VvcIbcFrameView>(
+    frame: &F,
+    origin_x: usize,
+    origin_y: usize,
+) -> usize {
     let mut colors = Vec::<VvcSampledColor>::with_capacity(32);
+    let [luma, cb, cr] = frame.planes();
     for y_off in 0..VVC_IBC_CU_SIZE {
         for x_off in 0..VVC_IBC_CU_SIZE {
-            let index = (origin_y + y_off) * frame.geometry.width + origin_x + x_off;
+            let index = (origin_y + y_off) * frame.stride() + origin_x + x_off;
             let color = VvcSampledColor {
-                y: frame.luma[index],
-                u: frame.cb[index],
-                v: frame.cr[index],
+                y: luma[index],
+                u: cb[index],
+                v: cr[index],
             };
             if colors.iter().all(|entry| *entry != color) {
                 colors.push(color);
@@ -470,9 +569,13 @@ fn vvc_unique_color_count_8x8(frame: &VvcSampledFrame, origin_x: usize, origin_y
     colors.len()
 }
 
-fn vvc_ibc_full_8x8_is_visible(frame: &VvcSampledFrame, origin_x: usize, origin_y: usize) -> bool {
-    origin_x + VVC_IBC_CU_SIZE <= frame.geometry.width
-        && origin_y + VVC_IBC_CU_SIZE <= frame.geometry.height
+fn vvc_ibc_full_8x8_is_visible<F: VvcIbcFrameView>(
+    frame: &F,
+    origin_x: usize,
+    origin_y: usize,
+) -> bool {
+    origin_x + VVC_IBC_CU_SIZE <= frame.visible_width()
+        && origin_y + VVC_IBC_CU_SIZE <= frame.visible_height()
 }
 
 fn vvc_ibc_cu_index(origin_x: usize, origin_y: usize) -> Option<usize> {
@@ -499,17 +602,17 @@ fn vvc_ibc_decision_search_cost(decision: VvcIbcCuDecision) -> (u32, u32, usize,
     )
 }
 
-fn vvc_ibc_hash_8x8(frame: &VvcSampledFrame, origin_x: usize, origin_y: usize) -> u32 {
+fn vvc_ibc_hash_8x8<F: VvcIbcFrameView>(frame: &F, origin_x: usize, origin_y: usize) -> u32 {
     let mut hash = VVC_IBC_HASH_OFFSET;
     // Mirror ff_vvc_ibc_hash_matcher.sv and the top-level TU stream contract:
     // one 8x8 luma block, then the colocated 8x8 Cb block, then Cr.
-    for plane in [&frame.luma, &frame.cb, &frame.cr] {
+    for plane in frame.planes() {
         for y_off in 0..VVC_IBC_CU_SIZE {
             for x_off in 0..VVC_IBC_CU_SIZE {
                 let sample_x = origin_x + x_off;
                 let sample_y = origin_y + y_off;
-                let index = sample_y * frame.geometry.width + sample_x;
-                hash = vvc_ibc_hash_sample(hash, plane[index], frame.format.bit_depth);
+                let index = sample_y * frame.stride() + sample_x;
+                hash = vvc_ibc_hash_sample(hash, plane[index], frame.bit_depth());
             }
         }
     }
