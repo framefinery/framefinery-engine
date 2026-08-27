@@ -129,6 +129,13 @@ regression-set byte counts were unchanged from the retro comparison, so a
 larger screen-content profile is still required before claiming a compression
 gain.
 
+The follow-up VTM compliance probe found that enabling the production IBC
+candidate path emitted a BV that VTM rejected as invalid, even after limiting
+references to the immediately preceding CTU and matching 8x8 rows. Production
+SCC emission is therefore disabled pending a bit-level audit of the IBC
+BVD/CABAC contract; the search and quantizer plumbing remain available for
+unit tests and are not counted as a compression improvement.
+
 ## Current blockers and next experiments
 
 - AV2 lossless 1920-wide regular inter is still gated because mixed multi-column

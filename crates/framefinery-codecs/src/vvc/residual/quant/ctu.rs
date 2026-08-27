@@ -1047,9 +1047,12 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         }
         let node = vvc_global_ctu_node(local_node, region);
         let scc_candidate = luma_scc_decisions
-            .and_then(|decisions| decisions.get(luma_tu_count))
-            .copied()
-            .flatten();
+            .and_then(|decisions| {
+                decisions.iter().copied().flatten().find(|decision| {
+                    decision.origin_x == usize::from(node.x)
+                        && decision.origin_y == usize::from(node.y)
+                })
+            });
         if let Some(decision) = scc_candidate {
             if !ctu_shape.dual_tree_intra
                 && source_frame.format.chroma_sampling == ChromaSampling::Cs444

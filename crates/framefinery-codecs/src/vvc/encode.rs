@@ -6,6 +6,9 @@ const VVC_PREDICTIVE_SINGLE_SLICE_PPS_ID: u8 = 1;
 #[cfg(test)]
 const VVC_PREDICTIVE_FRAME_SKIP_PPS_ID: u8 = VVC_PREDICTIVE_SINGLE_SLICE_PPS_ID;
 const VVC_LOSSY_PREDICTIVE_SKIP_MAX_ABS_8BIT: u16 = 2;
+// Keep production SCC emission off until the exact VTM IBC BVD contract is
+// matched. Search and quantizer plumbing remains covered by focused tests.
+const VVC_SCC_IBC_PRODUCTION_ENABLED: bool = false;
 
 pub fn vvc_black_yuv420p8_annex_b(params: VvcEncodeParams) -> Result<Vec<u8>, String> {
     validate_vvc_exact_frame_count(params)?;
@@ -214,7 +217,8 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         slice_config = slice_config.without_lossless_speed_unused_tools();
     }
     slice_config = slice_config.with_validated_profile_for_format(options.profile, stream_format)?;
-    let scc_444_enabled = !predictive_enabled
+    let scc_444_enabled = VVC_SCC_IBC_PRODUCTION_ENABLED
+        && !predictive_enabled
         && residual_mode.is_lossless()
         && options.fast_search == VvcFastSearch::LosslessSpeed
         && stream_format.chroma_sampling == ChromaSampling::Cs444
