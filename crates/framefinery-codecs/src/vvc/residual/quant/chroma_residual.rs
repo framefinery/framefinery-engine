@@ -466,6 +466,17 @@ fn finalize_vvc_chroma_residual_block(
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU> {
+    // Transform skip is represented by the 4x4 coefficient storage above.
+    // Keep this defensive gate beside finalization as well as mode selection:
+    // callers that provide a preselected decision must still take a legal,
+    // exactly reconstructable path.
+    let residual_coding = if matches!(residual_coding, VvcTuResidualCodingMode::TransformSkip)
+        && (width > 4 || height > 4)
+    {
+        VvcTuResidualCodingMode::Transformed
+    } else {
+        residual_coding
+    };
     match residual_coding {
         VvcTuResidualCodingMode::TransformSkip => {
             #[cfg(feature = "vvc-stats")]
@@ -746,8 +757,8 @@ fn vvc_chroma_lossy_transform_skip_selection_allowed(
     VVC_ENABLE_LOSSY_TRANSFORM_SKIP_SELECTION
         && matches!(residual_coding, VvcTuResidualCodingMode::Transformed)
         && chroma_qp > 0
-        && width <= usize::from(VVC_TRANSFORM_SKIP_MAX_SIZE)
-        && height <= usize::from(VVC_TRANSFORM_SKIP_MAX_SIZE)
+        && width <= 4
+        && height <= 4
 }
 
 fn vvc_chroma_residual_block_score(

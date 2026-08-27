@@ -10,6 +10,12 @@ pub(in crate::vvc) enum VvcTuResidualCodingMode {
     TransformSkip,
 }
 
+// The current coefficient representation and transform-skip reconstruction
+// kernel are 4x4. Keep this legality check at mode selection so every encode
+// mode shares the same syntax/reconstruction path without emitting a larger
+// transform-skip TU that this implementation cannot represent exactly.
+const VVC_CHROMA_TRANSFORM_SKIP_MAX_SIZE: u16 = 4;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::vvc) enum VvcBdpcmMode {
     None,
@@ -737,9 +743,26 @@ pub(in crate::vvc) fn select_vvc_chroma_tu_residual_coding(
         node.height,
     );
     match context.residual_mode() {
-        VvcResidualCodingMode::Lossless => VvcTuResidualCodingMode::TransformSkip,
+        VvcResidualCodingMode::Lossless if vvc_chroma_transform_skip_allowed(context, node) => {
+            VvcTuResidualCodingMode::TransformSkip
+        }
+        VvcResidualCodingMode::Lossless => VvcTuResidualCodingMode::Transformed,
         VvcResidualCodingMode::Lossy => VvcTuResidualCodingMode::Transformed,
     }
+}
+
+fn vvc_chroma_transform_skip_allowed(
+    context: VvcResidualModeDecisionContext,
+    node: VvcCodingTreeNode,
+) -> bool {
+    let (subsample_x, subsample_y) = match context.chroma_sampling() {
+        ChromaSampling::Monochrome | ChromaSampling::Cs444 => (1, 1),
+        ChromaSampling::Cs422 => (2, 1),
+        ChromaSampling::Cs420 => (2, 2),
+    };
+    let width = node.width / subsample_x;
+    let height = node.height / subsample_y;
+    width <= VVC_CHROMA_TRANSFORM_SKIP_MAX_SIZE && height <= VVC_CHROMA_TRANSFORM_SKIP_MAX_SIZE
 }
 
 pub(in crate::vvc) fn select_vvc_chroma_tu_coding_decision(

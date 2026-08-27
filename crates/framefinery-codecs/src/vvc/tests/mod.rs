@@ -2954,7 +2954,15 @@ fn vvc_tu_coding_decision_selector_is_shared_across_formats() {
                         VvcChromaIntraPredictionMode::Derived
                     )
                     .residual_coding,
-                    expected
+                    if residual_mode == VvcResidualCodingMode::Lossless
+                        && chroma_sampling == ChromaSampling::Cs420
+                    {
+                        expected
+                    } else if residual_mode == VvcResidualCodingMode::Lossless {
+                        VvcTuResidualCodingMode::Transformed
+                    } else {
+                        expected
+                    }
                 );
             }
         }
