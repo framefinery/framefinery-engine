@@ -984,3 +984,15 @@ cases. The 8-bit lossless movement and the observed 10-bit lossless variation
 are outside this helper's execution path and are not attributed to the probe.
 Full codec tests (357), required VTM smoke (3/3), required VTM high-depth
 lossless validation (6/6), Clippy, and formatting passed.
+
+The VVC BDPCM chroma residual pass (2026-08-27) extended the same shared
+Cb/Cr residual walk to BDPCM candidate construction. This removes a second
+independent coordinate traversal without changing the candidate set, syntax,
+reconstruction, or the unified lossless/lossy control flow. Criterion measured
+4.0% lower time for the 8-bit 4:4:4 lossless microbenchmark and 4.4% lower time
+for the 10-bit 4:4:4 lossless case; the other measured cases remained within
+the benchmark noise threshold. Workspace tests, Clippy, formatting, and
+required AV2/VVC smoke validation passed 3/3 for each codec. The external
+comparison harness was also checked, but a fresh six-vector run was not counted
+as a checkpoint because the local AOM CTC media root was not supplied and the
+dependent rows could not be materialized.
