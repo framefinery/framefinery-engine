@@ -187,6 +187,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         None,
         None,
         None,
+        None,
     )
 }
 
@@ -949,6 +950,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     luma_inter_skip: Option<&[bool; MAX_VVC_LUMA_TUS]>,
     chroma_inter_skip: Option<&[bool; MAX_VVC_CHROMA_TUS]>,
     luma_inter_decisions: Option<&[Option<VvcLumaInterDecision>; MAX_VVC_LUMA_TUS]>,
+    luma_scc_decisions: Option<&[Option<VvcIbcCuDecision>; MAX_VVC_LUMA_TUS]>,
     inter_reference: Option<&VvcReconstructionFrame>,
     selected_luma_inter_decisions: Option<&mut [Option<VvcLumaInterDecision>; MAX_VVC_LUMA_TUS]>,
     temporal_mode_hints: Option<&VvcQuantizedColor>,
@@ -959,6 +961,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     let mut luma_tu_intra_modes = [VvcIntraPredictionMode::Dc; MAX_VVC_LUMA_TUS];
     let mut luma_tu_ac_levels = [[0; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS];
     let mut luma_tu_has_ac = [false; MAX_VVC_LUMA_TUS];
+    let mut luma_tu_scc_decisions = [VvcLumaSccDecision::RegularIntra; MAX_VVC_LUMA_TUS];
     let mut luma_tu_transform_skip = [false; MAX_VVC_LUMA_TUS];
     let mut luma_tu_bdpcm_modes = [VvcBdpcmMode::None; MAX_VVC_LUMA_TUS];
     let mut luma_tu_mrl_index = [0; MAX_VVC_LUMA_TUS];
@@ -1043,6 +1046,22 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             break;
         }
         let node = vvc_global_ctu_node(local_node, region);
+        let scc_candidate = luma_scc_decisions
+            .and_then(|decisions| decisions.get(luma_tu_count))
+            .copied()
+            .flatten();
+        if let Some(decision) = scc_candidate {
+            if !ctu_shape.dual_tree_intra
+                && source_frame.format.chroma_sampling == ChromaSampling::Cs444
+                && node.width == 8
+                && node.height == 8
+                && frame_recon.copy_ibc_444_8x8(decision)
+            {
+                luma_tu_scc_decisions[luma_tu_count] = decision.into_luma_scc_decision();
+                luma_tu_count += 1;
+                continue;
+            }
+        }
         if luma_inter_skip
             .and_then(|mask| mask.get(luma_tu_count))
             .copied()
@@ -1593,6 +1612,15 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             break;
         }
         let node = vvc_global_ctu_node(local_node, region);
+        if !ctu_shape.dual_tree_intra
+            && matches!(
+                luma_tu_scc_decisions.get(chroma_tu_count),
+                Some(VvcLumaSccDecision::IbcExact(_))
+            )
+        {
+            chroma_tu_count += 1;
+            continue;
+        }
         chroma_rd_cache.reset(policy, node);
         let subsample_x = chroma_subsample_x(source_frame.format.chroma_sampling);
         let subsample_y = chroma_subsample_y(source_frame.format.chroma_sampling);
@@ -2255,7 +2283,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         luma_tu_dc_levels,
         luma_tu_ac_levels,
         luma_tu_has_ac,
-        luma_tu_scc_decisions: [VvcLumaSccDecision::RegularIntra; MAX_VVC_LUMA_TUS],
+        luma_tu_scc_decisions,
         luma_tu_transform_skip,
         luma_tu_bdpcm_modes,
         luma_tu_mrl_index,

@@ -120,11 +120,107 @@ fn vvc_lossless_single_tree_444_quantization_reconstructs_arbitrary_8x8_leaf() {
         None,
         None,
         None,
+        None,
     );
 
     assert_eq!(reconstruction.luma, luma);
     assert_eq!(reconstruction.cb, cb);
     assert_eq!(reconstruction.cr, cr);
+}
+
+#[test]
+fn vvc_quantizer_preserves_exact_ibc_reconstruction_and_skips_matching_chroma_leaf() {
+    let geometry = VvcVideoGeometry {
+        width: 16,
+        height: 8,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let mut luma = vec![0; 16 * 8];
+    let mut cb = vec![0; 16 * 8];
+    let mut cr = vec![0; 16 * 8];
+    for plane in [&mut luma, &mut cb, &mut cr] {
+        for y in 0..8 {
+            for x in 0..8 {
+                let sample = (y * 8 + x + 1) as VvcSample;
+                plane[y * 16 + x] = sample;
+                plane[y * 16 + x + 8] = sample;
+            }
+        }
+    }
+    let frame = VvcSampledFrame {
+        geometry,
+        format,
+        luma: luma.clone(),
+        cb: cb.clone(),
+        cr: cr.clone(),
+        chroma_len: 16 * 8,
+    };
+    let mut reconstruction = VvcReconstructionFrame::new_neutral(geometry, format);
+    let mut source_node = VvcCodingTreeNode::root(8, 8, VvcTreeType::SingleTree);
+    source_node.x = 0;
+    reconstruction.mark_luma_node_available(source_node);
+    reconstruction.mark_chroma_node_available(source_node);
+    for (destination, source) in [
+        (&mut reconstruction.luma, &luma),
+        (&mut reconstruction.cb, &cb),
+        (&mut reconstruction.cr, &cr),
+    ] {
+        for y in 0..8 {
+            destination[y * 16..y * 16 + 8].copy_from_slice(&source[y * 16..y * 16 + 8]);
+        }
+    }
+    let decision = VvcIbcCuDecision {
+        origin_x: 8,
+        origin_y: 0,
+        ref_origin_x: 0,
+        ref_origin_y: 0,
+        bv_x: -128,
+        bv_y: 0,
+        mvd_x: -8,
+        mvd_y: 0,
+        pred_mode_ibc_ctx: 0,
+    };
+    let mut scc_decisions = [None; MAX_VVC_LUMA_TUS];
+    scc_decisions[1] = Some(decision);
+    let qp = super::super::vvc_lossless_slice_qp(format.bit_depth);
+    let quant_tables = VvcTransformSkipQuantTables::new(format.bit_depth, qp, qp);
+    let quantized = quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes_and_scratch_with_mode_hints(
+        &frame,
+        &mut reconstruction,
+        VvcCtuRegion {
+            slice_address: 0,
+            origin_x: 0,
+            origin_y: 0,
+            geometry,
+        },
+        VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossless)
+            .with_fast_search(VvcFastSearch::LosslessSpeed)
+            .with_luma_max_leaf_size(8)
+            .with_dual_tree_intra(false),
+        qp,
+        qp,
+        &mut VvcLumaModeSearchState::new_for_geometry(geometry),
+        &quant_tables,
+        &mut VvcCtuQuantScratch::default(),
+        None,
+        None,
+        None,
+        Some(&scc_decisions),
+        None,
+        None,
+        None,
+    );
+
+    assert_eq!(
+        quantized.luma_tu_scc_decisions[1],
+        decision.into_luma_scc_decision()
+    );
+    assert_eq!(&reconstruction.luma[8..16], &luma[8..16]);
+    assert_eq!(&reconstruction.cb[8..16], &cb[8..16]);
+    assert_eq!(&reconstruction.cr[8..16], &cr[8..16]);
 }
 
 #[test]

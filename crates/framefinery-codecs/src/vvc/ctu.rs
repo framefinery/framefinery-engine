@@ -44,6 +44,7 @@ fn quantize_vvc_ctu_with_luma_leaf_selection(
         luma_inter_skip,
         chroma_inter_skip,
         luma_inter_decisions,
+        None,
         inter_reference,
         Some(&mut selected_luma_inter_decisions),
         temporal_mode_hint,

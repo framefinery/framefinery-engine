@@ -13,7 +13,7 @@ use super::super::{
     VvcChromaTuCodingDecision, VvcCodingTreeNode, VvcCtuPartitionShape, VvcCtuRegion,
     VvcFastSearch, VvcIntraPredictionMode, VvcLumaIntraCandidateCost, VvcLumaIntraCandidateCosts,
     VvcLumaInterDecision, VvcLumaSccDecision, VvcLumaTuCodingDecision, VvcPictureFormat,
-    VvcReconstructionFrame, VvcResidualCodingMode, VvcResidualCodingPolicy,
+    VvcIbcCuDecision, VvcReconstructionFrame, VvcResidualCodingMode, VvcResidualCodingPolicy,
     VvcResidualScoreMetric, VvcSample, VvcSampledColor, VvcSampledFrame,
     VvcTuResidualCodingMode, VvcVideoGeometry, VVC_CHROMA_INTRA_CANDIDATE_CAPACITY, VVC_CTU_SIZE,
     VVC_LUMA_INTRA_CANDIDATE_CAPACITY,
