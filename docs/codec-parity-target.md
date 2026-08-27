@@ -143,6 +143,15 @@ still decoded to a different reconstruction. This narrows the remaining
 defect to the SCC syntax/reconstruction contract rather than only cross-CTU
 predictor state, so the production gate remains off.
 
+The 2026-08-27 production-IBC recheck reproduced that blocker on the committed
+`blocks_444` regression vector: ordinary VVC coding passed 3/3 required
+reference checks, while enabling `VVC_SCC_IBC_PRODUCTION_ENABLED` caused the
+first affected chroma block to differ. The focused Rust VVC suite still passed
+262/262 tests with the production gate disabled. The experiment was rejected
+and the gate restored to `false`; the next SCC change must compare the complete
+IBC prediction-unit syntax and decoder-side block-vector reconstruction before
+it can be treated as an optimization.
+
 ## Current blockers and next experiments
 
 - AV2 lossless 1920-wide regular inter is still gated because mixed multi-column
