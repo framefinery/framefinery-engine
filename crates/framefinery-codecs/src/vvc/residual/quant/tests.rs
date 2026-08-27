@@ -44,19 +44,10 @@ fn vvc_chroma_prediction_score_matches_materialized_residual_score() {
     let predicted_cr = vec![128, 120, 108, 96];
     let mut cb_residuals = Vec::new();
     let mut cr_residuals = Vec::new();
-    residual_chroma_tu_at_into(
+    residual_chroma_pair_tu_at_into(
         &mut cb_residuals,
-        &frame.cb,
-        frame.geometry,
-        frame.format,
-        0,
-        0,
-        2,
-        2,
-        &predicted_cb,
-    );
-    residual_chroma_tu_at_into(
         &mut cr_residuals,
+        &frame.cb,
         &frame.cr,
         frame.geometry,
         frame.format,
@@ -64,6 +55,7 @@ fn vvc_chroma_prediction_score_matches_materialized_residual_score() {
         0,
         2,
         2,
+        &predicted_cb,
         &predicted_cr,
     );
 

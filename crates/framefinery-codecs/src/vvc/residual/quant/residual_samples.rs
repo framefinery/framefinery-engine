@@ -74,6 +74,67 @@ pub(in crate::vvc) fn residual_chroma_tu_at_into(
     );
 }
 
+pub(in crate::vvc) fn residual_chroma_pair_tu_at_into(
+    cb_residuals: &mut Vec<i16>,
+    cr_residuals: &mut Vec<i16>,
+    cb_samples: &[VvcSample],
+    cr_samples: &[VvcSample],
+    geometry: VvcVideoGeometry,
+    format: VvcPictureFormat,
+    origin_x: usize,
+    origin_y: usize,
+    width: usize,
+    height: usize,
+    predicted_cb: &[VvcSample],
+    predicted_cr: &[VvcSample],
+) {
+    debug_assert_eq!(predicted_cb.len(), width * height);
+    debug_assert_eq!(predicted_cr.len(), width * height);
+    let chroma_width = geometry.width / chroma_subsample_x(format.chroma_sampling);
+    let chroma_height = geometry.height / chroma_subsample_y(format.chroma_sampling);
+    let copy_width = width.min(chroma_width.saturating_sub(origin_x));
+    let copy_height = height.min(chroma_height.saturating_sub(origin_y));
+    cb_residuals.clear();
+    cr_residuals.clear();
+    cb_residuals.reserve(width * height);
+    cr_residuals.reserve(width * height);
+    if copy_width == width && copy_height == height {
+        for y in 0..height {
+            let src = (origin_y + y) * chroma_width + origin_x;
+            let dst = y * width;
+            for x in 0..width {
+                cb_residuals.push(vvc_sample_delta_i16(
+                    cb_samples[src + x],
+                    predicted_cb[dst + x],
+                ));
+                cr_residuals.push(vvc_sample_delta_i16(
+                    cr_samples[src + x],
+                    predicted_cr[dst + x],
+                ));
+            }
+        }
+        return;
+    }
+    let max_x = chroma_width - 1;
+    let max_y = chroma_height - 1;
+    for y in 0..height {
+        let src_y = (origin_y + y).min(max_y);
+        let src_row = src_y * chroma_width;
+        let dst = y * width;
+        for x in 0..width {
+            let src_x = (origin_x + x).min(max_x);
+            cb_residuals.push(vvc_sample_delta_i16(
+                cb_samples[src_row + src_x],
+                predicted_cb[dst + x],
+            ));
+            cr_residuals.push(vvc_sample_delta_i16(
+                cr_samples[src_row + src_x],
+                predicted_cr[dst + x],
+            ));
+        }
+    }
+}
+
 pub(in crate::vvc) fn residual_chroma_tu_at_into_and_detect_zero(
     residuals: &mut Vec<i16>,
     samples: &[VvcSample],

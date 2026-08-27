@@ -167,27 +167,10 @@ fn select_vvc_chroma_mode_with_rd_refinement(
             usize::from(node.y) / chroma_subsample_y(source_frame.format.chroma_sampling);
         #[cfg(feature = "vvc-stats")]
         let residual_start = StageStart::now();
-        residual_chroma_tu_at_into(
+        residual_chroma_pair_tu_at_into(
             candidate_cb_residuals,
-            &source_frame.cb,
-            source_frame.geometry,
-            source_frame.format,
-            chroma_x,
-            chroma_y,
-            chroma_width,
-            chroma_height,
-            candidate_cb_prediction,
-        );
-        #[cfg(feature = "vvc-stats")]
-        {
-            let nanos = vvc_elapsed_nanos(residual_start);
-            stats.add_chroma_residual_build_nanos(nanos);
-            stats.add_chroma_rd_residual_build_nanos(nanos);
-        }
-        #[cfg(feature = "vvc-stats")]
-        let residual_start = StageStart::now();
-        residual_chroma_tu_at_into(
             candidate_cr_residuals,
+            &source_frame.cb,
             &source_frame.cr,
             source_frame.geometry,
             source_frame.format,
@@ -195,6 +178,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
             chroma_y,
             chroma_width,
             chroma_height,
+            candidate_cb_prediction,
             candidate_cr_prediction,
         );
         #[cfg(feature = "vvc-stats")]

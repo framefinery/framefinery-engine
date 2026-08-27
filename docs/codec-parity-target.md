@@ -974,3 +974,13 @@ validation passed 3/3. The change keeps the existing integer arithmetic and
 shared transform path; the follow-up also consolidates the identical
 4x4/4x8/8x8 dequantization loops into one const-generic helper. Broader
 end-to-end gains remain to be measured.
+
+The VVC chroma pair-residual probe (2026-08-27) replaced two independent Cb
+and Cr coordinate walks in lossy chroma RD mode search with one shared walk
+that writes both residual vectors. The helper preserves the existing edge
+clamping and per-plane delta arithmetic, and is not used by the lossless mode
+search. Criterion showed 2.3--5.1% lower time in the measured 8-bit/lossy
+cases and 2.8--3.6% lower time in the 8-bit lossless cases; the observed
+10-bit lossless variation is outside this helper's execution path. Full codec
+tests (357), required VTM smoke (3/3), required VTM high-depth lossless
+validation (6/6), Clippy, and formatting passed.
