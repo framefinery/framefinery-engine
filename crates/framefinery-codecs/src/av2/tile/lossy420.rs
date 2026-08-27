@@ -1352,14 +1352,16 @@ impl<'a> Av2LossySubsampledTileState<'a> {
                 })
                 .map(|(mode, _)| *mode);
             let Some(best_base) = best_base else {
-                return ([(Av2LumaIntraMode::Dc, 0usize); 4], 0);
+                return ([(Av2LumaIntraMode::Dc, 0usize); 2], 0);
             };
             let Some((base, _)) = best_base.directional() else {
-                return ([(Av2LumaIntraMode::Dc, 0usize); 4], 0);
+                return ([(Av2LumaIntraMode::Dc, 0usize); 2], 0);
             };
-            let mut delta_scores = [(Av2LumaIntraMode::Dc, 0usize); 4];
+            let mut delta_scores = [(Av2LumaIntraMode::Dc, 0usize); 2];
             let mut delta_count = 0usize;
-            for delta in [-2i8, 2, -3, 3] {
+            // The outermost pair is the useful lossy refinement on the
+            // measured 4:2:0 content; avoid redundant inner-angle searches.
+            for delta in [-3i8, 3] {
                 let mode = Av2LumaIntraMode::DirectionalDelta { base, delta };
                 let mut score = 192 + usize::from(delta.unsigned_abs()) * 16;
                 let mut sampled_txbs = 0usize;
