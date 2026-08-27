@@ -1230,3 +1230,14 @@ PSNR fell from 50.357 to 49.956 dB, and `blocks_444_2f` grew from 46,072 to
 reverted; timing variation does not justify a bitrate/quality loss. A future
 search-pruning attempt needs content-aware admission or a rate-safe bound
 before reducing this shared shortlist.
+
+The reconstructed-frame IBC audit (2026-08-27) added a shared source-target
+matching contract and an optional exact-IBC quantizer path. It also exposed a
+remaining traversal invariant: the current unified quantizer processes all
+luma TUs before all chroma TUs, while exact 4:4:4 IBC requires the referenced
+luma, Cb, and Cr samples to be available in the reconstructed current picture.
+Feeding IBC decisions into the luma loop without changing that ordering would
+therefore be unsound. Production SCC selection remains gated until the
+single-tree traversal either interleaves complete luma/chroma leaf
+reconstruction or establishes an equivalent availability-preserving contract;
+the search algorithm must remain shared when that change is made.
