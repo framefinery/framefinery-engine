@@ -1864,26 +1864,25 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                 (true, Av2ChromaIntraMode::Horizontal, 64usize),
                 (true, Av2ChromaIntraMode::Vertical, 64usize),
             ];
-            let mut chroma_scores = [0usize; 15];
-            for (index, &(chroma_use_bdpcm, chroma_intra_mode, _)) in
-                chroma_candidates.iter().enumerate()
-            {
-                if chroma_use_bdpcm && !chroma_bdpcm_allowed {
-                    continue;
-                }
-                chroma_scores[index] = self.chroma_leaf_coefficient_score(
-                    chroma_span,
-                    Av2LosslessSubsampledModeDecision {
-                        luma_intra_mode: Av2LumaIntraMode::Dc,
-                        luma_bdpcm_horz: None,
-                        chroma_use_bdpcm,
-                        chroma_intra_mode,
-                        use_luma_palette: false,
-                        use_fsc,
-                    },
-                    coded_mi_context,
-                );
-            }
+            let chroma_scores = chroma_candidates.map(
+                |(chroma_use_bdpcm, chroma_intra_mode, _)| {
+                    if chroma_use_bdpcm && !chroma_bdpcm_allowed {
+                        return 0;
+                    }
+                    self.chroma_leaf_coefficient_score(
+                        chroma_span,
+                        Av2LosslessSubsampledModeDecision {
+                            luma_intra_mode: Av2LumaIntraMode::Dc,
+                            luma_bdpcm_horz: None,
+                            chroma_use_bdpcm,
+                            chroma_intra_mode,
+                            use_luma_palette: false,
+                            use_fsc,
+                        },
+                        coded_mi_context,
+                    )
+                },
+            );
             for (luma_intra_mode, luma_bdpcm_horz, luma_syntax_penalty) in luma_candidates {
                 let luma_score = self.luma_leaf_coefficient_score(
                     decision,
