@@ -950,6 +950,21 @@ and `verification/generated/encode_matrix/goal-vvc-parity-lossy-20260827/`.
 These are current-settings checkpoints, not deltas against the older report,
 whose source files and predictive-setting semantics differ.
 
+The matching current-settings VVC lossless slice completed all six vectors at
+50 frames with `gop=-1` and `fast-search=lossless-speed`: 123,257,981 bytes at
+3.84 aggregate FPS. The four current checkpoint aggregates are therefore:
+
+| Codec | Mode | Bytes | Aggregate FPS |
+|---|---|---:|---:|
+| AV2 | lossless | 265,419,341 | 3.32 |
+| VVC | lossless | 123,257,981 | 3.84 |
+| AV2 | lossy, QP 24 | 47,700,867 | 4.54 |
+| VVC | lossy, QP 19 | 44,261,243 | 2.34 |
+
+These figures are checkpoint measurements, not a claim of parity with an
+external codec baseline; the per-vector reports retain the required settings
+and source provenance for the next controlled comparison.
+
 The AV2 derived-quant-constant follow-up (2026-08-27) also hoisted the
 per-coefficient reciprocal and rounding values into the same per-block
 parameter bundle. Criterion measured an additional 4.4--7.2% improvement over
