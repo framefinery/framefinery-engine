@@ -51,6 +51,42 @@ clarity. Any optimization whose benefit cannot be reproduced by the recorded
 benchmark or whose control flow makes the shared path harder to audit should
 be rejected or deferred.
 
+## Optimization accountability protocol
+
+The means of achieving this target are part of the target. Every optimization
+experiment follows the same small record, kept in this document or in a linked
+generated report under `verification/generated/`:
+
+1. State the suspected bottleneck or regression and the expected byte, PSNR,
+   and FPS trade-off before changing the encoder.
+2. Capture a reproducible baseline with the same vectors, frame count, codec
+   settings, build profile, and reference-validation mode. Keep generated
+   outputs outside version control unless they are intentional fixtures.
+3. Use the narrowest useful accountability tools: formatter, compiler and
+   tests, Clippy, feature-matrix checks, dead-code and dependency audits,
+   rustdoc/API checks, and a profiler or stage-level timing report. A tool that
+   is unavailable or has a known repository failure must be recorded as such,
+   never presented as a passing gate.
+4. Review the diff for duplicated lossy/lossless/RGB paths, accidental profile
+   or geometry restrictions, unchecked indexing, stale comments, and public
+   API documentation. Keep mode and profile gates at the deepest legal
+   selection point while preserving one shared reconstruction and syntax path.
+5. Require internal reconstruction checks and the relevant reference decoder
+   before accepting any bitstream-affecting change. For lossy work, report
+   bytes, PSNR, and FPS deltas together; a single improved metric is not
+   sufficient evidence of success.
+6. Record the disposition: retained in a focused commit, rejected and reverted
+   with measurements, or deferred with a concrete follow-up. This prevents
+   expedient local fixes from becoming undocumented regressions that must be
+   rediscovered later.
+
+The release-facing checklist is therefore `make release-check`, the relevant
+strict validation-set commands with `VALIDATION_REFERENCE_MODE=required`,
+`make api-docs-strict`, `make clippy-perf`, `make feature-matrix`,
+`make dead-code-audit`, `make dependency-audit`, and `git diff --check`, plus a
+recorded representative profile. These checks are accountability tools, not
+reasons to weaken the implementation or to add broad lint suppressions.
+
 ## Current blockers and next experiments
 
 - AV2 lossless 1920-wide regular inter is still gated because mixed multi-column
