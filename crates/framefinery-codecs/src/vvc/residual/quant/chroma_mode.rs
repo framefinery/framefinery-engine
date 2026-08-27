@@ -819,19 +819,13 @@ fn score_vvc_chroma_mode_rd_candidate(
         distortion: cb.score.distortion.saturating_add(cr.score.distortion),
         rate_cost: cb.score.rate_cost.saturating_add(cr.score.rate_cost),
     };
-    let residual_score = VvcResidualBlockScore {
-        distortion: rd_score.distortion,
-        rate_cost: chroma_coeff_syntax_cost_estimate(chroma_width, chroma_height, residual.cb)
-            .saturating_add(chroma_coeff_syntax_cost_estimate(
-                chroma_width,
-                chroma_height,
-                residual.cr,
-            )),
-    };
-    let residual = VvcScoredSelectedChromaResidual {
+    let residual = VvcScoredSelectedChromaResidual::from_scored_blocks(
         residual,
-        score: residual_score,
-    };
+        cb.score,
+        cr.score,
+        chroma_width,
+        chroma_height,
+    );
     let mode_cost = u64::from(vvc_chroma_intra_mode_syntax_bin_count(
         mode,
         cclm_syntax_enabled,

@@ -780,6 +780,17 @@ output on all four 20-frame probe vectors while measured FPS declined, so the
 three-winner policy was restored. This confirms that the retained three-winner
 bound is the current quality/rate frontier for this fast-search policy.
 
+The VVC chroma score-reuse probe (2026-08-26) removed duplicate reconstructed
+residual scoring when a chroma candidate had already been scored by the shared
+quantization selector. The candidate wrapper now reuses the existing per-plane
+distortion scores and recomputes only the inexpensive coefficient syntax cost;
+candidate ordering, tie behavior, residual mode selection, and all coding paths
+remain unchanged. On the local six-vector, 50-frame lossy checkpoint, all six
+byte counts and PSNR values were identical. Instrumented total time fell from
+185.154 s to 177.847 s (1.620 to 1.687 aggregate FPS, +4.1%). The change is
+retained as a measured shared-path cleanup, subject to strict VTM validation
+and the normal maintainability gates.
+
 The VVC compact-seed directional probe (2026-08-26) expanded the
 `lossless-speed` source and spatial consensus seeds to their compact
 neighborhoods. It produced byte- and PSNR-identical output on all four

@@ -24,6 +24,27 @@ struct VvcScoredSelectedChromaResidual {
 }
 
 impl VvcScoredSelectedChromaResidual {
+    pub(super) fn from_scored_blocks(
+        residual: VvcSelectedChromaResidual,
+        cb_score: VvcResidualBlockScore,
+        cr_score: VvcResidualBlockScore,
+        width: usize,
+        height: usize,
+    ) -> Self {
+        Self {
+            score: VvcResidualBlockScore {
+                distortion: cb_score.distortion.saturating_add(cr_score.distortion),
+                rate_cost: chroma_coeff_syntax_cost_estimate(width, height, residual.cb)
+                    .saturating_add(chroma_coeff_syntax_cost_estimate(
+                        width,
+                        height,
+                        residual.cr,
+                    )),
+            },
+            residual,
+        }
+    }
+
     fn new(
         cb_residuals: &[i16],
         cr_residuals: &[i16],
@@ -58,18 +79,7 @@ impl VvcScoredSelectedChromaResidual {
             transform_scratch,
             reconstructed_residual,
         );
-        Self {
-            residual,
-            score: VvcResidualBlockScore {
-                distortion: cb_score.distortion.saturating_add(cr_score.distortion),
-                rate_cost: chroma_coeff_syntax_cost_estimate(width, height, residual.cb)
-                    .saturating_add(chroma_coeff_syntax_cost_estimate(
-                        width,
-                        height,
-                        residual.cr,
-                    )),
-            },
-        }
+        Self::from_scored_blocks(residual, cb_score, cr_score, width, height)
     }
 }
 
