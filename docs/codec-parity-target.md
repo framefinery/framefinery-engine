@@ -1004,3 +1004,14 @@ behavior and passed its focused test, but the full six-case VVC microbenchmark
 showed no statistically meaningful end-to-end change in any lossless or lossy
 case. The extra residual scan can offset the saved work, so the probe was
 reverted and no new fast path was retained.
+
+The VVC predictive chroma zero-detection cleanup (2026-08-27) now shares the
+Cb/Cr coordinate walk when constructing residuals for inter candidates and
+returns both zero flags from the same implementation. The ordinary pair
+helper and the zero-tracking helper are const-generic views of one traversal;
+no coding decision, syntax path, or reconstruction rule is duplicated. The
+materialized residual equivalence test passed, required regression validation
+passed 7/7 for both codecs, and required high-depth validation passed 6/6 for
+VVC and 3/3 for AV2. This change is retained as a maintainability and
+predictive-path cleanup; its end-to-end speed effect remains workload-specific
+and is not claimed as a six-vector checkpoint gain.

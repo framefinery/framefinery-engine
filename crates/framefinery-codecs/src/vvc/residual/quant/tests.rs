@@ -74,6 +74,26 @@ fn vvc_chroma_prediction_score_matches_materialized_residual_score() {
             residual_mode_selection_score(VvcResidualScoreMetric::Sse, &cr_residuals),
         );
     assert_eq!(direct, materialized);
+
+    let mut detected_cb = Vec::new();
+    let mut detected_cr = Vec::new();
+    let nonzero_flags = residual_chroma_pair_tu_at_into_and_detect_zero(
+        &mut detected_cb,
+        &mut detected_cr,
+        &frame.cb,
+        &frame.cr,
+        frame.geometry,
+        frame.format,
+        0,
+        0,
+        2,
+        2,
+        &predicted_cb,
+        &predicted_cr,
+    );
+    assert_eq!(detected_cb, cb_residuals);
+    assert_eq!(detected_cr, cr_residuals);
+    assert_eq!(nonzero_flags, (false, false));
 }
 
 #[test]

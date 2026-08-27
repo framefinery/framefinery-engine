@@ -1617,24 +1617,11 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 ) {
                     #[cfg(feature = "vvc-stats")]
                     let residual_start = StageStart::now();
-                    let cb_residuals_all_zero = residual_chroma_tu_at_into_and_detect_zero(
+                    let (cb_residuals_all_zero, cr_residuals_all_zero) =
+                        residual_chroma_pair_tu_at_into_and_detect_zero(
                         &mut cb_residuals,
-                        &source_frame.cb,
-                        source_frame.geometry,
-                        source_frame.format,
-                        chroma_x,
-                        chroma_y,
-                        chroma_width,
-                        chroma_height,
-                        &predicted_cb,
-                    );
-                    #[cfg(feature = "vvc-stats")]
-                    intra_search_stats
-                        .add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-                    #[cfg(feature = "vvc-stats")]
-                    let residual_start = StageStart::now();
-                    let cr_residuals_all_zero = residual_chroma_tu_at_into_and_detect_zero(
                         &mut cr_residuals,
+                        &source_frame.cb,
                         &source_frame.cr,
                         source_frame.geometry,
                         source_frame.format,
@@ -1642,6 +1629,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                         chroma_y,
                         chroma_width,
                         chroma_height,
+                        &predicted_cb,
                         &predicted_cr,
                     );
                     #[cfg(feature = "vvc-stats")]

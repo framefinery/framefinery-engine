@@ -88,6 +88,66 @@ pub(in crate::vvc) fn residual_chroma_pair_tu_at_into(
     predicted_cb: &[VvcSample],
     predicted_cr: &[VvcSample],
 ) {
+    let _ = residual_chroma_pair_tu_at_into_impl::<false>(
+        cb_residuals,
+        cr_residuals,
+        cb_samples,
+        cr_samples,
+        geometry,
+        format,
+        origin_x,
+        origin_y,
+        width,
+        height,
+        predicted_cb,
+        predicted_cr,
+    );
+}
+
+pub(in crate::vvc) fn residual_chroma_pair_tu_at_into_and_detect_zero(
+    cb_residuals: &mut Vec<i16>,
+    cr_residuals: &mut Vec<i16>,
+    cb_samples: &[VvcSample],
+    cr_samples: &[VvcSample],
+    geometry: VvcVideoGeometry,
+    format: VvcPictureFormat,
+    origin_x: usize,
+    origin_y: usize,
+    width: usize,
+    height: usize,
+    predicted_cb: &[VvcSample],
+    predicted_cr: &[VvcSample],
+) -> (bool, bool) {
+    residual_chroma_pair_tu_at_into_impl::<true>(
+        cb_residuals,
+        cr_residuals,
+        cb_samples,
+        cr_samples,
+        geometry,
+        format,
+        origin_x,
+        origin_y,
+        width,
+        height,
+        predicted_cb,
+        predicted_cr,
+    )
+}
+
+fn residual_chroma_pair_tu_at_into_impl<const TRACK_ZERO: bool>(
+    cb_residuals: &mut Vec<i16>,
+    cr_residuals: &mut Vec<i16>,
+    cb_samples: &[VvcSample],
+    cr_samples: &[VvcSample],
+    geometry: VvcVideoGeometry,
+    format: VvcPictureFormat,
+    origin_x: usize,
+    origin_y: usize,
+    width: usize,
+    height: usize,
+    predicted_cb: &[VvcSample],
+    predicted_cr: &[VvcSample],
+) -> (bool, bool) {
     debug_assert_eq!(predicted_cb.len(), width * height);
     debug_assert_eq!(predicted_cr.len(), width * height);
     let chroma_width = geometry.width / chroma_subsample_x(format.chroma_sampling);
@@ -98,22 +158,24 @@ pub(in crate::vvc) fn residual_chroma_pair_tu_at_into(
     cr_residuals.clear();
     cb_residuals.reserve(width * height);
     cr_residuals.reserve(width * height);
+    let mut cb_all_zero = true;
+    let mut cr_all_zero = true;
     if copy_width == width && copy_height == height {
         for y in 0..height {
             let src = (origin_y + y) * chroma_width + origin_x;
             let dst = y * width;
             for x in 0..width {
-                cb_residuals.push(vvc_sample_delta_i16(
-                    cb_samples[src + x],
-                    predicted_cb[dst + x],
-                ));
-                cr_residuals.push(vvc_sample_delta_i16(
-                    cr_samples[src + x],
-                    predicted_cr[dst + x],
-                ));
+                let cb = vvc_sample_delta_i16(cb_samples[src + x], predicted_cb[dst + x]);
+                let cr = vvc_sample_delta_i16(cr_samples[src + x], predicted_cr[dst + x]);
+                if TRACK_ZERO {
+                    cb_all_zero &= cb == 0;
+                    cr_all_zero &= cr == 0;
+                }
+                cb_residuals.push(cb);
+                cr_residuals.push(cr);
             }
         }
-        return;
+        return (cb_all_zero, cr_all_zero);
     }
     let max_x = chroma_width - 1;
     let max_y = chroma_height - 1;
@@ -123,16 +185,17 @@ pub(in crate::vvc) fn residual_chroma_pair_tu_at_into(
         let dst = y * width;
         for x in 0..width {
             let src_x = (origin_x + x).min(max_x);
-            cb_residuals.push(vvc_sample_delta_i16(
-                cb_samples[src_row + src_x],
-                predicted_cb[dst + x],
-            ));
-            cr_residuals.push(vvc_sample_delta_i16(
-                cr_samples[src_row + src_x],
-                predicted_cr[dst + x],
-            ));
+            let cb = vvc_sample_delta_i16(cb_samples[src_row + src_x], predicted_cb[dst + x]);
+            let cr = vvc_sample_delta_i16(cr_samples[src_row + src_x], predicted_cr[dst + x]);
+            if TRACK_ZERO {
+                cb_all_zero &= cb == 0;
+                cr_all_zero &= cr == 0;
+            }
+            cb_residuals.push(cb);
+            cr_residuals.push(cr);
         }
     }
+    (cb_all_zero, cr_all_zero)
 }
 
 pub(in crate::vvc) fn residual_chroma_tu_at_into_and_detect_zero(
