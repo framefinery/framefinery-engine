@@ -587,3 +587,14 @@ directly during the scan. The five-frame 1920x1080 A/B produced identical
 to 0.86 s between runs. Since the difference was within run-to-run noise and
 the compiler already eliminates the apparent temporary cost, the probe was
 reverted. No candidate or coding-path change is justified by this result.
+
+The representative VVC chroma-mode audit (2026-08-26) profiled the four-row,
+20-frame local mode probe under lossy `qp=19`, predictive `gop=-1`, and
+`fast-search=lossless-speed`. It measured 1,104,492 bytes, 3.092 seconds,
+6.469 aggregate FPS, and mean PSNR 57.590. Chroma mode search consumed
+754.195 ms (9.91% of measured wall time), including 250.842 ms of explicit
+prediction and 384.312 ms of chroma RD scoring. All ordinary explicit
+candidate families remained active where applicable; no candidate was
+removed. This is the baseline for a controlled chroma candidate-order or
+RD-bound experiment, with the complete candidate path retained until quality
+and reference evidence justify a change.
