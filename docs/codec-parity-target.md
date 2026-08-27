@@ -1077,3 +1077,12 @@ was not a repeatable end-to-end gain. The source change was reverted. This
 probe also exposed the need to add a focused statistics-equivalence test
 before revisiting the idea, so the next attempt should prove the helper in
 isolation and use repeated candidate-rich workloads.
+
+The VVC transform-skip zero-prescan probe (2026-08-27) removed the redundant
+all-zero residual scan before the existing transform-skip coefficient walk in
+the shared luma/chroma and BDPCM finalizers. The first 50-frame regression A/B
+measured 802.9 FPS versus 740.8 FPS with identical 168,608 bytes and PSNR,
+but a repeat measured 755.2 FPS. Because the speed result was not repeatable
+and the coefficient walk already preserves the same zero result, the source
+change was reverted. The next attempt should use repeated measurements or a
+larger candidate-rich profile before changing this hot path.
