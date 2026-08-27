@@ -1220,3 +1220,13 @@ versus 530.404. The source change was reverted because the lossless regression
 was repeatable enough to reject the extra path. A future scoring optimization
 should first use compiler/profile evidence to avoid adding a second loop for a
 branch cost that is not visible in the end-to-end result.
+
+The VVC lossy chroma-shortlist probe (2026-08-27) reduced the shared
+`lossless-speed` lossy chroma RD shortlist from three candidates to two. It
+left lossless and exhaustive/conservative selection unchanged, but the lossy
+4:4:4 output regressed: `blocks_444` grew from 13,245 to 14,228 bytes while
+PSNR fell from 50.357 to 49.956 dB, and `blocks_444_2f` grew from 46,072 to
+51,381 bytes while PSNR fell from 50.338 to 49.798 dB. The source change was
+reverted; timing variation does not justify a bitrate/quality loss. A future
+search-pruning attempt needs content-aware admission or a rate-safe bound
+before reducing this shared shortlist.
