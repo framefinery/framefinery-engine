@@ -159,6 +159,18 @@ changes were reverted. The next implementation should compare the complete
 single-tree RGB quantization and reconstruction contracts against the
 existing dual-tree path before attempting another mode-selection shortcut.
 
+The next SCC wiring probe (2026-08-27) added a production-facing,
+availability-checked 4:4:4 IBC copy helper and attempted to feed IBC decisions
+through the shared quantizer metadata. Its focused test exposed a more basic
+blocker before bitstream validation: forcing the current 8x8 lossless-speed
+leaf path in the single-tree configuration left parts of otherwise constant
+8x8 leaves at the neutral reconstruction value. No IBC candidate was accepted
+because source exactness could not be proven. The production wiring and test
+probe were reverted; the copy helper and its availability/overlap regression
+test remain as a reusable contract. The next SCC change must first make the
+single-tree 8x8 lossless residual path source-exact across the supported
+formats before enabling candidate selection or changing the default SPS tree.
+
 ## Optimization probe log
 
 The first post-checkpoint probe (2026-08-26) replaced repeated sorting of the
