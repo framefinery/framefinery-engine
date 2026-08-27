@@ -731,3 +731,12 @@ neighborhoods. It produced byte- and PSNR-identical output on all four
 the gradient case. The candidate-generation change was reverted; broader
 directional neighborhoods need a stronger content-adaptive gate before they
 are suitable for this speed policy.
+
+The VVC transform-skip-first probe (2026-08-26) removed the lossy
+`lossless-speed` shortcut that returns the transform-skip candidate before
+scoring transformed residual coding. This kept the shared residual path and
+legal syntax unchanged, but the controlled four-vector, 20-frame probe grew
+from 4,275,283 to 4,277,988 bytes (+0.06%), moved the mean PSNR only within
+the probe's small per-vector variation, and reduced aggregate FPS from 6.47
+to 5.97 (-7.7%). The shortcut was restored; a broader transformed-residual
+search is not justified without a stronger content-adaptive gate.
