@@ -1185,6 +1185,27 @@ fn vvc_zero_transform_skip_residuals_keep_zero_levels() {
 }
 
 #[test]
+fn vvc_lossless_8x8_transform_skip_reconstructs_every_sample() {
+    let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
+    let qp = crate::vvc::vvc_lossless_slice_qp(bit_depth);
+    let quant_table = VvcTransformSkipQuantTable::new(bit_depth, qp);
+    let source_residuals = vec![-96; 64];
+    let block =
+        finalize_vvc_luma_transform_skip_residual_block(&source_residuals, 8, 8, &quant_table);
+    let mut reconstructed = Vec::new();
+    reconstruct_vvc_luma_transform_skip_residuals_into_with_qp(
+        &mut reconstructed,
+        block.dc_level,
+        &block.ac_levels,
+        8,
+        8,
+        bit_depth,
+        qp,
+    );
+    assert_eq!(reconstructed, source_residuals);
+}
+
+#[test]
 fn vvc_direct_luma_transform_skip_sse_matches_reconstruction() {
     let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
     let qp = super::super::VVC_DEFAULT_LOSSY_LUMA_QP;
