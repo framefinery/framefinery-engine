@@ -713,24 +713,20 @@ fn vvc_transform_skip_reconstruction_uses_encoded_chroma_coefficients() {
     );
     assert_eq!(reconstructed, residuals);
 
+    let residuals_8x8: Vec<i16> = (0..64)
+        .map(|index| ((index as i16 * 11) % 31) - 15)
+        .collect();
+    let (ac_levels_8x8, has_ac) =
+        quant::transform_skip_chroma_ac_levels_and_flag(&residuals_8x8, 8);
+    assert!(has_ac);
     quant::reconstruct_vvc_chroma_transform_skip_residuals_into(
         &mut reconstructed,
-        residuals[0],
-        &ac_levels,
+        residuals_8x8[0],
+        &ac_levels_8x8,
         8,
         8,
     );
-    assert_eq!(reconstructed[0], residuals[0]);
-    assert_eq!(reconstructed[3 * 8 + 3], residuals[15]);
-    assert!(reconstructed
-        .iter()
-        .enumerate()
-        .filter(|(idx, _)| {
-            let x = idx % 8;
-            let y = idx / 8;
-            x >= 4 || y >= 4
-        })
-        .all(|(_, sample)| *sample == 0));
+    assert_eq!(reconstructed, residuals_8x8);
 }
 
 #[test]

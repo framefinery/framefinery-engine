@@ -10,11 +10,10 @@ pub(in crate::vvc) enum VvcTuResidualCodingMode {
     TransformSkip,
 }
 
-// The current coefficient representation and transform-skip reconstruction
-// kernel are 4x4. Keep this legality check at mode selection so every encode
-// mode shares the same syntax/reconstruction path without emitting a larger
-// transform-skip TU that this implementation cannot represent exactly.
-const VVC_CHROMA_TRANSFORM_SKIP_MAX_SIZE: u16 = 4;
+// Transform-skip chroma coefficients are represented for the complete 8x8
+// maximum transform block. Keep this legality check at mode selection so
+// every encode mode shares the same syntax/reconstruction path.
+const VVC_CHROMA_TRANSFORM_SKIP_MAX_SIZE: u16 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::vvc) enum VvcBdpcmMode {

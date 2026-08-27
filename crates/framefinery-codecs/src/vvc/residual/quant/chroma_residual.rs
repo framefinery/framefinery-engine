@@ -309,8 +309,8 @@ fn fill_visible_chroma_transform_skip_node(
     if visible_width == 0 || visible_height == 0 {
         return;
     }
-    let active_width = node_width.min(4);
-    let active_height = node_height.min(4);
+    let active_width = node_width.min(8);
+    let active_height = node_height.min(8);
     if residual.bdpcm_mode.is_enabled() {
         fill_visible_chroma_bdpcm_transform_skip_node(
             chroma,
@@ -320,8 +320,8 @@ fn fill_visible_chroma_transform_skip_node(
             visible_width,
             visible_height,
             node_width,
-            active_width,
-            active_height,
+            node_width.min(4),
+            node_height.min(4),
             predicted,
             residual,
             bit_depth,
@@ -340,7 +340,7 @@ fn fill_visible_chroma_transform_skip_node(
                     let level = if local_x == 0 && local_y == 0 {
                         residual.dc_level
                     } else {
-                        residual.ac_levels[local_y * 4 + local_x - 1]
+                        residual.ac_levels[local_y * active_width + local_x - 1]
                     };
                     quant_table.reconstructed(level)
                 } else {
@@ -466,12 +466,11 @@ fn finalize_vvc_chroma_residual_block(
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU> {
-    // Transform skip is represented by the 4x4 coefficient storage above.
     // Keep this defensive gate beside finalization as well as mode selection:
     // callers that provide a preselected decision must still take a legal,
     // exactly reconstructable path.
     let residual_coding = if matches!(residual_coding, VvcTuResidualCodingMode::TransformSkip)
-        && (width > 4 || height > 4)
+        && (width > 8 || height > 8)
     {
         VvcTuResidualCodingMode::Transformed
     } else {
@@ -757,8 +756,8 @@ fn vvc_chroma_lossy_transform_skip_selection_allowed(
     VVC_ENABLE_LOSSY_TRANSFORM_SKIP_SELECTION
         && matches!(residual_coding, VvcTuResidualCodingMode::Transformed)
         && chroma_qp > 0
-        && width <= 4
-        && height <= 4
+        && width <= 8
+        && height <= 8
 }
 
 fn vvc_chroma_residual_block_score(
@@ -807,8 +806,8 @@ fn vvc_chroma_transform_skip_score_is_exact(
     qp: i32,
 ) -> bool {
     residual.transform_skip
-        && width <= 4
-        && height <= 4
+        && width <= 8
+        && height <= 8
         && vvc_transform_skip_qp_reconstructs_exact(bit_depth, qp)
 }
 

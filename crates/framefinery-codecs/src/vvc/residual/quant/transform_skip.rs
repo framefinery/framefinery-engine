@@ -197,9 +197,14 @@ pub(in crate::vvc) fn reconstruct_vvc_chroma_transform_skip_residuals_into(
         return;
     }
     residuals[0] = dc_level;
-    for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
-        if x < width && y < height {
-            residuals[y * width + x] = ac_levels[slot];
+    let active_width = width.min(8);
+    let active_height = height.min(8);
+    for y in 0..active_height {
+        for x in 0..active_width {
+            if x == 0 && y == 0 {
+                continue;
+            }
+            residuals[y * width + x] = ac_levels[y * active_width + x - 1];
         }
     }
 }
@@ -221,10 +226,15 @@ pub(in crate::vvc) fn reconstruct_vvc_chroma_transform_skip_residuals_into_with_
     }
     let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
     residuals[0] = reconstruct_vvc_transform_skip_level_with_params(dc_level, scale, right_shift);
-    for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
-        if x < width && y < height {
+    let active_width = width.min(8);
+    let active_height = height.min(8);
+    for y in 0..active_height {
+        for x in 0..active_width {
+            if x == 0 && y == 0 {
+                continue;
+            }
             residuals[y * width + x] = reconstruct_vvc_transform_skip_level_with_params(
-                ac_levels[slot],
+                ac_levels[y * active_width + x - 1],
                 scale,
                 right_shift,
             );
@@ -246,9 +256,15 @@ fn reconstruct_vvc_chroma_transform_skip_residuals_into_with_table(
         return;
     }
     residuals[0] = quant_table.reconstructed(dc_level);
-    for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
-        if x < width && y < height {
-            residuals[y * width + x] = quant_table.reconstructed(ac_levels[slot]);
+    let active_width = width.min(8);
+    let active_height = height.min(8);
+    for y in 0..active_height {
+        for x in 0..active_width {
+            if x == 0 && y == 0 {
+                continue;
+            }
+            residuals[y * width + x] =
+                quant_table.reconstructed(ac_levels[y * active_width + x - 1]);
         }
     }
 }
@@ -491,11 +507,16 @@ pub(in crate::vvc) fn transform_skip_chroma_ac_levels_and_flag(
 ) -> ([i16; VVC_CHROMA_AC_COEFFS_PER_TU], bool) {
     let mut levels = [0; VVC_CHROMA_AC_COEFFS_PER_TU];
     let mut has_ac = false;
-    for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
-        let raster_idx = y * width + x;
-        if raster_idx < residuals.len() {
-            let level = residuals[raster_idx];
-            levels[slot] = level;
+    let height = residuals.len() / width;
+    let active_width = width.min(8);
+    let active_height = height.min(8);
+    for y in 0..active_height {
+        for x in 0..active_width {
+            if x == 0 && y == 0 {
+                continue;
+            }
+            let level = residuals[y * width + x];
+            levels[y * active_width + x - 1] = level;
             has_ac |= level != 0;
         }
     }
@@ -510,18 +531,14 @@ fn transform_skip_chroma_ac_levels_and_flag_with_table(
     let mut levels = [0; VVC_CHROMA_AC_COEFFS_PER_TU];
     let mut has_ac = false;
     let height = residuals.len() / width;
-    if width >= 4 && height >= 4 {
-        for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
-            let level = quant_table.level(residuals[y * width + x]);
-            levels[slot] = level;
-            has_ac |= level != 0;
-        }
-        return (levels, has_ac);
-    }
-    let active_width = width.min(4);
-    let active_height = height.min(4);
-    for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
-        if x < active_width && y < active_height {
+    let active_width = width.min(8);
+    let active_height = height.min(8);
+    for y in 0..active_height {
+        for x in 0..active_width {
+            if x == 0 && y == 0 {
+                continue;
+            }
+            let slot = y * active_width + x - 1;
             let level = quant_table.level(residuals[y * width + x]);
             levels[slot] = level;
             has_ac |= level != 0;

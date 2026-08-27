@@ -870,8 +870,8 @@ fn chroma_transform_skip_residual_sse(
     residual: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
 ) -> u64 {
     debug_assert!(residual.transform_skip);
-    let active_width = width.min(4);
-    let active_height = height.min(4);
+    let active_width = width.min(8);
+    let active_height = height.min(8);
     if residual.bdpcm_mode.is_enabled() {
         return chroma_bdpcm_transform_skip_residual_sse(
             source_residuals,
@@ -891,7 +891,7 @@ fn chroma_transform_skip_residual_sse(
             let level = if x == 0 && y == 0 {
                 residual.dc_level
             } else {
-                residual.ac_levels[y * 4 + x - 1]
+                residual.ac_levels[y * active_width + x - 1]
             };
             sse += residual_diff_square(source_row[x], chroma_ts_quant.reconstructed(level));
         }
@@ -964,17 +964,19 @@ fn chroma_coeff_syntax_cost_estimate(
     let mut nonzero = u64::from(residual.dc_level != 0);
     let mut abs_sum = u64::from(residual.dc_level.unsigned_abs());
     let mut last_pos = 0u64;
-    let active_width = width.min(4);
-    let active_height = height.min(4);
-    for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
-        if x >= active_width || y >= active_height {
-            continue;
-        }
-        let abs_level = u64::from(residual.ac_levels[slot].unsigned_abs());
-        if abs_level != 0 {
-            nonzero += 1;
-            abs_sum += abs_level;
-            last_pos = (y * active_width + x) as u64;
+    let active_width = width.min(8);
+    let active_height = height.min(8);
+    for y in 0..active_height {
+        for x in 0..active_width {
+            if x == 0 && y == 0 {
+                continue;
+            }
+            let abs_level = u64::from(residual.ac_levels[y * active_width + x - 1].unsigned_abs());
+            if abs_level != 0 {
+                nonzero += 1;
+                abs_sum += abs_level;
+                last_pos = (y * active_width + x) as u64;
+            }
         }
     }
     nonzero

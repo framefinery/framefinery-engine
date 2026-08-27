@@ -8695,8 +8695,9 @@ The earlier sparse-chroma checkpoints intentionally retained only the first
 4x4 coefficient group. That representation was not valid for an 8x8
 single-tree 4:4:4 transform unit, so the shared transformed chroma path now
 stores and emits the complete 8x8 coefficient set with a geometry-derived
-coefficient stride. The 4x4 transform-skip/BDPCM kernel remains explicitly
-gated to legal 4x4 chroma blocks. Required VTM validation passed 7/7 for both
+coefficient stride. Ordinary transform-skip now uses the same complete 8x8
+extent, while the BDPCM predictor kernel remains explicitly gated to legal
+4x4 chroma blocks. Required VTM validation passed 7/7 for both
 the ordinary and SCC-enabled 4:4:4 paths, including multi-frame cases.
 
 This is correctness work, not yet a compression win: full coefficient

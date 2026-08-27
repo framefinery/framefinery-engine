@@ -1290,9 +1290,23 @@ The VVC single-tree 4:4:4 residual audit (2026-08-27) found a separate
 representation defect: transformed chroma TUs retained only a 4x4 coefficient
 prefix even when the syntax described an 8x8 transform block. The shared
 chroma coefficient storage and syntax/reconstruction stride now cover the full
-8x8 block; transform skip remains gated to the 4x4 representation it can
-actually reconstruct. The ordinary single-tree control and the SCC-enabled
+8x8 block. Transform skip and its shared mode-decision, coefficient, scoring,
+and reconstruction helpers now cover the same complete 8x8 extent. The ordinary
+single-tree control and the SCC-enabled
 4:4:4 path both pass all 7 required VTM regression cases, including the
-multi-frame 64x64 vectors. The SCC production gate is enabled again. The
-larger bitstreams are expected until a separate compression decision improves
-the full-block coefficient coding without sacrificing exact reconstruction.
+multi-frame 64x64 vectors. Lossless internal reconstruction is byte-identical
+to the source for those vectors, and the reference decoder reconstruction still
+matches it. The SCC production gate is enabled again. The larger bitstreams
+from the earlier transformed-only checkpoint are therefore not a correctness
+requirement; future compression work must preserve this full coefficient
+coverage and the source-exact lossless gate.
+
+The VVC 8x8 chroma transform-skip completion (2026-08-27) added a focused
+8x8 coefficient round-trip test and extended the shared RD score estimate and
+visible reconstruction path to the complete active block. `cargo fmt`, the
+262-test VVC library suite, release build, and required VTM regression passed
+for both `lossless gop=0 fast-search=lossless-speed` and `qp=24 gop=0` (7/7
+cases each). The lossless regression also compared every internal reconstruction
+against its source and passed byte-for-byte. BDPCM remains explicitly on its
+fixed 4x4 predictor representation; it is not silently mixed with the ordinary
+8x8 transform-skip layout.
