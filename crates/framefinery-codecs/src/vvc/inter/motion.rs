@@ -598,16 +598,6 @@ fn vvc_luma_motion_candidate_at_with_sad_limit(
     })
 }
 
-fn vvc_luma_block_sad(
-    current: &VvcSampledFrame,
-    reference: &VvcSampledFrame,
-    block: VvcLumaMotionSearchBlock,
-    ref_origin_x: usize,
-    ref_origin_y: usize,
-) -> u64 {
-    vvc_luma_block_sad_limited(current, reference, block, ref_origin_x, ref_origin_y, None)
-}
-
 fn vvc_luma_block_sad_limited(
     current: &VvcSampledFrame,
     reference: &VvcSampledFrame,
