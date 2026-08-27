@@ -1285,3 +1285,14 @@ therefore be unsound. Production SCC selection remains gated until the
 single-tree traversal either interleaves complete luma/chroma leaf
 reconstruction or establishes an equivalent availability-preserving contract;
 the search algorithm must remain shared when that change is made.
+
+The VVC single-tree 4:4:4 residual audit (2026-08-27) found a separate
+representation defect: transformed chroma TUs retained only a 4x4 coefficient
+prefix even when the syntax described an 8x8 transform block. The shared
+chroma coefficient storage and syntax/reconstruction stride now cover the full
+8x8 block; transform skip remains gated to the 4x4 representation it can
+actually reconstruct. The ordinary single-tree control and the SCC-enabled
+4:4:4 path both pass all 7 required VTM regression cases, including the
+multi-frame 64x64 vectors. The SCC production gate is enabled again. The
+larger bitstreams are expected until a separate compression decision improves
+the full-block coefficient coding without sacrificing exact reconstruction.

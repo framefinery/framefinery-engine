@@ -598,8 +598,8 @@ impl VvcResidualComponent {
 }
 
 pub(super) const VVC_LUMA_AC_COEFFS_PER_TU: usize = 63;
-pub(super) const VVC_CHROMA_AC_COEFFS_PER_TU: usize = 15;
-pub(super) const VVC_CHROMA_AC_POSITIONS_4X4: [(usize, usize); VVC_CHROMA_AC_COEFFS_PER_TU] = [
+pub(super) const VVC_CHROMA_AC_COEFFS_PER_TU: usize = 63;
+pub(super) const VVC_CHROMA_AC_POSITIONS_4X4: [(usize, usize); 15] = [
     (1, 0),
     (2, 0),
     (3, 0),

@@ -1156,7 +1156,7 @@ impl VvcResidualCabacSymbolStream {
             dc_level,
             ac_levels,
             has_ac,
-            4,
+            chroma_stored_coeff_stride(log2_tb_width, log2_tb_height),
             transform_skip,
             bdpcm,
             0,
@@ -2165,6 +2165,10 @@ fn luma_stored_coeff_stride(log2_tb_width: u8, log2_tb_height: u8) -> usize {
     } else {
         (1usize << log2_tb_width).min(4)
     }
+}
+
+fn chroma_stored_coeff_stride(log2_tb_width: u8, _log2_tb_height: u8) -> usize {
+    (1usize << log2_tb_width).min(8)
 }
 
 fn regular_bin_limit(width: usize, height: usize) -> i32 {

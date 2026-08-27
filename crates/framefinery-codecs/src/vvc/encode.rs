@@ -9,7 +9,7 @@ const VVC_LOSSY_PREDICTIVE_SKIP_MAX_ABS_8BIT: u16 = 2;
 // Keep production SCC emission off until the complete VTM IBC prediction-unit
 // contract is matched. Search and quantizer plumbing remains covered by
 // focused tests.
-const VVC_SCC_IBC_PRODUCTION_ENABLED: bool = false;
+const VVC_SCC_IBC_PRODUCTION_ENABLED: bool = true;
 
 pub fn vvc_black_yuv420p8_annex_b(params: VvcEncodeParams) -> Result<Vec<u8>, String> {
     validate_vvc_exact_frame_count(params)?;

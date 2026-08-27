@@ -8687,6 +8687,23 @@ Near-term optimization implications:
 - Any FPS win that spends bytes or PSNR must pass the projected tradeoff
   score and still pass VTM-required validation.
 
+### VVC Full 8x8 Chroma Residual Representation
+
+Checkpoint: `vvc-full-chroma-transform-block`.
+
+The earlier sparse-chroma checkpoints intentionally retained only the first
+4x4 coefficient group. That representation was not valid for an 8x8
+single-tree 4:4:4 transform unit, so the shared transformed chroma path now
+stores and emits the complete 8x8 coefficient set with a geometry-derived
+coefficient stride. The 4x4 transform-skip/BDPCM kernel remains explicitly
+gated to legal 4x4 chroma blocks. Required VTM validation passed 7/7 for both
+the ordinary and SCC-enabled 4:4:4 paths, including multi-frame cases.
+
+This is correctness work, not yet a compression win: full coefficient
+coverage increases output relative to the defective truncated representation.
+Future optimization must measure byte rate, PSNR, FPS, and reference
+reconstruction together before attempting coefficient pruning.
+
 ## References
 
 - Cargo profile settings:

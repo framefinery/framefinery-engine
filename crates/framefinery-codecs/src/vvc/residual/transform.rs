@@ -2,7 +2,7 @@
 use super::super::VvcSample;
 use super::{
     VvcQuantizedChromaTransformBlock, VvcQuantizedLumaTransformBlock, VVC_CHROMA_AC_COEFFS_PER_TU,
-    VVC_CHROMA_AC_POSITIONS_4X4, VVC_LUMA_AC_COEFFS_PER_TU,
+    VVC_LUMA_AC_COEFFS_PER_TU,
 };
 #[cfg(test)]
 use super::{VvcTransformComponent, VvcTuTransformBlock};
@@ -441,7 +441,16 @@ pub(in crate::vvc) fn inverse_transform_vvc_chroma_quantized_block_into_with_qp(
     chroma_qp: i32,
 ) {
     inverse_transform_vvc_quantized_block_into(
-        residuals, scratch, width, height, dc_level, ac_levels, 4, chroma_qp, bit_depth, 0,
+        residuals,
+        scratch,
+        width,
+        height,
+        dc_level,
+        ac_levels,
+        usize::from(width).min(8),
+        chroma_qp,
+        bit_depth,
+        0,
     );
 }
 
@@ -1499,11 +1508,11 @@ fn quantize_direct_chroma_ac_coeffs(
     let width_usize = usize::from(width);
     let height_usize = usize::from(height);
     debug_assert_eq!(residuals.len(), width_usize * height_usize);
-    let active_width = width_usize.min(4);
-    let active_height = height_usize.min(4);
+    let active_width = width_usize.min(8);
+    let active_height = height_usize.min(8);
     let mut ac_coeffs = [0; VVC_CHROMA_AC_COEFFS_PER_TU];
     let mut has_ac = false;
-    let mut vertical = [0i64; 4 * VVC_MAX_TRANSFORM_EDGE];
+    let mut vertical = [0i64; 8 * VVC_MAX_TRANSFORM_EDGE];
     let quant_shift = chroma_ac_quant_shift(width, height, chroma_qp);
     let level_limit = chroma_ac_level_limit(chroma_qp);
     for ky in 0..active_height {
@@ -1517,17 +1526,21 @@ fn quantize_direct_chroma_ac_coeffs(
         }
     }
 
-    for (kx, ky) in VVC_CHROMA_AC_POSITIONS_4X4 {
-        if kx < active_width && ky < active_height {
+    for ky in 0..active_height {
+        for kx in 0..active_width {
+            if kx == 0 && ky == 0 {
+                continue;
+            }
             let transform_row = dct2_row(width, kx);
             let mut acc = 0i64;
             for x in 0..width_usize {
                 acc += vertical[ky * VVC_MAX_TRANSFORM_EDGE + x] * i64::from(transform_row[x]);
             }
             let level = div_round_nearest_i64(acc, 1i64 << quant_shift);
-            ac_coeffs[ky * 4 + kx - 1] =
+            let compact_idx = ky * active_width + kx - 1;
+            ac_coeffs[compact_idx] =
                 level.clamp(i64::from(-level_limit), i64::from(level_limit)) as i16;
-            has_ac |= ac_coeffs[ky * 4 + kx - 1] != 0;
+            has_ac |= ac_coeffs[compact_idx] != 0;
         }
     }
     (ac_coeffs, has_ac)
