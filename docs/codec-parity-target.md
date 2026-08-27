@@ -87,6 +87,12 @@ strict validation-set commands with `VALIDATION_REFERENCE_MODE=required`,
 recorded representative profile. These checks are accountability tools, not
 reasons to weaken the implementation or to add broad lint suppressions.
 
+The accountability rerun on 2026-08-27 passed `make api-docs-strict`,
+`make clippy-perf`, and `git diff --check`. `make dependency-audit` failed at
+the explicit setup check because `cargo-audit` is not installed; no dependency
+audit result is claimed until that tool is available. The existing strict
+dead-code inventory remains a known follow-up recorded below.
+
 ## Current blockers and next experiments
 
 - AV2 lossless 1920-wide regular inter is still gated because mixed multi-column
