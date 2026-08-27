@@ -590,6 +590,14 @@ and mean PSNR 55.957, while the measured runtime improved from the recorded
 keeps the lossy candidate set aligned with the legal syntax, and is retained
 as a shared-path cleanup rather than a mode-specific implementation.
 
+The AV2 lossless IBC hash-index probe (2026-08-26) replaced the per-tile
+linear hash-bucket lookup with a `HashMap` while preserving each bucket's
+candidate order. It was rejected after the representative four-row,
+20-frame probe remained byte-exact but moved from 0.528 s / 37.855 FPS to
+0.533 s / 37.505 FPS; measured IBC time increased from 73.938 ms to 75.976
+ms. The small per-tile index is faster in its current vector form, so the
+original implementation was restored.
+
 The VVC adaptive motion-seed probe (2026-08-26) replaced the fixed 8-pixel
 seed ring with the outer search-radius ring before unit-diamond refinement.
 This followed the source audit's bounded/coarse-search direction, but the
