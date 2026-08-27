@@ -606,6 +606,15 @@ candidate order. It was rejected after the representative four-row,
 ms. The small per-tile index is faster in its current vector form, so the
 original implementation was restored.
 
+The AV2 lossless fast-mode sampling probe (2026-08-26) tested a coarser 4x4
+transform-block sample grid instead of the maintained 2x2 grid. With both
+planes coarsened, the four-row, 20-frame probe reduced bytes from 1,925,221 to
+1,902,875 but slowed from 0.528 s / 37.855 FPS to 0.571 s / 35.017 FPS. With
+only luma coarsened, it produced 1,925,336 bytes and 0.557 s / 35.916 FPS.
+Both variants were rejected and the 2x2 sampling policy was restored; the
+extra downstream mode-selection cost outweighs the reduced sample count on
+this workload.
+
 The VVC adaptive motion-seed probe (2026-08-26) replaced the fixed 8-pixel
 seed ring with the outer search-radius ring before unit-diamond refinement.
 This followed the source audit's bounded/coarse-search direction, but the
