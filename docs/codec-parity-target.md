@@ -81,6 +81,17 @@ fix must carry the decision through the existing quantize/reconstruct/CABAC
 path at block level, preserve the profile gates, and pass required VTM decode
 validation before its rate benefit is accepted.
 
+The first SCC integration probe (2026-08-27) was rejected. It wired exact
+8x8 IBC decisions into the shared quantize/reconstruct/CABAC data flow and
+selected 52,024 blocks on the Wayland frame, reducing the first-frame output
+from 352,005 to 175,752 bytes. However, the existing residual RGB partition
+contract did not signal the required IBC/single-tree state: the first version
+produced VTM's invalid-block-vector error, and the follow-up single-tree
+version failed the encoder's own lossless reconstruction check. All source
+changes were reverted. The measured result is retained as evidence, and a
+future SCC integration must first unify the RGB tree/reconstruction contract
+with the syntax state before enabling the rate-saving mode.
+
 ## Optimization probe log
 
 The first post-checkpoint probe (2026-08-26) replaced repeated sorting of the
