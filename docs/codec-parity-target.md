@@ -92,6 +92,15 @@ changes were reverted. The measured result is retained as evidence, and a
 future SCC integration must first unify the RGB tree/reconstruction contract
 with the syntax state before enabling the rate-saving mode.
 
+A follow-up SCC probe (2026-08-27) corrected the copy direction for overlapping
+2-D IBC regions, using reverse row order when the destination is below the
+reference. This did not address the failure: the same Wayland lossless RGB
+case still differed from the source reconstruction, despite compiling and
+selecting the SCC candidates. The copy-order change and all associated source
+changes were reverted. The next implementation should compare the complete
+single-tree RGB quantization and reconstruction contracts against the
+existing dual-tree path before attempting another mode-selection shortcut.
+
 ## Optimization probe log
 
 The first post-checkpoint probe (2026-08-26) replaced repeated sorting of the
