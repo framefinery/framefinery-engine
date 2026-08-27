@@ -115,6 +115,13 @@ decreased from 8.79/14.15/14.48/18.05 to 8.27/13.48/14.12/18.01. The source
 change was reverted because it did not demonstrate a stable speed gain; the
 existing loop structure remains explicit for auditability.
 
+The AV2 lossy full-search sampling probe (2026-08-26) raised the full-search
+threshold from 64 to 256 transform blocks. It produced identical bytes and
+PSNR on all four 20-frame probe vectors, while measured FPS changed from
+8.79/14.15/14.48/18.05 to 8.57/13.54/13.94/17.89. The source change was
+reverted: the representative leaves did not benefit from the extra search and
+the broader threshold only added measured work.
+
 The AV2 DC-only residual probe (2026-08-26) added an exact early return after
 regular DCT quantization when every AC level is zero. It retained the same
 regular-DCT candidate and strict tie behavior, so the six-vector lossy run kept
