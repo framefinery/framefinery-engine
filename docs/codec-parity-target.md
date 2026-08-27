@@ -1174,6 +1174,16 @@ pre-existing all-feature inventory, and `make dependency-audit` still cannot
 run because `cargo-audit` is not installed; neither failure is caused by this
 change.
 
+The AV2 64x64 fast-lossless threshold probe (2026-08-27) lowered the existing
+`FastScreenContent` activation threshold from 128x128 to 64x64 pixels to
+address the dominant lossless tile-payload timing. It was rejected: the
+64x64 block vector grew from 29,644 to 105,885 bytes and the 64x64 checker
+vector from 33,395 to 123,695 bytes in the 50-frame profile. The substantial
+speed increase is not an acceptable trade for that compression loss. The
+threshold was restored to 128x128; future speed work must preserve the
+exhaustive quality path or add a content-confidence gate with reference-clean
+byte/quality evidence.
+
 The VVC paired chroma-residual materialization probe (2026-08-27) replaced two
 independent Cb/Cr scans in the shared chroma mode-search path with the existing
 paired helper. The helper preserves the same geometry-derived coordinates,
