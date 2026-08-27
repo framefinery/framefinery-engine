@@ -940,6 +940,16 @@ regression validation passed 7/7 for AV2 and 7/7 for VVC, covering multi-frame
 4:4:4 cases as well as subsampled geometry; successful reconstruction and
 encoded outputs were cleaned up after validation.
 
+The current-settings lossy six-vector checkpoint (2026-08-27) ran all six
+persistent local vectors for 50 frames with direct source feeding, AV2
+`gop=-1`/QP 24, and VVC `gop=-1`/QP 19 with `fast-search=lossless-speed`.
+AV2 produced 47,700,867 bytes at 4.54 aggregate FPS; VVC produced 44,261,243
+bytes at 2.34 aggregate FPS. Per-vector PSNR is retained in the generated
+reports `verification/generated/encode_matrix/goal-av2-hoist-lossy-20260827/`
+and `verification/generated/encode_matrix/goal-vvc-parity-lossy-20260827/`.
+These are current-settings checkpoints, not deltas against the older report,
+whose source files and predictive-setting semantics differ.
+
 The AV2 derived-quant-constant follow-up (2026-08-27) also hoisted the
 per-coefficient reciprocal and rounding values into the same per-block
 parameter bundle. Criterion measured an additional 4.4--7.2% improvement over
