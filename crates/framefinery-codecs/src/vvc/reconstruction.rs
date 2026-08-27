@@ -237,6 +237,112 @@ impl VvcReconstructionFrame {
         )
     }
 
+    /// Copy an exact 4:4:4 IBC block from already reconstructed samples.
+    ///
+    /// IBC references are part of the current picture, so using the source
+    /// frame here would make the encoder appear lossless while leaving the
+    /// decoder dependent on samples that have not been coded yet.  Requiring
+    /// all three source planes to be available keeps the mode decision and
+    /// reconstruction contract identical on both sides of the bitstream.
+    fn copy_ibc_444_8x8(&mut self, decision: VvcIbcCuDecision) -> bool {
+        const BLOCK: usize = 8;
+        if self.format.chroma_sampling != ChromaSampling::Cs444 {
+            return false;
+        }
+        let source_x = decision.ref_origin_x;
+        let source_y = decision.ref_origin_y;
+        let destination_x = decision.origin_x;
+        let destination_y = decision.origin_y;
+        if !vvc_plane_region_is_available(
+            &self.luma_available,
+            self.luma_width(),
+            source_x,
+            source_y,
+            BLOCK,
+            BLOCK,
+        ) || !vvc_plane_region_is_available(
+            &self.cb_available,
+            self.chroma_width(),
+            source_x,
+            source_y,
+            BLOCK,
+            BLOCK,
+        ) || !vvc_plane_region_is_available(
+            &self.cr_available,
+            self.chroma_width(),
+            source_x,
+            source_y,
+            BLOCK,
+            BLOCK,
+        ) {
+            return false;
+        }
+
+        let width = self.luma_width();
+        let copied = copy_vvc_overlapping_plane_region(
+            &mut self.luma,
+            width,
+            source_x,
+            source_y,
+            destination_x,
+            destination_y,
+            BLOCK,
+            BLOCK,
+        ) && copy_vvc_overlapping_plane_region(
+            &mut self.cb,
+            width,
+            source_x,
+            source_y,
+            destination_x,
+            destination_y,
+            BLOCK,
+            BLOCK,
+        ) && copy_vvc_overlapping_plane_region(
+            &mut self.cr,
+            width,
+            source_x,
+            source_y,
+            destination_x,
+            destination_y,
+            BLOCK,
+            BLOCK,
+        );
+        if copied {
+            let luma_width = self.luma_width();
+            let luma_height = self.luma_height();
+            let chroma_width = self.chroma_width();
+            let chroma_height = self.chroma_height();
+            mark_vvc_plane_node_available(
+                &mut self.luma_available,
+                luma_width,
+                luma_height,
+                destination_x,
+                destination_y,
+                BLOCK,
+                BLOCK,
+            );
+            mark_vvc_plane_node_available(
+                &mut self.cb_available,
+                chroma_width,
+                chroma_height,
+                destination_x,
+                destination_y,
+                BLOCK,
+                BLOCK,
+            );
+            mark_vvc_plane_node_available(
+                &mut self.cr_available,
+                chroma_width,
+                chroma_height,
+                destination_x,
+                destination_y,
+                BLOCK,
+                BLOCK,
+            );
+        }
+        copied
+    }
+
     fn coded_geometry(&self) -> VvcVideoGeometry {
         VvcVideoGeometry {
             width: self.luma_width(),
@@ -352,6 +458,75 @@ fn copy_vvc_plane_region(
         let end = start + width;
         dst[start..end].copy_from_slice(&src[start..end]);
     }
+}
+
+fn copy_vvc_overlapping_plane_region(
+    plane: &mut [VvcSample],
+    stride: usize,
+    source_x: usize,
+    source_y: usize,
+    destination_x: usize,
+    destination_y: usize,
+    width: usize,
+    height: usize,
+) -> bool {
+    let Some(source_end_x) = source_x.checked_add(width) else {
+        return false;
+    };
+    let Some(destination_end_x) = destination_x.checked_add(width) else {
+        return false;
+    };
+    if source_end_x > stride || destination_end_x > stride {
+        return false;
+    }
+    let Some(source_last_row) = source_y.checked_add(height) else {
+        return false;
+    };
+    let Some(destination_last_row) = destination_y.checked_add(height) else {
+        return false;
+    };
+    if source_last_row.checked_mul(stride).is_none_or(|end| end > plane.len())
+        || destination_last_row
+            .checked_mul(stride)
+            .is_none_or(|end| end > plane.len())
+    {
+        return false;
+    }
+
+    if destination_y > source_y {
+        for row in (0..height).rev() {
+            let source = (source_y + row) * stride + source_x;
+            let destination = (destination_y + row) * stride + destination_x;
+            plane.copy_within(source..source + width, destination);
+        }
+    } else {
+        for row in 0..height {
+            let source = (source_y + row) * stride + source_x;
+            let destination = (destination_y + row) * stride + destination_x;
+            plane.copy_within(source..source + width, destination);
+        }
+    }
+    true
+}
+
+fn vvc_plane_region_is_available(
+    available: &[bool],
+    stride: usize,
+    start_x: usize,
+    start_y: usize,
+    width: usize,
+    height: usize,
+) -> bool {
+    let Some(end_x) = start_x.checked_add(width) else {
+        return false;
+    };
+    let Some(end_y) = start_y.checked_add(height) else {
+        return false;
+    };
+    if end_x > stride || end_y.checked_mul(stride).is_none_or(|end| end > available.len()) {
+        return false;
+    }
+    (start_y..end_y).all(|y| available[y * stride + start_x..y * stride + end_x].iter().all(|&v| v))
 }
 
 fn copy_vvc_plane_region_into_prediction(

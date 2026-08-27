@@ -1,4 +1,5 @@
 use super::cabac::{VvcCabacInitType, VvcLumaNeighbourState};
+use super::ibc::VvcIbcCuDecision;
 use super::*;
 
 fn vvc_test_slice_config() -> VvcSliceSyntaxConfig {
@@ -5876,4 +5877,63 @@ fn solid_yuv_planar_high(
         }
     }
     out
+}
+
+#[test]
+fn vvc_ibc_reconstruction_requires_available_444_reference() {
+    let geometry = VvcVideoGeometry {
+        width: 16,
+        height: 16,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let mut reconstruction = VvcReconstructionFrame::new_neutral(geometry, format);
+    for plane in [
+        &mut reconstruction.luma,
+        &mut reconstruction.cb,
+        &mut reconstruction.cr,
+    ] {
+        for y in 0..8 {
+            for x in 0..8 {
+                plane[y * 16 + x] = (y * 16 + x + 1) as VvcSample;
+            }
+        }
+    }
+    let mut source_node = VvcCodingTreeNode::root(8, 8, VvcTreeType::SingleTree);
+    source_node.x = 0;
+    source_node.y = 0;
+    reconstruction.mark_luma_node_available(source_node);
+    reconstruction.mark_chroma_node_available(source_node);
+
+    let decision = VvcIbcCuDecision {
+        origin_x: 8,
+        origin_y: 8,
+        ref_origin_x: 0,
+        ref_origin_y: 0,
+        bv_x: -128,
+        bv_y: -128,
+        mvd_x: -8,
+        mvd_y: -8,
+        pred_mode_ibc_ctx: 0,
+    };
+    assert!(reconstruction.copy_ibc_444_8x8(decision));
+    for plane in [&reconstruction.luma, &reconstruction.cb, &reconstruction.cr] {
+        for y in 0..8 {
+            assert_eq!(
+                &plane[(y + 8) * 16 + 8..(y + 8) * 16 + 16],
+                &plane[y * 16..y * 16 + 8]
+            );
+        }
+    }
+
+    let unavailable = VvcIbcCuDecision {
+        origin_x: 0,
+        origin_y: 8,
+        ref_origin_x: 8,
+        ref_origin_y: 0,
+        ..decision
+    };
+    assert!(!reconstruction.copy_ibc_444_8x8(unavailable));
 }
