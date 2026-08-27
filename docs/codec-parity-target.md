@@ -190,7 +190,10 @@ residuals but consumed using quantized levels. The correction keeps the table
 contract aligned with VTM dequantization for lossy and lossless callers. A
 focused non-identity-QP test covers signed quantized levels, and the complete
 all-feature codec test suite passed. Reference-decoder validation remains
-required before accepting any bitstream-affecting follow-up.
+required before accepting any bitstream-affecting follow-up. Required VTM
+validation subsequently passed the 3-case lossy q19 smoke set, 7 unusual
+geometry cases, and 4 multi-CTU regression cases, including RGB, odd visible
+dimensions, 4:2:0/4:2:2/4:4:4, and 10-bit input.
 
 ## Optimization probe log
 
