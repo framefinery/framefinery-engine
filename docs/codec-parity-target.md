@@ -108,6 +108,13 @@ benefit and a speed cost; the source change was reverted. The 4:4:4 one-winner
 screen-content policy was not changed. This rejected probe preserves the
 accountability record without adding an unproven policy branch.
 
+The AV2 lossy chroma-context hoist probe (2026-08-26) moved the immutable
+predictor context construction outside the per-mode scoring loops. It preserved
+all four byte counts and PSNR values in the 20-frame probe, but measured FPS
+decreased from 8.79/14.15/14.48/18.05 to 8.27/13.48/14.12/18.01. The source
+change was reverted because it did not demonstrate a stable speed gain; the
+existing loop structure remains explicit for auditability.
+
 The AV2 DC-only residual probe (2026-08-26) added an exact early return after
 regular DCT quantization when every AC level is zero. It retained the same
 regular-DCT candidate and strict tie behavior, so the six-vector lossy run kept
