@@ -1198,3 +1198,14 @@ sample is short, the retained change is justified primarily by removing a
 duplicate hot-loop implementation while preserving output and reference
 decoder evidence; longer candidate-rich profiling remains appropriate before
 claiming a large throughput gain.
+
+The VVC RD-cache reuse probe (2026-08-27) attempted to keep the existing luma
+and chroma mode caches borrowed from CTU scratch storage instead of replacing
+them with fresh cache allocations for each CTU. The cache reset and candidate
+ordering semantics were unchanged, and both profile runs preserved the exact
+baseline bytes and PSNR. It was rejected because the 50-frame regression
+profile measured lossless aggregate FPS of 864.459 and 822.295 versus the
+baseline's 982.986, while lossy measured 550.933 and 500.929 versus 530.404.
+The source change was reverted: the mixed result does not justify a lossless
+regression, and the observed allocation behavior needs a more targeted
+allocator/profile measurement before revisiting it.
