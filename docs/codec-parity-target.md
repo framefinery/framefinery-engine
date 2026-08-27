@@ -579,3 +579,11 @@ explicit and reports a clear setup failure when `cargo-audit` is unavailable;
 the tool is not installed in this environment. The maintained VVC microbench
 also completed without a statistically meaningful change, so no speculative
 VVC optimization was retained from that run.
+
+The AV2 direct-coefficient-rate probe (2026-08-26) removed the temporary
+4x4 level array from the shared regular-DCT proxy scorer and derived levels
+directly during the scan. The five-frame 1920x1080 A/B produced identical
+334,760-byte output and identical PSNR, while wall time varied from 0.84 s
+to 0.86 s between runs. Since the difference was within run-to-run noise and
+the compiler already eliminates the apparent temporary cost, the probe was
+reverted. No candidate or coding-path change is justified by this result.
