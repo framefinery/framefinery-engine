@@ -1086,3 +1086,13 @@ but a repeat measured 755.2 FPS. Because the speed result was not repeatable
 and the coefficient walk already preserves the same zero result, the source
 change was reverted. The next attempt should use repeated measurements or a
 larger candidate-rich profile before changing this hot path.
+
+The AV2 lossy dequant-parameter hoist probe (2026-08-27) passed the regular-DCT
+dequantization pair into each candidate reconstruction so the small table
+lookup was performed once per transform block. It preserved 89,826 bytes and
+all PSNR values, but two candidate matrix runs measured 0.2381 s and 0.2480 s
+against a 0.2560 s baseline, with per-row timings changing direction. The
+short matrix does not establish a repeatable gain and the compiler may already
+common-subexpression-eliminate this lookup, so the code was reverted. A future
+attempt needs a longer candidate-rich workload or compiler IR evidence before
+adding the extra parameter plumbing.
