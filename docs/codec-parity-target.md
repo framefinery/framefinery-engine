@@ -109,6 +109,14 @@ No change should be retained solely because it is locally faster: missing
 measurements, undocumented profile-specific behavior, broad lint suppression,
 or a bypass around the shared coding path are release blockers for this goal.
 
+The post-table-fix VVC hotspot profile on the seven-vector `regression` set
+(`verification/generated/profiling/vvc_hotspots/post-table-fix-20260827/`)
+identified `ctu_quantize` as the largest measured stage: 22.33% of lossy and
+12.96% of lossless wall time. Lossy chroma mode search and RD refinement were
+the next largest codec buckets. This directs the next experiment toward the
+shared chroma candidate path, with byte/PSNR/FPS scoring and required VTM
+validation, rather than speculative transform or syntax changes.
+
 ## Current blockers and next experiments
 
 - AV2 lossless 1920-wide regular inter is still gated because mixed multi-column
