@@ -281,12 +281,12 @@ fn append_vvc_ibc_mvd_coding(
     let abs_x = i32::from(mvd_x).unsigned_abs();
     let abs_y = i32::from(mvd_y).unsigned_abs();
     ctx.encode(cabac, VvcCabacContext::AbsMvdGreater0Flag(0), abs_x > 0);
-    ctx.encode(cabac, VvcCabacContext::AbsMvdGreater0Flag(0), abs_y > 0);
+    ctx.encode(cabac, VvcCabacContext::AbsMvdGreater0Flag(1), abs_y > 0);
     if abs_x > 0 {
         ctx.encode(cabac, VvcCabacContext::AbsMvdGreater1Flag(0), abs_x > 1);
     }
     if abs_y > 0 {
-        ctx.encode(cabac, VvcCabacContext::AbsMvdGreater1Flag(0), abs_y > 1);
+        ctx.encode(cabac, VvcCabacContext::AbsMvdGreater1Flag(1), abs_y > 1);
     }
     if abs_x > 0 {
         if abs_x > 1 {

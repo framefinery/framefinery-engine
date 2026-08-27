@@ -7784,8 +7784,10 @@ residual IBC leaf emitted the intra-only `cu_coded_flag=0` terminator. VTM's
 IBC CU follows the inter-coded residual flow and requires `rqt_root_cbf=0`.
 The shared CABAC path now emits that syntax and has focused unit coverage. A
 follow-up audit also added the required `merge_flag=0` before the explicit BVD,
-but the complete production IBC path still fails the required VTM regression
-set. Production 4:4:4 lossless-speed SCC therefore remains disabled. Lossy,
+and aligned horizontal/vertical MVD component contexts with VTM. The complete
+production IBC path still fails the required VTM regression set, however:
+the first affected 4:4:4 chroma block remains mismatched. Production 4:4:4
+lossless-speed SCC therefore remains disabled. Lossy,
 subsampled, and unsupported profile paths continue through the ordinary
 unified coding path until the remaining IBC prediction-unit mismatch is fixed.
 

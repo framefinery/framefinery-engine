@@ -153,6 +153,9 @@ reference checks, while enabling `VVC_SCC_IBC_PRODUCTION_ENABLED` caused the
 first affected chroma block to differ. Replacing the incorrect intra residual
 terminator with the inter-coded IBC `rqt_root_cbf=0` contract was necessary but
 not sufficient; the complete regression set still fails with SCC enabled. The
+MVD component-context audit now matches VTM's horizontal/vertical context
+selection for both greater-than-zero and greater-than-one flags, but a
+controlled recheck still fails at the same first affected chroma block. The
 focused Rust VVC suite passes 262/262 with the gate disabled. Future SCC work
 must retain the required reference check and compare the complete IBC
 prediction-unit syntax and decoder-side block-vector reconstruction.

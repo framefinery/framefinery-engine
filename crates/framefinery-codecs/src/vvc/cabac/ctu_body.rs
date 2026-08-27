@@ -1455,14 +1455,14 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         self.contexts
             .encode(cabac, VvcCabacContext::AbsMvdGreater0Flag(0), abs_x > 0);
         self.contexts
-            .encode(cabac, VvcCabacContext::AbsMvdGreater0Flag(0), abs_y > 0);
+            .encode(cabac, VvcCabacContext::AbsMvdGreater0Flag(1), abs_y > 0);
         if abs_x > 0 {
             self.contexts
                 .encode(cabac, VvcCabacContext::AbsMvdGreater1Flag(0), abs_x > 1);
         }
         if abs_y > 0 {
             self.contexts
-                .encode(cabac, VvcCabacContext::AbsMvdGreater1Flag(0), abs_y > 1);
+                .encode(cabac, VvcCabacContext::AbsMvdGreater1Flag(1), abs_y > 1);
         }
         if abs_x > 0 {
             if abs_x > 1 {
