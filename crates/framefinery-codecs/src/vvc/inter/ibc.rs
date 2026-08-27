@@ -179,6 +179,24 @@ impl VvcIbcHashSearch {
         self.decision_for_reference(origin_x, origin_y, reference)
     }
 
+    pub(super) fn decide_8x8_against_reconstruction<F: VvcIbcFrameView>(
+        &self,
+        source: &F,
+        reference: &VvcReconstructionFrame,
+        origin_x: usize,
+        origin_y: usize,
+    ) -> Option<VvcIbcCuDecision> {
+        if !vvc_ibc_full_8x8_is_visible(source, origin_x, origin_y) {
+            return None;
+        }
+        let hash = vvc_ibc_hash_8x8(source, origin_x, origin_y);
+        let candidate = self.local_hash_candidate(origin_x, origin_y, hash)?;
+        if !reference.block_available(candidate.origin_x, candidate.origin_y) {
+            return None;
+        }
+        self.decision_for_reference(origin_x, origin_y, candidate)
+    }
+
     #[cfg(feature = "vvc-stats")]
     pub(super) fn decide_ctu_hash_8x8<F: VvcIbcFrameView>(
         &self,
