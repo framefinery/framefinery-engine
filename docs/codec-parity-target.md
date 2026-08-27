@@ -122,6 +122,13 @@ PSNR on all four 20-frame probe vectors, while measured FPS changed from
 reverted: the representative leaves did not benefit from the extra search and
 the broader threshold only added measured work.
 
+The AV2 lossy directional-admission probe (2026-08-26) widened the shared
+4:2:0 luma directional score margin from 256 to 512 units per transform block.
+It selected the same modes, producing identical bytes and PSNR on all four
+20-frame vectors; measured FPS changed from 8.79/14.15/14.48/18.05 to
+8.50/13.52/14.28/17.85. The wider margin was reverted because it exercised no
+additional coding decision and did not improve speed or output quality.
+
 The AV2 DC-only residual probe (2026-08-26) added an exact early return after
 regular DCT quantization when every AC level is zero. It retained the same
 regular-DCT candidate and strict tie behavior, so the six-vector lossy run kept
