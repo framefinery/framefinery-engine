@@ -846,3 +846,11 @@ sample copies outweighed the saved prediction work, so the source change was
 reverted. The existing residual-only cache remains the simpler policy; a
 future prediction-reuse attempt needs a workload with a higher cached-winner
 hit rate or a lower-copy representation.
+
+The VVC CCLM inner-luma cache probe (2026-08-26) reused the temporary luma
+samples across CCLM candidates within a chroma node. The fast-search six-vector
+profile selected no CCLM candidates, so the added cache bookkeeping had no
+useful hit rate and produced no output change; the source was reverted. The
+existing predictor already shares inner-luma preparation between Cb and Cr in
+each CCLM prediction call. Future reuse should be considered only alongside a
+measured CCLM-heavy workload and an explicit hit-rate counter.
