@@ -175,7 +175,14 @@ samples of a constant 8x8 residual exactly at the lossless QP. This narrows
 the defect to the shared mode-decision/residual-input or tree integration
 around that kernel, rather than the transform-skip dequantization primitive;
 the next test should capture those intermediate vectors before changing the
-kernel itself.
+kernel itself. The follow-up residual audit explains why the constant case is
+not sufficient: `vvc_transform_skip_dequant_params` clamps the effective
+transform-skip QP to 4 even when the 8-bit lossless slice QP is 0. The current
+table therefore reconstructs exact residuals only for values aligned with its
+step size; arbitrary lossless residuals require a spec-signaled lossless
+transquant-bypass/residual path. An encoder-side copy or a wider search radius
+would make the internal reconstruction disagree with the decoder and is not an
+acceptable fix.
 
 ## Optimization probe log
 
