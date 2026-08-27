@@ -1344,6 +1344,54 @@ impl<'a> Av2LossySubsampledTileState<'a> {
                 }
                 directional_scores
             });
+        let luma_directional_delta_scores = luma_directional_scores.as_ref().map(|scores| {
+            let best_base = scores
+                .iter()
+                .min_by_key(|(mode, score)| {
+                    *score + lossy_luma_mode_syntax_penalty(*mode, luma_mode_syntax)
+                })
+                .map(|(mode, _)| *mode);
+            let Some(best_base) = best_base else {
+                return ([(Av2LumaIntraMode::Dc, 0usize); 4], 0);
+            };
+            let Some((base, _)) = best_base.directional() else {
+                return ([(Av2LumaIntraMode::Dc, 0usize); 4], 0);
+            };
+            let mut delta_scores = [(Av2LumaIntraMode::Dc, 0usize); 4];
+            let mut delta_count = 0usize;
+            for delta in [-2i8, 2, -3, 3] {
+                let mode = Av2LumaIntraMode::DirectionalDelta { base, delta };
+                let mut score = 192 + usize::from(delta.unsigned_abs()) * 16;
+                let mut sampled_txbs = 0usize;
+                for row in 0..txb_height {
+                    for col in 0..txb_width {
+                        if !lossy_mode_search_samples_txb(row, col, txb_width, txb_height) {
+                            continue;
+                        }
+                        let (x0, y0) = self.txb_origin(
+                            Av2LossyPlane::Y,
+                            decision.col + col,
+                            decision.row + row,
+                        );
+                        score += self.directional_txb_score_for_score(
+                            x0,
+                            y0,
+                            luma_context,
+                            Av2CoefficientProxyKind::LumaTransform,
+                            mode,
+                        );
+                        sampled_txbs += 1;
+                    }
+                }
+                let total_txbs = txb_width * txb_height;
+                if sampled_txbs != 0 && sampled_txbs != total_txbs {
+                    score = score.saturating_mul(total_txbs) / sampled_txbs;
+                }
+                delta_scores[delta_count] = (mode, score);
+                delta_count += 1;
+            }
+            (delta_scores, delta_count)
+        });
         let mut best_luma = (mode.luma_intra_mode, mode.luma_bdpcm_horz, usize::MAX);
         for (luma_intra_mode, luma_bdpcm_horz, base_score, syntax_penalty) in [
             (
@@ -1398,6 +1446,13 @@ impl<'a> Av2LossySubsampledTileState<'a> {
             for (luma_intra_mode, score) in directional_scores {
                 let score =
                     score + lossy_luma_mode_syntax_penalty(luma_intra_mode, luma_mode_syntax);
+                if score < best_luma.2 {
+                    best_luma = (luma_intra_mode, None, score);
+                }
+            }
+        }
+        if let Some((delta_scores, delta_count)) = luma_directional_delta_scores {
+            for (luma_intra_mode, score) in delta_scores.into_iter().take(delta_count) {
                 if score < best_luma.2 {
                     best_luma = (luma_intra_mode, None, score);
                 }

@@ -122,6 +122,22 @@ PSNR on all four 20-frame probe vectors, while measured FPS changed from
 reverted: the representative leaves did not benefit from the extra search and
 the broader threshold only added measured work.
 
+The AV2 lossy directional-delta refinement (2026-08-26) retained a bounded
+quality search around the best screened luma direction for subsampled input.
+It evaluates only the existing syntax-supported ±2 and ±3 delta angles, uses
+the same predictor and residual path as the selected base modes, and stores
+the four temporary scores on the stack. On the repeated 20-frame probe,
+`probe_gradient_420` improved from 903,793 bytes / 44.226 dB to 782,094 bytes
+/ 45.050 dB; the other three vectors were byte- and PSNR-identical. Across
+the four-vector aggregate this was 2,050,527 vs 2,172,226 bytes (-5.6%),
+56.160 vs 55.954 dB (+0.206 dB), and approximately 10.83 vs 12.95 FPS
+(-16.4%). The tradeoff is retained as a compression/quality improvement, with
+the speed cost explicitly recorded for a future adaptive-search pass. The
+required AVM smoke (3/3) and broader regression (7/7) reference validations
+matched internal reconstruction exactly. The full six-vector release profile
+could not be run in this workspace because its mandatory `AOMCTC_ROOT` source
+directory is unavailable.
+
 The AV2 lossy directional-admission probe (2026-08-26) widened the shared
 4:2:0 luma directional score margin from 256 to 512 units per transform block.
 It selected the same modes, producing identical bytes and PSNR on all four
