@@ -5232,6 +5232,25 @@ fn vvc_ibc_hash_search_tracks_ctu_local_state_for_nonzero_origin() {
     assert_eq!(second_decision.pred_mode_ibc_ctx, 1);
 }
 
+#[test]
+fn vvc_ibc_hash_search_preserves_previous_ctu_bvp_context() {
+    let mut ibc_search = super::ibc::VvcIbcHashSearch::new_for_ctu(0, 0);
+    ibc_search.record_ibc_decision(super::ibc::VvcIbcCuDecision {
+        origin_x: 56,
+        origin_y: 0,
+        ref_origin_x: 0,
+        ref_origin_y: 0,
+        bv_x: -64,
+        bv_y: 0,
+        mvd_x: -64,
+        mvd_y: 0,
+        pred_mode_ibc_ctx: 0,
+    });
+    ibc_search.prepare_for_ctu(64, 0);
+
+    assert_eq!(ibc_search.pred_mode_ibc_ctx(64, 0), 1);
+}
+
 #[cfg(feature = "vvc-stats")]
 #[test]
 fn vvc_scc_analysis_reports_palette_and_ibc_opportunities_for_nonzero_ctu() {

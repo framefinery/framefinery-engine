@@ -919,6 +919,11 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         }
                     };
                     if let Some(ibc_search) = ibc_search.as_mut() {
+                        if let Some(decisions) = luma_scc_decisions.as_ref() {
+                            for decision in decisions.iter().flatten() {
+                                ibc_search.record_ibc_decision(*decision);
+                            }
+                        }
                         let x_end = region
                             .origin_x
                             .saturating_add(region.geometry.width)

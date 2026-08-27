@@ -134,11 +134,19 @@ struct VvcIbcBv {
     y: i16,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct VvcIbcModeEntry {
+    origin_x: usize,
+    origin_y: usize,
+    bv: VvcIbcBv,
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct VvcIbcHashSearch {
     ctu_origin_x: usize,
     ctu_origin_y: usize,
     entries: Vec<VvcIbcHashEntry>,
+    coded_modes: Vec<VvcIbcModeEntry>,
     ibc_mode_by_cu: [bool; VVC_IBC_CUS_PER_CTU],
     bv_by_cu: [VvcIbcBv; VVC_IBC_CUS_PER_CTU],
     hmvp: Vec<VvcIbcBv>,
@@ -154,6 +162,7 @@ impl VvcIbcHashSearch {
             ctu_origin_x,
             ctu_origin_y,
             entries: Vec::with_capacity(VVC_IBC_CUS_PER_CTU),
+            coded_modes: Vec::with_capacity(VVC_IBC_CUS_PER_CTU),
             ibc_mode_by_cu: [false; VVC_IBC_CUS_PER_CTU],
             bv_by_cu: [VvcIbcBv { x: 0, y: 0 }; VVC_IBC_CUS_PER_CTU],
             hmvp: Vec::with_capacity(5),
@@ -298,22 +307,44 @@ impl VvcIbcHashSearch {
         frame: &F,
         decision: VvcIbcCuDecision,
     ) {
+        self.record_ibc_decision(decision);
         let bv = VvcIbcBv {
             x: decision.bv_x,
             y: decision.bv_y,
         };
-        self.record_mode(decision.origin_x, decision.origin_y, Some(bv));
         self.record_hmvp(bv);
         self.record_hash_if_full_visible(frame, decision.origin_x, decision.origin_y);
+    }
+
+    pub(super) fn record_ibc_decision(&mut self, decision: VvcIbcCuDecision) {
+        self.record_ibc_mode(
+            decision.origin_x,
+            decision.origin_y,
+            VvcIbcBv {
+                x: decision.bv_x,
+                y: decision.bv_y,
+            },
+        );
+    }
+
+    fn record_ibc_mode(&mut self, origin_x: usize, origin_y: usize, bv: VvcIbcBv) {
+        self.record_mode(origin_x, origin_y, Some(bv));
+        self.coded_modes
+            .retain(|entry| entry.origin_x != origin_x || entry.origin_y != origin_y);
+        self.coded_modes.push(VvcIbcModeEntry {
+            origin_x,
+            origin_y,
+            bv,
+        });
     }
 
     pub(super) fn pred_mode_ibc_ctx(&self, origin_x: usize, origin_y: usize) -> u8 {
         let mut ctx = 0;
         if origin_x >= VVC_IBC_CU_SIZE {
-            ctx += u8::from(self.ibc_mode_at(origin_x - VVC_IBC_CU_SIZE, origin_y));
+            ctx += u8::from(self.ibc_mode_at_neighbor(origin_x - VVC_IBC_CU_SIZE, origin_y));
         }
         if origin_y >= VVC_IBC_CU_SIZE {
-            ctx += u8::from(self.ibc_mode_at(origin_x, origin_y - VVC_IBC_CU_SIZE));
+            ctx += u8::from(self.ibc_mode_at_neighbor(origin_x, origin_y - VVC_IBC_CU_SIZE));
         }
         ctx
     }
@@ -335,7 +366,36 @@ impl VvcIbcHashSearch {
                 return bv;
             }
         }
+        if local_x < VVC_IBC_CU_SIZE {
+            if let Some(bv) = origin_x
+                .checked_sub(VVC_IBC_CU_SIZE)
+                .and_then(|x| self.coded_mode_at(x, origin_y))
+            {
+                return bv;
+            }
+        }
+        if local_y < VVC_IBC_CU_SIZE {
+            if let Some(bv) = origin_y
+                .checked_sub(VVC_IBC_CU_SIZE)
+                .and_then(|y| self.coded_mode_at(origin_x, y))
+            {
+                return bv;
+            }
+        }
         self.hmvp.last().copied().unwrap_or(VvcIbcBv { x: 0, y: 0 })
+    }
+
+    fn ibc_mode_at_neighbor(&self, origin_x: usize, origin_y: usize) -> bool {
+        self.local_origin(origin_x, origin_y)
+            .map(|(local_x, local_y)| self.ibc_mode_at_local(local_x, local_y))
+            .unwrap_or_else(|| self.coded_mode_at(origin_x, origin_y).is_some())
+    }
+
+    fn coded_mode_at(&self, origin_x: usize, origin_y: usize) -> Option<VvcIbcBv> {
+        self.coded_modes
+            .iter()
+            .find(|entry| entry.origin_x == origin_x && entry.origin_y == origin_y)
+            .map(|entry| entry.bv)
     }
 
     fn record_mode(&mut self, origin_x: usize, origin_y: usize, bv: Option<VvcIbcBv>) {
@@ -419,13 +479,6 @@ impl VvcIbcHashSearch {
             self.hmvp.remove(0);
         }
         self.hmvp.push(bv);
-    }
-
-    fn ibc_mode_at(&self, origin_x: usize, origin_y: usize) -> bool {
-        let Some((local_x, local_y)) = self.local_origin(origin_x, origin_y) else {
-            return false;
-        };
-        self.ibc_mode_at_local(local_x, local_y)
     }
 
     fn ibc_mode_at_local(&self, local_x: usize, local_y: usize) -> bool {

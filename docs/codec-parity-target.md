@@ -136,6 +136,13 @@ SCC emission is therefore disabled pending a bit-level audit of the IBC
 BVD/CABAC contract; the search and quantizer plumbing remain available for
 unit tests and are not counted as a compression improvement.
 
+The follow-up probe also retained previously selected cross-CTU BVP state in
+the shared search object, matching VTM's spatial predictor lifetime. That
+change did not make production SCC compliant: a single-CTU 32x32 4:4:4 probe
+still decoded to a different reconstruction. This narrows the remaining
+defect to the SCC syntax/reconstruction contract rather than only cross-CTU
+predictor state, so the production gate remains off.
+
 ## Current blockers and next experiments
 
 - AV2 lossless 1920-wide regular inter is still gated because mixed multi-column
