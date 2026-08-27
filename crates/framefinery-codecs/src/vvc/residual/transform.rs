@@ -1354,12 +1354,7 @@ pub(in crate::vvc::residual) fn luma_reconstructed_residual_sse_with_mts_into(
         qp,
         mts_index,
     );
-    let mut sse = 0u64;
-    for (&source, &reconstructed) in source_residuals.iter().zip(reconstructed.iter()) {
-        let diff = i64::from(source) - i64::from(reconstructed);
-        sse += (diff * diff) as u64;
-    }
-    sse
+    super::quant::reconstructed_residual_sse(source_residuals, reconstructed)
 }
 
 pub(in crate::vvc) fn transformed_dc_only_residual_sse(

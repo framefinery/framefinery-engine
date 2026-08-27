@@ -172,6 +172,17 @@ changing clipping, reconstruction arithmetic, candidate identity, or syntax.
 Required AVM validation passed for all three lossy and all three lossless
 smoke vectors, and the full codec suite remained at 356 tests.
 
+The VVC shared residual-SSE cleanup (2026-08-26) moved the common
+reconstructed-residual SSE loop into the residual-sample module and reused it
+from transformed luma and chroma scoring. Component-specific transform and
+transform-skip decisions remain unchanged, avoiding duplicated correctness
+logic without introducing a new coding path. The four-vector, 20-frame lossy
+probe remained exactly 4,275,283 bytes with identical PSNR; the observed
+aggregate speed was 6.67 FPS versus the 6.47 FPS baseline, recorded as a
+promising but not isolated speed claim. Required VTM validation passed for all
+three lossy and all three lossless smoke vectors, and the full codec suite
+passed all 356 tests.
+
 The VVC exact-residual probe (2026-08-26) added the corresponding early exit
 to the shared transformed luma and chroma quantizers. A predictor-exact block
 now returns the ordinary transformed zero block without DC search, coefficient

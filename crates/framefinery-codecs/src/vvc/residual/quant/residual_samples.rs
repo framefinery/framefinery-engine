@@ -1,3 +1,17 @@
+pub(in crate::vvc) fn reconstructed_residual_sse(
+    source_residuals: &[i16],
+    reconstructed_residuals: &[i16],
+) -> u64 {
+    source_residuals
+        .iter()
+        .zip(reconstructed_residuals)
+        .map(|(&source, &reconstructed)| {
+            let diff = i64::from(source) - i64::from(reconstructed);
+            (diff * diff) as u64
+        })
+        .sum()
+}
+
 pub(in crate::vvc) fn residual_luma_tu_at_into(
     residuals: &mut Vec<i16>,
     frame: &VvcSampledFrame,

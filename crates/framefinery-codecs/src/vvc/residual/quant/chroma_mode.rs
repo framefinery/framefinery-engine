@@ -889,14 +889,6 @@ fn chroma_reconstructed_residual_sse(
     reconstructed_residual_sse(source_residuals, reconstructed_residual)
 }
 
-fn reconstructed_residual_sse(source_residuals: &[i16], reconstructed_residuals: &[i16]) -> u64 {
-    let mut sse = 0u64;
-    for (&source, &reconstructed) in source_residuals.iter().zip(reconstructed_residuals.iter()) {
-        sse += residual_diff_square(source, reconstructed);
-    }
-    sse
-}
-
 fn chroma_transform_skip_residual_sse(
     source_residuals: &[i16],
     width: usize,
