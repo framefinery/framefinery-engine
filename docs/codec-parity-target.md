@@ -71,6 +71,16 @@ be rejected or deferred.
   changes using a combined byte/PSNR/FPS report, with exact lossless checksums
   and required AVM/VTM decode validation on every retained change.
 
+The first implementation audit for this goal (2026-08-26) found a more urgent
+VVC screen-content gap than a micro-optimization: the production encoder
+collects SCC opportunity counters, but the production quantizer still fills
+every `luma_tu_scc_decisions` entry with `RegularIntra`. The IBC/palette CU
+emitter is currently a test/scaffold path rather than a production candidate
+inside the shared CTU traversal. This is now a tracked integration item. Any
+fix must carry the decision through the existing quantize/reconstruct/CABAC
+path at block level, preserve the profile gates, and pass required VTM decode
+validation before its rate benefit is accepted.
+
 ## Optimization probe log
 
 The first post-checkpoint probe (2026-08-26) replaced repeated sorting of the
