@@ -581,6 +581,14 @@ was intentionally not substituted with smoke data because its manifest
 requires the caller-provided `AOMCTC_ROOT`; no AV2 optimization or performance
 claim is retained from the undersized smoke sample.
 
+The AV2 lossless hotspot audit (2026-08-26) profiled the same four-row,
+20-frame local set with exact reconstruction. It measured 1,925,221 bytes,
+0.528 seconds, and 37.855 aggregate FPS. The shared `lossless_tile_payload`
+stage consumed 72.98% of wall time, local IBC search 14.54%, input reading
+9.91%, and palette construction 1.94%. This establishes the lossless baseline
+for future mode-search or tile-payload work; the IBC hash-index experiment
+below was measured against this run and rejected.
+
 The AV2 lossy mode audit then found that the shared proxy scorer calculated
 BDPCM costs even though lossy AV2 syntax does not permit BDPCM signaling; the
 lossless selector and residual implementation remain unchanged. Removing that
