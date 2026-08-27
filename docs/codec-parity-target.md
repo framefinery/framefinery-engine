@@ -184,6 +184,14 @@ transquant-bypass/residual path. An encoder-side copy or a wider search radius
 would make the internal reconstruction disagree with the decoder and is not an
 acceptable fix.
 
+The transform-skip table audit on 2026-08-27 found and fixed a separate shared
+reconstruction defect: its `reconstructed` table was filled using source
+residuals but consumed using quantized levels. The correction keeps the table
+contract aligned with VTM dequantization for lossy and lossless callers. A
+focused non-identity-QP test covers signed quantized levels, and the complete
+all-feature codec test suite passed. Reference-decoder validation remains
+required before accepting any bitstream-affecting follow-up.
+
 ## Optimization probe log
 
 The first post-checkpoint probe (2026-08-26) replaced repeated sorting of the

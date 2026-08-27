@@ -1185,6 +1185,18 @@ fn vvc_zero_transform_skip_residuals_keep_zero_levels() {
 }
 
 #[test]
+fn vvc_transform_skip_table_reconstructs_indexed_quantized_levels() {
+    let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
+    let quant_table = VvcTransformSkipQuantTable::new(bit_depth, 19);
+    let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, 19);
+
+    for level in [-511i16, -100, -17, -1, 0, 1, 17, 100, 511] {
+        let expected = reconstruct_vvc_transform_skip_level_with_params(level, scale, right_shift);
+        assert_eq!(quant_table.reconstructed(level), expected, "level={level}");
+    }
+}
+
+#[test]
 fn vvc_lossless_8x8_transform_skip_reconstructs_every_sample() {
     let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
     let qp = crate::vvc::vvc_lossless_slice_qp(bit_depth);

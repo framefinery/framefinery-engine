@@ -138,8 +138,11 @@ impl VvcTransformSkipQuantTable {
                 right_shift,
                 VVC_TRANSFORM_SKIP_LEVEL_SEARCH_RADIUS,
             ));
+        }
+        for value_bits in 0..VVC_TRANSFORM_SKIP_QUANT_TABLE_LEN {
+            let level = (value_bits as u16) as i16;
             reconstructed.push(reconstruct_vvc_transform_skip_level_with_params(
-                residual,
+                level,
                 scale,
                 right_shift,
             ));
