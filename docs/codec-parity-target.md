@@ -717,3 +717,9 @@ versus 6.471 FPS. The speed change is within measurement noise while the
 rate/quality improvement is material, so the three-winner policy was retained.
 The full codec suite passed 356 tests and required VTM smoke validation passed
 3/3 with exact reconstruction matches.
+
+The VVC four-winner chroma RD probe (2026-08-26) expanded the same
+`lossless-speed` shortlist once more. It produced byte- and PSNR-identical
+output on all four 20-frame probe vectors while measured FPS declined, so the
+three-winner policy was restored. This confirms that the retained three-winner
+bound is the current quality/rate frontier for this fast-search policy.
