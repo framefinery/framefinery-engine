@@ -1891,8 +1891,6 @@ impl<'a> Av2LossySubsampledTileState<'a> {
             horizontal: 16,
             vertical: 16,
             paeth: 16,
-            bdpcm_horizontal: 16,
-            bdpcm_vertical: 16,
             smooth: 0,
             smooth_vertical: 0,
             smooth_horizontal: 0,
@@ -1933,26 +1931,6 @@ impl<'a> Av2LossySubsampledTileState<'a> {
                     paeth_sum += paeth_diff;
                     add_residual_sample_proxy_score(&mut scores.paeth, paeth_diff, magnitude_scale);
                 }
-                let bdpcm_horizontal_diff = if local_x == 0 {
-                    horizontal_diff
-                } else {
-                    sample - i32::from(source[index - 1])
-                };
-                add_residual_sample_proxy_score(
-                    &mut scores.bdpcm_horizontal,
-                    bdpcm_horizontal_diff,
-                    magnitude_scale,
-                );
-                let bdpcm_vertical_diff = if local_y == 0 {
-                    vertical_diff
-                } else {
-                    sample - i32::from(source[index - TX4X4_SIZE])
-                };
-                add_residual_sample_proxy_score(
-                    &mut scores.bdpcm_vertical,
-                    bdpcm_vertical_diff,
-                    magnitude_scale,
-                );
             }
         }
         let max_delta = i32::from(self.bit_depth.max_sample());
@@ -2016,24 +1994,6 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         if score_paeth {
             scores.paeth = lossy_txb_score(scores.paeth, paeth_sse, 0, self.quant_step());
         }
-        let bdpcm_horizontal_sse = dpcm_quantized_sse_for_score(
-            &source,
-            &h_pred,
-            self.quant_step(),
-            self.bit_depth,
-            true,
-        );
-        let bdpcm_vertical_sse = dpcm_quantized_sse_for_score(
-            &source,
-            &v_pred,
-            self.quant_step(),
-            self.bit_depth,
-            false,
-        );
-        scores.bdpcm_horizontal =
-            lossy_txb_score(scores.bdpcm_horizontal, bdpcm_horizontal_sse, 0, self.quant_step());
-        scores.bdpcm_vertical =
-            lossy_txb_score(scores.bdpcm_vertical, bdpcm_vertical_sse, 0, self.quant_step());
         scores
     }
 
@@ -2055,8 +2015,6 @@ impl<'a> Av2LossySubsampledTileState<'a> {
             horizontal: 0,
             vertical: 0,
             paeth: 0,
-            bdpcm_horizontal: 0,
-            bdpcm_vertical: 0,
             smooth: 16,
             smooth_vertical: 16,
             smooth_horizontal: 16,
@@ -2871,52 +2829,6 @@ fn dpcm_recon_samples_and_sse(
     (recon_samples, sse)
 }
 
-fn dpcm_quantized_sse_for_score(
-    source: &[Av2Sample; TX4X4_SAMPLES],
-    edge: &[Av2Sample; TX4X4_SIZE],
-    quant_step: i32,
-    bit_depth: SampleBitDepth,
-    horz: bool,
-) -> usize {
-    let max_sample = i32::from(bit_depth.max_sample());
-    let mut recon = [0i32; TX4X4_SAMPLES];
-    let mut sse = 0usize;
-    for local_y in 0..TX4X4_SIZE {
-        for local_x in 0..TX4X4_SIZE {
-            let index = local_y * TX4X4_SIZE + local_x;
-            let sample = i32::from(source[index]);
-            let predictor = if horz {
-                if local_x == 0 {
-                    i32::from(edge[local_y])
-                } else {
-                    recon[index - 1]
-                }
-            } else if local_y == 0 {
-                i32::from(edge[local_x])
-            } else {
-                recon[index - TX4X4_SIZE]
-            };
-            let source_predictor = if horz {
-                if local_x == 0 {
-                    i32::from(edge[local_y])
-                } else {
-                    i32::from(source[index - 1])
-                }
-            } else if local_y == 0 {
-                i32::from(edge[local_x])
-            } else {
-                i32::from(source[index - TX4X4_SIZE])
-            };
-            let delta = quantize_i32_to_step(sample - source_predictor, quant_step);
-            let sample_recon = (predictor + delta).clamp(0, max_sample);
-            recon[index] = sample_recon;
-            let diff = sample - sample_recon;
-            sse += (diff * diff) as usize;
-        }
-    }
-    sse
-}
-
 fn txb_variance_measure(samples: &[i32; TX4X4_SAMPLES]) -> usize {
     let mut sum = 0i64;
     let mut sum_sq = 0i64;
@@ -3060,8 +2972,6 @@ struct Av2LossyIntraTxbScores {
     horizontal: usize,
     vertical: usize,
     paeth: usize,
-    bdpcm_horizontal: usize,
-    bdpcm_vertical: usize,
     smooth: usize,
     smooth_vertical: usize,
     smooth_horizontal: usize,
@@ -3073,8 +2983,6 @@ impl Av2LossyIntraTxbScores {
         self.horizontal += other.horizontal;
         self.vertical += other.vertical;
         self.paeth += other.paeth;
-        self.bdpcm_horizontal += other.bdpcm_horizontal;
-        self.bdpcm_vertical += other.bdpcm_vertical;
         self.smooth += other.smooth;
         self.smooth_vertical += other.smooth_vertical;
         self.smooth_horizontal += other.smooth_horizontal;
@@ -3089,8 +2997,6 @@ impl Av2LossyIntraTxbScores {
             horizontal: self.horizontal.saturating_mul(total_txbs) / sampled_txbs,
             vertical: self.vertical.saturating_mul(total_txbs) / sampled_txbs,
             paeth: self.paeth.saturating_mul(total_txbs) / sampled_txbs,
-            bdpcm_horizontal: self.bdpcm_horizontal.saturating_mul(total_txbs) / sampled_txbs,
-            bdpcm_vertical: self.bdpcm_vertical.saturating_mul(total_txbs) / sampled_txbs,
             smooth: self.smooth.saturating_mul(total_txbs) / sampled_txbs,
             smooth_vertical: self.smooth_vertical.saturating_mul(total_txbs) / sampled_txbs,
             smooth_horizontal: self.smooth_horizontal.saturating_mul(total_txbs) / sampled_txbs,

@@ -581,6 +581,15 @@ was intentionally not substituted with smoke data because its manifest
 requires the caller-provided `AOMCTC_ROOT`; no AV2 optimization or performance
 claim is retained from the undersized smoke sample.
 
+The AV2 lossy mode audit then found that the shared proxy scorer calculated
+BDPCM costs even though lossy AV2 syntax does not permit BDPCM signaling; the
+lossless selector and residual implementation remain unchanged. Removing that
+dead lossy-only scoring work kept the four-row, 20-frame probe at 545,482 bytes
+and mean PSNR 55.957, while the measured runtime improved from the recorded
+1.754 s / 11.404 FPS to 1.656 s / 12.074 FPS. The change is output-neutral,
+keeps the lossy candidate set aligned with the legal syntax, and is retained
+as a shared-path cleanup rather than a mode-specific implementation.
+
 The VVC adaptive motion-seed probe (2026-08-26) replaced the fixed 8-pixel
 seed ring with the outer search-radius ring before unit-diamond refinement.
 This followed the source audit's bounded/coarse-search direction, but the
