@@ -160,6 +160,18 @@ all byte counts and PSNR values unchanged; the instrumented lossy tile time
 fell from 4437 ms to 4221 ms (about 4.9%), and the AVM smoke reference checks
 remained exact.
 
+The AV2 fused reconstruction-metrics cleanup (2026-08-26) removed a second
+16-sample temporary and combined reconstructed SSE and variance-loss
+calculation in one shared helper for transform, regular-DCT, and spatial
+lossy candidates. The four-vector 20-frame output remained exactly
+2,041,252 bytes with mean PSNR 56.162 dB; a longer 50-frame run remained
+byte- and PSNR-stable at 5,104,423 bytes and 11.95 aggregate FPS. The
+observed 20-frame speed change was neutral (11.71 versus 11.70 FPS), so no
+speed gain is claimed, but the cleanup reduces repeated memory traffic without
+changing clipping, reconstruction arithmetic, candidate identity, or syntax.
+Required AVM validation passed for all three lossy and all three lossless
+smoke vectors, and the full codec suite remained at 356 tests.
+
 The VVC exact-residual probe (2026-08-26) added the corresponding early exit
 to the shared transformed luma and chroma quantizers. A predictor-exact block
 now returns the ordinary transformed zero block without DC search, coefficient

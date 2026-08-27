@@ -944,22 +944,20 @@ impl<'a> Av2LossySubsampledTileState<'a> {
             *dst = quantize_i32_to_step(coefficient, coeff_step);
         }
         let residual = av2_iwht4x4(&quantized_coefficients);
-        let mut recon_samples = [0i32; TX4X4_SAMPLES];
-        let mut sse = 0usize;
         let max_sample = i32::from(self.bit_depth.max_sample());
-        for index in 0..TX4X4_SAMPLES {
-            let recon = (i32::from(analysis.predictor[index]) + residual[index])
-                .clamp(0, max_sample);
-            recon_samples[index] = recon;
-            let diff = i32::from(analysis.source[index]) - recon;
-            sse += (diff * diff) as usize;
-        }
+        let (sse, variance_loss) = txb_recon_sse_and_variance_loss(
+            &analysis.source,
+            &analysis.predictor,
+            &residual,
+            max_sample,
+            analysis.source_variance,
+        );
         Av2LossyQuantizedResidualCandidate {
             kind: Av2LossyResidualCandidateKind::Transform,
             residual,
             coefficients: quantized_coefficients,
             sse,
-            variance_loss: txb_recon_variance_loss(analysis.source_variance, &recon_samples),
+            variance_loss,
         }
     }
 
@@ -1063,22 +1061,20 @@ impl<'a> Av2LossySubsampledTileState<'a> {
     ) -> Av2LossyQuantizedResidualCandidate {
         let dqcoeff = av2_regular_dequantize_dct4x4(qcoeff, self.base_qindex, self.bit_depth);
         let residual = av2_idct4x4(&dqcoeff, self.bit_depth);
-        let mut recon_samples = [0i32; TX4X4_SAMPLES];
-        let mut sse = 0usize;
         let max_sample = i32::from(self.bit_depth.max_sample());
-        for index in 0..TX4X4_SAMPLES {
-            let recon = (i32::from(analysis.predictor[index]) + residual[index])
-                .clamp(0, max_sample);
-            recon_samples[index] = recon;
-            let diff = i32::from(analysis.source[index]) - recon;
-            sse += (diff * diff) as usize;
-        }
+        let (sse, variance_loss) = txb_recon_sse_and_variance_loss(
+            &analysis.source,
+            &analysis.predictor,
+            &residual,
+            max_sample,
+            analysis.source_variance,
+        );
         Av2LossyQuantizedResidualCandidate {
             kind,
             residual,
             coefficients: av2_regular_quantized_level_coefficients(qcoeff),
             sse,
-            variance_loss: txb_recon_variance_loss(analysis.source_variance, &recon_samples),
+            variance_loss,
         }
     }
 
@@ -1195,20 +1191,20 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         use_fsc: bool,
     ) -> Av2LossyQuantizedResidualCandidate {
         let mut residual = [0i32; TX4X4_SAMPLES];
-        let mut recon_samples = [0i32; TX4X4_SAMPLES];
         let max_sample = i32::from(self.bit_depth.max_sample());
-        let mut sse = 0usize;
         for index in 0..TX4X4_SAMPLES {
             let predictor = i32::from(analysis.predictor[index]);
-            let source = i32::from(analysis.source[index]);
             let quantized = quantize_i32_to_step(analysis.residual[index], step)
                 .clamp(-predictor, max_sample - predictor);
             residual[index] = quantized;
-            let recon = (predictor + quantized).clamp(0, max_sample);
-            recon_samples[index] = recon;
-            let diff = source - recon;
-            sse += (diff * diff) as usize;
         }
+        let (sse, variance_loss) = txb_recon_sse_and_variance_loss(
+            &analysis.source,
+            &analysis.predictor,
+            &residual,
+            max_sample,
+            analysis.source_variance,
+        );
         Av2LossyQuantizedResidualCandidate {
             kind: if step < self.quant_step() {
                 Av2LossyResidualCandidateKind::RefinedSpatial
@@ -1218,7 +1214,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
             coefficients: tx4x4_coefficients_from_residual(&residual, use_fsc),
             residual,
             sse,
-            variance_loss: txb_recon_variance_loss(analysis.source_variance, &recon_samples),
+            variance_loss,
         }
     }
 
@@ -2853,6 +2849,30 @@ fn txb_source_variance(source: &[Av2Sample; TX4X4_SAMPLES]) -> usize {
 
 fn txb_recon_variance_loss(source_variance: usize, recon: &[i32; TX4X4_SAMPLES]) -> usize {
     source_variance.saturating_sub(txb_variance_measure(recon))
+}
+
+fn txb_recon_sse_and_variance_loss(
+    source: &[Av2Sample; TX4X4_SAMPLES],
+    predictor: &[Av2Sample; TX4X4_SAMPLES],
+    residual: &[i32; TX4X4_SAMPLES],
+    max_sample: i32,
+    source_variance: usize,
+) -> (usize, usize) {
+    let mut sse = 0usize;
+    let mut sum = 0i64;
+    let mut sum_sq = 0i64;
+    for index in 0..TX4X4_SAMPLES {
+        let recon = (i32::from(predictor[index]) + residual[index]).clamp(0, max_sample);
+        let recon_i64 = i64::from(recon);
+        sum += recon_i64;
+        sum_sq += recon_i64 * recon_i64;
+        let diff = i32::from(source[index]) - recon;
+        sse += (diff * diff) as usize;
+    }
+    let sample_count = TX4X4_SAMPLES as i64;
+    let mean_sq = (sum * sum + sample_count / 2) / sample_count;
+    let variance = sum_sq.saturating_sub(mean_sq) as usize;
+    (sse, source_variance.saturating_sub(variance))
 }
 
 fn dpcm_recon_samples_and_sse(
