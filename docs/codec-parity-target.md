@@ -133,10 +133,12 @@ The follow-up VTM compliance probe found that enabling the production IBC
 candidate path emitted a BV that VTM rejected as invalid, even after limiting
 references to the immediately preceding CTU and matching 8x8 rows. A later
 bit-level audit corrected one defect in the exact no-residual IBC syntax to
-signal `rqt_root_cbf=0` (rather than the intra-only `cu_coded_flag`), but the
-complete production IBC path still fails required reference validation. SCC
-emission therefore remains disabled; the search and quantizer plumbing remain
-covered by focused tests and are not counted as a compression improvement.
+signal `rqt_root_cbf=0` (rather than the intra-only `cu_coded_flag`). The audit
+also corrected the IBC prediction-unit ordering to signal `merge_flag=0` before
+the explicit BVD. The complete production IBC path still fails required
+reference validation, so SCC emission remains disabled; the search and
+quantizer plumbing remain covered by focused tests and are not counted as a
+compression improvement.
 
 The follow-up probe also retained previously selected cross-CTU BVP state in
 the shared search object, matching VTM's spatial predictor lifetime. That

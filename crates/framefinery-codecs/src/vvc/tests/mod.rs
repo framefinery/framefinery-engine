@@ -1975,6 +1975,7 @@ fn vvc_ctu_body_emits_exact_ibc_leaf_from_partition_decision() {
     let config = VvcSliceSyntaxConfig::palette_444();
     let mut contexts = initial_vvc_cabac_contexts(config);
     let initial_root_cbf = contexts.qt_root_cbf.state();
+    let initial_merge_flag = contexts.merge_flag.state();
     let mut cabac = VvcCabacEncoder::new_with_dump();
     cabac.start();
     encode_ctu_partition_body_with_contexts(&mut cabac, &mut contexts, &params, config);
@@ -2001,14 +2002,10 @@ fn vvc_ctu_body_emits_exact_ibc_leaf_from_partition_decision() {
         )),
         "partition SCC decision must select MODE_IBC on the normal CTU path"
     );
-    assert!(
-        context_bins.contains(&(
-            VvcCabacContext::GeneralMergeFlag(0)
-                .rtl_context_id()
-                .unwrap(),
-            false
-        )),
-        "hash-search IBC decisions use explicit BVD instead of merge"
+    assert_ne!(
+        contexts.merge_flag.state(),
+        initial_merge_flag,
+        "hash-search IBC decisions must signal merge_flag=0 before explicit BVD"
     );
     assert_ne!(
         contexts.qt_root_cbf.state(),

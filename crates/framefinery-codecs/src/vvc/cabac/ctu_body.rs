@@ -1435,11 +1435,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         cabac: &mut VvcCabacEncoder,
         decision: VvcLumaIbcDecision,
     ) {
-        // MODE_IBC with cu_skip_flag=0 signals general_merge_flag. Use explicit
-        // BVD syntax for hash-search decisions rather than selecting an inferred
-        // merge vector.
-        self.contexts
-            .encode(cabac, VvcCabacContext::GeneralMergeFlag(0), false);
+        // prediction_unit() first signals merge_flag. The IBC non-merge branch
+        // then consumes the explicit BVD; general_merge_flag belongs to the
+        // regular inter prediction branch and is not present here.
+        self.contexts.encode_merge_flag(cabac, false);
         self.emit_luma_ibc_mvd_coding(cabac, decision.mvd_x, decision.mvd_y);
         // MaxNumIbcMergeCand is fixed to one in this SPS and AMVR is disabled,
         // so mvp_l0_flag/amvr_precision_idx are inferred in the same way as the

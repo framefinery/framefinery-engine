@@ -63,6 +63,7 @@ pub(in crate::vvc) enum VvcCabacContext {
     CuSkipFlag(u8),
     PredModeIbcFlag(u8),
     PredModeFlag(u8),
+    MergeFlag,
     GeneralMergeFlag(u8),
     AbsMvdGreater0Flag(u8),
     AbsMvdGreater1Flag(u8),
@@ -358,6 +359,7 @@ impl VvcCabacContext {
                 const I_SLICE_INIT: [u8; 9] = [17, 42, 36, 0, 57, 44, 0, 43, 45];
                 I_SLICE_INIT[ctx as usize]
             }
+            VvcCabacContext::MergeFlag => 6,
             VvcCabacContext::PredModeFlag(ctx) => {
                 // H.266 pred_mode_flag is only emitted by this encoder for
                 // predictive P slices, so use the P-slice initialization row.
@@ -526,6 +528,7 @@ impl VvcCabacContext {
                 const P_SLICE_INIT: [u8; 9] = [0, 57, 44, 0, 57, 44, 0, 57, 44];
                 P_SLICE_INIT[ctx as usize]
             }
+            VvcCabacContext::MergeFlag => 21,
             VvcCabacContext::GeneralMergeFlag(ctx) => {
                 const P_SLICE_INIT: [u8; 3] = [21, 21, 21];
                 P_SLICE_INIT[ctx as usize]
@@ -687,6 +690,7 @@ impl VvcCabacContext {
                 const LOG2_WINDOW: [u8; 2] = [5, 1];
                 LOG2_WINDOW[ctx as usize]
             }
+            VvcCabacContext::MergeFlag => 4,
             VvcCabacContext::GeneralMergeFlag(ctx) => {
                 const LOG2_WINDOW: [u8; 3] = [4, 4, 4];
                 LOG2_WINDOW[ctx as usize]
@@ -784,6 +788,7 @@ pub(in crate::vvc) struct VvcCabacContexts {
     pub(in crate::vvc) cu_skip_flag: [VvcCabacProbModel; 3],
     pub(in crate::vvc) pred_mode_ibc_flag: [VvcCabacProbModel; 9],
     pub(in crate::vvc) pred_mode_flag: [VvcCabacProbModel; 2],
+    pub(in crate::vvc) merge_flag: VvcCabacProbModel,
     pub(in crate::vvc) general_merge_flag: [VvcCabacProbModel; 3],
     pub(in crate::vvc) abs_mvd_greater0_flag: [VvcCabacProbModel; 3],
     pub(in crate::vvc) abs_mvd_greater1_flag: [VvcCabacProbModel; 3],
@@ -866,6 +871,7 @@ impl VvcCabacContexts {
             pred_mode_flag: std::array::from_fn(|idx| {
                 model(VvcCabacContext::PredModeFlag(idx as u8))
             }),
+            merge_flag: model(VvcCabacContext::MergeFlag),
             general_merge_flag: std::array::from_fn(|idx| {
                 model(VvcCabacContext::GeneralMergeFlag(idx as u8))
             }),
@@ -968,6 +974,7 @@ impl VvcCabacContexts {
                 VvcCabacContext::CuSkipFlag(idx) => &self.cu_skip_flag[idx as usize],
                 VvcCabacContext::PredModeIbcFlag(idx) => &self.pred_mode_ibc_flag[idx as usize],
                 VvcCabacContext::PredModeFlag(idx) => &self.pred_mode_flag[idx as usize],
+                VvcCabacContext::MergeFlag => &self.merge_flag,
                 VvcCabacContext::GeneralMergeFlag(idx) => &self.general_merge_flag[idx as usize],
                 VvcCabacContext::AbsMvdGreater0Flag(idx) => {
                     &self.abs_mvd_greater0_flag[idx as usize]
@@ -1062,6 +1069,7 @@ impl VvcCabacContexts {
             VvcCabacContext::PredModeFlag(idx) => {
                 self.pred_mode_flag[idx as usize].encode(cabac, bin)
             }
+            VvcCabacContext::MergeFlag => self.merge_flag.encode(cabac, bin),
             VvcCabacContext::GeneralMergeFlag(idx) => {
                 self.general_merge_flag[idx as usize].encode(cabac, bin)
             }
@@ -1299,6 +1307,11 @@ impl VvcCabacContexts {
             &mut self.qt_root_cbf,
             bin,
         );
+    }
+
+    #[inline]
+    pub(in crate::vvc) fn encode_merge_flag(&mut self, cabac: &mut VvcCabacEncoder, bin: bool) {
+        Self::encode_model(cabac, VvcCabacContext::MergeFlag, &mut self.merge_flag, bin);
     }
 
     #[inline]

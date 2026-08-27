@@ -7782,9 +7782,10 @@ TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
 The 2026-08-27 IBC enablement probe initially failed because the exact no-
 residual IBC leaf emitted the intra-only `cu_coded_flag=0` terminator. VTM's
 IBC CU follows the inter-coded residual flow and requires `rqt_root_cbf=0`.
-The shared CABAC path now emits that syntax and has focused unit coverage, but
-the complete production IBC path still fails the required VTM regression set.
-Production 4:4:4 lossless-speed SCC therefore remains disabled. Lossy,
+The shared CABAC path now emits that syntax and has focused unit coverage. A
+follow-up audit also added the required `merge_flag=0` before the explicit BVD,
+but the complete production IBC path still fails the required VTM regression
+set. Production 4:4:4 lossless-speed SCC therefore remains disabled. Lossy,
 subsampled, and unsupported profile paths continue through the ordinary
 unified coding path until the remaining IBC prediction-unit mismatch is fixed.
 
