@@ -723,3 +723,11 @@ The VVC four-winner chroma RD probe (2026-08-26) expanded the same
 output on all four 20-frame probe vectors while measured FPS declined, so the
 three-winner policy was restored. This confirms that the retained three-winner
 bound is the current quality/rate frontier for this fast-search policy.
+
+The VVC compact-seed directional probe (2026-08-26) expanded the
+`lossless-speed` source and spatial consensus seeds to their compact
+neighborhoods. It produced byte- and PSNR-identical output on all four
+20-frame vectors while reducing measured FPS, including 8.01 to 5.81 FPS on
+the gradient case. The candidate-generation change was reverted; broader
+directional neighborhoods need a stronger content-adaptive gate before they
+are suitable for this speed policy.
