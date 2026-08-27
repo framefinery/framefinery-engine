@@ -31,6 +31,26 @@ shared path, measurements, and validation result. The minimum local gates are:
 No shortcut should suppress a failing test, hide a dead helper, duplicate a
 coding path, or replace a syntax fix with an unchecked index clamp.
 
+Maintainability is also a release criterion for this goal. In addition to the
+runtime measurements, retained changes must be accountable through:
+
+- `make api-docs-strict` and focused rustdoc updates for every changed public
+  Rust or WASM API;
+- `make dead-code-audit` findings assigned to an intentional public/feature
+  boundary or removed, never silenced with a blanket lint allowance;
+- `make dependency-audit` and the existing Clippy/feature-matrix checks for
+  dependency and configuration drift;
+- a short note in this document for each rejected experiment, including its
+  hypothesis, measured result, and reason for rejection;
+- an explicit review that lossy, lossless, RGB, and subsampled inputs still
+  use the same coding path, with feature gates applied at the deepest legal
+  mode-selection point.
+
+Profiling is evidence for where to investigate, not permission to trade away
+clarity. Any optimization whose benefit cannot be reproduced by the recorded
+benchmark or whose control flow makes the shared path harder to audit should
+be rejected or deferred.
+
 ## Current blockers and next experiments
 
 - AV2 lossless 1920-wide regular inter is still gated because mixed multi-column
