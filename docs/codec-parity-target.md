@@ -1032,6 +1032,17 @@ regression runs moved FPS in both directions without a repeatable aggregate
 gain. The probe was reverted; a future low-level score optimization needs a
 microbenchmark or broader repeated sample set before adding code complexity.
 
+The AV2 lossless mode-score reuse (2026-08-27) moved the luma coefficient score
+outside the inner chroma-candidate loop for both ordinary and directional-delta
+candidate families. The score depends only on the luma mode, block, and coding
+context, so this removes repeated work without changing candidate ordering,
+syntax, or the shared lossless path. On a 64x64 4:4:4 lossless frame, elapsed
+time improved from 3.08 s to 2.62--2.67 s across two probe runs (about
+14--15%); both probe outputs had the same SHA-256 as the unmodified baseline.
+The AV2 unit suite passed 103/103. Required AVM regression and high-depth
+validation, Clippy, formatting, and the full workspace checks remain the
+release gate for this change.
+
 The VVC component-wise chroma RD-bound probe (2026-08-27) followed the
 reference encoder's safe ordering: after scoring Cb, it treated Cb distortion,
 Cb rate, and chroma-mode syntax cost as a lower bound before scoring Cr. The

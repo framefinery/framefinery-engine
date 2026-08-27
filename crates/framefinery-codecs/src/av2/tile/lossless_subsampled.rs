@@ -1866,6 +1866,15 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
             ];
 
             for (luma_intra_mode, luma_bdpcm_horz, luma_syntax_penalty) in luma_candidates {
+                let luma_score = self.luma_leaf_coefficient_score(
+                    decision,
+                    txb_width,
+                    txb_height,
+                    luma_intra_mode,
+                    luma_bdpcm_horz,
+                    use_fsc,
+                    coded_mi_context,
+                );
                 for (chroma_use_bdpcm, chroma_intra_mode, chroma_syntax_penalty) in
                     chroma_candidates
                 {
@@ -1882,13 +1891,7 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                     };
                     let fsc_syntax_penalty = usize::from(use_fsc) * 96;
                     let score =
-                        self.luma_leaf_coefficient_score(
-                            decision,
-                            txb_width,
-                            txb_height,
-                            mode,
-                            coded_mi_context,
-                        ) + self.chroma_leaf_coefficient_score(chroma_span, mode, coded_mi_context)
+                        luma_score + self.chroma_leaf_coefficient_score(chroma_span, mode, coded_mi_context)
                             + luma_syntax_penalty
                             + chroma_syntax_penalty
                             + fsc_syntax_penalty;
@@ -1911,6 +1914,15 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                 for delta in [-1i8, 1, -2, 2, -3, 3] {
                     let luma_intra_mode = Av2LumaIntraMode::DirectionalDelta { base, delta };
                     let luma_syntax_penalty = 224usize + usize::from(delta.unsigned_abs()) * 48;
+                    let luma_score = self.luma_leaf_coefficient_score(
+                        decision,
+                        txb_width,
+                        txb_height,
+                        luma_intra_mode,
+                        None,
+                        use_fsc,
+                        coded_mi_context,
+                    );
                     for (chroma_use_bdpcm, chroma_intra_mode, chroma_syntax_penalty) in
                         chroma_candidates
                     {
@@ -1930,17 +1942,12 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                             use_fsc,
                         };
                         let fsc_syntax_penalty = usize::from(use_fsc) * 96;
-                        let score = self.luma_leaf_coefficient_score(
-                            decision,
-                            txb_width,
-                            txb_height,
-                            mode,
-                            coded_mi_context,
-                        ) + self.chroma_leaf_coefficient_score(
-                            chroma_span,
-                            mode,
-                            coded_mi_context,
-                        ) + luma_syntax_penalty
+                        let score = luma_score
+                            + self.chroma_leaf_coefficient_score(
+                                chroma_span,
+                                mode,
+                                coded_mi_context,
+                            ) + luma_syntax_penalty
                             + chroma_syntax_penalty
                             + fsc_syntax_penalty;
                         if score < best.1 {
@@ -2200,10 +2207,20 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         decision: Av2TileDecision,
         txb_width: usize,
         txb_height: usize,
-        mode: Av2LosslessSubsampledModeDecision,
+        luma_intra_mode: Av2LumaIntraMode,
+        luma_bdpcm_horz: Option<bool>,
+        use_fsc: bool,
         coded_mi_context: &Av2CodedMiContext,
     ) -> usize {
         let mut score = 0usize;
+        let mode = Av2LosslessSubsampledModeDecision {
+            luma_intra_mode,
+            luma_bdpcm_horz,
+            chroma_use_bdpcm: false,
+            chroma_intra_mode: Av2ChromaIntraMode::Dc,
+            use_luma_palette: false,
+            use_fsc,
+        };
         let (leaf_x0, leaf_y0) = self.txb_origin(Av2LosslessPlane::Y, decision.col, decision.row);
         let leaf_width = txb_width * TX4X4_SIZE;
         let leaf_height = txb_height * TX4X4_SIZE;
