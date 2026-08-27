@@ -1015,3 +1015,12 @@ passed 7/7 for both codecs, and required high-depth validation passed 6/6 for
 VVC and 3/3 for AV2. This change is retained as a maintainability and
 predictive-path cleanup; its end-to-end speed effect remains workload-specific
 and is not claimed as a six-vector checkpoint gain.
+
+The AV2 quantization follow-up benchmark (2026-08-27) was rerun as an
+accountability check after the reciprocal hoist. Palette selection remained
+slightly faster on the 64x64 case, while the transform round-trip cases at
+qindex 40 and 80 stayed within noise and qindex 128 measured a 2.75% slowdown
+against its stored Criterion baseline. No additional AV2 quantization change
+was retained from this observation; the qindex-dependent result remains a
+follow-up investigation item rather than a claimed regression until it is
+reproduced with an end-to-end encode workload.
