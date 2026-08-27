@@ -183,6 +183,18 @@ promising but not isolated speed claim. Required VTM validation passed for all
 three lossy and all three lossless smoke vectors, and the full codec suite
 passed all 356 tests.
 
+The VVC proxy-admission probe (2026-08-26) added a bounded lossy
+`lossless-speed` gate for luma RD refinement: candidates whose cheap mode
+proxy exceeded twice the best shortlist score were not fully rescored. The
+best proxy candidate is always retained, and lossless and other speed policies
+remain unchanged. On the four-vector, 20-frame probe, output stayed exactly
+4,275,283 bytes with identical PSNR; luma RD candidate scoring calls fell from
+144,000 to 89,127 (−38.1%) and measured luma RD-scoring time fell from 869.6
+ms to 832.0 ms (−4.3%). Aggregate FPS moved from 6.47 to 6.53, recorded as
+corroborating rather than standalone evidence. Required VTM validation passed
+for all three lossy and all three lossless smoke vectors, and all 356 codec
+tests passed.
+
 The VVC exact-residual probe (2026-08-26) added the corresponding early exit
 to the shared transformed luma and chroma quantizers. A predictor-exact block
 now returns the ordinary transformed zero block without DC search, coefficient

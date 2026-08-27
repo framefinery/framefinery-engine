@@ -182,6 +182,12 @@ fn select_vvc_luma_mode_with_rd_refinement(
     }
     let shortlist = VvcLumaModeRdShortlist::from_candidate_costs(policy, node, candidate_costs);
     for candidate in shortlist.iter() {
+        if policy.residual_mode() == VvcResidualCodingMode::Lossy
+            && policy.fast_search() == VvcFastSearch::LosslessSpeed
+            && !shortlist.admits_lossless_speed_rd(candidate)
+        {
+            continue;
+        }
         let mode = candidate.mode();
         if mode.luma_mode_index() == raw_mode.luma_mode_index() {
             continue;
@@ -469,8 +475,16 @@ impl VvcLumaModeRdShortlist {
             .min(vvc_luma_mode_rd_shortlist_limit(policy).min(self.candidates.len()));
     }
 
-    fn iter(self) -> impl Iterator<Item = VvcLumaIntraCandidateCost> {
-        self.candidates.into_iter().take(self.count)
+    fn iter(&self) -> impl Iterator<Item = VvcLumaIntraCandidateCost> + '_ {
+        self.candidates[..self.count].iter().copied()
+    }
+
+    fn admits_lossless_speed_rd(self, candidate: VvcLumaIntraCandidateCost) -> bool {
+        self.count <= 1
+            || candidate.score()
+                <= self.candidates[0]
+                    .score()
+                    .saturating_mul(2)
     }
 }
 
