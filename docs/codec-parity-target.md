@@ -740,3 +740,11 @@ from 4,275,283 to 4,277,988 bytes (+0.06%), moved the mean PSNR only within
 the probe's small per-vector variation, and reduced aggregate FPS from 6.47
 to 5.97 (-7.7%). The shortcut was restored; a broader transformed-residual
 search is not justified without a stronger content-adaptive gate.
+
+The AV2 double-tail candidate probe (2026-08-26) screened out construction of
+the regular-DCT double-tail candidate. The four-vector, 20-frame lossy probe
+changed only the gradient output (−304 bytes and +0.011 dB), left the other
+three outputs unchanged, and measured 11.73 FPS versus the 11.70 FPS baseline,
+which is within timing noise. The detailed audit also showed that this
+candidate is selected only rarely. The candidate path was restored because
+the small, content-specific result does not justify another hot-path gate.
