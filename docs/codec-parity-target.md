@@ -1024,3 +1024,15 @@ against its stored Criterion baseline. No additional AV2 quantization change
 was retained from this observation; the qindex-dependent result remains a
 follow-up investigation item rather than a claimed regression until it is
 reproduced with an end-to-end encode workload.
+
+The VVC component-wise chroma RD-bound probe (2026-08-27) followed the
+reference encoder's safe ordering: after scoring Cb, it treated Cb distortion,
+Cb rate, and chroma-mode syntax cost as a lower bound before scoring Cr. The
+bound cannot discard a candidate that could improve the incumbent because Cr
+costs are non-negative. The focused mode-selection test, full VVC unit suite,
+Clippy, formatting, and required regression checks passed. However, two
+50-frame local regression A/B runs produced identical bytes and PSNR and no
+repeatable FPS improvement; results moved in both directions with run order.
+The source probe was therefore reverted. A future attempt should add an
+explicit prune counter and use a larger candidate-rich workload before being
+considered again.
