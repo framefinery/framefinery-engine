@@ -826,3 +826,13 @@ byte counts and PSNR values identical while instrumented time fell from
 validation passed for lossy smoke (3/3) and unusual geometries (7/7). The
 cache is local to the shared predictive tile path and does not alter tile
 mode selection, entropy state, or lossless coding.
+
+The refreshed VVC end-to-end profile (2026-08-26) measured the current shared
+lossy path on the local six-vector checkpoint for 10 predictive frames per
+row: 7,403,327 bytes, mean PSNR 54.211 dB, and 29.989 seconds (2.001
+aggregate FPS). CTU quantization accounted for 33.46% of measured time;
+chroma mode search, chroma RD scoring, and chroma RD refinement accounted for
+6.70%, 6.29%, and 5.49%, respectively. Required VTM smoke validation passed
+3/3 with exact reconstruction matches. This profile selects shared chroma
+candidate evaluation as the next investigation target; no speculative mode
+gate or alternate coding path was retained from the profile.
