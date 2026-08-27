@@ -935,4 +935,7 @@ lookups and divisions. The microbenchmarks improved 4x4 quantization by
 15.1--16.6% for the tested sizes (40, 80, and 128 samples); the AV2 unit suite,
 formatting, Clippy, and required AVM smoke validation passed 3/3. The change
 is retained for a broader encode-matrix measurement before any further
-quantization specialization is attempted.
+quantization specialization is attempted. Follow-up required-reference
+regression validation passed 7/7 for AV2 and 7/7 for VVC, covering multi-frame
+4:4:4 cases as well as subsampled geometry; successful reconstruction and
+encoded outputs were cleaned up after validation.
