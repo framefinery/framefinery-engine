@@ -1025,6 +1025,13 @@ was retained from this observation; the qindex-dependent result remains a
 follow-up investigation item rather than a claimed regression until it is
 reproduced with an end-to-end encode workload.
 
+The VVC pair residual-score probe (2026-08-27) consolidated the Cb and Cr
+candidate score walks into one zipped loop and added an equivalence assertion.
+It preserved all encoded bytes and PSNR values, but paired 50-frame local
+regression runs moved FPS in both directions without a repeatable aggregate
+gain. The probe was reverted; a future low-level score optimization needs a
+microbenchmark or broader repeated sample set before adding code complexity.
+
 The VVC component-wise chroma RD-bound probe (2026-08-27) followed the
 reference encoder's safe ordering: after scoring Cb, it treated Cb distortion,
 Cb rate, and chroma-mode syntax cost as a lower bound before scoring Cr. The
