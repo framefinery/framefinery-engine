@@ -205,6 +205,17 @@ evidence beyond timing noise. Both variants were reverted; chroma candidate
 selection remains complete until a content-adaptive gate can protect rate as
 well as speed.
 
+The format-aware VVC chroma admission probe (2026-08-26) retained that gate
+only for lossy `lossless-speed` 4:2:0. The 4:2:2 and 4:4:4 paths remain fully
+searched after the preceding rate regression. On the four-vector, 20-frame
+probe, the 4:2:0 rows improved or preserved rate by 2,229 bytes, while both
+4:4:4 rows remained byte-identical; PSNR was unchanged. Chroma cached scoring
+calls fell from 607,770 to 389,465 (−36.0%), measured chroma scoring time fell
+from 1,851.5 ms to 1,677.2 ms (−9.4%), and aggregate FPS moved from 6.47 to
+6.71. Required VTM validation passed for all three lossy and all three
+lossless smoke vectors. This is retained as a format-aware policy, not a
+general chroma shortcut.
+
 The VVC exact-residual probe (2026-08-26) added the corresponding early exit
 to the shared transformed luma and chroma quantizers. A predictor-exact block
 now returns the ordinary transformed zero block without DC search, coefficient

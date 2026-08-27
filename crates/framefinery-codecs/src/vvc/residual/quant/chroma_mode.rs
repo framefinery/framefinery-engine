@@ -62,6 +62,13 @@ fn select_vvc_chroma_mode_with_rd_refinement(
     stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
     let shortlist = VvcChromaModeRdShortlist::from_candidate_costs(policy, candidate_costs);
     for candidate in shortlist.iter() {
+        if policy.residual_mode() == VvcResidualCodingMode::Lossy
+            && policy.fast_search() == VvcFastSearch::LosslessSpeed
+            && policy.chroma_sampling() == ChromaSampling::Cs420
+            && !shortlist.admits_lossless_speed_rd(candidate)
+        {
+            continue;
+        }
         let mode = candidate.mode();
         if mode == raw_mode {
             continue;
@@ -1088,8 +1095,16 @@ impl VvcChromaModeRdShortlist {
             .min(vvc_chroma_mode_rd_shortlist_limit(policy).min(self.candidates.len()));
     }
 
-    fn iter(self) -> impl Iterator<Item = VvcChromaIntraCandidateCost> {
-        self.candidates.into_iter().take(self.count)
+    fn iter(&self) -> impl Iterator<Item = VvcChromaIntraCandidateCost> + '_ {
+        self.candidates[..self.count].iter().copied()
+    }
+
+    fn admits_lossless_speed_rd(self, candidate: VvcChromaIntraCandidateCost) -> bool {
+        self.count <= 1
+            || candidate.score()
+                <= self.candidates[0]
+                    .score()
+                    .saturating_mul(2)
     }
 }
 
