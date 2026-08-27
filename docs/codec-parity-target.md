@@ -1156,3 +1156,18 @@ short matrix does not establish a repeatable gain and the compiler may already
 common-subexpression-eliminate this lookup, so the code was reverted. A future
 attempt needs a longer candidate-rich workload or compiler IR evidence before
 adding the extra parameter plumbing.
+
+The VVC paired chroma-residual materialization probe (2026-08-27) replaced two
+independent Cb/Cr scans in the shared chroma mode-search path with the existing
+paired helper. The helper preserves the same geometry-derived coordinates,
+edge handling, and residual ordering while allowing the two planes to be
+processed in one loop. The focused score-equivalence test, all 257 VVC unit
+tests, `make clippy-perf`, and required VTM regression validation passed for
+both lossy and lossless settings (7/7 cases each). The seven-vector profile
+preserved 3,803 lossy bytes, 16,065 lossless bytes, and the same lossy mean
+PSNR of 51.488 dB; measured FPS was 114.065 lossy and 136.775 lossless versus
+108.228 and 115.325 in the preceding single-frame profile. Because the timing
+sample is short, the retained change is justified primarily by removing a
+duplicate hot-loop implementation while preserving output and reference
+decoder evidence; longer candidate-rich profiling remains appropriate before
+claiming a large throughput gain.

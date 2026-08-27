@@ -64,23 +64,10 @@ fn score_chroma_mode_candidate(
     if cache.materializes_mode_search_residuals() {
         #[cfg(feature = "vvc-stats")]
         let residual_start = StageStart::now();
-        residual_chroma_tu_at_into(
+        residual_chroma_pair_tu_at_into(
             cb_residuals,
-            &source_frame.cb,
-            source_frame.geometry,
-            source_frame.format,
-            chroma_x,
-            chroma_y,
-            chroma_width,
-            chroma_height,
-            predicted_cb,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-        #[cfg(feature = "vvc-stats")]
-        let residual_start = StageStart::now();
-        residual_chroma_tu_at_into(
             cr_residuals,
+            &source_frame.cb,
             &source_frame.cr,
             source_frame.geometry,
             source_frame.format,
@@ -88,6 +75,7 @@ fn score_chroma_mode_candidate(
             chroma_y,
             chroma_width,
             chroma_height,
+            predicted_cb,
             predicted_cr,
         );
         #[cfg(feature = "vvc-stats")]
