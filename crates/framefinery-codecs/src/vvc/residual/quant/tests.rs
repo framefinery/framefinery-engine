@@ -640,7 +640,7 @@ fn vvc_lossy_chroma_rd_shortlist_keeps_best_winners() {
 }
 
 #[test]
-fn vvc_lossless_speed_chroma_rd_shortlist_keeps_top_two_lossy_winners() {
+fn vvc_lossless_speed_chroma_rd_shortlist_keeps_top_three_lossy_winners() {
     let format = VvcPictureFormat {
         chroma_sampling: ChromaSampling::Cs420,
         bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
@@ -665,6 +665,7 @@ fn vvc_lossless_speed_chroma_rd_shortlist_keeps_top_two_lossy_winners() {
         vec![
             VvcChromaIntraPredictionMode::Cclm(VvcChromaCclmMode::Linear),
             VvcChromaIntraPredictionMode::Explicit(VvcIntraPredictionMode::Horizontal),
+            VvcChromaIntraPredictionMode::Derived,
         ]
     );
 }

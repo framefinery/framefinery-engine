@@ -1106,7 +1106,7 @@ fn vvc_chroma_mode_rd_shortlist_limit(policy: VvcResidualCodingPolicy) -> usize 
         VvcResidualCodingMode::Lossless => VVC_CHROMA_INTRA_CANDIDATE_CAPACITY,
         VvcResidualCodingMode::Lossy => match policy.fast_search() {
             VvcFastSearch::Off | VvcFastSearch::Conservative => VVC_LOSSY_CHROMA_RD_WINNER_CANDIDATES,
-            VvcFastSearch::LosslessSpeed => 2,
+            VvcFastSearch::LosslessSpeed => 3,
             VvcFastSearch::Moderate => 3,
             VvcFastSearch::Aggressive => 2,
         },

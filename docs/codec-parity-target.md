@@ -660,4 +660,14 @@ same 20-frame local probe it improved aggregate FPS from 6.469 to 6.768
 mean PSNR from 57.590 to 57.395 dB. Required-reference validation passed for
 the lossy smoke and unusual-geometry sets (3/3 and 7/7), but the measured
 quality/size loss outweighs the modest speed gain. The policy was reverted;
-the two-winner bound remains the maintainable fast-search default.
+the two-winner bound was retained as the maintainable fast-search default at
+that checkpoint.
+
+The follow-up VVC three-winner chroma RD probe (2026-08-26) expanded lossy
+`fast-search=lossless-speed` refinement from two cached winners to three. On
+the same 20-frame local probe it reduced bytes from 1,104,492 to 1,069,626
+(3.15%), improved mean PSNR from 57.590 to 57.758 dB, and measured 6.461 FPS
+versus 6.471 FPS. The speed change is within measurement noise while the
+rate/quality improvement is material, so the three-winner policy was retained.
+The full codec suite passed 356 tests and required VTM smoke validation passed
+3/3 with exact reconstruction matches.
