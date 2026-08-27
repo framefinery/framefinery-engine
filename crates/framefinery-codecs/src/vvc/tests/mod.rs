@@ -5986,3 +5986,59 @@ fn vvc_ibc_search_uses_only_available_reconstructed_reference_blocks() {
     available_search.record_palette_8x8(&reconstruction, 0, 0);
     assert!(available_search.decide_8x8(&reconstruction, 8, 8).is_some());
 }
+
+#[test]
+fn vvc_ibc_search_accepts_available_cross_ctu_reference() {
+    let geometry = VvcVideoGeometry {
+        width: 32,
+        height: 8,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let mut luma = vec![0; 32 * 8];
+    let mut cb = vec![0; 32 * 8];
+    let mut cr = vec![0; 32 * 8];
+    for plane in [&mut luma, &mut cb, &mut cr] {
+        for y in 0..8 {
+            for x in 0..8 {
+                let sample = (y * 8 + x + 1) as VvcSample;
+                plane[y * 32 + x] = sample;
+                plane[y * 32 + x + 16] = sample;
+            }
+        }
+    }
+    let source = VvcSampledFrame {
+        geometry,
+        format,
+        luma,
+        cb,
+        cr,
+        chroma_len: 32 * 8,
+    };
+    let mut reconstruction = VvcReconstructionFrame::new_neutral(geometry, format);
+    for (destination, source_plane) in [
+        (&mut reconstruction.luma, &source.luma),
+        (&mut reconstruction.cb, &source.cb),
+        (&mut reconstruction.cr, &source.cr),
+    ] {
+        for y in 0..8 {
+            destination[y * 32..y * 32 + 8].copy_from_slice(&source_plane[y * 32..y * 32 + 8]);
+        }
+    }
+    let mut source_node = VvcCodingTreeNode::root(8, 8, VvcTreeType::SingleTree);
+    source_node.x = 0;
+    reconstruction.mark_luma_node_available(source_node);
+    reconstruction.mark_chroma_node_available(source_node);
+
+    let mut search = VvcIbcHashSearch::new_for_ctu(16, 0);
+    search.record_external_8x8(&reconstruction, 0, 0);
+    let decision = search
+        .decide_8x8_against_reconstruction(&source, &reconstruction, 16, 0)
+        .expect("available cross-CTU exact match");
+    assert_eq!(decision.ref_origin_x, 0);
+    assert_eq!(decision.ref_origin_y, 0);
+    assert_eq!(decision.bv_x, -256);
+    assert_eq!(decision.bv_y, 0);
+}

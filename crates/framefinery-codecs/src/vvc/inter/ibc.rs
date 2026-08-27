@@ -190,11 +190,20 @@ impl VvcIbcHashSearch {
             return None;
         }
         let hash = vvc_ibc_hash_8x8(source, origin_x, origin_y);
-        let candidate = self.local_hash_candidate(origin_x, origin_y, hash)?;
+        let candidate = self.global_hash_candidate(origin_x, origin_y, hash)?;
         if !reference.block_available(candidate.origin_x, candidate.origin_y) {
             return None;
         }
         self.decision_for_reference(origin_x, origin_y, candidate)
+    }
+
+    pub(super) fn record_external_8x8<F: VvcIbcFrameView>(
+        &mut self,
+        frame: &F,
+        origin_x: usize,
+        origin_y: usize,
+    ) {
+        self.record_hash_if_full_visible(frame, origin_x, origin_y);
     }
 
     #[cfg(feature = "vvc-stats")]
@@ -380,6 +389,19 @@ impl VvcIbcHashSearch {
             }
         }
         None
+    }
+
+    fn global_hash_candidate(
+        &self,
+        origin_x: usize,
+        origin_y: usize,
+        hash: u32,
+    ) -> Option<VvcIbcHashEntry> {
+        self.entries.iter().copied().find(|entry| {
+            entry.hash == hash
+                && (entry.origin_y < origin_y
+                    || (entry.origin_y == origin_y && entry.origin_x < origin_x))
+        })
     }
 
     fn record_hmvp(&mut self, bv: VvcIbcBv) {
