@@ -971,4 +971,6 @@ parameter bundle. Criterion measured an additional 4.4--7.2% improvement over
 the previous hoist for the 4x4 transform benchmark at 40, 80, and 128 samples.
 The focused AV2 transform tests, Clippy, formatting, and required AVM smoke
 validation passed 3/3. The change keeps the existing integer arithmetic and
-shared transform path; broader end-to-end gains remain to be measured.
+shared transform path; the follow-up also consolidates the identical
+4x4/4x8/8x8 dequantization loops into one const-generic helper. Broader
+end-to-end gains remain to be measured.

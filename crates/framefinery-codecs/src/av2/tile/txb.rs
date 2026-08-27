@@ -271,7 +271,7 @@ fn av2_regular_quantize_dct4x4(
     for pos in 0..TX4X4_SAMPLES {
         qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], params, pos != 0);
     }
-    let dqcoeff = av2_regular_dequantize_dct4x4(&qcoeff, params.dequant);
+    let dqcoeff = av2_regular_dequantize(&qcoeff, params.dequant);
     (qcoeff, dqcoeff)
 }
 
@@ -285,7 +285,7 @@ fn av2_regular_quantize_dct8x8(
     for pos in 0..TX8X8_SAMPLES {
         qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], params, pos != 0);
     }
-    let dqcoeff = av2_regular_dequantize_dct8x8(&qcoeff, params.dequant);
+    let dqcoeff = av2_regular_dequantize(&qcoeff, params.dequant);
     (qcoeff, dqcoeff)
 }
 
@@ -299,7 +299,7 @@ fn av2_regular_quantize_dct4x8(
     for pos in 0..TX4X8_SAMPLES {
         qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], params, pos != 0);
     }
-    let dqcoeff = av2_regular_dequantize_dct4x8(&qcoeff, params.dequant);
+    let dqcoeff = av2_regular_dequantize(&qcoeff, params.dequant);
     (qcoeff, dqcoeff)
 }
 
@@ -320,43 +320,11 @@ fn av2_regular_quantize_coefficient(
     (abs_qcoeff as i32) * sign
 }
 
-fn av2_regular_dequantize_dct4x4(
-    qcoeff: &[i32; TX4X4_SAMPLES],
+fn av2_regular_dequantize<const SAMPLES: usize>(
+    qcoeff: &[i32; SAMPLES],
     dequant: [i32; 2],
-) -> [i32; TX4X4_SAMPLES] {
-    let mut dqcoeff = [0i32; TX4X4_SAMPLES];
-    for (pos, (&level, dst)) in qcoeff.iter().zip(dqcoeff.iter_mut()).enumerate() {
-        let rc01 = usize::from(pos != 0);
-        let abs_dqcoeff = round_power_of_two_i64(
-            i64::from(level.abs()) * i64::from(dequant[rc01]),
-            AV2_QUANT_TABLE_BITS,
-        ) as i32;
-        *dst = if level < 0 { -abs_dqcoeff } else { abs_dqcoeff };
-    }
-    dqcoeff
-}
-
-fn av2_regular_dequantize_dct8x8(
-    qcoeff: &[i32; TX8X8_SAMPLES],
-    dequant: [i32; 2],
-) -> [i32; TX8X8_SAMPLES] {
-    let mut dqcoeff = [0i32; TX8X8_SAMPLES];
-    for (pos, (&level, dst)) in qcoeff.iter().zip(dqcoeff.iter_mut()).enumerate() {
-        let rc01 = usize::from(pos != 0);
-        let abs_dqcoeff = round_power_of_two_i64(
-            i64::from(level.abs()) * i64::from(dequant[rc01]),
-            AV2_QUANT_TABLE_BITS,
-        ) as i32;
-        *dst = if level < 0 { -abs_dqcoeff } else { abs_dqcoeff };
-    }
-    dqcoeff
-}
-
-fn av2_regular_dequantize_dct4x8(
-    qcoeff: &[i32; TX4X8_SAMPLES],
-    dequant: [i32; 2],
-) -> [i32; TX4X8_SAMPLES] {
-    let mut dqcoeff = [0i32; TX4X8_SAMPLES];
+) -> [i32; SAMPLES] {
+    let mut dqcoeff = [0i32; SAMPLES];
     for (pos, (&level, dst)) in qcoeff.iter().zip(dqcoeff.iter_mut()).enumerate() {
         let rc01 = usize::from(pos != 0);
         let abs_dqcoeff = round_power_of_two_i64(

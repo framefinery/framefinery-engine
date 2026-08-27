@@ -1059,7 +1059,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         qcoeff: &[i32; TX4X4_SAMPLES],
         kind: Av2LossyResidualCandidateKind,
     ) -> Av2LossyQuantizedResidualCandidate {
-        let dqcoeff = av2_regular_dequantize_dct4x4(
+        let dqcoeff = av2_regular_dequantize(
             qcoeff,
             av2_regular_dequant_qtx(self.base_qindex, self.bit_depth),
         );
