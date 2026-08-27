@@ -859,6 +859,34 @@ fn av2_lossless_zero_mv_regular_inter_payload_emits_inter_symbols() {
 }
 
 #[test]
+fn av2_zero_mv_tile_payload_depends_on_shape_not_origin() {
+    let profile = Av2Black444MvpProfile::current();
+    let first = av2_lossless_zero_mv_inter_tile_entropy_payload_for_region_with_fields(
+        Av2TileRegion {
+            origin_x: 0,
+            origin_y: 0,
+            width: 512,
+            height: 64,
+        },
+        profile,
+        Av2ChromaFormat::Yuv420,
+        false,
+    );
+    let shifted = av2_lossless_zero_mv_inter_tile_entropy_payload_for_region_with_fields(
+        Av2TileRegion {
+            origin_x: 512,
+            origin_y: 128,
+            width: 512,
+            height: 64,
+        },
+        profile,
+        Av2ChromaFormat::Yuv420,
+        false,
+    );
+    assert_eq!(first, shifted);
+}
+
+#[test]
 fn av2_lossless_newmv_regular_inter_payload_emits_mv_symbols() {
     let geometry = Av2VideoGeometry {
         width: 16,

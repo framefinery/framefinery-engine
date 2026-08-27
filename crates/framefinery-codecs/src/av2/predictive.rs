@@ -116,6 +116,7 @@ fn av2_lossy_subsampled_zero_mv_inter_tiles_bitstream_and_reconstruction_for_fra
     let palette_ref = palette.as_ref();
     let mut reconstruction = vec![0; expected_len];
     let mut tile_payloads = Vec::with_capacity(tile_layout.tile_count());
+    let mut zero_mv_payload_cache: Vec<(usize, usize, entropy::Av2EntropyPayload)> = Vec::new();
     for (&region, tile_mode) in tile_layout.regions.iter().zip(tile_modes.iter()) {
         match tile_mode {
             Av2PredictiveTileMode::ZeroMv => {
@@ -131,16 +132,26 @@ fn av2_lossy_subsampled_zero_mv_inter_tiles_bitstream_and_reconstruction_for_fra
                 ) {
                     return None;
                 }
-                tile_payloads.push(av2_lossless_predictive_tile_payload_for_mode(
-                    region,
-                    tile_mode,
-                    profile,
-                    geometry,
-                    stream_format,
-                    frame,
-                    reference_source,
-                    palette_ref,
-                ));
+                let payload = if let Some((_, _, payload)) = zero_mv_payload_cache
+                    .iter()
+                    .find(|(width, height, _)| *width == region.width && *height == region.height)
+                {
+                    payload.clone()
+                } else {
+                    let payload = av2_lossless_predictive_tile_payload_for_mode(
+                        region,
+                        tile_mode,
+                        profile,
+                        geometry,
+                        stream_format,
+                        frame,
+                        reference_source,
+                        palette_ref,
+                    );
+                    zero_mv_payload_cache.push((region.width, region.height, payload.clone()));
+                    payload
+                };
+                tile_payloads.push(payload);
             }
             Av2PredictiveTileMode::Residual(residual_blocks) => {
                 tile_payloads.push(

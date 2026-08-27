@@ -815,3 +815,14 @@ three outputs unchanged, and measured 11.73 FPS versus the 11.70 FPS baseline,
 which is within timing noise. The detailed audit also showed that this
 candidate is selected only rarely. The candidate path was restored because
 the small, content-specific result does not justify another hot-path gate.
+
+The AV2 zero-motion payload-cache probe (2026-08-26) cached the shared lossy
+predictive zero-motion tile payload by tile width and height within each frame.
+The payload is generated without frame samples, and a direct regression test
+confirms that changing the tile origin does not change its bytes, fields, or
+symbol count. The local six-vector, 50-frame lossy checkpoint kept all six
+byte counts and PSNR values identical while instrumented time fell from
+67.012 s to 65.612 s (4.477 to 4.572 aggregate FPS, +2.1%). Required AVM
+validation passed for lossy smoke (3/3) and unusual geometries (7/7). The
+cache is local to the shared predictive tile path and does not alter tile
+mode selection, entropy state, or lossless coding.
