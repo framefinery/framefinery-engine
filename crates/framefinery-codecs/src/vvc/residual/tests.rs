@@ -67,6 +67,67 @@ fn vvc_transform_accepts_8x8_luma_and_4x4_chroma_tus() {
 }
 
 #[test]
+fn vvc_lossless_single_tree_444_quantization_reconstructs_arbitrary_8x8_leaf() {
+    let geometry = VvcVideoGeometry {
+        width: 8,
+        height: 8,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let luma: Vec<_> = (0..64)
+        .map(|index| ((index * 37 + 11) & 0xff) as VvcSample)
+        .collect();
+    let cb: Vec<_> = (0..64)
+        .map(|index| ((index * 19 + 23) & 0xff) as VvcSample)
+        .collect();
+    let cr: Vec<_> = (0..64)
+        .map(|index| ((index * 29 + 41) & 0xff) as VvcSample)
+        .collect();
+    let frame = VvcSampledFrame {
+        geometry,
+        format,
+        luma: luma.clone(),
+        cb: cb.clone(),
+        cr: cr.clone(),
+        chroma_len: 64,
+    };
+    let mut reconstruction = VvcReconstructionFrame::new_neutral(geometry, format);
+    let policy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossless)
+        .with_dual_tree_intra(false);
+    let qp = super::super::vvc_lossless_slice_qp(format.bit_depth);
+    let chroma_qp = qp;
+    let quant_tables = VvcTransformSkipQuantTables::new(format.bit_depth, qp, chroma_qp);
+    quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes_and_scratch_with_mode_hints(
+        &frame,
+        &mut reconstruction,
+        VvcCtuRegion {
+            slice_address: 0,
+            origin_x: 0,
+            origin_y: 0,
+            geometry,
+        },
+        policy,
+        qp,
+        chroma_qp,
+        &mut VvcLumaModeSearchState::new_for_geometry(geometry),
+        &quant_tables,
+        &mut VvcCtuQuantScratch::default(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+
+    assert_eq!(reconstruction.luma, luma);
+    assert_eq!(reconstruction.cb, cb);
+    assert_eq!(reconstruction.cr, cr);
+}
+
+#[test]
 fn vvc_luma_mts_quantization_supports_non_dct2() {
     let mut residuals = [0; 8 * 8];
     for y in 0..8 {
