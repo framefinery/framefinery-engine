@@ -939,3 +939,11 @@ quantization specialization is attempted. Follow-up required-reference
 regression validation passed 7/7 for AV2 and 7/7 for VVC, covering multi-frame
 4:4:4 cases as well as subsampled geometry; successful reconstruction and
 encoded outputs were cleaned up after validation.
+
+The AV2 derived-quant-constant follow-up (2026-08-27) also hoisted the
+per-coefficient reciprocal and rounding values into the same per-block
+parameter bundle. Criterion measured an additional 4.4--7.2% improvement over
+the previous hoist for the 4x4 transform benchmark at 40, 80, and 128 samples.
+The focused AV2 transform tests, Clippy, formatting, and required AVM smoke
+validation passed 3/3. The change keeps the existing integer arithmetic and
+shared transform path; broader end-to-end gains remain to be measured.
