@@ -926,3 +926,13 @@ useful hit rate and produced no output change; the source was reverted. The
 existing predictor already shares inner-luma preparation between Cb and Cr in
 each CCLM prediction call. Future reuse should be considered only alongside a
 measured CCLM-heavy workload and an explicit hit-rate counter.
+
+The AV2 quantization-constant hoist (2026-08-27) computes the regular-DCT
+dequantization pair once per transform block and reuses it for every
+coefficient in the shared 4x4, 4x8, and 8x8 quantizers. This preserves the
+existing integer operations and candidate paths while removing repeated table
+lookups and divisions. The microbenchmarks improved 4x4 quantization by
+15.1--16.6% for the tested sizes (40, 80, and 128 samples); the AV2 unit suite,
+formatting, Clippy, and required AVM smoke validation passed 3/3. The change
+is retained for a broader encode-matrix measurement before any further
+quantization specialization is attempted.

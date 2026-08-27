@@ -241,10 +241,10 @@ fn av2_regular_quantize_dct4x4(
     qindex: u16,
     bit_depth: SampleBitDepth,
 ) -> ([i32; TX4X4_SAMPLES], [i32; TX4X4_SAMPLES]) {
+    let dequant = av2_regular_dequant_qtx(qindex, bit_depth);
     let mut qcoeff = [0i32; TX4X4_SAMPLES];
     for pos in 0..TX4X4_SAMPLES {
-        qcoeff[pos] =
-            av2_regular_quantize_coefficient(coefficients[pos], qindex, bit_depth, pos != 0);
+        qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], dequant, pos != 0);
     }
     let dqcoeff = av2_regular_dequantize_dct4x4(&qcoeff, qindex, bit_depth);
     (qcoeff, dqcoeff)
@@ -255,10 +255,10 @@ fn av2_regular_quantize_dct8x8(
     qindex: u16,
     bit_depth: SampleBitDepth,
 ) -> ([i32; TX8X8_SAMPLES], [i32; TX8X8_SAMPLES]) {
+    let dequant = av2_regular_dequant_qtx(qindex, bit_depth);
     let mut qcoeff = [0i32; TX8X8_SAMPLES];
     for pos in 0..TX8X8_SAMPLES {
-        qcoeff[pos] =
-            av2_regular_quantize_coefficient(coefficients[pos], qindex, bit_depth, pos != 0);
+        qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], dequant, pos != 0);
     }
     let dqcoeff = av2_regular_dequantize_dct8x8(&qcoeff, qindex, bit_depth);
     (qcoeff, dqcoeff)
@@ -269,10 +269,10 @@ fn av2_regular_quantize_dct4x8(
     qindex: u16,
     bit_depth: SampleBitDepth,
 ) -> ([i32; TX4X8_SAMPLES], [i32; TX4X8_SAMPLES]) {
+    let dequant = av2_regular_dequant_qtx(qindex, bit_depth);
     let mut qcoeff = [0i32; TX4X8_SAMPLES];
     for pos in 0..TX4X8_SAMPLES {
-        qcoeff[pos] =
-            av2_regular_quantize_coefficient(coefficients[pos], qindex, bit_depth, pos != 0);
+        qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], dequant, pos != 0);
     }
     let dqcoeff = av2_regular_dequantize_dct4x8(&qcoeff, qindex, bit_depth);
     (qcoeff, dqcoeff)
@@ -280,11 +280,9 @@ fn av2_regular_quantize_dct4x8(
 
 fn av2_regular_quantize_coefficient(
     coefficient: i32,
-    qindex: u16,
-    bit_depth: SampleBitDepth,
+    dequant: [i32; 2],
     ac_coefficient: bool,
 ) -> i32 {
-    let dequant = av2_regular_dequant_qtx(qindex, bit_depth);
     let rc01 = usize::from(ac_coefficient);
     let quant_fp =
         (1i64 << (16 + AV2_QUANT_FP_BITS + AV2_QUANT_TABLE_BITS)) / i64::from(dequant[rc01]);
