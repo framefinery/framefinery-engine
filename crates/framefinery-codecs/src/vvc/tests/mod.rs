@@ -5918,6 +5918,14 @@ fn vvc_ibc_reconstruction_requires_available_444_reference() {
         mvd_y: -8,
         pred_mode_ibc_ctx: 0,
     };
+    assert_eq!(
+        decision.into_luma_scc_decision(),
+        VvcLumaSccDecision::IbcExact(VvcLumaIbcDecision {
+            mvd_x: -8,
+            mvd_y: -8,
+            pred_mode_ibc_ctx: 0,
+        })
+    );
     assert!(reconstruction.copy_ibc_444_8x8(decision));
     for plane in [&reconstruction.luma, &reconstruction.cb, &reconstruction.cr] {
         for y in 0..8 {

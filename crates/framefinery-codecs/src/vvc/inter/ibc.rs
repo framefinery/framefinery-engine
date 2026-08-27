@@ -4,7 +4,7 @@ use crate::picture::SampleBitDepth;
 
 #[cfg(feature = "vvc-stats")]
 use super::{VvcCtuRegion, VvcSampledColor};
-use super::{VvcSample, VvcSampledFrame, VVC_CTU_SIZE};
+use super::{VvcLumaIbcDecision, VvcLumaSccDecision, VvcSample, VvcSampledFrame, VVC_CTU_SIZE};
 
 const VVC_IBC_CU_SIZE: usize = 8;
 const VVC_IBC_CUS_PER_CTU: usize =
@@ -22,6 +22,18 @@ pub(super) struct VvcIbcCuDecision {
     pub(super) mvd_x: i16,
     pub(super) mvd_y: i16,
     pub(super) pred_mode_ibc_ctx: u8,
+}
+
+impl VvcIbcCuDecision {
+    /// Convert the search result into the metadata consumed by the shared
+    /// luma quantize/reconstruct/CABAC path.
+    pub(super) const fn into_luma_scc_decision(self) -> VvcLumaSccDecision {
+        VvcLumaSccDecision::IbcExact(VvcLumaIbcDecision {
+            mvd_x: self.mvd_x,
+            mvd_y: self.mvd_y,
+            pred_mode_ibc_ctx: self.pred_mode_ibc_ctx,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
