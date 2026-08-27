@@ -93,6 +93,22 @@ the explicit setup check because `cargo-audit` is not installed; no dependency
 audit result is claimed until that tool is available. The existing strict
 dead-code inventory remains a known follow-up recorded below.
 
+Every optimization change in this goal should leave an auditable record before
+it is retained:
+
+1. identify the shared hot path and the exact invariant it must preserve;
+2. run a reproducible baseline and candidate measurement, recording bytes,
+   quality, speed, reconstruction checksums, and reference-decoder status;
+3. add or update a focused regression test for the changed decision or kernel;
+4. run formatting, tests, lint/audit checks, and the relevant strict validation
+   set; and
+5. record the accepted evidence or the reason for rejection here or in a linked
+   focused note, including follow-up work that remains.
+
+No change should be retained solely because it is locally faster: missing
+measurements, undocumented profile-specific behavior, broad lint suppression,
+or a bypass around the shared coding path are release blockers for this goal.
+
 ## Current blockers and next experiments
 
 - AV2 lossless 1920-wide regular inter is still gated because mixed multi-column
