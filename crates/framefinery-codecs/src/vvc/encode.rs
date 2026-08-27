@@ -214,6 +214,15 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
         slice_config = slice_config.without_lossless_speed_unused_tools();
     }
     slice_config = slice_config.with_validated_profile_for_format(options.profile, stream_format)?;
+    let scc_444_enabled = !predictive_enabled
+        && residual_mode.is_lossless()
+        && options.fast_search == VvcFastSearch::LosslessSpeed
+        && stream_format.chroma_sampling == ChromaSampling::Cs444
+        && !format.is_rgb()
+        && slice_config.profile.allows_ibc();
+    if scc_444_enabled {
+        slice_config = slice_config.with_scc_444_tools();
+    }
     let picture_partitioning = if predictive_enabled && ctu_sliced_partitioning_supported {
         VvcPicturePartitioning::OneSlicePerCtu
     } else {
@@ -492,7 +501,19 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                 let mut luma_mode_search_state =
                     VvcLumaModeSearchState::new_for_geometry(geometry);
                 let mut ctu_quant_scratch = VvcCtuQuantScratch::default();
+                let mut ibc_search = scc_444_enabled.then(VvcIbcHashSearch::new);
                 for region in vvc_ctu_regions(geometry) {
+                    let luma_scc_decisions = if let Some(ibc_search) = ibc_search.as_mut() {
+                        ibc_search.prepare_for_ctu(region.origin_x, region.origin_y);
+                        Some(vvc_ibc_decisions_for_region(
+                            &source_frame,
+                            &frame_recon,
+                            ibc_search,
+                            region,
+                        ))
+                    } else {
+                        None
+                    };
                     #[cfg(feature = "vvc-stats")]
                     let stage_start = StageStart::now();
                     #[cfg(feature = "vvc-stats")]
@@ -706,7 +727,9 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                         let ctu_residual_policy = residual_policy
                             .with_inter_slice_partition(inter_slice_partition)
                             .with_dual_tree_intra(
-                                !inter_slice_partition && !mixed_single_p_slice_frame,
+                                !inter_slice_partition
+                                    && !mixed_single_p_slice_frame
+                                    && slice_config.coding_tree.dual_tree_intra,
                             );
                         let luma_max_leaf_size = if explicit_inter_frame {
                             VVC_CURRENT_MAX_LUMA_LEAF_SIZE
@@ -785,6 +808,7 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             luma_inter_skip_mask.as_ref(),
                             chroma_inter_skip_mask.as_ref(),
                             explicit_luma_inter_decisions,
+                            luma_scc_decisions.as_ref(),
                             explicit_inter_reference,
                             temporal_mode_hint,
                         );
@@ -890,6 +914,25 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             )?
                         }
                     };
+                    if let Some(ibc_search) = ibc_search.as_mut() {
+                        let x_end = region
+                            .origin_x
+                            .saturating_add(region.geometry.width)
+                            .min(geometry.width);
+                        let y_end = region
+                            .origin_y
+                            .saturating_add(region.geometry.height)
+                            .min(geometry.height);
+                        for origin_y in (region.origin_y..y_end).step_by(8) {
+                            for origin_x in (region.origin_x..x_end).step_by(8) {
+                                ibc_search.record_external_8x8(
+                                    &frame_recon,
+                                    origin_x,
+                                    origin_y,
+                                );
+                            }
+                        }
+                    }
                     if region.slice_address < predictive_reused_ctus.len() {
                         predictive_reused_ctus[region.slice_address] = reused_predictive_ctu;
                     }

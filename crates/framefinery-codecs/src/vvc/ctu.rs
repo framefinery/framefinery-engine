@@ -20,6 +20,7 @@ fn quantize_vvc_ctu_with_luma_leaf_selection(
     luma_inter_skip: Option<&[bool; MAX_VVC_LUMA_TUS]>,
     chroma_inter_skip: Option<&[bool; MAX_VVC_CHROMA_TUS]>,
     luma_inter_decisions: Option<&[Option<VvcLumaInterDecision>; MAX_VVC_LUMA_TUS]>,
+    luma_scc_decisions: Option<&[Option<VvcIbcCuDecision>; MAX_VVC_LUMA_TUS]>,
     inter_reference: Option<&VvcReconstructionFrame>,
     temporal_mode_hint: Option<&VvcQuantizedCtuLeafDecision>,
 ) -> VvcQuantizedCtuLeafDecision {
@@ -44,7 +45,7 @@ fn quantize_vvc_ctu_with_luma_leaf_selection(
         luma_inter_skip,
         chroma_inter_skip,
         luma_inter_decisions,
-        None,
+        luma_scc_decisions,
         inter_reference,
         Some(&mut selected_luma_inter_decisions),
         temporal_mode_hint,
@@ -74,6 +75,39 @@ fn vvc_ctu_regions(geometry: VvcVideoGeometry) -> impl Iterator<Item = VvcCtuReg
             }
         })
     })
+}
+
+fn vvc_ibc_decisions_for_region(
+    source_frame: &VvcSampledFrame,
+    frame_recon: &VvcReconstructionFrame,
+    ibc_search: &VvcIbcHashSearch,
+    region: VvcCtuRegion,
+) -> [Option<VvcIbcCuDecision>; MAX_VVC_LUMA_TUS] {
+    let mut decisions = [None; MAX_VVC_LUMA_TUS];
+    let x_end = region
+        .origin_x
+        .saturating_add(region.geometry.width)
+        .min(source_frame.geometry.width);
+    let y_end = region
+        .origin_y
+        .saturating_add(region.geometry.height)
+        .min(source_frame.geometry.height);
+    for origin_y in (region.origin_y..y_end).step_by(8) {
+        for origin_x in (region.origin_x..x_end).step_by(8) {
+            let local_x = origin_x.saturating_sub(region.origin_x);
+            let local_y = origin_y.saturating_sub(region.origin_y);
+            let index = (local_y / 8) * (VVC_CTU_SIZE / 8) + (local_x / 8);
+            if index < decisions.len() {
+                decisions[index] = ibc_search.decide_8x8_against_reconstruction(
+                    source_frame,
+                    frame_recon,
+                    origin_x,
+                    origin_y,
+                );
+            }
+        }
+    }
+    decisions
 }
 
 fn select_vvc_luma_max_leaf_size_for_ctu(

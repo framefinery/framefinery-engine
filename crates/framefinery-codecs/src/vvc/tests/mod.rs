@@ -2298,6 +2298,7 @@ fn vvc_predictive_exact_inter_selector_finds_chroma_safe_shifted_luma_leaves() {
         None,
         None,
         Some(&decisions),
+        None,
         Some(&previous_reconstruction),
         None,
     );
@@ -2411,6 +2412,7 @@ fn vvc_predictive_exact_inter_selector_accepts_chroma_safe_444_leaves() {
         None,
         None,
         Some(&decisions),
+        None,
         Some(&previous_reconstruction),
         None,
     );

@@ -160,6 +160,14 @@ impl VvcIbcHashSearch {
         }
     }
 
+    pub(super) fn prepare_for_ctu(&mut self, ctu_origin_x: usize, ctu_origin_y: usize) {
+        self.ctu_origin_x = ctu_origin_x;
+        self.ctu_origin_y = ctu_origin_y;
+        self.ibc_mode_by_cu.fill(false);
+        self.bv_by_cu.fill(VvcIbcBv { x: 0, y: 0 });
+        self.hmvp.clear();
+    }
+
     pub(super) fn decide_8x8<F: VvcIbcFrameView>(
         &self,
         frame: &F,

@@ -67,7 +67,7 @@ use header::{
     vvc_slice_rbsp, vvc_slice_type_for_ctus, vvc_sps_payload, vvc_sps_rbsp,
     write_vvc_coding_tree_entropy, VvcFrameSkipPayloadCache, VvcPictureKind, VvcSliceType,
 };
-use ibc::VvcIbcCuDecision;
+use ibc::{VvcIbcCuDecision, VvcIbcHashSearch};
 pub use nal::{
     nal_unit_header_bytes, parse_annex_b_nal_units, write_annex_b, write_annex_b_to,
     write_nal_unit_header, VvcNalHeader, VvcNalInfo, VvcNalUnit, VvcNalUnitType,

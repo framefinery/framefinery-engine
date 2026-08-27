@@ -202,6 +202,18 @@ impl VvcSliceSyntaxConfig {
         config
     }
 
+    pub(super) const fn with_scc_444_tools(mut self) -> Self {
+        match self.coding_tree.chroma_sampling {
+            ChromaSampling::Cs444 => {
+                self.coding_tree.dual_tree_intra = false;
+                self.tools.ibc_enabled = true;
+                self.tools.palette_enabled = true;
+            }
+            ChromaSampling::Monochrome | ChromaSampling::Cs420 | ChromaSampling::Cs422 => {}
+        }
+        self
+    }
+
     const fn without_lossless_speed_unused_tools(mut self) -> Self {
         self.tools.mrl_enabled = false;
         self.tools.cclm_enabled = false;

@@ -117,6 +117,18 @@ the next largest codec buckets. This directs the next experiment toward the
 shared chroma candidate path, with byte/PSNR/FPS scoring and required VTM
 validation, rather than speculative transform or syntax changes.
 
+The VVC cross-CTU IBC integration checkpoint (2026-08-27) connected the
+reference-availability-aware hash search to the existing shared quantizer for
+planar 4:4:4 lossless `fast-search=lossless-speed` frames. The configuration
+gate is resolved once after profile validation; RGB, subsampled, lossy, and
+predictive inputs retain their existing coding path. Search state is reset per
+CTU while reconstructed 8x8 entries are retained only within the current
+frame. The smoke and seven-vector regression sets passed required VTM
+reconstruction checks (3/3 and 7/7), including the 64x64 multi-CTU cases. The
+regression-set byte counts were unchanged from the retro comparison, so a
+larger screen-content profile is still required before claiming a compression
+gain.
+
 ## Current blockers and next experiments
 
 - AV2 lossless 1920-wide regular inter is still gated because mixed multi-column
@@ -139,10 +151,11 @@ validation, rather than speculative transform or syntax changes.
 
 The first implementation audit for this goal (2026-08-26) found a more urgent
 VVC screen-content gap than a micro-optimization: the production encoder
-collects SCC opportunity counters, but the production quantizer still fills
-every `luma_tu_scc_decisions` entry with `RegularIntra`. The IBC/palette CU
-emitter is currently a test/scaffold path rather than a production candidate
-inside the shared CTU traversal. This is now a tracked integration item. Any
+collected SCC opportunity counters, but the production quantizer filled every
+`luma_tu_scc_decisions` entry with `RegularIntra`. The cross-CTU IBC path now
+removes that gap for its narrowly gated planar 4:4:4 lossless mode; palette
+selection and broader screen-content mode decisions remain tracked integration
+items inside the shared CTU traversal. Any
 fix must carry the decision through the existing quantize/reconstruct/CABAC
 path at block level, preserve the profile gates, and pass required VTM decode
 validation before its rate benefit is accepted.
