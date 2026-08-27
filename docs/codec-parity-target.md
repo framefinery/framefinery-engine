@@ -170,6 +170,12 @@ probe were reverted; the copy helper and its availability/overlap regression
 test remain as a reusable contract. The next SCC change must first make the
 single-tree 8x8 lossless residual path source-exact across the supported
 formats before enabling candidate selection or changing the default SPS tree.
+An isolated scalar transform-skip probe subsequently reconstructed all 64
+samples of a constant 8x8 residual exactly at the lossless QP. This narrows
+the defect to the shared mode-decision/residual-input or tree integration
+around that kernel, rather than the transform-skip dequantization primitive;
+the next test should capture those intermediate vectors before changing the
+kernel itself.
 
 ## Optimization probe log
 
