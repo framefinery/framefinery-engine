@@ -1864,7 +1864,26 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                 (true, Av2ChromaIntraMode::Horizontal, 64usize),
                 (true, Av2ChromaIntraMode::Vertical, 64usize),
             ];
-
+            let mut chroma_scores = [0usize; 15];
+            for (index, &(chroma_use_bdpcm, chroma_intra_mode, _)) in
+                chroma_candidates.iter().enumerate()
+            {
+                if chroma_use_bdpcm && !chroma_bdpcm_allowed {
+                    continue;
+                }
+                chroma_scores[index] = self.chroma_leaf_coefficient_score(
+                    chroma_span,
+                    Av2LosslessSubsampledModeDecision {
+                        luma_intra_mode: Av2LumaIntraMode::Dc,
+                        luma_bdpcm_horz: None,
+                        chroma_use_bdpcm,
+                        chroma_intra_mode,
+                        use_luma_palette: false,
+                        use_fsc,
+                    },
+                    coded_mi_context,
+                );
+            }
             for (luma_intra_mode, luma_bdpcm_horz, luma_syntax_penalty) in luma_candidates {
                 let luma_score = self.luma_leaf_coefficient_score(
                     decision,
@@ -1875,8 +1894,8 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                     use_fsc,
                     coded_mi_context,
                 );
-                for (chroma_use_bdpcm, chroma_intra_mode, chroma_syntax_penalty) in
-                    chroma_candidates
+                for (index, &(chroma_use_bdpcm, chroma_intra_mode, chroma_syntax_penalty)) in
+                    chroma_candidates.iter().enumerate()
                 {
                     if chroma_use_bdpcm && !chroma_bdpcm_allowed {
                         continue;
@@ -1890,8 +1909,7 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                         use_fsc,
                     };
                     let fsc_syntax_penalty = usize::from(use_fsc) * 96;
-                    let score =
-                        luma_score + self.chroma_leaf_coefficient_score(chroma_span, mode, coded_mi_context)
+                    let score = luma_score + chroma_scores[index]
                             + luma_syntax_penalty
                             + chroma_syntax_penalty
                             + fsc_syntax_penalty;
@@ -1923,8 +1941,8 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                         use_fsc,
                         coded_mi_context,
                     );
-                    for (chroma_use_bdpcm, chroma_intra_mode, chroma_syntax_penalty) in
-                        chroma_candidates
+                    for (index, &(chroma_use_bdpcm, chroma_intra_mode, chroma_syntax_penalty)) in
+                        chroma_candidates.iter().enumerate()
                     {
                         if chroma_use_bdpcm && !chroma_bdpcm_allowed {
                             continue;
@@ -1943,11 +1961,8 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                         };
                         let fsc_syntax_penalty = usize::from(use_fsc) * 96;
                         let score = luma_score
-                            + self.chroma_leaf_coefficient_score(
-                                chroma_span,
-                                mode,
-                                coded_mi_context,
-                            ) + luma_syntax_penalty
+                            + chroma_scores[index]
+                            + luma_syntax_penalty
                             + chroma_syntax_penalty
                             + fsc_syntax_penalty;
                         if score < best.1 {

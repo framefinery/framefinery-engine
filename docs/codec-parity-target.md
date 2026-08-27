@@ -1043,6 +1043,17 @@ The AV2 unit suite passed 103/103. Required AVM regression and high-depth
 validation, Clippy, formatting, and the full workspace checks remain the
 release gate for this change.
 
+The follow-up AV2 lossless chroma-score reuse (2026-08-27) applied the same
+invariant analysis to the chroma candidate loop: for each FSC setting, each
+chroma score is independent of the luma candidate and is now computed once.
+An exact same-build A/B on the 64x64 4:4:4 lossless frame measured 2.79 s for
+the previous path and 0.09--0.10 s for two optimized runs, with identical
+bitstream SHA-256 values. Required AV2 regression validation passed 7/7 and
+high-depth validation passed 3/3; the AV2 suite passed 103/103 and Clippy and
+formatting remained clean. The code keeps the original candidate order and
+uses neutral luma fields only for the independent chroma score, so the
+lossless/lossy implementation remains unified.
+
 The VVC component-wise chroma RD-bound probe (2026-08-27) followed the
 reference encoder's safe ordering: after scoring Cb, it treated Cb distortion,
 Cb rate, and chroma-mode syntax cost as a lower bound before scoring Cr. The
