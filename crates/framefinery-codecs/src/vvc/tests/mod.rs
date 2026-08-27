@@ -1974,6 +1974,7 @@ fn vvc_ctu_body_emits_exact_ibc_leaf_from_partition_decision() {
 
     let config = VvcSliceSyntaxConfig::palette_444();
     let mut contexts = initial_vvc_cabac_contexts(config);
+    let initial_root_cbf = contexts.qt_root_cbf.state();
     let mut cabac = VvcCabacEncoder::new_with_dump();
     cabac.start();
     encode_ctu_partition_body_with_contexts(&mut cabac, &mut contexts, &params, config);
@@ -2009,12 +2010,10 @@ fn vvc_ctu_body_emits_exact_ibc_leaf_from_partition_decision() {
         )),
         "hash-search IBC decisions use explicit BVD instead of merge"
     );
-    assert!(
-        context_bins.contains(&(
-            VvcCabacContext::CuCodedFlag(0).rtl_context_id().unwrap(),
-            false
-        )),
-        "exact IBC leaves must suppress residual transform_tree syntax"
+    assert_ne!(
+        contexts.qt_root_cbf.state(),
+        initial_root_cbf,
+        "exact IBC leaves must signal root_cbf=0 before suppressing transform_tree syntax"
     );
     assert!(
         !context_bins.iter().any(

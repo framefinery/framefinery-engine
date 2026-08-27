@@ -131,10 +131,12 @@ gain.
 
 The follow-up VTM compliance probe found that enabling the production IBC
 candidate path emitted a BV that VTM rejected as invalid, even after limiting
-references to the immediately preceding CTU and matching 8x8 rows. Production
-SCC emission is therefore disabled pending a bit-level audit of the IBC
-BVD/CABAC contract; the search and quantizer plumbing remain available for
-unit tests and are not counted as a compression improvement.
+references to the immediately preceding CTU and matching 8x8 rows. A later
+bit-level audit corrected one defect in the exact no-residual IBC syntax to
+signal `rqt_root_cbf=0` (rather than the intra-only `cu_coded_flag`), but the
+complete production IBC path still fails required reference validation. SCC
+emission therefore remains disabled; the search and quantizer plumbing remain
+covered by focused tests and are not counted as a compression improvement.
 
 The follow-up probe also retained previously selected cross-CTU BVP state in
 the shared search object, matching VTM's spatial predictor lifetime. That
@@ -146,11 +148,12 @@ predictor state, so the production gate remains off.
 The 2026-08-27 production-IBC recheck reproduced that blocker on the committed
 `blocks_444` regression vector: ordinary VVC coding passed 3/3 required
 reference checks, while enabling `VVC_SCC_IBC_PRODUCTION_ENABLED` caused the
-first affected chroma block to differ. The focused Rust VVC suite still passed
-262/262 tests with the production gate disabled. The experiment was rejected
-and the gate restored to `false`; the next SCC change must compare the complete
-IBC prediction-unit syntax and decoder-side block-vector reconstruction before
-it can be treated as an optimization.
+first affected chroma block to differ. Replacing the incorrect intra residual
+terminator with the inter-coded IBC `rqt_root_cbf=0` contract was necessary but
+not sufficient; the complete regression set still fails with SCC enabled. The
+focused Rust VVC suite passes 262/262 with the gate disabled. Future SCC work
+must retain the required reference check and compare the complete IBC
+prediction-unit syntax and decoder-side block-vector reconstruction.
 
 ## Current blockers and next experiments
 

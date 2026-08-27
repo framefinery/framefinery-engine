@@ -7752,7 +7752,7 @@ regular intra residual CUs:
 - `pred_mode_ibc_flag=1`;
 - `general_merge_flag=0`;
 - explicit BVD/MVD syntax;
-- `cu_coded_flag=0`, so no transform tree follows.
+- `rqt_root_cbf=0`, so no transform tree follows for the inter-coded IBC CU.
 
 The existing palette scaffold now shares the same CABAC EP Exp-Golomb helper,
 so future IBC integration can reuse syntax primitives instead of growing a
@@ -7779,17 +7779,14 @@ TMPDIR=verification/generated/agent_scratch/tmp make validate-set CODEC=vvc \
 
 ### VVC Single-Tree 4:4:4 IBC Enablement Probe
 
-Rejected/blocked probe: enabling IBC for 4:4:4 `lossless-speed` by switching
-production residual slices to single-tree 4:4:4 is not safe yet. A direct
-quantizer fixture with 8x8 leaves selected the intended exact IBC decision for
-the repeated block, but regular single-tree 4:4:4 reconstruction did not remain
-lossless-exact; the first mismatch was in Cb at sample 4100, where the decoded
-value stayed neutral `128` instead of source `69`.
-
-The apparent cause is that the current regular single-tree chroma residual path
-still covers only the 4x4 chroma subset under an 8x8 luma leaf. Do not enable
-production 4:4:4 SCC tools until single-tree 4:4:4 chroma residual coverage is
-fixed or luma/chroma reconstruction is interleaved through a shared leaf helper.
+The 2026-08-27 IBC enablement probe initially failed because the exact no-
+residual IBC leaf emitted the intra-only `cu_coded_flag=0` terminator. VTM's
+IBC CU follows the inter-coded residual flow and requires `rqt_root_cbf=0`.
+The shared CABAC path now emits that syntax and has focused unit coverage, but
+the complete production IBC path still fails the required VTM regression set.
+Production 4:4:4 lossless-speed SCC therefore remains disabled. Lossy,
+subsampled, and unsupported profile paths continue through the ordinary
+unified coding path until the remaining IBC prediction-unit mismatch is fixed.
 
 ### Advanced Motion Search And Mode-Selection Refresh
 

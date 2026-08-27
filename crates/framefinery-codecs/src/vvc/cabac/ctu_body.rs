@@ -1415,10 +1415,10 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             true,
         );
         self.emit_luma_exact_ibc_prediction(cabac, decision);
-        // H.266 7.3.11.4/7.4.12.4: cu_coded_flag=0 means the exact-match IBC
-        // CU has no transform_tree(); reconstruction is fully predicted.
-        self.contexts
-            .encode(cabac, VvcCabacContext::CuCodedFlag(0), false);
+        // IBC is an inter-coded CU in VTM's coding_unit() flow.  With no
+        // residual it therefore signals rqt_root_cbf=0 and returns before the
+        // transform tree; cu_coded_flag belongs to the intra residual path.
+        self.contexts.encode_qt_root_cbf(cabac, false);
         self.luma_tu_index += 1;
         if self.params.chroma_sampling != ChromaSampling::Monochrome {
             assert!(
