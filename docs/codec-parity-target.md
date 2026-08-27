@@ -1209,3 +1209,14 @@ baseline's 982.986, while lossy measured 550.933 and 500.929 versus 530.404.
 The source change was reverted: the mixed result does not justify a lossless
 regression, and the observed allocation behavior needs a more targeted
 allocator/profile measurement before revisiting it.
+
+The VVC full-interior residual-score probe (2026-08-27) added a branch-free
+row loop for blocks wholly inside the visible frame, leaving the existing
+padding loop for edge blocks. It preserved the seven-vector matrix at 788,164
+lossless bytes, 168,608 lossy bytes, and 51.624 dB mean lossy PSNR, but the
+two candidate runs measured 937.909 and 953.250 lossless FPS versus the
+982.986 baseline; lossy was effectively neutral at 532.887 and 531.070 FPS
+versus 530.404. The source change was reverted because the lossless regression
+was repeatable enough to reject the extra path. A future scoring optimization
+should first use compiler/profile evidence to avoid adding a second loop for a
+branch cost that is not visible in the end-to-end result.
