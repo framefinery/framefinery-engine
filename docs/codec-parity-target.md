@@ -1157,6 +1157,23 @@ common-subexpression-eliminate this lookup, so the code was reverted. A future
 attempt needs a longer candidate-rich workload or compiler IR evidence before
 adding the extra parameter plumbing.
 
+The AV2 lossless separable mode-score probe (2026-08-27) audited the shared
+subsampled mode selector. Its luma and chroma proxy terms are additive, with
+no cross-term, so the old 15-by-15 luma/chroma Cartesian product was replaced
+by independently selected minima (30 score comparisons per FSC setting). A
+focused exhaustive-order test covers allowed/disallowed chroma BDPCM and
+equal-cost tie handling. On the 50-frame seven-vector profile, output stayed
+bit-identical at 108,157 lossless bytes and 89,826 lossy bytes; lossy PSNR
+remained 56.016 dB. Aggregate lossless FPS moved from 28.408 to 28.831 and
+lossy FPS from 1,424.579 to 1,415.522, so this is retained as a modest
+lossless speed/complexity improvement rather than a broad throughput claim.
+Required AVM validation passed 7/7 for both lossless and lossy settings, and
+the AV2-focused suite, feature matrix, Clippy, formatting, and strict API
+documentation passed. `make dead-code-audit` still fails on the repository's
+pre-existing all-feature inventory, and `make dependency-audit` still cannot
+run because `cargo-audit` is not installed; neither failure is caused by this
+change.
+
 The VVC paired chroma-residual materialization probe (2026-08-27) replaced two
 independent Cb/Cr scans in the shared chroma mode-search path with the existing
 paired helper. The helper preserves the same geometry-derived coordinates,

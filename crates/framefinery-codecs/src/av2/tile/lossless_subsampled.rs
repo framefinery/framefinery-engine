@@ -1883,6 +1883,17 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                     )
                 },
             );
+            // The luma and chroma terms are independent in this heuristic:
+            // the combined score contains no luma/chroma cross-term. Select
+            // the best chroma term once instead of evaluating the full
+            // Cartesian product for every luma candidate. Keep the first
+            // equal-cost entry so the former iteration-order tie break is
+            // unchanged.
+            let best_chroma = best_lossless_chroma_candidate_index(
+                &chroma_candidates,
+                &chroma_scores,
+                chroma_bdpcm_allowed,
+            );
             for (luma_intra_mode, luma_bdpcm_horz, luma_syntax_penalty) in luma_candidates {
                 let luma_score = self.luma_leaf_coefficient_score(
                     decision,
@@ -1893,12 +1904,9 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                     use_fsc,
                     coded_mi_context,
                 );
-                for (index, &(chroma_use_bdpcm, chroma_intra_mode, chroma_syntax_penalty)) in
-                    chroma_candidates.iter().enumerate()
-                {
-                    if chroma_use_bdpcm && !chroma_bdpcm_allowed {
-                        continue;
-                    }
+                if let Some(index) = best_chroma {
+                    let (chroma_use_bdpcm, chroma_intra_mode, chroma_syntax_penalty) =
+                        chroma_candidates[index];
                     let mode = Av2LosslessSubsampledModeDecision {
                         luma_intra_mode,
                         luma_bdpcm_horz,
@@ -1917,6 +1925,12 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                     }
                 }
             }
+
+            let best_non_bdpcm_chroma = best_lossless_chroma_candidate_index(
+                &chroma_candidates,
+                &chroma_scores,
+                false,
+            );
 
             for base in [
                 Av2LumaDirectionalMode::Directional45,
@@ -1940,20 +1954,12 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                         use_fsc,
                         coded_mi_context,
                     );
-                    for (index, &(chroma_use_bdpcm, chroma_intra_mode, chroma_syntax_penalty)) in
-                        chroma_candidates.iter().enumerate()
-                    {
-                        if chroma_use_bdpcm && !chroma_bdpcm_allowed {
-                            continue;
-                        }
-                        // See the chroma_bdpcm_allowed comment above.
-                        if chroma_use_bdpcm {
-                            continue;
-                        }
+                    if let Some(index) = best_non_bdpcm_chroma {
+                        let (_, chroma_intra_mode, chroma_syntax_penalty) = chroma_candidates[index];
                         let mode = Av2LosslessSubsampledModeDecision {
                             luma_intra_mode,
                             luma_bdpcm_horz: None,
-                            chroma_use_bdpcm,
+                            chroma_use_bdpcm: false,
                             chroma_intra_mode,
                             use_luma_palette: false,
                             use_fsc,
@@ -2398,6 +2404,20 @@ const AV2_FAST_LUMA_PALETTE_MIN_COMPETING_SCORE: usize = 1536;
 const AV2_FAST_LUMA_PALETTE_MAX_LEAF_SIZE: usize = AV2_LUMA_PALETTE_BLOCK_SIZE;
 const AV2_FAST_LUMA_PALETTE_SAMPLE_GRID: usize = 2;
 const AV2_FAST_LUMA_PALETTE_QUICK_UNIQUE_LIMIT: usize = 8;
+
+pub(crate) fn best_lossless_chroma_candidate_index(
+    candidates: &[(bool, Av2ChromaIntraMode, usize)],
+    scores: &[usize],
+    allow_bdpcm: bool,
+) -> Option<usize> {
+    debug_assert_eq!(candidates.len(), scores.len());
+    candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, &(use_bdpcm, _, _))| allow_bdpcm || !use_bdpcm)
+        .min_by_key(|(index, (_, _, syntax_penalty))| scores[*index] + syntax_penalty)
+        .map(|(index, _)| index)
+}
 
 fn fast_leaf_sample_step(txb_count: usize, sample_grid: usize) -> usize {
     if txb_count <= 2 {

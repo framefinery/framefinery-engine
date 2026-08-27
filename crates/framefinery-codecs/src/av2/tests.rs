@@ -2,6 +2,40 @@ use super::syntax::Av2SyntaxCode;
 use super::*;
 
 #[test]
+fn av2_lossless_chroma_candidate_minimum_preserves_exhaustive_order() {
+    let candidates = [
+        (false, super::palette::Av2ChromaIntraMode::Horizontal, 0),
+        (false, super::palette::Av2ChromaIntraMode::Vertical, 192),
+        (true, super::palette::Av2ChromaIntraMode::Horizontal, 64),
+    ];
+    for scores in [[8, 2, 0], [8, 2, 128], [1, 1, 1], [40, 0, 20]] {
+        for allow_bdpcm in [false, true] {
+            let mut expected = None;
+            let mut expected_key = usize::MAX;
+            for (index, &(use_bdpcm, _, syntax_penalty)) in candidates.iter().enumerate() {
+                if use_bdpcm && !allow_bdpcm {
+                    continue;
+                }
+                let key = scores[index] + syntax_penalty;
+                if key < expected_key {
+                    expected = Some(index);
+                    expected_key = key;
+                }
+            }
+            assert_eq!(
+                super::tile::best_lossless_chroma_candidate_index(
+                    &candidates,
+                    &scores,
+                    allow_bdpcm,
+                ),
+                expected,
+                "separable chroma minimum must match exhaustive candidate order"
+            );
+        }
+    }
+}
+
+#[test]
 fn av2_accepts_basic_yuv_request_shape() {
     let request = Av2EncodeRequest {
         params: Av2EncodeParams { frames: 1 },
