@@ -598,3 +598,12 @@ candidate families remained active where applicable; no candidate was
 removed. This is the baseline for a controlled chroma candidate-order or
 RD-bound experiment, with the complete candidate path retained until quality
 and reference evidence justify a change.
+
+The VVC one-winner chroma RD probe (2026-08-26) reduced lossy
+`fast-search=lossless-speed` refinement from two cached winners to one. On the
+same 20-frame local probe it improved aggregate FPS from 6.469 to 6.768
+(4.6%), but increased bytes from 1,104,492 to 1,129,862 (2.3%) and reduced
+mean PSNR from 57.590 to 57.395 dB. Required-reference validation passed for
+the lossy smoke and unusual-geometry sets (3/3 and 7/7), but the measured
+quality/size loss outweighs the modest speed gain. The policy was reverted;
+the two-winner bound remains the maintainable fast-search default.
