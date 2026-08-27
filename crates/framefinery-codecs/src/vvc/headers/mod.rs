@@ -4,7 +4,7 @@ use crate::picture::{ChromaSampling, SampleBitDepth};
 use super::vvc_cabac_bits_with_luma_max_leaf_size;
 use super::{
     vvc_ctu_cabac_payload, vvc_frame_cabac_payload, vvc_frame_inter_skip_cabac_payload,
-    VvcCabacPayload, VvcCodingTreeConfig, VvcNalUnit, VvcNalUnitType, VvcProfile, VvcQuantizedCtu,
+    VvcCabacPayload, VvcNalUnit, VvcNalUnitType, VvcProfile, VvcQuantizedCtu,
     VvcQuantizedCtuPayload, VvcSliceSyntaxConfig, VvcSyntaxRbsp, VvcSyntaxWriter, VvcVideoGeometry,
     VvcVuiSignal, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
 };

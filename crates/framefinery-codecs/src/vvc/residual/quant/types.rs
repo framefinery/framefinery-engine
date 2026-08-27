@@ -7,7 +7,7 @@ use super::super::{
     vvc_chroma_explicit_candidate_index, vvc_chroma_explicit_candidates,
     vvc_chroma_intra_mode_syntax_bin_count, vvc_chroma_transform_nodes_into,
     vvc_downshift_sample_to_u8, vvc_luma_intra_mode_from_index, vvc_luma_intra_mode_is_mpm,
-    vvc_luma_intra_mode_syntax_bin_count, vvc_luma_transform_nodes_into, vvc_neutral_sample,
+    vvc_luma_intra_mode_syntax_bin_count, vvc_neutral_sample,
     vvc_residual_chroma_explicit_candidate_allowed, VvcBdpcmMode, VvcChromaCclmMode,
     VvcChromaIntraCandidateCost, VvcChromaIntraCandidateCosts, VvcChromaIntraPredictionMode,
     VvcChromaTuCodingDecision, VvcCodingTreeNode, VvcCtuPartitionShape, VvcCtuRegion,
