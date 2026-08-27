@@ -1065,3 +1065,15 @@ repeatable FPS improvement; results moved in both directions with run order.
 The source probe was therefore reverted. A future attempt should add an
 explicit prune counter and use a larger candidate-rich workload before being
 considered again.
+
+The VVC residual-statistics consolidation probe (2026-08-27) combined zero
+detection, DC sum/SSE accumulation, and AC-presence detection into one shared
+scan before chroma quantization. It preserved the standalone DC API and the
+unified lossy transform path, and both 50-frame regression runs produced
+identical bytes and PSNR. The candidate measured 1,359.66, 527.27, and 332.07
+FPS on representative gradient-420, gradient-444, and two-frame 444 rows,
+versus 1,455.71, 615.90, and 326.64 FPS for the baseline; the mixed result
+was not a repeatable end-to-end gain. The source change was reverted. This
+probe also exposed the need to add a focused statistics-equivalence test
+before revisiting the idea, so the next attempt should prove the helper in
+isolation and use repeated candidate-rich workloads.
