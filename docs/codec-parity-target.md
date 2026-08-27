@@ -99,6 +99,15 @@ therefore focus on the shared lossy tile mode/transform evaluation, with the
 current lossless palette and IBC paths left intact until a representative gain
 is demonstrated.
 
+The VVC luma RD shortlist probe (2026-08-26) increased the `lossless-speed`
+4:2:0 luma shortlist from two to three candidates. On the four-vector,
+20-frame lossy probe it produced identical bytes and PSNR for every vector,
+while measured FPS decreased from 8.14/10.27/5.74/4.80 to
+8.02/10.11/5.50/4.70. The additional candidate therefore showed no coding
+benefit and a speed cost; the source change was reverted. The 4:4:4 one-winner
+screen-content policy was not changed. This rejected probe preserves the
+accountability record without adding an unproven policy branch.
+
 The AV2 DC-only residual probe (2026-08-26) added an exact early return after
 regular DCT quantization when every AC level is zero. It retained the same
 regular-DCT candidate and strict tie behavior, so the six-vector lossy run kept
