@@ -1430,7 +1430,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             node,
             raw_luma_mode,
             luma_candidate_costs,
-            &luma_rd_cache,
+            &mut luma_rd_cache,
             &mut intra_search_stats,
             left_luma_mode,
             above_luma_mode,

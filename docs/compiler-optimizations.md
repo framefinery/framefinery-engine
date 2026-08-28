@@ -8848,3 +8848,13 @@ run kept it at 1,158,621 bytes while measuring 4.32 s for the probe versus
 for both lossless and lossy settings, and the repository performance-Clippy
 gate passed. The gain is modest and should be rechecked on the six-vector
 release workload before being treated as a broader parity milestone.
+
+The VVC luma RD-cache ownership probe (2026-08-27) transferred the selected
+cached luma residual into the shared selected-residual buffer instead of
+copying it. Cache scope, shortlist ordering, scoring, syntax, and reconstruction
+remain unchanged. A matched 30-frame 2560x1440 GBR A/B produced identical
+2,098,226-byte output; timing was effectively neutral at 17.43 s versus 17.36 s
+for the parent revision. Required VTM validation passed 7/7 for both lossless
+and lossy settings, the VVC library suite passed, and `make clippy-perf` passed.
+This is retained as a small allocation/copy cleanup, not as a measured parity
+or throughput milestone.

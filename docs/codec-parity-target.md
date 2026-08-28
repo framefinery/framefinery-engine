@@ -1329,3 +1329,11 @@ depths. A 50-frame 2560x1440 GBR A/B produced identical 1,158,621-byte output;
 the probe took 4.32 s versus 4.42 s for the parent revision. Required AV2
 reference validation passed 7/7 for lossless and lossy regression settings.
 This is a small measured speed improvement, not yet a claim of general parity.
+
+The VVC luma RD-cache ownership probe (2026-08-27) transferred selected cached
+luma residuals into the shared output buffer instead of copying them. It
+preserved shortlist order, RD decisions, syntax, reconstruction, and reference
+compatibility. A matched 30-frame 2560x1440 GBR A/B produced identical
+2,098,226-byte output and effectively neutral timing: 17.43 s for the probe
+versus 17.36 s for the parent revision. It is retained as a low-risk hot-path
+copy cleanup only; it is not counted as a broad parity gain.

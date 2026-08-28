@@ -76,6 +76,14 @@ impl VvcLumaModeRdCache {
             .find(|candidate| candidate.mode.luma_mode_index() == mode.luma_mode_index())
     }
 
+    fn take_residuals(&mut self, mode: VvcIntraPredictionMode, residuals: &mut Vec<i16>) {
+        let candidate = self.candidates[..self.count]
+            .iter_mut()
+            .find(|candidate| candidate.mode.luma_mode_index() == mode.luma_mode_index())
+            .expect("selected luma mode must be cached");
+        std::mem::swap(&mut candidate.residuals, residuals);
+    }
+
 }
 
 struct VvcCachedLumaModeRdCandidate {
