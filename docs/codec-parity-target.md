@@ -1366,6 +1366,14 @@ state/reconstruction decision. The source comparison was removed and the
 8-bit gate was restored; a future attempt must account for the full frame
 state at the shared mode-selection boundary before enabling high-depth motion.
 
+The reconstructed-reference follow-up (2026-08-27) corrected the motion-map
+input to the previous decoded reconstruction and repeated the same shared
+payload comparison. It still grew the lossy six-vector total to 82,702,700
+bytes, with high-depth rows at 18,829,534/24,805,153/31,950,284 bytes
+(4:2:0/4:2:2/4:4:4). This probe was also removed. The encoder must model the
+complete predictive state and distortion, not just select the locally shorter
+tile payload.
+
 The VVC luma RD-cache ownership probe (2026-08-27) transferred selected cached
 luma residuals into the shared output buffer instead of copying them. It
 preserved shortlist order, RD decisions, syntax, reconstruction, and reference

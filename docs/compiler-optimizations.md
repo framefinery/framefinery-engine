@@ -8893,3 +8893,10 @@ Local tile payload length is not a sufficient model of the complete predictive
 state/reconstruction decision, so the probe was removed and the 8-bit gate was
 restored. Future work needs a full-frame-state rate/distortion comparison at
 the shared mode-selection boundary.
+
+The reconstructed-reference follow-up (2026-08-27) corrected the motion-map
+input to the previous decoded reconstruction and repeated the same shared
+payload comparison. It still grew the lossy six-vector total to 82,702,700
+bytes, with high-depth rows at 18,829,534/24,805,153/31,950,284 bytes for
+4:2:0/4:2:2/4:4:4. This probe was also removed; complete predictive state and
+distortion must be modeled before selecting a shorter local tile payload.
