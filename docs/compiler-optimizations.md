@@ -8917,3 +8917,12 @@ payload comparison. It still grew the lossy six-vector total to 82,702,700
 bytes, with high-depth rows at 18,829,534/24,805,153/31,950,284 bytes for
 4:2:0/4:2:2/4:4:4. This probe was also removed; complete predictive state and
 distortion must be modeled before selecting a shorter local tile payload.
+
+The AV2 lossy adaptive-partition probe (2026-08-27) replaced the lossy
+subsampled tile plan's fixed 8x8 policy with `AdaptiveScreenContent`, even
+though adaptive feature extraction was already present. The smaller generated
+payloads were misleading: 4:4:4 lossy PSNR fell to roughly 7 dB, and required
+AVM validation rejected the first 4:2:0 black-frame tile as undecodable. The
+change was reverted. Adaptive leaves must not be enabled until partition-
+specific residual reconstruction and entropy-context state are carried
+through the existing shared coding path.

@@ -1399,6 +1399,17 @@ not faster: lossless candidate/parent FPS was 6.12/6.21, 4.93/4.96, and
 was reverted because the result was mixed and within timing noise; future
 allocator work needs allocation counters or longer repeated profiles.
 
+The AV2 lossy adaptive-partition probe (2026-08-27) changed the shared lossy
+subsampled tile plan from `Fixed8x8Leaves` to the already-implemented
+`AdaptiveScreenContent` policy. Although the resulting regression payloads were
+smaller, the change was not a valid optimization: generated 4:4:4 lossy PSNR
+collapsed to about 7 dB, and required AVM validation failed immediately on the
+first 4:2:0 black-frame tile with a tile-data decode error. The source change
+was reverted. The probe confirms that the lossy fixed-tree choice is coupled to
+the current residual/context contract; a future larger-leaf implementation
+must carry partition-specific reconstruction and entropy state through the
+same shared path before it can be enabled.
+
 The VVC aligned-BDPCM admission probe (2026-08-27) evaluated only the BDPCM
 direction matching an already-selected horizontal or vertical regular intra
 mode, while retaining both directions for other admitted blocks. Required VTM
