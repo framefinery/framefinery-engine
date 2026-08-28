@@ -8894,6 +8894,15 @@ state/reconstruction decision, so the probe was removed and the 8-bit gate was
 restored. Future work needs a full-frame-state rate/distortion comparison at
 the shared mode-selection boundary.
 
+The VVC cross-frame CTU scratch-reuse probe (2026-08-27) moved the shared
+quantization scratch object outside the frame loop so its cleared buffers and
+mode caches could be reused across frames. Bytes and PSNR stayed identical,
+but matched three-row 10-frame runs were slower in every case: lossless
+candidate/parent FPS was 5.54/6.21, 4.74/4.96, and 5.47/6.10; lossy was
+3.80/4.11, 2.71/3.41, and 3.02/3.48. The source change was reverted; the
+existing per-frame lifetime remains until allocator or profile evidence
+identifies a real benefit.
+
 The reconstructed-reference follow-up (2026-08-27) corrected the motion-map
 input to the previous decoded reconstruction and repeated the same shared
 payload comparison. It still grew the lossy six-vector total to 82,702,700
