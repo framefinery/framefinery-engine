@@ -659,6 +659,22 @@ fn av2_idct8x8(input: &[i32; TX8X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32;
     inv_dct8_pass(&tmp, 11, TX8X8_SIZE, col_rng_min, col_rng_max)
 }
 
+// The 8x8 DC-only inverse has the same separable structure as the full
+// inverse, but only the first horizontal and vertical outputs can be nonzero.
+fn av2_idct8x8_dc_only(input: &[i32; TX8X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32; TX8X8_SAMPLES] {
+    debug_assert!(input[1..].iter().all(|&coefficient| coefficient == 0));
+    let intermediate_bitdepth = i32::from(bit_depth.bits()) + 8;
+    let rng_min = -(1 << (intermediate_bitdepth - 1));
+    let rng_max = (1 << (intermediate_bitdepth - 1)) - 1;
+    let col_rng_min = -(1 << bit_depth.bits());
+    let col_rng_max = (1 << bit_depth.bits()) - 1;
+    let first_stage = ((AV2_DCT8_KERNEL[0][0] * input[0] + (1 << 6)) >> 7)
+        .clamp(rng_min, rng_max);
+    let sample = ((AV2_DCT8_KERNEL[0][0] * first_stage + (1 << 10)) >> 11)
+        .clamp(col_rng_min, col_rng_max);
+    [sample; TX8X8_SAMPLES]
+}
+
 fn av2_idct4x8(input: &[i32; TX4X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32; TX4X8_SAMPLES] {
     let intermediate_bitdepth = i32::from(bit_depth.bits()) + 8;
     let rng_min = -(1 << (intermediate_bitdepth - 1));
@@ -3101,6 +3117,25 @@ mod dc_only_tests {
                     av2_idct4x4_dc_only(&coefficients, bit_depth),
                     av2_idct4x4(&coefficients, bit_depth),
                     "DC-only inverse mismatch for {bit_depth:?}, dc={dc}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn dc_only_inverse_8x8_matches_full_inverse() {
+        for bit_depth in [
+            SampleBitDepth::new(8).unwrap(),
+            SampleBitDepth::new(10).unwrap(),
+            SampleBitDepth::new(12).unwrap(),
+        ] {
+            for dc in [-32768, -1024, -1, 0, 1, 1024, 32767] {
+                let mut coefficients = [0; TX8X8_SAMPLES];
+                coefficients[0] = dc;
+                assert_eq!(
+                    av2_idct8x8_dc_only(&coefficients, bit_depth),
+                    av2_idct8x8(&coefficients, bit_depth),
+                    "8x8 DC-only inverse mismatch for {bit_depth:?}, dc={dc}"
                 );
             }
         }

@@ -8858,3 +8858,12 @@ for the parent revision. Required VTM validation passed 7/7 for both lossless
 and lossy settings, the VVC library suite passed, and `make clippy-perf` passed.
 This is retained as a small allocation/copy cleanup, not as a measured parity
 or throughput milestone.
+
+The AV2 regular-DCT 8x8 DC-only inverse probe (2026-08-27) applied the same
+exact two-stage rounded/clipped specialization to the shared 8x8 residual
+candidate path. Equivalence tests covered signed DC values at 8, 10, and 12
+bits. The 4:4:4 two-frame block vector remained 953 bytes, and a repeated
+10-frame Wayland A/B preserved 510,935 bytes while measuring 0.99--1.01 s for
+the probe versus 0.99--1.05 s for the parent revision (about 2--3% average
+improvement). Required AV2 reference validation passed 7/7 for both lossless
+and lossy settings, and `make clippy-perf` passed.

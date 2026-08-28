@@ -1330,6 +1330,15 @@ the probe took 4.32 s versus 4.42 s for the parent revision. Required AV2
 reference validation passed 7/7 for lossless and lossy regression settings.
 This is a small measured speed improvement, not yet a claim of general parity.
 
+The AV2 regular-DCT 8x8 DC-only inverse probe (2026-08-27) specialized the
+shared 8x8 residual candidate reconstruction when all AC coefficients are
+zero. It preserved exact rounded/clipped behavior through a focused 8-, 10-,
+and 12-bit test. A repeated 10-frame Wayland A/B kept output at 510,935 bytes;
+the probe measured 0.99--1.01 s versus 0.99--1.05 s for the parent revision.
+The 4:4:4 two-frame vector also remained 953 bytes. Required AV2 reference
+validation passed 7/7 for lossless and lossy regression settings. This is a
+modest workload-specific speed gain, not a broad parity milestone.
+
 The VVC luma RD-cache ownership probe (2026-08-27) transferred selected cached
 luma residuals into the shared output buffer instead of copying them. It
 preserved shortlist order, RD decisions, syntax, reconstruction, and reference
