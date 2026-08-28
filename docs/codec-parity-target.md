@@ -1398,3 +1398,15 @@ not faster: lossless candidate/parent FPS was 6.12/6.21, 4.93/4.96, and
 6.07/6.10; lossy was 4.08/4.11, 3.36/3.41, and 3.55/3.48. The source change
 was reverted because the result was mixed and within timing noise; future
 allocator work needs allocation counters or longer repeated profiles.
+
+The VVC aligned-BDPCM admission probe (2026-08-27) evaluated only the BDPCM
+direction matching an already-selected horizontal or vertical regular intra
+mode, while retaining both directions for other admitted blocks. Required VTM
+validation passed all 7 regression cases and the lossy PSNR values were
+unchanged. On the 10-frame generated regression set, lossless output changed
+from 157,426 to 157,259 bytes and lossy output from 34,243 to 34,244 bytes;
+the separated timing runs were noisy and did not demonstrate a repeatable
+speed gain. The small rate changes show that the opposite direction is not
+generally redundant, so the source change was reverted. A future BDPCM search
+optimization needs a content-derived bound that proves the omitted direction
+cannot win before pruning it.
