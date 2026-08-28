@@ -8883,3 +8883,13 @@ references produced 18,813,692/24,791,643/31,933,364 bytes. The gate was
 restored; future work must perform a shared rate/distortion choice between
 high-bit-depth residual and intra tile modes rather than treating an exact
 motion candidate as automatically preferable after quantization.
+
+The follow-up AV2 payload-rate probe (2026-08-27) encoded both motion-residual
+and zero-motion residual candidates through the shared lossy tile writer and
+selected the shorter local payload. The 50-frame predictive lossy six-vector
+run grew to 82,331,438 bytes versus the 39,089,034-byte baseline; its high-
+depth rows were 18,812,978/24,791,632/31,934,345 bytes for 4:2:0/4:2:2/4:4:4.
+Local tile payload length is not a sufficient model of the complete predictive
+state/reconstruction decision, so the probe was removed and the 8-bit gate was
+restored. Future work needs a full-frame-state rate/distortion comparison at
+the shared mode-selection boundary.

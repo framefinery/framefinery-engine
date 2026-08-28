@@ -1355,6 +1355,17 @@ bytes. The policy was reverted. A future high-bit-depth motion change must
 compare residual and intra tile rate/distortion at the shared mode-selection
 point.
 
+The follow-up AV2 payload-rate probe (2026-08-27) attempted that comparison by
+encoding both the motion-residual and zero-motion residual candidates through
+the shared lossy tile writer, selecting the shorter local payload. The
+50-frame predictive lossy six-vector run nevertheless grew to 82,331,438 bytes
+overall, versus the 39,089,034-byte baseline; the high-depth rows measured
+18,812,978/24,791,632/31,934,345 bytes (4:2:0/4:2:2/4:4:4). The local payload
+length is therefore not a sufficient rate model for the complete predictive
+state/reconstruction decision. The source comparison was removed and the
+8-bit gate was restored; a future attempt must account for the full frame
+state at the shared mode-selection boundary before enabling high-depth motion.
+
 The VVC luma RD-cache ownership probe (2026-08-27) transferred selected cached
 luma residuals into the shared output buffer instead of copying them. It
 preserved shortlist order, RD decisions, syntax, reconstruction, and reference
