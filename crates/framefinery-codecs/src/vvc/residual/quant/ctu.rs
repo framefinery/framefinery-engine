@@ -2130,7 +2130,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 node,
                 raw_chroma_mode,
                 chroma_candidate_costs,
-                &chroma_rd_cache,
+                &mut chroma_rd_cache,
                 &mut intra_search_stats,
                 co_located_luma_mode,
                 cclm_syntax_enabled,

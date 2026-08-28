@@ -1310,3 +1310,14 @@ cases each). The lossless regression also compared every internal reconstruction
 against its source and passed byte-for-byte. BDPCM remains explicitly on its
 fixed 4x4 predictor representation; it is not silently mixed with the ordinary
 8x8 transform-skip layout.
+
+The VVC chroma RD-cache ownership probe (2026-08-27) replaced per-candidate
+Cb/Cr residual copies with ownership-preserving swaps when a cached candidate
+is selected. The cache remains scoped to the current TU and candidate ordering,
+scores, syntax decisions, and reconstructed pixels are unchanged. A controlled
+50-frame 2560x1440 GBR screen stream produced identical 4,032,288-byte output
+and 58.824 dB PSNR; the parent revision took 31.852 s and the probe took
+31.721 s (0.4% faster). Because this is a small timing gain, it is retained as
+a low-risk allocation/copy reduction rather than treated as a major parity
+milestone. The 262-test VVC suite, both required VTM regression modes (7/7
+lossless and 7/7 lossy), Clippy performance checks, and diff hygiene passed.

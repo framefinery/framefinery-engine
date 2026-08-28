@@ -8705,6 +8705,22 @@ coverage increases output relative to the defective truncated representation.
 Future optimization must measure byte rate, PSNR, FPS, and reference
 reconstruction together before attempting coefficient pruning.
 
+### VVC Chroma RD-Cache Ownership Transfer
+
+Checkpoint: `vvc-chroma-rd-cache-transfer`.
+
+When a chroma RD refinement candidate already exists in the per-TU cache, the
+selected Cb/Cr residual vectors are now transferred by `Vec` swap instead of
+copied into the selected buffers. The cache still owns the candidate until the
+selection point, and the cache is not reused after that candidate is visited;
+there is no change to candidate ordering, syntax, reconstruction, or the
+shared lossless/lossy path. On the same 50-frame 2560x1440 GBR screen stream,
+the parent revision took 31.852 s and the probe took 31.721 s, with identical
+4,032,288-byte output and 58.824 dB PSNR. The 0.4% result is modest, but the
+change removes avoidable memory traffic without adding a codec-specific path.
+Required VTM regression passed 7/7 for both lossless and lossy modes, and the
+focused VVC tests plus `make clippy-perf` passed.
+
 ## References
 
 - Cargo profile settings:

@@ -183,6 +183,20 @@ impl VvcChromaModeRdCache {
             .find(|candidate| candidate.mode == mode)
     }
 
+    fn take_residuals(
+        &mut self,
+        mode: VvcChromaIntraPredictionMode,
+        cb_residuals: &mut Vec<i16>,
+        cr_residuals: &mut Vec<i16>,
+    ) {
+        let candidate = self.candidates[..self.count]
+            .iter_mut()
+            .find(|candidate| candidate.mode == mode)
+            .expect("cached chroma candidate must exist");
+        std::mem::swap(&mut candidate.cb_residuals, cb_residuals);
+        std::mem::swap(&mut candidate.cr_residuals, cr_residuals);
+    }
+
 }
 
 struct VvcCachedChromaModeRdCandidate {

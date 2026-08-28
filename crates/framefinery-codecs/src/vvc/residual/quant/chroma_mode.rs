@@ -3,7 +3,7 @@ fn select_vvc_chroma_mode_with_rd_refinement(
     node: VvcCodingTreeNode,
     raw_mode: VvcChromaIntraPredictionMode,
     candidate_costs: VvcChromaIntraCandidateCosts,
-    rd_cache: &VvcChromaModeRdCache,
+    rd_cache: &mut VvcChromaModeRdCache,
     stats: &mut VvcIntraSearchStats,
     co_located_luma_mode: VvcIntraPredictionMode,
     cclm_syntax_enabled: bool,
@@ -80,27 +80,32 @@ fn select_vvc_chroma_mode_with_rd_refinement(
         ) {
             continue;
         }
-        if let Some(cached) = rd_cache.get(mode) {
+        if rd_cache.get(mode).is_some() {
             #[cfg(feature = "vvc-stats")]
             stats.add_chroma_rd_cached_candidate();
             #[cfg(feature = "vvc-stats")]
             let score_start = StageStart::now();
-            let rd_candidate = score_vvc_chroma_mode_rd_candidate(
-                policy,
-                coding_decision,
-                mode,
-                cclm_syntax_enabled,
-                &cached.cb_residuals,
-                &cached.cr_residuals,
-                chroma_width,
-                chroma_height,
-                source_frame.format.bit_depth,
-                chroma_qp,
-                chroma_ts_quant,
-                stats,
-                transform_scratch,
-                reconstructed_residual,
-            );
+            let rd_candidate = {
+                let cached = rd_cache
+                    .get(mode)
+                    .expect("cached chroma candidate must exist");
+                score_vvc_chroma_mode_rd_candidate(
+                    policy,
+                    coding_decision,
+                    mode,
+                    cclm_syntax_enabled,
+                    &cached.cb_residuals,
+                    &cached.cr_residuals,
+                    chroma_width,
+                    chroma_height,
+                    source_frame.format.bit_depth,
+                    chroma_qp,
+                    chroma_ts_quant,
+                    stats,
+                    transform_scratch,
+                    reconstructed_residual,
+                )
+            };
             #[cfg(feature = "vvc-stats")]
             stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
             if rd_candidate.selects_over(best_candidate) {
@@ -127,10 +132,11 @@ fn select_vvc_chroma_mode_with_rd_refinement(
                 );
                 #[cfg(feature = "vvc-stats")]
                 stats.add_chroma_rd_prediction_nanos(vvc_elapsed_nanos(prediction_start));
-                selected_cb_residuals.clear();
-                selected_cb_residuals.extend_from_slice(&cached.cb_residuals);
-                selected_cr_residuals.clear();
-                selected_cr_residuals.extend_from_slice(&cached.cr_residuals);
+                rd_cache.take_residuals(
+                    mode,
+                    selected_cb_residuals,
+                    selected_cr_residuals,
+                );
             }
             continue;
         }
