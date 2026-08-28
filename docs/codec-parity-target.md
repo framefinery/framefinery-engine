@@ -1339,6 +1339,11 @@ The 4:4:4 two-frame vector also remained 953 bytes. Required AV2 reference
 validation passed 7/7 for lossless and lossy regression settings. This is a
 modest workload-specific speed gain, not a broad parity milestone.
 
+The AV2 regular-DCT 4x8 DC-only inverse probe (2026-08-27) was rejected. Its
+8-, 10-, and 12-bit equivalence checks passed, but a real two-frame 1920x1080
+4:2:2 A/B slowed from 0.57 s to 0.73 s while producing identical 241,674-byte
+output. The code was removed; the rectangular path remains unchanged.
+
 The VVC luma RD-cache ownership probe (2026-08-27) transferred selected cached
 luma residuals into the shared output buffer instead of copying them. It
 preserved shortlist order, RD decisions, syntax, reconstruction, and reference

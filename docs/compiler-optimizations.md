@@ -8867,3 +8867,9 @@ bits. The 4:4:4 two-frame block vector remained 953 bytes, and a repeated
 the probe versus 0.99--1.05 s for the parent revision (about 2--3% average
 improvement). Required AV2 reference validation passed 7/7 for both lossless
 and lossy settings, and `make clippy-perf` passed.
+
+The AV2 regular-DCT 4x8 DC-only inverse probe (2026-08-27) was rejected after
+an exact equivalence test passed but the real 4:2:2 A/B regressed from 0.57 s
+to 0.73 s for the same two-frame 1920x1080 input, with identical 241,674-byte
+output. The rectangular specialization was removed; future rectangular-kernel
+work needs a larger measured benefit before adding another branch.
