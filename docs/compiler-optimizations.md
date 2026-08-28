@@ -8903,6 +8903,14 @@ candidate/parent FPS was 5.54/6.21, 4.74/4.96, and 5.47/6.10; lossy was
 existing per-frame lifetime remains until allocator or profile evidence
 identifies a real benefit.
 
+The VVC per-CTU RD-cache borrow probe (2026-08-27) removed the temporary cache
+replacement allocation and borrowed the existing luma/chroma caches in place.
+It preserved output bytes and PSNR, but matched three-row 10-frame runs were
+not faster: lossless candidate/parent FPS was 6.12/6.21, 4.93/4.96, and
+6.07/6.10; lossy was 4.08/4.11, 3.36/3.41, and 3.55/3.48. The source change
+was reverted because the result was mixed and within timing noise; future
+allocator work needs allocation counters or longer repeated profiles.
+
 The reconstructed-reference follow-up (2026-08-27) corrected the motion-map
 input to the previous decoded reconstruction and repeated the same shared
 payload comparison. It still grew the lossy six-vector total to 82,702,700
