@@ -8875,11 +8875,11 @@ output. The rectangular specialization was removed; future rectangular-kernel
 work needs a larger measured benefit before adding another branch.
 
 The AV2 high-bit-depth lossy motion-map probe (2026-08-27) was rejected after
-the motion map was enabled for 10-bit residual tiles and matched against the
-reconstructed reference. With the repository binary rebuilt correctly, the
-50-frame candidate increased 4:2:0 from 9,734,853 to 18,829,602 bytes, 4:2:2
-from 10,737,158 to 24,805,176 bytes, and 4:4:4 from 12,236,159 to 31,949,837
-bytes. The gate was restored; future work must perform a shared rate/distortion
-choice between high-bit-depth residual and intra tile modes rather than
-treating an exact motion candidate as automatically preferable after
-quantization.
+the motion map was enabled for 10-bit residual tiles. With the repository
+binary rebuilt correctly, matching against reconstructed references produced
+18,829,602/24,805,176/31,949,837 bytes for 4:2:0/4:2:2/4:4:4, versus
+9,734,853/10,737,158/12,236,159 baseline bytes; matching against source
+references produced 18,813,692/24,791,643/31,933,364 bytes. The gate was
+restored; future work must perform a shared rate/distortion choice between
+high-bit-depth residual and intra tile modes rather than treating an exact
+motion candidate as automatically preferable after quantization.

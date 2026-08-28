@@ -1345,14 +1345,15 @@ The AV2 regular-DCT 4x8 DC-only inverse probe (2026-08-27) was rejected. Its
 output. The code was removed; the rectangular path remains unchanged.
 
 The AV2 high-bit-depth lossy motion-map probe (2026-08-27) was also rejected.
-The existing gate was removed temporarily and motion candidates were matched
-against the reconstructed reference, but unconditional residual-tile selection
-was not a valid quality heuristic: the correctly rebuilt 50-frame candidate
-grew 4:2:0 from 9,734,853 to 18,829,602 bytes, 4:2:2 from 10,737,158 to
-24,805,176 bytes, and 4:4:4 from 12,236,159 to 31,949,837 bytes. The policy
-was reverted for the broader regression. A future high-bit-depth motion change
-must compare residual and intra tile rate/distortion at the shared
-mode-selection point.
+The existing gate was removed temporarily, first matching candidates against
+the reconstructed reference and then the original source reference. With the
+repository binary rebuilt correctly, unconditional residual-tile selection
+grew the 50-frame 10-bit rows to 18,829,602/24,805,176/31,949,837 bytes
+(4:2:0/4:2:2/4:4:4) against 9,734,853/10,737,158/12,236,159-byte baselines;
+the source-reference variant measured 18,813,692/24,791,643/31,933,364
+bytes. The policy was reverted. A future high-bit-depth motion change must
+compare residual and intra tile rate/distortion at the shared mode-selection
+point.
 
 The VVC luma RD-cache ownership probe (2026-08-27) transferred selected cached
 luma residuals into the shared output buffer instead of copying them. It
