@@ -1321,3 +1321,11 @@ and 58.824 dB PSNR; the parent revision took 31.852 s and the probe took
 a low-risk allocation/copy reduction rather than treated as a major parity
 milestone. The 262-test VVC suite, both required VTM regression modes (7/7
 lossless and 7/7 lossy), Clippy performance checks, and diff hygiene passed.
+
+The AV2 regular-DCT DC-only inverse probe (2026-08-27) specialized the shared
+candidate evaluator's deepest inverse-transform kernel when all AC coefficients
+are zero. The exact rounded/clipped behavior was tested at 8-, 10-, and 12-bit
+depths. A 50-frame 2560x1440 GBR A/B produced identical 1,158,621-byte output;
+the probe took 4.32 s versus 4.42 s for the parent revision. Required AV2
+reference validation passed 7/7 for lossless and lossy regression settings.
+This is a small measured speed improvement, not yet a claim of general parity.

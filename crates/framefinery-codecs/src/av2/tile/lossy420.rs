@@ -1063,7 +1063,14 @@ impl<'a> Av2LossySubsampledTileState<'a> {
             qcoeff,
             av2_regular_dequant_qtx(self.base_qindex, self.bit_depth),
         );
-        let residual = av2_idct4x4(&dqcoeff, self.bit_depth);
+        let residual = if dqcoeff[1..]
+            .iter()
+            .all(|&coefficient| coefficient == 0)
+        {
+            av2_idct4x4_dc_only(&dqcoeff, self.bit_depth)
+        } else {
+            av2_idct4x4(&dqcoeff, self.bit_depth)
+        };
         let max_sample = i32::from(self.bit_depth.max_sample());
         let (sse, variance_loss) = txb_recon_sse_and_variance_loss(
             &analysis.source,

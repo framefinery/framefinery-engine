@@ -8835,3 +8835,16 @@ focused VVC tests plus `make clippy-perf` passed.
   <https://doc.rust-lang.org/cargo/commands/cargo-bench.html>
 - Criterion:
   <https://docs.rs/criterion/latest/criterion/>
+
+## AV2 regular-DCT DC-only inverse
+
+The AV2 regular-DCT DC-only inverse probe (2026-08-27) specialized the deepest
+inverse-transform kernel for candidates whose AC coefficients are all zero.
+The two rounded/clipped stages are algebraically the same as the full 4x4
+inverse; a focused test checked signed DC values at 8, 10, and 12 bits. A
+10-frame Wayland A/B kept the output at 510,935 bytes, and the longer 50-frame
+run kept it at 1,158,621 bytes while measuring 4.32 s for the probe versus
+4.42 s for the parent revision. Required AV2 regression validation passed 7/7
+for both lossless and lossy settings, and the repository performance-Clippy
+gate passed. The gain is modest and should be rechecked on the six-vector
+release workload before being treated as a broader parity milestone.
