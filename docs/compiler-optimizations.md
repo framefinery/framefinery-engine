@@ -8873,3 +8873,13 @@ an exact equivalence test passed but the real 4:2:2 A/B regressed from 0.57 s
 to 0.73 s for the same two-frame 1920x1080 input, with identical 241,674-byte
 output. The rectangular specialization was removed; future rectangular-kernel
 work needs a larger measured benefit before adding another branch.
+
+The AV2 high-bit-depth lossy motion-map probe (2026-08-27) was rejected after
+the motion map was enabled for 10-bit residual tiles. The map's sample access
+is depth-generic and the 4:2:0 candidate fell from 9,734,853 to 9,719,789
+bytes for 50 frames, with an exact AVM reconstruction match. However, the same
+unconditional policy increased 4:2:2 from 10,737,158 to 13,593,352 bytes and
+4:4:4 from 12,236,159 to 17,594,029 bytes. The gate was restored; future work
+must perform a shared rate/distortion choice between high-bit-depth residual
+and intra tile modes rather than treating an exact motion candidate as
+automatically preferable after quantization.
