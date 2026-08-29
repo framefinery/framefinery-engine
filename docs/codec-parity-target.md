@@ -1544,3 +1544,13 @@ no lossy checkpoint change because the feature was unreachable. A future
 lossy screen-content palette improvement must connect palette admission to the
 shared lossy decision and residual code, including reference validation of its
 chroma coefficient syntax; simply enabling this constant is not a fix.
+
+The VVC chroma RD-cache audit (2026-08-28) confirmed that
+`VvcChromaModeRdCache` intentionally stores proxy-scored residuals from the
+initial mode search, not final RD scores. The later exact score also depends
+on the selected TU residual-coding decision and is evaluated once per
+shortlisted mode; the cache therefore removes residual reconstruction work
+but does not contain a safely reusable final score. Reusing its proxy score as
+the final decision would alter mode selection and can regress rate or quality.
+Future VVC speed work should reduce the number of exact candidates with a
+content-derived bound, or optimize the shared exact scorer itself.
