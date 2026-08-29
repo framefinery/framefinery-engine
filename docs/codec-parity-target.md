@@ -1555,6 +1555,14 @@ the final decision would alter mode selection and can regress rate or quality.
 Future VVC speed work should reduce the number of exact candidates with a
 content-derived bound, or optimize the shared exact scorer itself.
 
+The AV2 adaptive palette-partition probe (2026-08-28) compared the existing
+fixed 8x8 palette leaves with the already implemented adaptive screen-content
+partition policy. Strict AVM lossless validation passed all seven regression
+cases, but the adaptive candidate produced identical byte counts on every
+row while adding substantial partition-search cost (the 64x64 4:4:4 rows
+remained around 11 FPS). The candidate was reverted; larger palette leaves
+need a content-derived admission test before they are worth materializing.
+
 The VVC lossy BDPCM mode-admission probe (2026-08-28) restricted
 `fast-search=lossless-speed` chroma BDPCM to derived and explicitly
 horizontal/vertical modes. Required VTM decoding still passed all seven
