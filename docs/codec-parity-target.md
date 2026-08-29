@@ -1524,3 +1524,12 @@ rate/quality checkpoint. A stricter 2x admission still changed that row and
 provided no consistent benchmark win. Both source variants were reverted;
 future AV2 mode pruning needs a distortion/rate bound that proves the omitted
 refinement cannot win.
+
+The VVC direct-BDPCM duplicate-score probe (2026-08-28) tracked candidates
+already fully scored by the 4:4:4 lossy fast path and skipped them in the
+regular fallback loop. It preserved the 276-test suite, both required 7-case
+VTM regression modes, and all output bytes/PSNR, but instrumentation reduced
+regular BDPCM evaluations on the representative Wayland frame only from
+18,394 to 18,392 and the 10-frame benchmark was slower. The source change was
+reverted as redundant; the existing direct-path early return already captures
+nearly all of the available saving.

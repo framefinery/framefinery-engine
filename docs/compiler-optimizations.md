@@ -9015,3 +9015,10 @@ mode was clearly behind DC/H/V/Paeth. It changed `gradient_420` from 2,237 to
 2,242 bytes and from 45.509 to 45.629 dB; a stricter 2x gate still changed the
 row without a consistent speed win. Both variants were reverted. Future AV2
 mode pruning needs a rate/distortion bound rather than a proxy-mode ranking.
+
+The VVC direct-BDPCM duplicate-score probe (2026-08-28) avoided rescoring
+direct candidates in the regular fallback loop. It preserved all VVC tests,
+required reference validation, bytes, and PSNR, but reduced one representative
+frame's regular candidate count by only two (18,394 to 18,392) and was slower
+in the benchmark. The source change was reverted; the direct-path early return
+already makes this duplication negligible.
