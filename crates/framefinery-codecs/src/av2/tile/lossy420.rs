@@ -1526,6 +1526,13 @@ impl<'a> Av2LossySubsampledTileState<'a> {
             self.txb_origin(Av2LossyPlane::U, chroma_span.col, chroma_span.row);
         let chroma_leaf_width = chroma_span.width * TX4X4_SIZE;
         let chroma_leaf_height = chroma_span.height * TX4X4_SIZE;
+        let chroma_context = Av2LossyLeafPredictorContext {
+            leaf_x0: chroma_leaf_x0,
+            leaf_y0: chroma_leaf_y0,
+            leaf_width: chroma_leaf_width,
+            leaf_height: chroma_leaf_height,
+            coded_mi_context,
+        };
         let mut chroma_scores = Av2LossyIntraTxbScores::default();
         let mut chroma_sampled_txbs = 0usize;
         for plane in [Av2LossyPlane::U, Av2LossyPlane::V] {
@@ -1541,13 +1548,6 @@ impl<'a> Av2LossySubsampledTileState<'a> {
                     }
                     let (x0, y0) =
                         self.txb_origin(plane, chroma_span.col + col, chroma_span.row + row);
-                    let chroma_context = Av2LossyLeafPredictorContext {
-                        leaf_x0: chroma_leaf_x0,
-                        leaf_y0: chroma_leaf_y0,
-                        leaf_width: chroma_leaf_width,
-                        leaf_height: chroma_leaf_height,
-                        coded_mi_context,
-                    };
                     chroma_scores.add_assign(self.intra_txb_scores_for_score(
                         plane,
                         x0,
@@ -1585,13 +1585,6 @@ impl<'a> Av2LossySubsampledTileState<'a> {
                                 chroma_span.col + col,
                                 chroma_span.row + row,
                             );
-                            let chroma_context = Av2LossyLeafPredictorContext {
-                                leaf_x0: chroma_leaf_x0,
-                                leaf_y0: chroma_leaf_y0,
-                                leaf_width: chroma_leaf_width,
-                                leaf_height: chroma_leaf_height,
-                                coded_mi_context,
-                            };
                             paeth_score += self.paeth_txb_score_for_score(
                                 plane,
                                 x0,
@@ -1629,13 +1622,6 @@ impl<'a> Av2LossySubsampledTileState<'a> {
                                 chroma_span.col + col,
                                 chroma_span.row + row,
                             );
-                            let chroma_context = Av2LossyLeafPredictorContext {
-                                leaf_x0: chroma_leaf_x0,
-                                leaf_y0: chroma_leaf_y0,
-                                leaf_width: chroma_leaf_width,
-                                leaf_height: chroma_leaf_height,
-                                coded_mi_context,
-                            };
                             smooth_scores.add_assign(self.smooth_txb_scores_for_score(
                                 plane,
                                 x0,
