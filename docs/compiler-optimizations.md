@@ -8989,3 +8989,9 @@ existing qindex/variance gate to 4:2:0 and 4:2:2. Required AVM validation
 passed 7/7, but the 70-frame regression saved only 51 bytes while reducing
 `gradient_420` PSNR by 1.638 dB. The source change was reverted; future
 coefficient pruning needs a transform-domain distortion bound.
+
+The VVC format-aware chroma top-two shortlist probe (2026-08-28) retained
+three candidates for 4:2:2/4:4:4 and two for 4:2:0. VTM regression validation
+passed, but the 50-frame 4:2:0 SceneComposition output grew from 2,689,362
+to 2,716,763 bytes. The source change was reverted; a useful shortlist gate
+needs content-sensitive admission.

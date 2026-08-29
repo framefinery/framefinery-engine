@@ -1491,3 +1491,10 @@ existing qindex/variance-gated removal of unit AC coefficients from 4:4:4 to
 regression lost 1.638 dB on `gradient_420` while saving only 51 bytes (2.3%).
 The source change was reverted; coefficient pruning must use a distortion
 bound specific to the reconstructed transform, not only source variance.
+
+The VVC format-aware chroma top-two shortlist probe (2026-08-28) kept three
+lossy RD candidates for 4:2:2/4:4:4 but reduced `fast-search=lossless-speed`
+4:2:0 to two. Required VTM regression validation passed, but the 50-frame
+4:2:0 SceneComposition stream grew from 2,689,362 to 2,716,763 bytes. The
+source change was reverted; the 4:2:0 shortlist also needs content-sensitive
+admission rather than a format-only limit.
