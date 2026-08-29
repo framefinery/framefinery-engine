@@ -8969,3 +8969,9 @@ input while retaining the shared inter-residual path. The generated 50-frame
 grew from 9,734,853 to 18,813,692 bytes. The source change was reverted;
 future high-bit-depth motion work must compare inter residuals against the
 intra/key alternative using a rate-aware admission test.
+The follow-up AV2 high-bit-depth reconstructed-reference motion probe
+(2026-08-28) was also rejected. Matching source blocks against the
+decoder-visible reconstructed reference reduced the candidate output only to
+18,741,951 bytes, still versus 9,734,853 bytes for the 50-frame 10-bit 4:2:0
+baseline. The source change was reverted; exact-match admission alone is not
+a sufficient rate/distortion decision for the lossy inter residual path.

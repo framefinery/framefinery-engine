@@ -1467,3 +1467,10 @@ decode on a 50-frame 10-bit 4:2:0 stream. However, that stream grew from the
 recorded 9,734,853-byte baseline to 18,813,692 bytes. The source change was
 reverted; high-bit-depth motion admission needs a rate-aware comparison with
 the established intra/key path before it can be enabled.
+The follow-up AV2 high-bit-depth reconstructed-reference motion probe
+(2026-08-28) was also rejected. It matched 10-bit source blocks against the
+decoder-visible reconstructed reference before admitting the existing motion
+residual path, but the 50-frame 4:2:0 output was still 18,741,951 bytes versus
+9,734,853 bytes for the baseline. The source change was reverted; motion
+admission must be compared against a complete per-tile rate/distortion cost,
+not only exact block matching.
