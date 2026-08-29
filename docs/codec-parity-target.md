@@ -1588,3 +1588,12 @@ but the controlled release benchmark showed no reproducible throughput gain
 and was slower on several rows (for example, `gradient_420` fell from 1111.67
 to 865.51 FPS). The source change was reverted; future CABAC work should first
 target measurable arithmetic or allocation costs rather than forcing inlining.
+
+The VVC packed-bit chunking probe (2026-08-28) replaced the shared scalar bit
+append loop with partial-byte and byte-sized writes. Exhaustive two-chunk
+coverage and the full VVC suite confirmed the bit order, and all seven
+lossless regression streams were byte-identical. The release regression
+benchmark nevertheless measured a broad throughput regression, approximately
+18--38% on the larger cases. The implementation was reverted; the scalar
+writer remains the reference until a faster packing design is demonstrated
+with representative measurements.

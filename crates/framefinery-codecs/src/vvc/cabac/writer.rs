@@ -513,3 +513,45 @@ fn renorm_bits(range: u32) -> u32 {
     debug_assert!((1..256).contains(&range));
     8 - (u32::BITS - 1 - range.leading_zeros())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::VvcPackedBits;
+
+    #[test]
+    fn packed_bits_match_scalar_bit_order_for_all_small_chunks() {
+        for first_count in 0..=16 {
+            for second_count in 0..=16 {
+                let first = 0xa5a5u32;
+                let second = 0x5a5au32;
+                let mut packed = VvcPackedBits::new();
+                packed.write_bits(first, first_count);
+                packed.write_bits(second, second_count);
+                let payload = packed.finish();
+
+                let mut expected = Vec::new();
+                let mut current = 0u8;
+                let mut filled = 0u8;
+                for (value, count) in [(first, first_count), (second, second_count)] {
+                    for bit in (0..count).rev() {
+                        current = (current << 1) | ((value >> bit) & 1) as u8;
+                        filled += 1;
+                        if filled == 8 {
+                            expected.push(current);
+                            current = 0;
+                            filled = 0;
+                        }
+                    }
+                }
+                if filled != 0 {
+                    expected.push(current << (8 - filled));
+                }
+                assert_eq!(
+                    payload.bytes, expected,
+                    "first_count={first_count} second_count={second_count}"
+                );
+                assert_eq!(payload.bit_len, (first_count + second_count) as usize);
+            }
+        }
+    }
+}
