@@ -1514,3 +1514,13 @@ the 10-frame benchmark was slower on all seven cases (for example, 710 versus
 727 FPS on `blocks_444` and 269 versus 290 FPS on `blocks_444_2f`). The source
 change was reverted; raw prediction SSE is not a useful enough proxy for this
 candidate's scorer cost.
+
+The AV2 directional-delta admission probe (2026-08-28) attempted to skip the
+two shared luma directional-delta refinements when the best base directional
+mode was clearly worse than the simple DC/H/V/Paeth set. The probe reduced
+some mode-search work, but changed the lossy `gradient_420` row from 2,237 to
+2,242 bytes and from 45.509 to 45.629 dB, and therefore did not preserve the
+rate/quality checkpoint. A stricter 2x admission still changed that row and
+provided no consistent benchmark win. Both source variants were reverted;
+future AV2 mode pruning needs a distortion/rate bound that proves the omitted
+refinement cannot win.
