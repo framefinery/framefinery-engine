@@ -1405,9 +1405,8 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         #[cfg(feature = "vvc-stats")]
         intra_search_stats
             .add_luma_mode_search_nanos(luma_mode_search_start.elapsed().as_nanos() as u64);
-        if let Some(cached) = luma_rd_cache.get(raw_luma_mode) {
-            luma_residuals.clear();
-            luma_residuals.extend_from_slice(&cached.residuals);
+        if luma_rd_cache.get(raw_luma_mode).is_some() {
+            luma_rd_cache.take_residuals(raw_luma_mode, &mut luma_residuals);
         } else {
             #[cfg(feature = "vvc-stats")]
             let residual_start = StageStart::now();
@@ -2074,11 +2073,12 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         #[cfg(feature = "vvc-stats")]
         intra_search_stats
             .add_chroma_mode_search_nanos(chroma_mode_search_start.elapsed().as_nanos() as u64);
-        if let Some(cached) = chroma_rd_cache.get(raw_chroma_mode) {
-            cb_residuals.clear();
-            cb_residuals.extend_from_slice(&cached.cb_residuals);
-            cr_residuals.clear();
-            cr_residuals.extend_from_slice(&cached.cr_residuals);
+        if chroma_rd_cache.get(raw_chroma_mode).is_some() {
+            chroma_rd_cache.take_residuals(
+                raw_chroma_mode,
+                &mut cb_residuals,
+                &mut cr_residuals,
+            );
         } else {
             #[cfg(feature = "vvc-stats")]
             let residual_start = StageStart::now();

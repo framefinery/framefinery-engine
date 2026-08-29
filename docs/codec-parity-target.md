@@ -1598,6 +1598,15 @@ benchmark nevertheless measured a broad throughput regression, approximately
 writer remains the reference until a faster packing design is demonstrated
 with representative measurements.
 
+The VVC RD-cache ownership-transfer optimization (2026-08-28) changed the
+shared luma and chroma finalization path to swap cached residual vectors into
+the selected buffers instead of copying them. It preserves the exact encoded
+bytes and reconstruction, passed all 259 VVC unit tests and all seven required
+reference-decoder regression cases, and measured a 1.35% aggregate lossless
+and 19.4% aggregate lossy speed increase on the 10-frame regression matrix.
+The small timing sample should be rerun on the release matrix before treating
+the speed change as a stable headline result.
+
 The VVC luma DC search-radius probe (2026-08-28) reduced the shared exact
 quantization search from nine levels around the estimated level to three.
 The probe changed deterministic CABAC output and caused two VVC regression
