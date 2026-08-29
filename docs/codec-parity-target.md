@@ -1498,3 +1498,10 @@ lossy RD candidates for 4:2:2/4:4:4 but reduced `fast-search=lossless-speed`
 4:2:0 SceneComposition stream grew from 2,689,362 to 2,716,763 bytes. The
 source change was reverted; the 4:2:0 shortlist also needs content-sensitive
 admission rather than a format-only limit.
+
+The VVC exact-zero chroma scorer shortcut (2026-08-28) was rejected as
+redundant. It was bit-exact and passed all 276 VVC tests plus required VTM
+lossless/lossy regression validation, with unchanged regression output, but
+the release profile showed no repeatable timing reduction. Existing CTU-level
+zero-residual preselection already removes the dominant cases, so the branch
+was reverted.

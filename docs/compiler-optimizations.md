@@ -8995,3 +8995,9 @@ three candidates for 4:2:2/4:4:4 and two for 4:2:0. VTM regression validation
 passed, but the 50-frame 4:2:0 SceneComposition output grew from 2,689,362
 to 2,716,763 bytes. The source change was reverted; a useful shortlist gate
 needs content-sensitive admission.
+
+The VVC exact-zero chroma scorer shortcut (2026-08-28) was rejected. It
+passed all VVC tests and required VTM validation with unchanged bytes and
+checksums, but release profiling showed no repeatable timing gain; the
+existing CTU zero-residual preselection already covers the important cases.
+The source change was reverted.
