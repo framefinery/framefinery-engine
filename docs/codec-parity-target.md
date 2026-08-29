@@ -1533,3 +1533,14 @@ regular BDPCM evaluations on the representative Wayland frame only from
 18,394 to 18,392 and the 10-frame benchmark was slower. The source change was
 reverted as redundant; the existing direct-path early return already captures
 nearly all of the available saving.
+
+The AV2 palette gate audit (2026-08-28) confirmed that enabling
+`AV2_ENABLE_LUMA_PALETTE_FSC_444` does not enable palette coding in the normal
+lossy path: the gate is consulted by the legacy `Av2Black444TilePlan`, while
+`av2_lossy_subsampled_tile_entropy_payload_for_region` still uses the regular
+shared lossy residual path and explicitly rejects palette decisions. Flipping
+the constant passed the seven-case required AVM lossy regression, but produced
+no lossy checkpoint change because the feature was unreachable. A future
+lossy screen-content palette improvement must connect palette admission to the
+shared lossy decision and residual code, including reference validation of its
+chroma coefficient syntax; simply enabling this constant is not a fix.
