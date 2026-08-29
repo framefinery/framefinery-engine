@@ -1563,3 +1563,12 @@ on every nontrivial lossy regression row (for example, `checker_420` grew by
 625 bytes and `gradient_444` by 1,251 bytes). The source change was reverted;
 prediction-family eligibility alone is not a sufficient rate-distortion
 bound for BDPCM.
+
+The AV2 adaptive palette-partition probe (2026-08-28) compared the existing
+fixed 8x8 palette leaves with the already implemented adaptive screen-content
+partition policy. Strict AVM lossless validation passed all seven regression
+cases, but the adaptive candidate produced identical byte counts on every
+row while adding substantial partition-search cost (for example, the
+64x64 4:4:4 rows remained around 11 FPS). The candidate was reverted; larger
+palette leaves need a content-derived admission test before they are worth
+materializing.
