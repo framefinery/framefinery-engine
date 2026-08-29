@@ -1421,3 +1421,12 @@ speed gain. The small rate changes show that the opposite direction is not
 generally redundant, so the source change was reverted. A future BDPCM search
 optimization needs a content-derived bound that proves the omitted direction
 cannot win before pruning it.
+
+The AV2 regular-DCT RD-weight probe (2026-08-28) changed the shared lossy
+regular-transform candidate's distortion weight from the existing fixed value
+to a quant-step-derived value. Required AVM validation passed all 7 regression
+cases, but the 70-frame regression output grew from 18,159 to 18,165 bytes,
+with aggregate FPS falling from 949.29 to 933.76 and mixed PSNR changes. The
+candidate was reverted because it provided no rate, quality, or speed benefit.
+Future AV2 lossy improvements need a better calibrated full candidate cost
+model rather than changing this shared RD weight in isolation.

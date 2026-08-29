@@ -8926,3 +8926,11 @@ AVM validation rejected the first 4:2:0 black-frame tile as undecodable. The
 change was reverted. Adaptive leaves must not be enabled until partition-
 specific residual reconstruction and entropy-context state are carried
 through the existing shared coding path.
+
+The AV2 regular-DCT RD-weight probe (2026-08-28) replaced the fixed distortion
+weight in the shared lossy regular-transform candidate scorer with a
+quant-step-derived weight. Required AVM validation passed 7/7 regression
+cases, but the 70-frame regression grew from 18,159 to 18,165 bytes and slowed
+from 949.29 to 933.76 FPS, with no consistent PSNR improvement. The source
+change was removed; the existing fixed weight remains until a broader cost
+model can be validated.
