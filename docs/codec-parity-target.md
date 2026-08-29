@@ -1554,3 +1554,12 @@ but does not contain a safely reusable final score. Reusing its proxy score as
 the final decision would alter mode selection and can regress rate or quality.
 Future VVC speed work should reduce the number of exact candidates with a
 content-derived bound, or optimize the shared exact scorer itself.
+
+The VVC lossy BDPCM mode-admission probe (2026-08-28) restricted
+`fast-search=lossless-speed` chroma BDPCM to derived and explicitly
+horizontal/vertical modes. Required VTM decoding still passed all seven
+lossless and seven lossy regression cases, but the encoder lost rate quality
+on every nontrivial lossy regression row (for example, `checker_420` grew by
+625 bytes and `gradient_444` by 1,251 bytes). The source change was reverted;
+prediction-family eligibility alone is not a sufficient rate-distortion
+bound for BDPCM.
