@@ -8983,3 +8983,9 @@ Wayland bytes/PSNR were unchanged, but no alternate tile winner was found;
 the duplicate full entropy work had no measurable benefit. The source change
 was reverted. Future admission work needs a cheap pre-materialization cost
 bound or a better residual score.
+
+The AV2 lossy cross-format unit-AC pruning probe (2026-08-28) extended the
+existing qindex/variance gate to 4:2:0 and 4:2:2. Required AVM validation
+passed 7/7, but the 70-frame regression saved only 51 bytes while reducing
+`gradient_420` PSNR by 1.638 dB. The source change was reverted; future
+coefficient pruning needs a transform-domain distortion bound.

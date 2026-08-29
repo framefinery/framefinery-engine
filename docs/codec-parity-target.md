@@ -1484,3 +1484,10 @@ tile selected a different winner; the extra full payload materialization
 therefore supplied no measured compression gain. The source change was
 reverted. A useful admission test must operate before duplicating the full
 entropy encode or improve the earlier residual cost model.
+
+The AV2 lossy cross-format unit-AC pruning probe (2026-08-28) extended the
+existing qindex/variance-gated removal of unit AC coefficients from 4:4:4 to
+4:2:0 and 4:2:2. Required AVM validation passed all 7 cases, but the 70-frame
+regression lost 1.638 dB on `gradient_420` while saving only 51 bytes (2.3%).
+The source change was reverted; coefficient pruning must use a distortion
+bound specific to the reconstructed transform, not only source variance.
