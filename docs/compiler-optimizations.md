@@ -8975,3 +8975,11 @@ decoder-visible reconstructed reference reduced the candidate output only to
 18,741,951 bytes, still versus 9,734,853 bytes for the 50-frame 10-bit 4:2:0
 baseline. The source change was reverted; exact-match admission alone is not
 a sufficient rate/distortion decision for the lossy inter residual path.
+
+The AV2 lossy per-tile inter-residual admission probe (2026-08-28) encoded
+both the motion residual and zero-MV fallback payloads and selected the
+smaller result. Required AVM validation passed 7/7, and regression plus
+Wayland bytes/PSNR were unchanged, but no alternate tile winner was found;
+the duplicate full entropy work had no measurable benefit. The source change
+was reverted. Future admission work needs a cheap pre-materialization cost
+bound or a better residual score.

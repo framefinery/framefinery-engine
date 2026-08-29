@@ -1474,3 +1474,13 @@ residual path, but the 50-frame 4:2:0 output was still 18,741,951 bytes versus
 9,734,853 bytes for the baseline. The source change was reverted; motion
 admission must be compared against a complete per-tile rate/distortion cost,
 not only exact block matching.
+
+The AV2 lossy per-tile inter-residual admission probe (2026-08-28) encoded
+both the motion-map residual payload and the zero-MV residual fallback, then
+selected the smaller payload while carrying forward the selected
+reconstruction. It preserved all 7 required AVM regression reconstructions
+and produced identical regression and 50-frame Wayland bytes/PSNR, but no
+tile selected a different winner; the extra full payload materialization
+therefore supplied no measured compression gain. The source change was
+reverted. A useful admission test must operate before duplicating the full
+entropy encode or improve the earlier residual cost model.
