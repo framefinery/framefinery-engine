@@ -1448,3 +1448,22 @@ eliminated only 935 of 507,806 chroma transform comparisons (0.18%) on a
 Wayland frame. The branch was removed because it could not materially address
 the dominant chroma mode/RD cost. The next VVC speed probe should target the
 larger candidate search with content-derived admission.
+
+The VVC lossy chroma RD top-two shortlist probe (2026-08-28) was rejected.
+It reduced the `fast-search=lossless-speed` shortlist from three candidates to
+two while keeping the shared coding and reconstruction path. Required VTM
+validation passed all 7 lossless and 7 lossy regression cases, but the
+10-frame generated regression exposed a real 4:4:4 quality/rate regression:
+the `blocks444` row grew from 2,705 to 2,898 bytes while PSNR fell from
+50.357 to 49.963 dB, and the two-frame 4:4:4 row grew from 9,272 to 10,331
+bytes while PSNR fell from 50.338 to 49.800 dB. The source change was
+reverted. Chroma candidate pruning must preserve format/content-sensitive
+winners, including candidates that are not the raw first two scores.
+
+The AV2 lossy high-bit-depth motion-map probe (2026-08-28) was rejected.
+It enabled the existing exact 8x8 motion matcher for 10-bit predictive lossy
+input, keeping the same inter-residual coding path and passing reference
+decode on a 50-frame 10-bit 4:2:0 stream. However, that stream grew from the
+recorded 9,734,853-byte baseline to 18,813,692 bytes. The source change was
+reverted; high-bit-depth motion admission needs a rate-aware comparison with
+the established intra/key path before it can be enabled.

@@ -8951,3 +8951,21 @@ transform comparisons removed (0.18%) on a Wayland frame. It passed focused
 tests but was too narrow to affect the dominant chroma mode/RD cost, so the
 branch was removed. Future work should reduce the larger candidate search with
 content-derived admission rather than adding this residual-special-case gate.
+
+The VVC lossy chroma RD top-two shortlist probe (2026-08-28) was rejected.
+It reduced the `fast-search=lossless-speed` shortlist from three candidates to
+two in the same shared coding path. Required VTM validation passed all 7
+lossless and 7 lossy regression cases, but the generated 10-frame regression
+showed a substantive 4:4:4 quality/rate regression: `blocks444` changed from
+2,705 to 2,898 bytes and 50.357 to 49.963 dB, while `blocks444_2f` changed
+from 9,272 to 10,331 bytes and 50.338 to 49.800 dB. The source change was
+reverted. A future shortlist reduction needs format/content-aware admission
+and must retain non-obvious chroma winners.
+
+The AV2 lossy high-bit-depth motion-map probe (2026-08-28) was rejected. It
+enabled the existing exact 8x8 motion matcher for 10-bit predictive lossy
+input while retaining the shared inter-residual path. The generated 50-frame
+10-bit 4:2:0 stream decoded successfully with the reference decoder, but
+grew from 9,734,853 to 18,813,692 bytes. The source change was reverted;
+future high-bit-depth motion work must compare inter residuals against the
+intra/key alternative using a rate-aware admission test.
