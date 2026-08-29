@@ -1597,3 +1597,11 @@ benchmark nevertheless measured a broad throughput regression, approximately
 18--38% on the larger cases. The implementation was reverted; the scalar
 writer remains the reference until a faster packing design is demonstrated
 with representative measurements.
+
+The VVC luma DC search-radius probe (2026-08-28) reduced the shared exact
+quantization search from nine levels around the estimated level to three.
+The probe changed deterministic CABAC output and caused two VVC regression
+tests to fail, including the active-slice tool-flag and geometry-derived CTU
+partition checks. It was reverted without benchmarking or retaining source
+changes; any narrower DC search needs an explicit rate-distortion equivalence
+proof before adoption.
