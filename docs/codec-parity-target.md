@@ -1580,3 +1580,11 @@ row while adding substantial partition-search cost (for example, the
 64x64 4:4:4 rows remained around 11 FPS). The candidate was reverted; larger
 palette leaves need a content-derived admission test before they are worth
 materializing.
+
+The VVC CABAC-writer inlining probe (2026-08-28) marked the shared packed
+bitstream and CABAC output helpers `inline(always)`. The complete 258-test VVC
+suite passed and all seven lossless regression rows remained byte-identical,
+but the controlled release benchmark showed no reproducible throughput gain
+and was slower on several rows (for example, `gradient_420` fell from 1111.67
+to 865.51 FPS). The source change was reverted; future CABAC work should first
+target measurable arithmetic or allocation costs rather than forcing inlining.
