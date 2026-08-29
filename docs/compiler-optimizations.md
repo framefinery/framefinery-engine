@@ -8944,3 +8944,10 @@ The gated build produced identical Wayland 50-frame output (4,032,288 bytes,
 regression sets, and showed only noisy separate-run timing (1.51 versus 1.45
 FPS). This removes unselected work without claiming a broad speedup; future
 MTS work should use a mode-directed shortlist and matched benchmarks.
+
+The VVC 4:4:4 chroma DC-only transform-skip early-return probe (2026-08-28)
+was rejected after the built-in profile showed only 935 of 507,806 chroma
+transform comparisons removed (0.18%) on a Wayland frame. It passed focused
+tests but was too narrow to affect the dominant chroma mode/RD cost, so the
+branch was removed. Future work should reduce the larger candidate search with
+content-derived admission rather than adding this residual-special-case gate.

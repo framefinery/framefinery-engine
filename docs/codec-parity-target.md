@@ -1441,3 +1441,10 @@ validation for all 7 lossless and 7 lossy regression cases. Separate runs were
 timing-noisy (1.51 versus 1.45 FPS), so this is recorded as removal of dead
 work rather than a quantified broad speed milestone. Re-enable selection only
 with a mode-directed candidate policy and matched rate/quality evidence.
+
+The VVC 4:4:4 chroma DC-only transform-skip early-return probe (2026-08-28)
+was rejected. It preserved the shared residual and reconstruction path but
+eliminated only 935 of 507,806 chroma transform comparisons (0.18%) on a
+Wayland frame. The branch was removed because it could not materially address
+the dominant chroma mode/RD cost. The next VVC speed probe should target the
+larger candidate search with content-derived admission.
