@@ -1505,3 +1505,12 @@ lossless/lossy regression validation, with unchanged regression output, but
 the release profile showed no repeatable timing reduction. Existing CTU-level
 zero-residual preselection already removes the dominant cases, so the branch
 was reverted.
+
+The VVC direct-BDPCM raw-SSE threshold probe (2026-08-28) tightened the shared
+4:4:4 lossy fast-path admission from a 6.25% to a 25% raw-SSE improvement before
+running the exact RD scorer. All 276 VVC tests and both required 7-case VTM
+regression modes passed with unchanged output bytes and reconstructions, but
+the 10-frame benchmark was slower on all seven cases (for example, 710 versus
+727 FPS on `blocks_444` and 269 versus 290 FPS on `blocks_444_2f`). The source
+change was reverted; raw prediction SSE is not a useful enough proxy for this
+candidate's scorer cost.

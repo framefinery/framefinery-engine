@@ -9001,3 +9001,10 @@ passed all VVC tests and required VTM validation with unchanged bytes and
 checksums, but release profiling showed no repeatable timing gain; the
 existing CTU zero-residual preselection already covers the important cases.
 The source change was reverted.
+
+The VVC direct-BDPCM raw-SSE threshold probe (2026-08-28) was rejected. It
+raised the shared lossy 4:4:4 admission threshold from a 6.25% to a 25% raw-SSE
+improvement, preserving all bytes, reconstructions, and required VTM results,
+but the 10-frame benchmark was slower for every regression vector. The source
+change was reverted; future candidate pruning needs a cheaper cost bound than
+the raw prediction SSE ratio alone.
