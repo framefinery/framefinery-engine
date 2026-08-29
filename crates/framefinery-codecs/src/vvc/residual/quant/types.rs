@@ -57,7 +57,10 @@ struct VvcIntraSearchStats;
 #[cfg(feature = "vvc-stats")]
 const VVC_TU_TRACE_ENV: &str = "FRAMEFINERY_VVC_TU_TRACE";
 const VVC_ENABLE_LUMA_MRL_SELECTION: bool = true;
-const VVC_ENABLE_LUMA_MTS_SELECTION: bool = true;
+// Keep the syntax and inverse-transform support available, but do not spend
+// four extra transforms on every eligible TU while the production selector
+// still requests only the default transform.
+const VVC_ENABLE_LUMA_MTS_SELECTION: bool = false;
 const VVC_ENABLE_LOSSY_TRANSFORM_SKIP_SELECTION: bool = true;
 const VVC_ENABLE_BDPCM_SELECTION: bool = true;
 const VVC_TRANSFORM_SKIP_MAX_SIZE: u16 = 8;

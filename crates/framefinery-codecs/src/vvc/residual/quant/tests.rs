@@ -1634,7 +1634,7 @@ fn vvc_luma_mts_selection_rejects_dc_only_explicit_candidate() {
 
 #[test]
 fn vvc_luma_mts_search_is_gated_to_supported_lossy_blocks() {
-    assert!(vvc_luma_mts_selection_allowed(
+    assert!(!vvc_luma_mts_selection_allowed(
         VvcTuResidualCodingMode::Transformed,
         0,
         8,
@@ -1642,7 +1642,7 @@ fn vvc_luma_mts_search_is_gated_to_supported_lossy_blocks() {
         super::super::VVC_DEFAULT_LOSSY_LUMA_QP,
         true,
     ));
-    assert!(vvc_luma_mts_selection_allowed(
+    assert!(!vvc_luma_mts_selection_allowed(
         VvcTuResidualCodingMode::Transformed,
         5,
         4,

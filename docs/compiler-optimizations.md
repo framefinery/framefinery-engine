@@ -8934,3 +8934,13 @@ cases, but the 70-frame regression grew from 18,159 to 18,165 bytes and slowed
 from 949.29 to 933.76 FPS, with no consistent PSNR improvement. The source
 change was removed; the existing fixed weight remains until a broader cost
 model can be validated.
+
+The VVC production MTS trial gate (2026-08-28) was disabled after confirming
+that the active mode selector always requests DCT-II, despite the residual
+scorer evaluating four non-default transforms for every eligible lossy TU.
+Syntax and inverse-transform support remain available for a future selector.
+The gated build produced identical Wayland 50-frame output (4,032,288 bytes,
+58.945 dB), passed required VTM validation 7/7 for both lossless and lossy
+regression sets, and showed only noisy separate-run timing (1.51 versus 1.45
+FPS). This removes unselected work without claiming a broad speedup; future
+MTS work should use a mode-directed shortlist and matched benchmarks.

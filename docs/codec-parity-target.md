@@ -1430,3 +1430,14 @@ with aggregate FPS falling from 949.29 to 933.76 and mixed PSNR changes. The
 candidate was reverted because it provided no rate, quality, or speed benefit.
 Future AV2 lossy improvements need a better calibrated full candidate cost
 model rather than changing this shared RD weight in isolation.
+
+The VVC production MTS trial gate (2026-08-28) was disabled after auditing the
+selector: the active mode selector always requests DCT-II, while the residual
+scorer was still evaluating four non-default MTS transforms for every eligible
+lossy TU. Disabling those unselected trials kept the transform syntax and
+inverse-transform implementation available, produced identical Wayland
+50-frame output (4,032,288 bytes, 58.945 dB), and passed required VTM
+validation for all 7 lossless and 7 lossy regression cases. Separate runs were
+timing-noisy (1.51 versus 1.45 FPS), so this is recorded as removal of dead
+work rather than a quantified broad speed milestone. Re-enable selection only
+with a mode-directed candidate policy and matched rate/quality evidence.
