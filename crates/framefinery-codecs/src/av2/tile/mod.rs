@@ -34,4 +34,5 @@ include!("lossless_subsampled.rs");
 include!("residual.rs");
 include!("directional.rs");
 include!("txb.rs");
+include!("txb_syntax.rs");
 include!("contexts.rs");
