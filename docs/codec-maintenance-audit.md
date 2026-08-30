@@ -91,6 +91,8 @@ The following changes were behavior-preserving and independently validated:
 - AV2 palette-specific luma residual emission now lives in a dedicated
   palette-residual module, separate from the general residual writer.
 - AV2 lossy subsampled scoring was separated from its materialization path.
+- AV2 lossless subsampled tile construction and plane-coordinate mapping now
+  live in a dedicated state module, separate from prediction and scoring.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.
 - AV2 transform-block entropy writers were separated from coefficient/context
