@@ -257,6 +257,9 @@ The following changes were behavior-preserving and independently validated:
 - AV2 transform coefficient-map, lower-level, base-range, and neighbour lookup
   context math now lives in a dedicated sibling, separate from entropy
   emission order and syntax-field naming.
+- AV2 regular intra and inter luma TXBs now share one coefficient traversal,
+  sign pass, and entropy-context result; a small syntax policy selects only
+  their distinct skip, EOB, and transform-type fields at emission.
 - AV2 inter-residual tracing was separated from residual coefficient writing,
   keeping diagnostics and feature-gated instrumentation out of the coding
   pipeline.
@@ -292,7 +295,7 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 491-line orchestration plus focused prediction siblings | plane-level luma/chroma dispatch and scratch ownership still need call-graph review |
-| AV2 tile transform syntax helpers | 1,095-line emission core plus 332-line context sibling | luma/chroma coefficient emission remains broad and syntax-sensitive |
+| AV2 tile transform syntax helpers | 1,092-line emission core plus 332-line context sibling | chroma size variants remain broad and syntax-sensitive |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
 
 For the next functional cleanup, prefer extracting a small shared helper with

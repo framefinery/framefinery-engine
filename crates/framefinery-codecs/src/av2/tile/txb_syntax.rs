@@ -1,61 +1,43 @@
+#[derive(Clone, Copy)]
+enum Av2LumaTxbSyntaxPolicy {
+    Intra,
+    Inter,
+}
+
+impl Av2LumaTxbSyntaxPolicy {
+    fn write_skip(self, writer: &mut Av2EntropyWriter, skip_ctx: u8, all_zero: bool) {
+        match (self, all_zero) {
+            (Self::Intra, true) => write_y_txb_all_zero(writer, skip_ctx),
+            (Self::Intra, false) => write_y_txb_nonzero(writer, skip_ctx),
+            (Self::Inter, true) => write_y_inter_txb_all_zero(writer, skip_ctx),
+            (Self::Inter, false) => write_y_inter_txb_nonzero(writer, skip_ctx),
+        }
+    }
+
+    fn write_eob_and_tx_type(self, writer: &mut Av2EntropyWriter, eob: usize) {
+        match self {
+            Self::Intra => write_eob_y(writer, eob),
+            Self::Inter => {
+                write_eob_y_inter(writer, eob);
+                write_regular_inter_dct_dct_tx_type(writer, eob);
+            }
+        }
+    }
+}
+
 fn write_luma_palette_residual_txb(
     writer: &mut Av2EntropyWriter,
     skip_ctx: u8,
     dc_sign_ctx: u8,
     coefficients: &[i32; TX4X4_SAMPLES],
 ) -> (u8, bool) {
-    let (levels, bounds) = lossless_coefficient_levels_and_bounds(coefficients);
-    let Some((_, eob)) = bounds else {
-        write_y_txb_all_zero(writer, skip_ctx);
-        return (0, false);
-    };
-
-    write_y_txb_nonzero(writer, skip_ctx);
-    write_eob_y(writer, eob);
-
-    for scan_index in (1..eob).rev() {
-        let pos = TX4X4_SCAN[scan_index];
-        let level = levels[pos];
-        let coeff_ctx = luma_nz_map_context(&levels, pos, scan_index, scan_index + 1 == eob);
-        write_luma_coefficient_level(
-            writer,
-            &levels,
-            pos,
-            scan_index + 1 == eob,
-            coeff_ctx,
-            level,
-        );
-    }
-
-    let dc_level = levels[0];
-    let dc_ctx = luma_nz_map_context(&levels, 0, 0, eob == 1);
-    write_luma_coefficient_level(writer, &levels, 0, eob == 1, dc_ctx, dc_level);
-
-    let mut cul_level = 0u32;
-    let mut dc_val = 0i32;
-    let mut hr_level_avg = 0u32;
-    for scan_index in (0..eob).rev() {
-        let pos = TX4X4_SCAN[scan_index];
-        let level = levels[pos];
-        if level == 0 {
-            continue;
-        }
-        let negative = coefficients[pos] < 0;
-        if scan_index == 0 {
-            write_y_dc_sign(writer, negative, dc_sign_ctx);
-            dc_val = if negative {
-                -(level as i32)
-            } else {
-                level as i32
-            };
-        } else {
-            writer.write_literal_bit("tile.coeff.y.ac_sign_negative", negative);
-        }
-        write_luma_high_range(writer, pos, level, &mut hr_level_avg);
-        cul_level += level;
-    }
-
-    (lossless_entropy_context(cul_level, dc_val), true)
+    write_luma_regular_residual_txb(
+        writer,
+        skip_ctx,
+        dc_sign_ctx,
+        coefficients,
+        Av2LumaTxbSyntaxPolicy::Intra,
+    )
 }
 
 fn write_luma_inter_residual_txb(
@@ -64,15 +46,30 @@ fn write_luma_inter_residual_txb(
     dc_sign_ctx: u8,
     coefficients: &[i32; TX4X4_SAMPLES],
 ) -> (u8, bool) {
+    write_luma_regular_residual_txb(
+        writer,
+        skip_ctx,
+        dc_sign_ctx,
+        coefficients,
+        Av2LumaTxbSyntaxPolicy::Inter,
+    )
+}
+
+fn write_luma_regular_residual_txb(
+    writer: &mut Av2EntropyWriter,
+    skip_ctx: u8,
+    dc_sign_ctx: u8,
+    coefficients: &[i32; TX4X4_SAMPLES],
+    syntax: Av2LumaTxbSyntaxPolicy,
+) -> (u8, bool) {
     let (levels, bounds) = lossless_coefficient_levels_and_bounds(coefficients);
     let Some((_, eob)) = bounds else {
-        write_y_inter_txb_all_zero(writer, skip_ctx);
+        syntax.write_skip(writer, skip_ctx, true);
         return (0, false);
     };
 
-    write_y_inter_txb_nonzero(writer, skip_ctx);
-    write_eob_y_inter(writer, eob);
-    write_regular_inter_dct_dct_tx_type(writer, eob);
+    syntax.write_skip(writer, skip_ctx, false);
+    syntax.write_eob_and_tx_type(writer, eob);
 
     for scan_index in (1..eob).rev() {
         let pos = TX4X4_SCAN[scan_index];
