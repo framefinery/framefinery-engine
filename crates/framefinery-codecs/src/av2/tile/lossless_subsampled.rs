@@ -111,17 +111,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         )
     }
 
-    fn h_predictor(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        local_y: usize,
-    ) -> Av2Sample {
-        let edge_sample = |plane, x, y| self.recon_sample(plane, x, y);
-        self.h_predictor_with(plane, x0, y0, local_y, &edge_sample)
-    }
-
     fn h_predictor_with<EdgeSample>(
         &self,
         plane: Av2LosslessPlane,
@@ -143,17 +132,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
             local_y,
             |x, y| edge_sample(plane, x, y),
         )
-    }
-
-    fn v_predictor(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        local_x: usize,
-    ) -> Av2Sample {
-        let edge_sample = |plane, x, y| self.recon_sample(plane, x, y);
-        self.v_predictor_with(plane, x0, y0, local_x, &edge_sample)
     }
 
     fn v_predictor_with<EdgeSample>(
@@ -644,9 +622,32 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         y0: usize,
         horz: bool,
     ) -> [i32; TX4X4_SAMPLES] {
-        self.dpcm_residual4x4_with_edge_predictors(plane, x0, y0, horz, |local_y| {
-            self.h_predictor(plane, x0, y0, local_y)
-        }, |local_x| self.v_predictor(plane, x0, y0, local_x))
+        self.dpcm_residual4x4_with_reference(
+            plane,
+            x0,
+            y0,
+            horz,
+            Av2LosslessIntraReference::Reconstructed,
+        )
+    }
+
+    fn dpcm_residual4x4_with_reference(
+        &self,
+        plane: Av2LosslessPlane,
+        x0: usize,
+        y0: usize,
+        horz: bool,
+        reference: Av2LosslessIntraReference,
+    ) -> [i32; TX4X4_SAMPLES] {
+        let edge_sample = |plane, x, y| self.intra_reference_sample(reference, plane, x, y);
+        self.dpcm_residual4x4_with_edge_predictors(
+            plane,
+            x0,
+            y0,
+            horz,
+            |local_y| self.h_predictor_with(plane, x0, y0, local_y, &edge_sample),
+            |local_x| self.v_predictor_with(plane, x0, y0, local_x, &edge_sample),
+        )
     }
 
     fn dpcm_residual4x4_with_edge_predictors(
@@ -718,46 +719,13 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         leaf_x0: usize,
         leaf_y0: usize,
     ) -> [i32; TX4X4_SAMPLES] {
-        self.dpcm_residual4x4_with_edge_predictors(
+        self.dpcm_residual4x4_with_reference(
             plane,
             x0,
             y0,
             horz,
-            |local_y| {
-                self.h_predictor_for_score(plane, x0, y0, local_y, leaf_x0, leaf_y0)
-            },
-            |local_x| {
-                self.v_predictor_for_score(plane, x0, y0, local_x, leaf_x0, leaf_y0)
-            },
+            Av2LosslessIntraReference::Score { leaf_x0, leaf_y0 },
         )
-    }
-
-    fn h_predictor_for_score(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        local_y: usize,
-        leaf_x0: usize,
-        leaf_y0: usize,
-    ) -> Av2Sample {
-        let edge_sample =
-            |plane, x, y| self.neighbor_sample_for_score(plane, x, y, leaf_x0, leaf_y0);
-        self.h_predictor_with(plane, x0, y0, local_y, &edge_sample)
-    }
-
-    fn v_predictor_for_score(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        local_x: usize,
-        leaf_x0: usize,
-        leaf_y0: usize,
-    ) -> Av2Sample {
-        let edge_sample =
-            |plane, x, y| self.neighbor_sample_for_score(plane, x, y, leaf_x0, leaf_y0);
-        self.v_predictor_with(plane, x0, y0, local_x, &edge_sample)
     }
 
     fn luma_directional_idif_residual4x4_with_reference(
