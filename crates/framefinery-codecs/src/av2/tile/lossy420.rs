@@ -75,6 +75,7 @@ struct Av2LossySubsampledTileState<'a> {
     #[cfg(feature = "av2-lossy-stats")]
     qp: u8,
     base_qindex: u16,
+    regular_quant_params: Av2RegularQuantParams,
     #[cfg(feature = "av2-lossy-stats")]
     stats: Option<std::cell::RefCell<Av2LossyStats>>,
 }
@@ -153,6 +154,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
             #[cfg(feature = "av2-lossy-stats")]
             qp,
             base_qindex,
+            regular_quant_params: Av2RegularQuantParams::new(base_qindex, bit_depth),
             #[cfg(feature = "av2-lossy-stats")]
             stats: av2_lossy_stats_enabled()
                 .then(|| std::cell::RefCell::new(Av2LossyStats::default())),
@@ -876,7 +878,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         }
         let coefficients = av2_fdct8x8(&analysis.residual);
         let (qcoeff, dqcoeff) =
-            av2_regular_quantize_dct8x8(&coefficients, self.base_qindex, self.bit_depth);
+            av2_regular_quantize_dct8x8_with_params(&coefficients, self.regular_quant_params);
         let residual = if dqcoeff[1..]
             .iter()
             .all(|&coefficient| coefficient == 0)
@@ -914,7 +916,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         }
         let coefficients = av2_fdct4x8(&residual);
         let (qcoeff, dqcoeff) =
-            av2_regular_quantize_dct4x8(&coefficients, self.base_qindex, self.bit_depth);
+            av2_regular_quantize_dct4x8_with_params(&coefficients, self.regular_quant_params);
         Av2LossyTx4x8QuantizedResidualCandidate {
             coefficients: av2_regular_quantized_level_coefficients_tx4x8(&qcoeff),
             residual: av2_idct4x8(&dqcoeff, self.bit_depth),
@@ -994,7 +996,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         }
         let coefficients = av2_fdct4x4(&analysis.residual);
         let (mut qcoeff, _) =
-            av2_regular_quantize_dct4x4(&coefficients, self.base_qindex, self.bit_depth);
+            av2_regular_quantize_dct4x4_with_params(&coefficients, self.regular_quant_params);
         prune_regular_dct_ac_levels(
             &mut qcoeff,
             self.base_qindex,

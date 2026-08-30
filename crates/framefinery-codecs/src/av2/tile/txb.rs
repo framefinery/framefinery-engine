@@ -267,6 +267,13 @@ fn av2_regular_quantize_dct4x4(
     bit_depth: SampleBitDepth,
 ) -> ([i32; TX4X4_SAMPLES], [i32; TX4X4_SAMPLES]) {
     let params = Av2RegularQuantParams::new(qindex, bit_depth);
+    av2_regular_quantize_dct4x4_with_params(coefficients, params)
+}
+
+fn av2_regular_quantize_dct4x4_with_params(
+    coefficients: &[i32; TX4X4_SAMPLES],
+    params: Av2RegularQuantParams,
+) -> ([i32; TX4X4_SAMPLES], [i32; TX4X4_SAMPLES]) {
     let mut qcoeff = [0i32; TX4X4_SAMPLES];
     for pos in 0..TX4X4_SAMPLES {
         qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], params, pos != 0);
@@ -281,6 +288,13 @@ fn av2_regular_quantize_dct8x8(
     bit_depth: SampleBitDepth,
 ) -> ([i32; TX8X8_SAMPLES], [i32; TX8X8_SAMPLES]) {
     let params = Av2RegularQuantParams::new(qindex, bit_depth);
+    av2_regular_quantize_dct8x8_with_params(coefficients, params)
+}
+
+fn av2_regular_quantize_dct8x8_with_params(
+    coefficients: &[i32; TX8X8_SAMPLES],
+    params: Av2RegularQuantParams,
+) -> ([i32; TX8X8_SAMPLES], [i32; TX8X8_SAMPLES]) {
     let mut qcoeff = [0i32; TX8X8_SAMPLES];
     for pos in 0..TX8X8_SAMPLES {
         qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], params, pos != 0);
@@ -295,6 +309,13 @@ fn av2_regular_quantize_dct4x8(
     bit_depth: SampleBitDepth,
 ) -> ([i32; TX4X8_SAMPLES], [i32; TX4X8_SAMPLES]) {
     let params = Av2RegularQuantParams::new(qindex, bit_depth);
+    av2_regular_quantize_dct4x8_with_params(coefficients, params)
+}
+
+fn av2_regular_quantize_dct4x8_with_params(
+    coefficients: &[i32; TX4X8_SAMPLES],
+    params: Av2RegularQuantParams,
+) -> ([i32; TX4X8_SAMPLES], [i32; TX4X8_SAMPLES]) {
     let mut qcoeff = [0i32; TX4X8_SAMPLES];
     for pos in 0..TX4X8_SAMPLES {
         qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], params, pos != 0);

@@ -1614,3 +1614,10 @@ tests to fail, including the active-slice tool-flag and geometry-derived CTU
 partition checks. It was reverted without benchmarking or retaining source
 changes; any narrower DC search needs an explicit rate-distortion equivalence
 proof before adoption.
+
+The AV2 lossy quantization-parameter cache (2026-08-28) moved construction of
+the invariant regular quantization parameters out of the per-transform-block
+path and into `Av2LossySubsampledTileState`. The existing parameterized scalar
+quantizers remain shared with the original wrappers, preserving numerical
+behavior and syntax. All 87 AV2 unit tests and all seven required lossy AVM
+regression cases passed with unchanged encoded sizes and reconstruction hashes.
