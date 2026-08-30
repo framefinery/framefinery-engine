@@ -1966,16 +1966,48 @@ fn vvc_plane_region_sse(
     width: usize,
     height: usize,
 ) -> u64 {
+    vvc_plane_region_sse_with_limit(
+        source,
+        source_stride,
+        reconstruction,
+        reconstruction_stride,
+        start_x,
+        start_y,
+        width,
+        height,
+        None,
+    )
+    .expect("an unrestricted plane SSE cannot exceed its input bounds")
+}
+
+fn vvc_plane_region_sse_with_limit(
+    source: &[VvcSample],
+    source_stride: usize,
+    reconstruction: &[VvcSample],
+    reconstruction_stride: usize,
+    start_x: usize,
+    start_y: usize,
+    width: usize,
+    height: usize,
+    max_abs_delta: Option<u16>,
+) -> Option<u64> {
     let mut sse = 0u64;
     for y in 0..height {
         let source_row = (start_y + y) * source_stride + start_x;
         let reconstruction_row = (start_y + y) * reconstruction_stride + start_x;
         for x in 0..width {
-            let delta = i64::from(source[source_row + x]) - i64::from(reconstruction[reconstruction_row + x]);
+            let source_sample = source[source_row + x];
+            let reconstruction_sample = reconstruction[reconstruction_row + x];
+            if max_abs_delta.is_some_and(|limit| {
+                source_sample.abs_diff(reconstruction_sample) > limit
+            }) {
+                return None;
+            }
+            let delta = i64::from(source_sample) - i64::from(reconstruction_sample);
             sse = sse.saturating_add((delta * delta) as u64);
         }
     }
-    sse
+    Some(sse)
 }
 
 fn vvc_predictive_luma_leaf_inter_skip_mask(
@@ -2135,16 +2167,16 @@ fn vvc_predictive_lossy_region_sse_if_within_reconstruction_delta(
     if width == 0 || height == 0 {
         return None;
     }
-    let mut sse = vvc_predictive_plane_region_sse_if_within_delta(
+    let mut sse = vvc_plane_region_sse_with_limit(
         &current_source.luma,
-        &previous_reconstruction.luma,
         current_source.geometry.width,
+        &previous_reconstruction.luma,
         previous_reconstruction.luma_width(),
         region.origin_x,
         region.origin_y,
         width,
         height,
-        max_abs_delta,
+        Some(max_abs_delta),
     )?;
 
     let subsample_x = chroma_subsample_x(current_source.format.chroma_sampling);
@@ -2155,55 +2187,27 @@ fn vvc_predictive_lossy_region_sse_if_within_reconstruction_delta(
     let chroma_height = height / subsample_y;
     let chroma_stride = current_source.geometry.width / subsample_x;
     let reference_chroma_stride = previous_reconstruction.chroma_width();
-    sse = sse.saturating_add(vvc_predictive_plane_region_sse_if_within_delta(
+    sse = sse.saturating_add(vvc_plane_region_sse_with_limit(
         &current_source.cb,
+        chroma_stride,
         &previous_reconstruction.cb,
-        chroma_stride,
         reference_chroma_stride,
         chroma_x,
         chroma_y,
         chroma_width,
         chroma_height,
-        max_abs_delta,
+        Some(max_abs_delta),
     )?);
-    sse = sse.saturating_add(vvc_predictive_plane_region_sse_if_within_delta(
+    sse = sse.saturating_add(vvc_plane_region_sse_with_limit(
         &current_source.cr,
-        &previous_reconstruction.cr,
         chroma_stride,
+        &previous_reconstruction.cr,
         reference_chroma_stride,
         chroma_x,
         chroma_y,
         chroma_width,
         chroma_height,
-        max_abs_delta,
+        Some(max_abs_delta),
     )?);
-    Some(sse)
-}
-
-fn vvc_predictive_plane_region_sse_if_within_delta(
-    current: &[VvcSample],
-    reference: &[VvcSample],
-    current_stride: usize,
-    reference_stride: usize,
-    origin_x: usize,
-    origin_y: usize,
-    width: usize,
-    height: usize,
-    max_abs_delta: u16,
-) -> Option<u64> {
-    let mut sse = 0u64;
-    for y in origin_y..origin_y + height {
-        let current_row = y * current_stride;
-        let reference_row = y * reference_stride;
-        for x in origin_x..origin_x + width {
-            let current_sample = current[current_row + x];
-            let reference_sample = reference[reference_row + x];
-            if current_sample.abs_diff(reference_sample) > max_abs_delta {
-                return None;
-            }
-            let delta = i64::from(current_sample) - i64::from(reference_sample);
-            sse = sse.saturating_add((delta * delta) as u64);
-        }
-    }
     Some(sse)
 }
