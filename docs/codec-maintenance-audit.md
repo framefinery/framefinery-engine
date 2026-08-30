@@ -123,6 +123,8 @@ The following changes were behavior-preserving and independently validated:
   retaining the same deepest-level feature gates.
 - AV2 all-inter entropy writers now live in a dedicated syntax module, keeping
   inter-only emission separate from intra, palette, and lossy tile planning.
+- VVC luma and chroma visible transform-skip/BDPCM reconstruction now share one
+  clipped sample writer, with subsampling reduced to wrapper geometry setup.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from

@@ -298,108 +298,23 @@ fn fill_visible_chroma_transform_skip_node(
     }
     let active_width = node_width.min(8);
     let active_height = node_height.min(8);
-    if residual.bdpcm_mode.is_enabled() {
-        fill_visible_chroma_bdpcm_transform_skip_node(
-            chroma,
-            chroma_width,
-            start_x,
-            start_y,
-            visible_width,
-            visible_height,
-            node_width,
-            node_width.min(4),
-            node_height.min(4),
-            predicted,
-            residual,
-            bit_depth,
-            quant_table,
-        );
-        return;
-    }
-
-    let max_sample = i32::from(bit_depth.max_sample());
-    for local_y in 0..visible_height {
-        let row = (start_y + local_y) * chroma_width + start_x;
-        let predicted_row = local_y * node_width;
-        for local_x in 0..visible_width {
-            let reconstructed_residual =
-                if local_y < active_height && local_x < active_width {
-                    let level = if local_x == 0 && local_y == 0 {
-                        residual.dc_level
-                    } else {
-                        residual.ac_levels[local_y * active_width + local_x - 1]
-                    };
-                    quant_table.reconstructed(level)
-                } else {
-                    0
-                };
-            let idx = predicted_row + local_x;
-            chroma[row + local_x] =
-                (i32::from(predicted[idx]) + i32::from(reconstructed_residual))
-                    .clamp(0, max_sample) as VvcSample;
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn fill_visible_chroma_bdpcm_transform_skip_node(
-    chroma: &mut [VvcSample],
-    chroma_stride: usize,
-    start_x: usize,
-    start_y: usize,
-    visible_width: usize,
-    visible_height: usize,
-    node_width: usize,
-    active_width: usize,
-    active_height: usize,
-    predicted: &[VvcSample],
-    residual: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
-    bit_depth: SampleBitDepth,
-    quant_table: &VvcTransformSkipQuantTable,
-) {
-    let max_sample = i32::from(bit_depth.max_sample());
-    let active_rows = visible_height.min(active_height);
-    let mut vertical_predictors = [0i16; 4];
-    for local_y in 0..active_rows {
-        let row = (start_y + local_y) * chroma_stride + start_x;
-        let predicted_row = local_y * node_width;
-        let mut horizontal_predictor = 0i16;
-        for local_x in 0..active_width {
-            let delta = if local_x == 0 && local_y == 0 {
-                residual.dc_level
-            } else {
-                residual.ac_levels[local_y * 4 + local_x - 1]
-            };
-            let level = match residual.bdpcm_mode {
-                VvcBdpcmMode::None => unreachable!("BDPCM fill requires a direction"),
-                VvcBdpcmMode::Horizontal if local_x > 0 => {
-                    add_bdpcm_quantized_levels(delta, horizontal_predictor)
-                }
-                VvcBdpcmMode::Vertical if local_y > 0 => {
-                    add_bdpcm_quantized_levels(delta, vertical_predictors[local_x])
-                }
-                VvcBdpcmMode::Horizontal | VvcBdpcmMode::Vertical => delta,
-            };
-            horizontal_predictor = level;
-            vertical_predictors[local_x] = level;
-            if local_x < visible_width {
-                let idx = predicted_row + local_x;
-                chroma[row + local_x] =
-                    (i32::from(predicted[idx]) + i32::from(quant_table.reconstructed(level)))
-                        .clamp(0, max_sample) as VvcSample;
-            }
-        }
-        for local_x in active_width..visible_width {
-            let idx = predicted_row + local_x;
-            chroma[row + local_x] = predicted[idx];
-        }
-    }
-    for local_y in active_rows..visible_height {
-        let row = (start_y + local_y) * chroma_stride + start_x;
-        let predicted_row = local_y * node_width;
-        chroma[row..row + visible_width]
-            .copy_from_slice(&predicted[predicted_row..predicted_row + visible_width]);
-    }
+    fill_visible_transform_skip_samples(
+        chroma,
+        chroma_width,
+        start_x,
+        start_y,
+        visible_width,
+        visible_height,
+        node_width,
+        active_width,
+        active_height,
+        predicted,
+        residual.dc_level,
+        &residual.ac_levels,
+        residual.bdpcm_mode,
+        bit_depth,
+        quant_table,
+    );
 }
 
 fn copy_source_chroma_node_into_reconstruction(
