@@ -43,6 +43,8 @@ The following changes were behavior-preserving and independently validated:
   shared reference-access helpers.
 - VVC planar/DC and angular PDPC arithmetic now lives in a dedicated helper
   module used by the common prediction paths.
+- VVC angular zero-reference and multi-reference-line construction now lives
+  in a dedicated reference-builder module.
 - VVC transform-skip residual placement and reconstruction now share one
   parameterized kernel across luma/chroma and identity/QP/table paths.
 - VVC BDPCM transform-skip inverse traversal and reconstruction now share the
