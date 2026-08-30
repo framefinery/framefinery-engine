@@ -118,6 +118,9 @@ The following changes were behavior-preserving and independently validated:
 - AV2 lossless subsampled luma/chroma residual mode dispatch now shares one
   source-backed/reconstructed-reference selector, keeping fast-mode gates at
   mode selection while reusing the common residual materialization path.
+- AV2 lossless intra residual scoring and materialization now share one mode
+  and predictor path, with only the reconstructed-versus-score neighbour source
+  selected where predictor edges are read.
 - VVC residual mode scoring and fast-search gate helpers now live in a
   dedicated mode-selection helper module, separate from CTU orchestration while
   retaining the same deepest-level feature gates.
@@ -234,7 +237,7 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 2,098 lines after reference-edge split | shared angular/reference machinery still has several large helpers |
-| AV2 lossless subsampled residuals | 1,753 lines | materialization and score paths need further comparison before extraction |
+| AV2 lossless subsampled residuals | 1,188 lines after reference-policy unification | DPCM score/materialization adapters need further comparison before extraction |
 | AV2 tile transform syntax helpers | 1,516 lines after writer split | coefficient contexts remain broad but syntax-sensitive |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
 

@@ -8,6 +8,12 @@ struct Av2LosslessSubsampledTileState<'a> {
     source_backed_recon: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Av2LosslessIntraReference {
+    Reconstructed,
+    Score { leaf_x0: usize, leaf_y0: usize },
+}
+
 include!("lossless_subsampled_state.rs");
 include!("lossless_subsampled_source.rs");
 include!("lossless_subsampled_score.rs");
@@ -67,6 +73,21 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
             return self.source_sample(plane, x, y);
         }
         read_planar_sample(self.recon, self.offset(plane, x, y), self.bit_depth)
+    }
+
+    fn intra_reference_sample(
+        &self,
+        reference: Av2LosslessIntraReference,
+        plane: Av2LosslessPlane,
+        x: usize,
+        y: usize,
+    ) -> Av2Sample {
+        match reference {
+            Av2LosslessIntraReference::Reconstructed => self.recon_sample(plane, x, y),
+            Av2LosslessIntraReference::Score { leaf_x0, leaf_y0 } => {
+                self.neighbor_sample_for_score(plane, x, y, leaf_x0, leaf_y0)
+            }
+        }
     }
 
     fn dc_predictor_with<EdgeSample>(
@@ -344,32 +365,16 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         leaf_height: usize,
         coded_mi_context: &Av2CodedMiContext,
     ) -> [i32; TX4X4_SAMPLES] {
-        if let Some((base, delta)) = mode.directional() {
-            let angle = base.angle(delta);
-            if angle != 90 && angle != 180 {
-                return self.luma_directional_idif_residual4x4(
-                    x0,
-                    y0,
-                    angle,
-                    leaf_x0,
-                    leaf_y0,
-                    leaf_width,
-                    leaf_height,
-                    coded_mi_context,
-                );
-            }
-        }
-        self.intra_residual4x4(
-            Av2LosslessPlane::Y,
+        self.luma_intra_residual4x4_with_reference(
             x0,
             y0,
-            chroma_mode_for_luma_mode(mode),
-            None,
+            mode,
             leaf_x0,
             leaf_y0,
             leaf_width,
             leaf_height,
             coded_mi_context,
+            Av2LosslessIntraReference::Reconstructed,
         )
     }
 
@@ -384,10 +389,35 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         leaf_height: usize,
         coded_mi_context: &Av2CodedMiContext,
     ) -> [i32; TX4X4_SAMPLES] {
+        self.luma_intra_residual4x4_with_reference(
+            x0,
+            y0,
+            mode,
+            leaf_x0,
+            leaf_y0,
+            leaf_width,
+            leaf_height,
+            coded_mi_context,
+            Av2LosslessIntraReference::Score { leaf_x0, leaf_y0 },
+        )
+    }
+
+    fn luma_intra_residual4x4_with_reference(
+        &self,
+        x0: usize,
+        y0: usize,
+        mode: Av2LumaIntraMode,
+        leaf_x0: usize,
+        leaf_y0: usize,
+        leaf_width: usize,
+        leaf_height: usize,
+        coded_mi_context: &Av2CodedMiContext,
+        reference: Av2LosslessIntraReference,
+    ) -> [i32; TX4X4_SAMPLES] {
         if let Some((base, delta)) = mode.directional() {
             let angle = base.angle(delta);
             if angle != 90 && angle != 180 {
-                return self.luma_directional_idif_residual4x4_for_score(
+                return self.luma_directional_idif_residual4x4_with_reference(
                     x0,
                     y0,
                     angle,
@@ -396,10 +426,11 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                     leaf_width,
                     leaf_height,
                     coded_mi_context,
+                    reference,
                 );
             }
         }
-        self.intra_residual4x4_for_score(
+        self.intra_residual4x4_with_reference(
             Av2LosslessPlane::Y,
             x0,
             y0,
@@ -410,6 +441,7 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
             leaf_width,
             leaf_height,
             coded_mi_context,
+            reference,
         )
     }
 
@@ -426,10 +458,39 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         leaf_height: usize,
         coded_mi_context: &Av2CodedMiContext,
     ) -> [i32; TX4X4_SAMPLES] {
+        self.intra_residual4x4_with_reference(
+            plane,
+            x0,
+            y0,
+            mode,
+            directional_angle,
+            leaf_x0,
+            leaf_y0,
+            leaf_width,
+            leaf_height,
+            coded_mi_context,
+            Av2LosslessIntraReference::Reconstructed,
+        )
+    }
+
+    fn intra_residual4x4_with_reference(
+        &self,
+        plane: Av2LosslessPlane,
+        x0: usize,
+        y0: usize,
+        mode: Av2ChromaIntraMode,
+        directional_angle: Option<i16>,
+        leaf_x0: usize,
+        leaf_y0: usize,
+        leaf_width: usize,
+        leaf_height: usize,
+        coded_mi_context: &Av2CodedMiContext,
+        reference: Av2LosslessIntraReference,
+    ) -> [i32; TX4X4_SAMPLES] {
         if plane == Av2LosslessPlane::Y {
             if let Some(angle) = av2_chroma_directional_angle(mode) {
                 if angle != 90 && angle != 180 {
-                    return self.luma_directional_idif_residual4x4(
+                    return self.luma_directional_idif_residual4x4_with_reference(
                         x0,
                         y0,
                         angle,
@@ -438,55 +499,12 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                         leaf_width,
                         leaf_height,
                         coded_mi_context,
+                        reference,
                     );
                 }
             }
         }
-        let edge_sample = |plane, x, y| self.recon_sample(plane, x, y);
-        self.intra_residual4x4_with_edge_policy(
-            mode,
-            directional_angle,
-            plane,
-            x0,
-            y0,
-            leaf_x0,
-            leaf_y0,
-            leaf_width,
-            leaf_height,
-            coded_mi_context,
-            edge_sample,
-            || self.smooth_edges(
-                plane,
-                x0,
-                y0,
-                leaf_x0,
-                leaf_y0,
-                leaf_width,
-                leaf_height,
-                coded_mi_context,
-            ),
-        )
-    }
-
-    fn intra_residual4x4_with_edge_policy<EdgeSample, SmoothEdges>(
-        &self,
-        mode: Av2ChromaIntraMode,
-        directional_angle: Option<i16>,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-        edge_sample: EdgeSample,
-        smooth_edges: SmoothEdges,
-    ) -> [i32; TX4X4_SAMPLES]
-    where
-        EdgeSample: Fn(Av2LosslessPlane, usize, usize) -> Av2Sample,
-        SmoothEdges: Fn() -> ([Av2Sample; TX4X4_SIZE + 1], [Av2Sample; TX4X4_SIZE + 1]),
-    {
+        let edge_sample = |plane, x, y| self.intra_reference_sample(reference, plane, x, y);
         av2_intra_residual4x4(
             mode,
             directional_angle,
@@ -512,7 +530,19 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                     &edge_sample,
                 )
             },
-            smooth_edges,
+            || {
+                self.smooth_edges_with(
+                    plane,
+                    x0,
+                    y0,
+                    leaf_x0,
+                    leaf_y0,
+                    leaf_width,
+                    leaf_height,
+                    coded_mi_context,
+                    &edge_sample,
+                )
+            },
         )
     }
 
@@ -664,46 +694,18 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         leaf_height: usize,
         coded_mi_context: &Av2CodedMiContext,
     ) -> [i32; TX4X4_SAMPLES] {
-        if plane == Av2LosslessPlane::Y {
-            if let Some(angle) = av2_chroma_directional_angle(mode) {
-                if angle != 90 && angle != 180 {
-                    return self.luma_directional_idif_residual4x4_for_score(
-                        x0,
-                        y0,
-                        angle,
-                        leaf_x0,
-                        leaf_y0,
-                        leaf_width,
-                        leaf_height,
-                        coded_mi_context,
-                    );
-                }
-            }
-        }
-        let edge_sample =
-            |plane, x, y| self.neighbor_sample_for_score(plane, x, y, leaf_x0, leaf_y0);
-        self.intra_residual4x4_with_edge_policy(
-            mode,
-            directional_angle,
+        self.intra_residual4x4_with_reference(
             plane,
             x0,
             y0,
+            mode,
+            directional_angle,
             leaf_x0,
             leaf_y0,
             leaf_width,
             leaf_height,
             coded_mi_context,
-            edge_sample,
-            || self.smooth_edges_for_score(
-                plane,
-                x0,
-                y0,
-                leaf_x0,
-                leaf_y0,
-                leaf_width,
-                leaf_height,
-                coded_mi_context,
-            ),
+            Av2LosslessIntraReference::Score { leaf_x0, leaf_y0 },
         )
     }
 
@@ -758,7 +760,7 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         self.v_predictor_with(plane, x0, y0, local_x, &edge_sample)
     }
 
-    fn luma_directional_idif_residual4x4(
+    fn luma_directional_idif_residual4x4_with_reference(
         &self,
         x0: usize,
         y0: usize,
@@ -768,36 +770,9 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         leaf_width: usize,
         leaf_height: usize,
         coded_mi_context: &Av2CodedMiContext,
+        reference: Av2LosslessIntraReference,
     ) -> [i32; TX4X4_SAMPLES] {
-        let edge_sample = |plane, x, y| self.recon_sample(plane, x, y);
-        let source_sample = |plane, x, y| self.source_sample(plane, x, y);
-        self.luma_directional_idif_residual4x4_with(
-            x0,
-            y0,
-            angle,
-            leaf_x0,
-            leaf_y0,
-            leaf_width,
-            leaf_height,
-            coded_mi_context,
-            edge_sample,
-            source_sample,
-        )
-    }
-
-    fn luma_directional_idif_residual4x4_for_score(
-        &self,
-        x0: usize,
-        y0: usize,
-        angle: i16,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-    ) -> [i32; TX4X4_SAMPLES] {
-        let edge_sample =
-            |plane, x, y| self.neighbor_sample_for_score(plane, x, y, leaf_x0, leaf_y0);
+        let edge_sample = |plane, x, y| self.intra_reference_sample(reference, plane, x, y);
         let source_sample = |plane, x, y| self.source_sample(plane, x, y);
         self.luma_directional_idif_residual4x4_with(
             x0,
@@ -1059,57 +1034,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
             left.fill(edge_sample(plane, x0, y0 - 1));
         }
         left
-    }
-
-    fn smooth_edges(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-    ) -> ([Av2Sample; TX4X4_SIZE + 1], [Av2Sample; TX4X4_SIZE + 1]) {
-        let edge_sample = |plane, x, y| self.recon_sample(plane, x, y);
-        self.smooth_edges_with(
-            plane,
-            x0,
-            y0,
-            leaf_x0,
-            leaf_y0,
-            leaf_width,
-            leaf_height,
-            coded_mi_context,
-            &edge_sample,
-        )
-    }
-
-    fn smooth_edges_for_score(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-    ) -> ([Av2Sample; TX4X4_SIZE + 1], [Av2Sample; TX4X4_SIZE + 1]) {
-        let edge_sample =
-            |plane, x, y| self.neighbor_sample_for_score(plane, x, y, leaf_x0, leaf_y0);
-        self.smooth_edges_with(
-            plane,
-            x0,
-            y0,
-            leaf_x0,
-            leaf_y0,
-            leaf_width,
-            leaf_height,
-            coded_mi_context,
-            &edge_sample,
-        )
     }
 
     fn smooth_edges_with<EdgeSample>(
