@@ -177,6 +177,7 @@ impl VvcIbcHashSearch {
         self.hmvp.clear();
     }
 
+    #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
     pub(super) fn decide_8x8<F: VvcIbcFrameView>(
         &self,
         frame: &F,
@@ -240,6 +241,7 @@ impl VvcIbcHashSearch {
             .min_by_key(|decision| vvc_ibc_decision_search_cost(*decision))
     }
 
+    #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
     pub(super) fn decide_left_8x8<F: VvcIbcFrameView>(
         &self,
         frame: &F,
@@ -292,6 +294,7 @@ impl VvcIbcHashSearch {
         })
     }
 
+    #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
     pub(super) fn record_palette_8x8<F: VvcIbcFrameView>(
         &mut self,
         frame: &F,
@@ -302,6 +305,7 @@ impl VvcIbcHashSearch {
         self.record_hash_if_full_visible(frame, origin_x, origin_y);
     }
 
+    #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
     pub(super) fn record_ibc_8x8<F: VvcIbcFrameView>(
         &mut self,
         frame: &F,
@@ -426,6 +430,7 @@ impl VvcIbcHashSearch {
         }
     }
 
+    #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
     fn local_hash_candidate(
         &self,
         origin_x: usize,
@@ -472,6 +477,7 @@ impl VvcIbcHashSearch {
         })
     }
 
+    #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
     fn record_hmvp(&mut self, bv: VvcIbcBv) {
         if let Some(pos) = self.hmvp.iter().position(|entry| *entry == bv) {
             self.hmvp.remove(pos);
@@ -492,6 +498,7 @@ impl VvcIbcHashSearch {
         self.ibc_mode_by_cu[index].then_some(self.bv_by_cu[index])
     }
 
+    #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
     fn hash_entry_at(&self, origin_x: usize, origin_y: usize) -> Option<VvcIbcHashEntry> {
         self.entries
             .iter()

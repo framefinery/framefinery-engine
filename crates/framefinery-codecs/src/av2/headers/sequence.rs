@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(any(test, feature = "bench-internals"))]
 fn av2_black_444_sequence_header_payload(geometry: Av2VideoGeometry) -> Av2SyntaxPayload {
     av2_mvp_444_sequence_header_payload(
         geometry,
@@ -7,6 +7,7 @@ fn av2_black_444_sequence_header_payload(geometry: Av2VideoGeometry) -> Av2Synta
     )
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn av2_mvp_444_sequence_header_payload(
     geometry: Av2VideoGeometry,
     bit_depth: SampleBitDepth,
@@ -39,6 +40,7 @@ fn av2_mvp_444_sequence_header_payload_for_visible(
     )
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn av2_mvp_sequence_header_payload(
     geometry: Av2VideoGeometry,
     profile: Av2Black444MvpProfile,
@@ -62,6 +64,7 @@ fn av2_mvp_sequence_header_payload_for_visible(
     )
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn av2_mvp_predictive_sequence_header_payload(
     geometry: Av2VideoGeometry,
     profile: Av2Black444MvpProfile,
@@ -124,6 +127,7 @@ fn av2_rgb_identity_content_interpretation_payload() -> Av2SyntaxPayload {
     writer.finish()
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn av2_mvp_sequence_header_payload_with_mode(
     geometry: Av2VideoGeometry,
     profile: Av2Black444MvpProfile,

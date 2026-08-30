@@ -20,6 +20,7 @@ mod session;
 mod settings;
 #[cfg(any(feature = "av2", feature = "vvc"))]
 mod timing;
+#[cfg(test)]
 mod trace;
 #[cfg(feature = "vvc")]
 #[doc(hidden)]

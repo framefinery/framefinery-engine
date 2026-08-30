@@ -27,6 +27,7 @@ const VVC_REMAINING_LUMA_MODE_COUNT: u32 =
 const VVC_NUM_INTRA_ANGULAR_MODES: i16 = 65;
 const VVC_NUM_INTRA_ANGULAR_MODE_WRAP: i16 = VVC_NUM_INTRA_ANGULAR_MODES - 1;
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(in crate::vvc) fn encode_ctu_partition_body(
     cabac: &mut VvcCabacEncoder,
     params: &VvcCtuPartitionParams,
@@ -36,6 +37,7 @@ pub(in crate::vvc) fn encode_ctu_partition_body(
     encode_ctu_partition_body_with_contexts(cabac, &mut contexts, params, slice_config);
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn encode_inter_skip_ctu_body_with_contexts(
     cabac: &mut VvcCabacEncoder,
     contexts: &mut VvcCabacContexts,
@@ -330,6 +332,7 @@ fn encode_vvc_trunc_bin_code_ep(cabac: &mut VvcCabacEncoder, symbol: u32, num_sy
     }
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(in crate::vvc) fn initial_vvc_cabac_contexts(
     slice_config: VvcSliceSyntaxConfig,
 ) -> VvcCabacContexts {
@@ -346,6 +349,7 @@ pub(in crate::vvc) fn initial_vvc_cabac_contexts_for_init_type(
     VvcCabacContexts::with_slice_qp_and_init_type(slice_config.slice_qp, init_type)
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(in crate::vvc) fn encode_ctu_partition_body_with_contexts(
     cabac: &mut VvcCabacEncoder,
     contexts: &mut VvcCabacContexts,

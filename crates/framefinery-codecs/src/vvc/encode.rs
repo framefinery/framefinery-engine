@@ -1,3 +1,4 @@
+#[cfg(test)]
 pub fn eos_annex_b() -> Vec<u8> {
     write_annex_b(&[VvcNalUnit::eos()]).expect("hard-coded EOS NAL should be valid")
 }
@@ -11,12 +12,14 @@ const VVC_LOSSY_PREDICTIVE_SKIP_MAX_ABS_8BIT: u16 = 2;
 // focused tests.
 const VVC_SCC_IBC_PRODUCTION_ENABLED: bool = true;
 
+#[cfg(test)]
 pub fn vvc_black_yuv420p8_annex_b(params: VvcEncodeParams) -> Result<Vec<u8>, String> {
     validate_vvc_exact_frame_count(params)?;
     let input = vec![0; Picture::expected_len(8, 8, PixelFormat::Yuv420p8) * params.frames];
     vvc_yuv420p8_annex_b_from_input(&input, params)
 }
 
+#[cfg(test)]
 pub fn vvc_yuv420p8_annex_b_from_input(
     input: &[u8],
     params: VvcEncodeParams,
@@ -32,6 +35,7 @@ pub fn vvc_yuv420p8_annex_b_from_input(
     )
 }
 
+#[cfg(test)]
 pub fn vvc_yuv420p_annex_b_from_input(
     input: &[u8],
     params: VvcEncodeParams,
@@ -48,6 +52,7 @@ pub fn vvc_yuv420p_annex_b_from_input(
     )
 }
 
+#[cfg(test)]
 pub fn vvc_default_yuv_annex_b_from_input(
     input: &[u8],
     params: VvcEncodeParams,
@@ -64,6 +69,7 @@ pub fn vvc_default_yuv_annex_b_from_input(
     )
 }
 
+#[cfg(test)]
 pub fn vvc_yuv_annex_b_from_input(
     input: &[u8],
     params: VvcEncodeParams,
@@ -79,6 +85,7 @@ pub fn vvc_yuv_annex_b_from_input(
     )
 }
 
+#[cfg(test)]
 pub fn vvc_yuv_annex_b_from_input_with_limits(
     input: &[u8],
     params: VvcEncodeParams,
@@ -92,6 +99,7 @@ pub fn vvc_yuv_annex_b_from_input_with_limits(
     )
 }
 
+#[cfg(test)]
 pub fn vvc_yuv_encode_artifacts_from_input_with_limits(
     input: &[u8],
     params: VvcEncodeParams,
@@ -117,6 +125,7 @@ pub fn vvc_yuv_encode_artifacts_from_input_with_limits(
     })
 }
 
+#[cfg(test)]
 pub fn vvc_yuv_encode_stream_with_limits<R: Read, W: Write>(
     input: &mut R,
     bitstream: &mut W,
@@ -139,6 +148,7 @@ pub fn vvc_yuv_encode_stream_with_limits<R: Read, W: Write>(
     )
 }
 
+#[cfg(test)]
 pub fn vvc_yuv_encode_stream_with_limits_and_frame_metrics<R: Read, W: Write>(
     input: &mut R,
     bitstream: &mut W,
@@ -2086,6 +2096,7 @@ fn vvc_lossy_predictive_skip_max_abs_delta(bit_depth: SampleBitDepth) -> u16 {
     VVC_LOSSY_PREDICTIVE_SKIP_MAX_ABS_8BIT << u32::from(bit_depth.bits().saturating_sub(8))
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn vvc_predictive_lossy_region_within_reconstruction_delta(
     current_source: &VvcSampledFrame,
     previous_reconstruction: &VvcReconstructionFrame,

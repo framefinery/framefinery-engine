@@ -198,6 +198,7 @@ fn residual_chroma_pair_tu_at_into_impl<const TRACK_ZERO: bool>(
     (cb_all_zero, cr_all_zero)
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(in crate::vvc) fn residual_chroma_tu_at_into_and_detect_zero(
     residuals: &mut Vec<i16>,
     samples: &[VvcSample],

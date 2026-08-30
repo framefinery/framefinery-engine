@@ -1,6 +1,6 @@
-pub const AV2_CODEC_NAME: &str = "av2";
-pub const AV2_BITSTREAM_EXTENSION: &str = "av2";
+#[cfg(any(test, feature = "bench-internals"))]
 pub const AV2_FIXED_BLACK_444_WIDTH: usize = 64;
+#[cfg(any(test, feature = "bench-internals"))]
 pub const AV2_FIXED_BLACK_444_HEIGHT: usize = 64;
 
 pub(crate) type Av2Sample = u16;

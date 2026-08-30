@@ -1,4 +1,5 @@
 impl VvcSampledFrame {
+    #[cfg(any(test, feature = "bench-internals"))]
     fn solid(color: VvcSampledColor) -> Self {
         let geometry = VvcVideoGeometry {
             width: 8,
@@ -53,6 +54,7 @@ fn vvc_bit_depth_is_supported(bit_depth: SampleBitDepth) -> bool {
     (VVC_MIN_BIT_DEPTH..=VVC_MAX_BIT_DEPTH).contains(&bit_depth.bits())
 }
 
+#[cfg(test)]
 pub fn sample_vvc_first_yuv420p8(
     input: &[u8],
     params: VvcEncodeParams,

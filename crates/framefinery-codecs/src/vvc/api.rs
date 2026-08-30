@@ -140,25 +140,6 @@ impl From<VvcProfile> for framefinery_api::VideoSettingValue {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct VvcSubset {
-    pub all_intra: bool,
-    pub single_picture: bool,
-    pub one_tile: bool,
-    pub one_slice: bool,
-}
-
-impl Default for VvcSubset {
-    fn default() -> Self {
-        Self {
-            all_intra: true,
-            single_picture: true,
-            one_tile: true,
-            one_slice: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VvcEncodeParams {
     pub frames: usize,
 }
@@ -210,16 +191,6 @@ impl VvcFastSearch {
     pub const VALUES: &'static [&'static str] =
         &["off", "conservative", "moderate", "aggressive", "lossless-speed"];
 
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Off => "off",
-            Self::Conservative => "conservative",
-            Self::Moderate => "moderate",
-            Self::Aggressive => "aggressive",
-            Self::LosslessSpeed => "lossless-speed",
-        }
-    }
-
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "off" => Some(Self::Off),
@@ -254,6 +225,7 @@ pub struct VvcEncodeOptions {
     pub profile: VvcProfile,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VvcEncodeArtifacts {
     pub bitstream: Vec<u8>,

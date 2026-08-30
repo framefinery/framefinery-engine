@@ -24,10 +24,6 @@ impl BitWriter {
         }
     }
 
-    pub fn write_bool(&mut self, value: bool) {
-        self.write_bit(value);
-    }
-
     pub fn write_bits(&mut self, value: u64, bit_count: u8) {
         assert!(bit_count <= 64, "cannot write more than 64 bits at once");
         for bit_index in (0..bit_count).rev() {
@@ -113,6 +109,7 @@ impl<C> Default for SyntaxBitWriter<C> {
 }
 
 impl<C: Copy> SyntaxBitWriter<C> {
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -159,6 +156,7 @@ impl<C: Copy> SyntaxBitWriter<C> {
         self.write_bits(value, bit_count);
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub fn write_field_bit_slice(&mut self, name: &'static str, code: C, bits: &[bool]) {
         self.record_field(name, code, bits.len());
         for bit in bits {
@@ -204,6 +202,7 @@ impl<C: Copy> SyntaxBitWriter<C> {
         self.writer.is_byte_aligned()
     }
 
+    #[cfg(test)]
     pub fn fields(&self) -> &[SyntaxField<C>] {
         &self.fields
     }
@@ -238,6 +237,7 @@ pub fn insert_emulation_prevention_bytes(rbsp: &[u8]) -> Vec<u8> {
     out
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NalUnitKind {
     /// Generic coded-picture category for legacy/shared Annex-B tests.
@@ -248,6 +248,7 @@ pub enum NalUnitKind {
     FrameFineryPlaceholder,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NalUnit {
     pub kind: NalUnitKind,
@@ -256,10 +257,12 @@ pub struct NalUnit {
 }
 
 #[derive(Debug, Default)]
+#[cfg(test)]
 pub struct AnnexBWriter {
     units: Vec<NalUnit>,
 }
 
+#[cfg(test)]
 impl AnnexBWriter {
     pub fn new() -> Self {
         Self::default()
@@ -280,6 +283,7 @@ impl AnnexBWriter {
     }
 }
 
+#[cfg(test)]
 fn placeholder_nal_header(kind: NalUnitKind, temporal_id: u8) -> [u8; 2] {
     // This shared helper writes project-local placeholder headers. Codec
     // modules that need conforming NAL headers own their exact header packing.

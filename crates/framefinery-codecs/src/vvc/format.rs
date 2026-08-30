@@ -18,6 +18,7 @@ impl VvcCodingTreeConfig {
         }
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     const fn single_tree_444() -> Self {
         Self {
             chroma_sampling: ChromaSampling::Cs444,
@@ -116,6 +117,7 @@ impl VvcSyntaxToolFlags {
         self
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     const fn palette_444() -> Self {
         Self {
             ibc_enabled: true,
@@ -193,6 +195,7 @@ impl VvcSliceSyntaxConfig {
         )
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     const fn palette_444() -> Self {
         let mut config = Self::new(
             VvcCodingTreeConfig::single_tree_444(),
@@ -238,6 +241,7 @@ impl VvcSliceSyntaxConfig {
         config
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     const fn for_picture_format(format: VvcPictureFormat) -> Self {
         Self::residual(format.chroma_sampling, VvcResidualCodingMode::Lossy)
     }
@@ -259,6 +263,7 @@ impl VvcSliceSyntaxConfig {
         self
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     const fn with_picture_header_slice_state(mut self) -> Self {
         self.picture_header_slice_state_enabled = true;
         self

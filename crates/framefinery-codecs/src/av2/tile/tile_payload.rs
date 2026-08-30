@@ -127,6 +127,7 @@ pub(crate) fn av2_black_444_tile_entropy_payload_for_region_with_intrabc_and_fie
     writer.finish()
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(crate) fn av2_black_tile_entropy_payload_for_region(
     region: Av2TileRegion,
     profile: Av2Black444MvpProfile,
@@ -135,6 +136,7 @@ pub(crate) fn av2_black_tile_entropy_payload_for_region(
     av2_black_tile_entropy_payload_for_region_with_fields(region, profile, chroma_format, true)
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(crate) fn av2_black_tile_entropy_payload_for_region_with_fields(
     region: Av2TileRegion,
     profile: Av2Black444MvpProfile,
@@ -207,6 +209,7 @@ fn av2_luma_palette_444_tile_entropy_payload_for_region_with_policy(
     writer.finish()
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(crate) fn av2_lossy_subsampled_tile_entropy_payload_for_region(
     region: Av2TileRegion,
     profile: Av2Black444MvpProfile,

@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub fn av2_encode_fixed_black_444(
     input: &mut dyn Read,
     output: &mut dyn Write,
@@ -9,6 +10,7 @@ pub fn av2_encode_fixed_black_444(
     av2_encode_fixed_black_444_with_frame_metrics(input, output, recon, request, None)
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub fn av2_encode_fixed_black_444_with_frame_metrics(
     input: &mut dyn Read,
     output: &mut dyn Write,

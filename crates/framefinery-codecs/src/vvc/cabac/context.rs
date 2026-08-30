@@ -808,12 +808,15 @@ pub(in crate::vvc) struct VvcCabacContexts {
 }
 
 impl VvcCabacContexts {
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) const DEFAULT_SLICE_QP: i32 = 32;
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn new() -> Self {
         Self::with_slice_qp(Self::DEFAULT_SLICE_QP)
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn with_slice_qp(slice_qp: i32) -> Self {
         Self::with_slice_qp_and_init_type(slice_qp, VvcCabacInitType::I)
     }
@@ -1573,6 +1576,7 @@ impl VvcCabacProbModel {
     const MASK_0: u16 = 0x7fe0;
     const MASK_1: u16 = 0x7ffe;
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn from_context(ctx: VvcCabacContext, qp: i32) -> Self {
         Self::from_init_value(ctx.init_value(), qp, ctx.log2_window_size())
     }

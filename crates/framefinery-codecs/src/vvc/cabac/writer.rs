@@ -97,6 +97,7 @@ pub(in crate::vvc) struct VvcCabacEncoder {
 }
 
 impl VvcCabacEncoder {
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn new() -> Self {
         Self::with_dump_recording(false)
     }
@@ -107,6 +108,7 @@ impl VvcCabacEncoder {
         encoder
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn new_with_dump() -> Self {
         Self::with_dump_recording(true)
     }
@@ -390,6 +392,7 @@ impl VvcCabacEncoder {
         self.packed_bits.finish()
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn finish(self) -> Vec<bool> {
         self.finish_payload().into_bits()
     }
@@ -443,6 +446,7 @@ pub(in crate::vvc) struct VvcCabacPayload {
 }
 
 impl VvcCabacPayload {
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn into_bits(self) -> Vec<bool> {
         let mut bits = Vec::with_capacity(self.bit_len);
         for bit_index in 0..self.bit_len {

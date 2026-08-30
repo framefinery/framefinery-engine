@@ -24,4 +24,5 @@ include!("syntax.rs");
 include!("binarization.rs");
 include!("cu.rs");
 include!("slice.rs");
+#[cfg(any(test, feature = "bench-internals"))]
 include!("dump.rs");

@@ -38,6 +38,7 @@ pub struct VvcVideoLimits {
 }
 
 impl VvcVideoLimits {
+    #[cfg(any(test, feature = "bench-internals"))]
     pub const fn max_64x64() -> Self {
         Self {
             max_width: 64,
@@ -54,6 +55,7 @@ impl VvcVideoLimits {
 }
 
 impl VvcVideoGeometry {
+    #[cfg(any(test, feature = "bench-internals"))]
     pub const fn validation_minimum() -> Self {
         Self {
             width: 4,
@@ -152,6 +154,7 @@ pub struct VvcSampledColor {
 pub(in crate::vvc) type VvcSample = u16;
 pub(in crate::vvc) const VVC_MIN_BIT_DEPTH: u8 = 8;
 pub(in crate::vvc) const VVC_MAX_BIT_DEPTH: u8 = 12;
+#[cfg(any(test, feature = "bench-internals"))]
 const VVC_PALETTE_DEFAULT_SLICE_QP: i32 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

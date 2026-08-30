@@ -117,6 +117,7 @@ pub(in crate::vvc) fn vvc_chroma_transform_nodes_into(
     );
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(in crate::vvc) fn vvc_luma_transform_nodes(
     shape: VvcCtuPartitionShape,
     max_leaf_size: u16,
@@ -134,6 +135,7 @@ pub(in crate::vvc) fn vvc_luma_transform_nodes_for_kind(
     nodes
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(in crate::vvc) fn vvc_luma_transform_nodes_into(
     nodes: &mut Vec<VvcCodingTreeNode>,
     shape: VvcCtuPartitionShape,
@@ -1147,6 +1149,7 @@ impl VvcCtuCabacOp {
         Self::intra_ctu_partition(params.shape(), params.luma_max_leaf_size)
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn intra_ctu_partition(
         shape: VvcCtuPartitionShape,
         max_leaf_size: u16,
@@ -1186,6 +1189,7 @@ impl VvcCtuCabacOp {
         ops
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn append_intra_ctu_partition_with_luma_neighbours(
         ops: &mut Vec<Self>,
         neighbours: &mut VvcLumaNeighbourState,

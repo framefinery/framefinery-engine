@@ -32,6 +32,7 @@ fn vvc_frame_cabac_payload(
     cabac.finish_payload()
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn vvc_frame_inter_skip_cabac_payload(
     picture_geometry: VvcVideoGeometry,
     slice_config: VvcSliceSyntaxConfig,
@@ -86,6 +87,7 @@ fn vvc_ctu_cabac_payload(
     cabac.finish_payload()
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
     geometry: VvcVideoGeometry,
     color: VvcQuantizedColor,
@@ -240,6 +242,7 @@ fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma_for_kind(
     })
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn vvc_luma_leaf_count(
     coded: VvcCodedGeometry,
     chroma_sampling: ChromaSampling,

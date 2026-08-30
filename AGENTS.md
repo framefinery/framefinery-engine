@@ -172,6 +172,53 @@ exist yet.
 - Keep generated artifacts out of version control unless they are intentionally
   committed fixtures.
 
+## Best Coding Practices
+
+Treat maintainability and validation as part of codec correctness. Before adding
+an optimization or mode, identify the shared path it changes and record the
+expected byte, quality, speed, and reconstruction effects. Keep changes small
+enough to benchmark and review independently.
+
+- Keep one shared traversal, prediction, residual, reconstruction, and syntax
+  pipeline for lossy, lossless, RGB, inter, and subsampled input where the
+  specification permits it. Represent differences as explicit mode decisions
+  or policy data, and gate unavailable or unhelpful tools at mode selection,
+  not by copying the whole coding path.
+- Do not add a second implementation to work around a difficult format. First
+  isolate the differing syntax or reconstruction rule, then share the common
+  analysis and finalization code around it. Any intentional separate path must
+  state its format/specification boundary and have focused validation.
+- Keep production modules focused. Split files that grow beyond roughly 1,000
+  lines when the split follows a stable responsibility such as traversal,
+  prediction, transform, quantization, entropy syntax, or validation. Keep
+  test fixtures separate from test cases and organize tests by contract.
+- Prefer small value types over long argument lists. Group immutable coding
+  configuration, frame geometry, mode decisions, and scratch state into named
+  structs when a function needs several related parameters. Avoid blanket
+  `allow` attributes; scope exceptions to the narrowest module or function and
+  document why they are necessary.
+- Use `Result` for recoverable input, configuration, I/O, and codec errors.
+  Reserve `expect`, `panic`, and `unreachable!` for invariants proven by
+  validated state, and make the invariant clear in the surrounding code.
+  Unsupported user input must be rejected before entering bitstream emission.
+- Keep public API, CLI, WASM, and codec settings driven by one manifest or
+  configuration source. Do not duplicate setting names, defaults, or legality
+  checks in separate frontends.
+- Make optimized kernels bit-exact against a simple reference implementation
+  before measuring performance. Use checked or explicitly wrapping arithmetic
+  where overflow behavior is part of the codec contract, and validate geometry
+  and buffer lengths before allocation or indexing.
+- Every retained codec change must pass formatting, workspace checks, focused
+  tests, strict reference-decoder validation, and representative byte/PSNR/FPS
+  comparisons. Lossless changes require exact source and reference
+  reconstruction; lossy changes must report bitrate, PSNR, and speed together.
+- Run feature and dead-code audits after changing conditional compilation.
+  Classify validation-only, benchmark-only, experimental, and product code
+  explicitly instead of hiding unused code with crate-wide lint allowances.
+- Commit one coherent change at a time, with the measured baseline, result, and
+  remaining risk recorded in the relevant documentation. Revert experiments
+  that fail compliance or create an unexplained measurement regression.
+
 ## Current Build And CLI Contract
 
 The main developer binary is `./ff`. `make build` should build a release binary

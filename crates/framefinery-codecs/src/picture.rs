@@ -44,6 +44,7 @@ impl FrameLimit {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn from_frame_limit(frame_limit: Option<usize>) -> Self {
         frame_limit.map_or(Self::UntilEof, Self::Exact)
     }

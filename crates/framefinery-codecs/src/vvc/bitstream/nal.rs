@@ -7,22 +7,34 @@ use super::{VvcSyntaxRbsp, VvcSyntaxWriter};
 #[repr(u8)]
 pub enum VvcNalUnitType {
     Trail = 0,
+    #[cfg(test)]
     IdrWRadl = 7,
     IdrNLp = 8,
     Cra = 9,
+    #[cfg(test)]
     Opi = 12,
+    #[cfg(test)]
     Dci = 13,
+    #[cfg(test)]
     Vps = 14,
     Sps = 15,
     Pps = 16,
+    #[cfg(test)]
     PrefixAps = 17,
+    #[cfg(test)]
     SuffixAps = 18,
     PictureHeader = 19,
+    #[cfg(test)]
     AccessUnitDelimiter = 20,
+    #[cfg(test)]
     EndOfSequence = 21,
+    #[cfg(test)]
     EndOfBitstream = 22,
+    #[cfg(test)]
     PrefixSei = 23,
+    #[cfg(test)]
     SuffixSei = 24,
+    #[cfg(test)]
     ReservedNvcl30 = 30,
 }
 
@@ -43,6 +55,7 @@ pub struct VvcNalHeader {
     pub temporal_id: u8,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VvcNalInfo {
     pub nal_unit_type: u8,
@@ -53,6 +66,7 @@ pub struct VvcNalInfo {
 }
 
 impl VvcNalUnit {
+    #[cfg(test)]
     pub fn eos() -> Self {
         Self {
             nal_unit_type: VvcNalUnitType::EndOfSequence,
@@ -62,6 +76,7 @@ impl VvcNalUnit {
         }
     }
 
+    #[cfg(test)]
     pub fn eob() -> Self {
         Self {
             nal_unit_type: VvcNalUnitType::EndOfBitstream,
@@ -72,6 +87,7 @@ impl VvcNalUnit {
     }
 }
 
+#[cfg(test)]
 pub fn write_annex_b(units: &[VvcNalUnit]) -> Result<Vec<u8>, String> {
     let estimated_size = units
         .iter()
@@ -135,6 +151,7 @@ pub fn write_nal_unit_header(header: VvcNalHeader) -> VvcSyntaxRbsp {
     writer.finish()
 }
 
+#[cfg(test)]
 pub fn parse_annex_b_nal_units(bytes: &[u8]) -> Result<Vec<VvcNalInfo>, String> {
     let ranges = annex_b_ranges(bytes);
     let mut infos = Vec::with_capacity(ranges.len());
@@ -177,6 +194,7 @@ pub fn parse_annex_b_nal_units(bytes: &[u8]) -> Result<Vec<VvcNalInfo>, String> 
     Ok(infos)
 }
 
+#[cfg(test)]
 fn annex_b_ranges(bytes: &[u8]) -> Vec<(usize, usize)> {
     let mut starts = Vec::new();
     let mut i = 0;

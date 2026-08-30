@@ -829,6 +829,7 @@ impl Default for Av2EntropyWriter {
     }
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub fn av2_empty_tile_entropy_payload() -> Av2EntropyPayload {
     // AV2 v1.0.0 Section 5.20.1 calls init_symbol(tileSize) before
     // decode_tile() and exit_symbol() afterward. This is the smallest possible
@@ -837,6 +838,7 @@ pub fn av2_empty_tile_entropy_payload() -> Av2EntropyPayload {
     Av2EntropyWriter::new().finish()
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub fn av2_uniform_icdf(nsymbs: usize) -> Vec<u16> {
     assert!((2..=16).contains(&nsymbs), "AV2 CDF symbols must be 2..=16");
     let mut cdf = vec![0; nsymbs + 4];

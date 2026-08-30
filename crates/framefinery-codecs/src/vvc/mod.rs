@@ -33,25 +33,27 @@ mod interface;
 mod motion;
 #[path = "bitstream/nal.rs"]
 mod nal;
+#[cfg(any(test, feature = "bench-internals"))]
 mod palette;
 mod residual;
 #[path = "bitstream/syntax.rs"]
 mod syntax;
+#[cfg(any(test, feature = "bench-internals"))]
+use cabac::encode_ctu_partition_body;
 use cabac::VvcFrameCtuCabacState;
-use cabac::{
-    encode_ctu_partition_body, vvc_chroma_intra_mode_syntax_bin_count, vvc_chroma_transform_nodes,
-    vvc_chroma_transform_nodes_into, vvc_luma_intra_mode_is_mpm,
-    vvc_luma_intra_mode_syntax_bin_count, vvc_luma_transform_nodes,
-    vvc_luma_transform_nodes_for_kind, VvcCabacContext, VvcCabacContexts, VvcCabacDumpContextEvent,
-    VvcCabacDumpSymbol, VvcCabacEncoder, VvcCabacPayload, VvcCodingTreeNode, VvcCtuCabacOp,
-    VvcCtuPartitionParams, VvcCtuPartitionShape, VvcLastSigCoeffPrefixCtxInput,
-    VvcLumaSplitAvailabilityKind, VvcPartSplit,
-};
 #[cfg(test)]
 use cabac::{
     encode_ctu_partition_body_with_contexts, initial_vvc_cabac_contexts,
     vvc_luma_mpm_list_for_test, VvcCtuCabacGenerator, VvcInterMotionInfo,
     VvcInterMotionNeighbourState, VvcQtSplitCtxInput, VvcSplitCtxInput, VvcTreeType,
+};
+use cabac::{
+    vvc_chroma_intra_mode_syntax_bin_count, vvc_chroma_transform_nodes,
+    vvc_chroma_transform_nodes_into, vvc_luma_intra_mode_is_mpm,
+    vvc_luma_intra_mode_syntax_bin_count, vvc_luma_transform_nodes_for_kind, VvcCabacContext,
+    VvcCabacContexts, VvcCabacDumpContextEvent, VvcCabacDumpSymbol, VvcCabacEncoder,
+    VvcCabacPayload, VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams, VvcCtuPartitionShape,
+    VvcLastSigCoeffPrefixCtxInput, VvcLumaSplitAvailabilityKind, VvcPartSplit,
 };
 use header::{
     vvc_frame_slice_unit, vvc_one_slice_per_ctu_partitioning_supported, vvc_picture_ctu_cols,
@@ -68,10 +70,14 @@ use header::{
     write_vvc_coding_tree_entropy, VvcFrameSkipPayloadCache, VvcPictureKind, VvcSliceType,
 };
 use ibc::{VvcIbcCuDecision, VvcIbcHashSearch};
-pub use nal::{
-    nal_unit_header_bytes, parse_annex_b_nal_units, write_annex_b, write_annex_b_to,
-    write_nal_unit_header, VvcNalHeader, VvcNalInfo, VvcNalUnit, VvcNalUnitType,
-};
+#[cfg(test)]
+pub(crate) use nal::write_annex_b;
+#[cfg(test)]
+pub(crate) use nal::{nal_unit_header_bytes, write_nal_unit_header, VvcNalHeader};
+#[cfg(test)]
+pub(crate) use nal::{parse_annex_b_nal_units, VvcNalInfo};
+pub(crate) use nal::{write_annex_b_to, VvcNalUnit, VvcNalUnitType};
+#[cfg(any(test, feature = "bench-internals"))]
 pub use palette::vvc_palette_444_cabac_dump_json;
 #[cfg(test)]
 use palette::{
@@ -85,11 +91,13 @@ use palette::{
     vvc_palette_transform_skip_coded_coeff_with_config_for_test, VvcPalettePredictorMode,
     VvcPaletteTreeType,
 };
+#[cfg(test)]
 pub use residual::quantize_vvc_color;
+#[cfg(any(test, feature = "bench-internals"))]
+use residual::quantize_vvc_frame;
 #[cfg(test)]
 use residual::VVC_LUMA_DC_BASE;
 use residual::{
-    quantize_vvc_frame,
     quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes_and_scratch_with_mode_hints,
     VvcCtuQuantScratch, VvcLumaModeSearchState, VvcPlaneAvailability, VvcQuantizedColor,
     VvcResidualCabacOptions, VvcResidualComponent, VvcTransformSkipQuantTables, MAX_VVC_CHROMA_TUS,
@@ -98,7 +106,9 @@ use residual::{
 };
 #[cfg(test)]
 use residual::{VvcResidualCabacEncoder, VvcResidualCtxConfig, VvcResidualPass1State};
-pub use syntax::{VvcSyntaxCode, VvcSyntaxField, VvcSyntaxRbsp, VvcSyntaxWriter};
+#[cfg(test)]
+pub(crate) use syntax::{VvcSyntaxCode, VvcSyntaxField};
+pub(crate) use syntax::{VvcSyntaxRbsp, VvcSyntaxWriter};
 
 include!("api.rs");
 include!("geometry.rs");
@@ -108,6 +118,7 @@ include!("sampling.rs");
 include!("reconstruction.rs");
 include!("ctu.rs");
 include!("ctu_params.rs");
+#[cfg(any(test, feature = "bench-internals"))]
 include!("cabac_dump.rs");
 include!("stats.rs");
 include!("encode.rs");
@@ -118,6 +129,9 @@ pub use interface::{
     VVC_CODEC, VVC_FAST_SEARCH_SETTING, VVC_FAST_SEARCH_SETTING_SPEC, VVC_PROFILE_SETTING,
     VVC_PROFILE_SETTING_SPEC,
 };
+
+#[cfg(test)]
+use cabac::vvc_luma_transform_nodes;
 
 #[cfg(test)]
 mod tests;

@@ -1,6 +1,31 @@
+#[cfg(any(
+    test,
+    feature = "av2-stats",
+    feature = "av2-sb-bit-profile",
+    feature = "vvc-stats"
+))]
 use std::ffi::OsStr;
+#[cfg(any(
+    test,
+    feature = "av2-stats",
+    feature = "av2-sb-bit-profile",
+    feature = "vvc-stats"
+))]
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufWriter, Write};
+#[cfg(any(
+    test,
+    feature = "av2-stats",
+    feature = "av2-sb-bit-profile",
+    feature = "vvc-stats"
+))]
+use std::io::BufWriter;
+use std::io::{self, Write};
+#[cfg(any(
+    test,
+    feature = "av2-stats",
+    feature = "av2-sb-bit-profile",
+    feature = "vvc-stats"
+))]
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -52,17 +77,20 @@ impl<W: Write + ?Sized> Write for CountingWriter<'_, W> {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InstrumentationCounter {
     pub name: &'static str,
     pub value: usize,
 }
 
+#[cfg(test)]
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct InstrumentationCounters {
     counters: Vec<InstrumentationCounter>,
 }
 
+#[cfg(test)]
 impl InstrumentationCounters {
     pub fn new() -> Self {
         Self::default()
@@ -106,17 +134,35 @@ impl InstrumentationCounters {
     }
 }
 
+#[cfg(any(
+    test,
+    feature = "av2-stats",
+    feature = "av2-sb-bit-profile",
+    feature = "vvc-stats"
+))]
 #[derive(Debug)]
 pub struct JsonlInstrumentationSink {
     destination: JsonlInstrumentationDestination,
 }
 
+#[cfg(any(
+    test,
+    feature = "av2-stats",
+    feature = "av2-sb-bit-profile",
+    feature = "vvc-stats"
+))]
 #[derive(Debug)]
 enum JsonlInstrumentationDestination {
     File(BufWriter<File>),
     Stderr,
 }
 
+#[cfg(any(
+    test,
+    feature = "av2-stats",
+    feature = "av2-sb-bit-profile",
+    feature = "vvc-stats"
+))]
 impl JsonlInstrumentationSink {
     pub fn append_file(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref();

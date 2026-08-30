@@ -581,12 +581,14 @@ trait VvcCoeffAccessor {
     }
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 struct VvcRasterCoeffAccessor<'a> {
     coeff_levels: &'a [i16],
     width: usize,
     height: usize,
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 impl<'a> VvcRasterCoeffAccessor<'a> {
     fn new(coeff_levels: &'a [i16], width: usize, height: usize) -> Self {
         assert_eq!(coeff_levels.len(), width * height);
@@ -598,6 +600,7 @@ impl<'a> VvcRasterCoeffAccessor<'a> {
     }
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 impl VvcCoeffAccessor for VvcRasterCoeffAccessor<'_> {
     fn width(&self) -> usize {
         self.width
@@ -1042,6 +1045,7 @@ impl VvcResidualCabacSymbolStream {
         )
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn emit_luma_transform_skip_coefficients(
         log2_tb_width: u8,
         log2_tb_height: u8,
@@ -1091,6 +1095,7 @@ impl VvcResidualCabacSymbolStream {
         );
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn emit_luma_bdpcm_transform_skip_coefficients(
         log2_tb_width: u8,
         log2_tb_height: u8,
@@ -1110,6 +1115,7 @@ impl VvcResidualCabacSymbolStream {
         );
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn emit_chroma_transform_skip_coefficients(
         component: VvcResidualComponent,
         log2_tb_width: u8,
@@ -1165,6 +1171,7 @@ impl VvcResidualCabacSymbolStream {
         );
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn emit_chroma_bdpcm_transform_skip_coefficients(
         component: VvcResidualComponent,
         log2_tb_width: u8,
@@ -1223,6 +1230,7 @@ impl VvcResidualCabacSymbolStream {
         )
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     fn emit_coefficients_with_transform_skip(
         component: VvcResidualComponent,
         log2_tb_width: u8,
@@ -1244,6 +1252,7 @@ impl VvcResidualCabacSymbolStream {
         );
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     fn emit_coefficients_with_tool_flags(
         component: VvcResidualComponent,
         log2_tb_width: u8,

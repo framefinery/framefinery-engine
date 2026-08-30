@@ -261,6 +261,7 @@ impl Av2RegularQuantParams {
     }
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn av2_regular_quantize_dct4x4(
     coefficients: &[i32; TX4X4_SAMPLES],
     qindex: u16,
@@ -282,6 +283,7 @@ fn av2_regular_quantize_dct4x4_with_params(
     (qcoeff, dqcoeff)
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn av2_regular_quantize_dct8x8(
     coefficients: &[i32; TX8X8_SAMPLES],
     qindex: u16,
@@ -303,6 +305,7 @@ fn av2_regular_quantize_dct8x8_with_params(
     (qcoeff, dqcoeff)
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn av2_regular_quantize_dct4x8(
     coefficients: &[i32; TX4X8_SAMPLES],
     qindex: u16,

@@ -37,10 +37,11 @@ use super::{
     quantize_vvc_chroma_residual_greedy_with_qp, quantize_vvc_chroma_sample,
     reconstruct_vvc_chroma, residual_vvc_luma_bdpcm_block_into_with_availability,
     VvcDcPredictionScratch, VvcInverseTransformScratch, VvcQuantizedColor,
-    VvcQuantizedResidualFrame,
     MAX_VVC_CHROMA_TUS, MAX_VVC_LUMA_TUS, VVC_CHROMA_AC_COEFFS_PER_TU,
     VVC_CHROMA_AC_POSITIONS_4X4, VVC_LUMA_AC_COEFFS_PER_TU,
 };
+#[cfg(any(test, feature = "bench-internals"))]
+use super::VvcQuantizedResidualFrame;
 #[cfg(feature = "vvc-stats")]
 use super::{
     VvcChromaPredictionStatsFamily, VvcIntraSearchStats, VvcLumaPredictionStatsFamily,

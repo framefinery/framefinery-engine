@@ -33,7 +33,9 @@ mod stats;
 mod syntax;
 mod tile;
 
-use ibc::{Av2LocalIbc444, Av2LocalIbcStats, Av2LocalIbcTileBounds};
+#[cfg(any(test, feature = "bench-internals"))]
+use ibc::Av2LocalIbcStats;
+use ibc::{Av2LocalIbc444, Av2LocalIbcTileBounds};
 use motion::{
     Av2LosslessMotionMap, Av2MotionSearchRegion, Av2MotionVector, AV2_LOSSLESS_ME_BLOCK_SIZE,
 };
@@ -42,7 +44,6 @@ use syntax::{Av2SyntaxPayload, Av2SyntaxWriter};
 use tile::{
     av2_black_444_tile_entropy_payload_for_region_with_fields,
     av2_black_444_tile_entropy_payload_for_region_with_intrabc_and_fields,
-    av2_black_tile_entropy_payload_for_region,
     av2_lossless_mixed_inter_intra_tile_entropy_payload_for_region_with_fields,
     av2_lossless_mixed_inter_tile_entropy_payload_for_region_with_fields,
     av2_lossless_new_mv_inter_tile_entropy_payload_for_region_with_fields,
@@ -51,10 +52,13 @@ use tile::{
     av2_lossless_subsampled_tile_entropy_payload_for_region_with_fields,
     av2_lossless_zero_mv_inter_tile_entropy_payload_for_region_with_fields,
     av2_lossy_fixed_inter_intra_tile_entropy_payload_for_region_with_fields,
-    av2_lossy_subsampled_tile_entropy_payload_for_region,
     av2_lossy_subsampled_tile_entropy_payload_for_region_with_fields,
     av2_luma_palette_444_tile_entropy_payload_for_region_with_fields, Av2LosslessInterBlockMode,
     Av2LosslessInterTileBlockModes, Av2TileRegion,
+};
+#[cfg(any(test, feature = "bench-internals"))]
+use tile::{
+    av2_black_tile_entropy_payload_for_region, av2_lossy_subsampled_tile_entropy_payload_for_region,
 };
 
 include!("format.rs");
@@ -64,6 +68,7 @@ include!("frame_mode.rs");
 include!("encode.rs");
 include!("image/rgb.rs");
 include!("predictive.rs");
+#[cfg(any(test, feature = "bench-internals"))]
 include!("trace.rs");
 include!("reconstruction.rs");
 include!("headers.rs");

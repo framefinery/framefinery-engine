@@ -1,3 +1,4 @@
+#[cfg(any(test, feature = "bench-internals"))]
 pub fn av2_black_64x64_444_reconstruction() -> Vec<u8> {
     av2_black_444_reconstruction_for_geometry(Av2VideoGeometry {
         width: 64,
@@ -5,6 +6,7 @@ pub fn av2_black_64x64_444_reconstruction() -> Vec<u8> {
     })
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub fn av2_black_444_reconstruction(geometry: Av2VideoGeometry) -> Option<Vec<u8>> {
     geometry
         .validate_shape()
@@ -12,6 +14,7 @@ pub fn av2_black_444_reconstruction(geometry: Av2VideoGeometry) -> Option<Vec<u8
         .map(|()| av2_black_444_reconstruction_for_geometry(geometry))
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn av2_black_444_reconstruction_for_geometry(geometry: Av2VideoGeometry) -> Vec<u8> {
     av2_black_444_reconstruction_for_geometry_with_depth(
         geometry,
@@ -46,11 +49,13 @@ fn av2_black_reconstruction_for_geometry(
     ]
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn validate_fixed_black_444_request(request: Av2EncodeRequest) -> Result<Av2VideoGeometry, String> {
     let geometry = validate_mvp_444_request(request)?;
     Ok(geometry)
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn validate_mvp_444_request(request: Av2EncodeRequest) -> Result<Av2VideoGeometry, String> {
     let geometry = validate_mvp_request(request)?;
     if !matches!(

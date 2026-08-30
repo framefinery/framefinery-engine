@@ -41,15 +41,17 @@ pub(super) use prediction::{
     residual_vvc_luma_bdpcm_block_into_with_availability, VvcDcPredictionScratch,
     VvcPlaneAvailability,
 };
+#[cfg(test)]
 pub use quant::quantize_vvc_color;
-#[cfg(test)]
+#[cfg(any(test, feature = "bench-internals"))]
+pub(super) use quant::quantize_vvc_frame;
+#[cfg(any(test, feature = "bench-internals"))]
 pub(super) use quant::quantize_vvc_frame_with_reconstruction;
-#[cfg(test)]
+#[cfg(any(test, feature = "bench-internals"))]
 pub(super) use quant::quantize_vvc_residual_ctu_into_frame_reconstruction;
 #[cfg(feature = "bench-internals")]
 pub(super) use quant::quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes;
 pub(super) use quant::{
-    quantize_vvc_frame,
     quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes_and_scratch_with_mode_hints,
     VvcCtuQuantScratch, VvcLumaModeSearchState, VvcTransformSkipQuantTables,
 };
@@ -534,6 +536,7 @@ fn residual_energy_split(residuals: &[i16], width: usize, height: usize) -> VvcR
     split
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct VvcQuantizedResidualFrame {
     pub(super) quantized: VvcQuantizedColor,

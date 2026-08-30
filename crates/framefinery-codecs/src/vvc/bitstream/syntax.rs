@@ -72,6 +72,7 @@ impl VvcSyntaxWriter {
         self.writer.write_bits(code_num, bit_count);
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub fn write_cabac_token(&mut self, name: &'static str, value: u64, bit_count: u8) {
         assert!(
             bit_count <= 64,
@@ -81,6 +82,7 @@ impl VvcSyntaxWriter {
             .write_field_bits(name, VvcSyntaxCode::CabacToken, value, bit_count);
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub fn write_cabac_bits(&mut self, name: &'static str, bits: &[bool]) {
         self.writer
             .write_field_bit_slice(name, VvcSyntaxCode::CabacToken, bits);
@@ -105,6 +107,7 @@ impl VvcSyntaxWriter {
         self.writer.is_byte_aligned()
     }
 
+    #[cfg(test)]
     pub fn fields(&self) -> &[VvcSyntaxField] {
         self.writer.fields()
     }

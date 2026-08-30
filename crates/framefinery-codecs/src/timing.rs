@@ -31,6 +31,7 @@ impl StageStart {
         }
     }
 
+    #[cfg(any(feature = "av2-stats", feature = "vvc-stats"))]
     pub(crate) fn elapsed_nanos(self) -> u64 {
         let nanos = self.elapsed().as_nanos();
         nanos.min(u128::from(u64::MAX)) as u64

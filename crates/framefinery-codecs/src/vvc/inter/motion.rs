@@ -27,6 +27,7 @@ pub(in crate::vvc) struct VvcLumaMotionSearchBlock {
     pub(in crate::vvc) height: usize,
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(in crate::vvc) struct VvcLumaMotionRegionAnalysis {
     pub(in crate::vvc) block_count: usize,
@@ -41,6 +42,7 @@ pub(in crate::vvc) struct VvcLumaMotionRegionAnalysis {
     pub(in crate::vvc) aggregate_64x64: VvcLumaMotionAggregateSummary,
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(in crate::vvc) struct VvcLumaMotionAggregateSummary {
     pub(in crate::vvc) candidate_count: usize,
@@ -80,6 +82,7 @@ pub(in crate::vvc) struct VvcLumaMotionMap {
     candidates: Vec<VvcLumaMotionCandidate>,
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(in crate::vvc) fn vvc_luma_motion_analysis_for_region(
     current: &VvcSampledFrame,
     reference: &VvcSampledFrame,
@@ -208,10 +211,12 @@ pub(in crate::vvc) fn vvc_luma_motion_map_for_region(
 }
 
 impl VvcLumaMotionMap {
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) const fn origin_x(&self) -> usize {
         self.origin_x
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) const fn origin_y(&self) -> usize {
         self.origin_y
     }
@@ -220,10 +225,12 @@ impl VvcLumaMotionMap {
         self.block_size
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) const fn blocks_x(&self) -> usize {
         self.blocks_x
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) const fn blocks_y(&self) -> usize {
         self.blocks_y
     }
@@ -241,6 +248,7 @@ impl VvcLumaMotionMap {
             .copied()
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     pub(in crate::vvc) fn uniform_aggregate_candidate(
         &self,
         block_x: usize,
@@ -287,6 +295,7 @@ impl VvcLumaMotionMap {
         })
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     fn block_analysis(&self, near_sad_per_sample: u64) -> VvcLumaMotionRegionAnalysis {
         let summary = self.aggregate_summary(1, near_sad_per_sample);
         VvcLumaMotionRegionAnalysis {
@@ -303,6 +312,7 @@ impl VvcLumaMotionMap {
         }
     }
 
+    #[cfg(any(test, feature = "bench-internals"))]
     fn aggregate_summary(
         &self,
         blocks_per_side: usize,
@@ -409,6 +419,7 @@ struct VvcLumaMotionAggregateArea {
     mv: Option<VvcLumaMotionVector>,
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 fn motion_near_threshold(near_sad_per_sample: u64, samples: usize) -> u64 {
     near_sad_per_sample.saturating_mul(samples as u64)
 }

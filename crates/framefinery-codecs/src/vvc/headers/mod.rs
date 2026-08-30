@@ -2,11 +2,12 @@ use crate::picture::{ChromaSampling, SampleBitDepth};
 
 #[cfg(test)]
 use super::vvc_cabac_bits_with_luma_max_leaf_size;
+#[cfg(any(test, feature = "bench-internals"))]
+use super::vvc_frame_inter_skip_cabac_payload;
 use super::{
-    vvc_ctu_cabac_payload, vvc_frame_cabac_payload, vvc_frame_inter_skip_cabac_payload,
-    VvcCabacPayload, VvcNalUnit, VvcNalUnitType, VvcProfile, VvcQuantizedCtu,
-    VvcQuantizedCtuPayload, VvcSliceSyntaxConfig, VvcSyntaxRbsp, VvcSyntaxWriter, VvcVideoGeometry,
-    VvcVuiSignal, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
+    vvc_ctu_cabac_payload, vvc_frame_cabac_payload, VvcCabacPayload, VvcNalUnit, VvcNalUnitType,
+    VvcProfile, VvcQuantizedCtu, VvcQuantizedCtuPayload, VvcSliceSyntaxConfig, VvcSyntaxRbsp,
+    VvcSyntaxWriter, VvcVideoGeometry, VvcVuiSignal, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
 };
 #[cfg(test)]
 use super::{VvcQuantizedColor, VVC_CURRENT_MAX_LUMA_LEAF_SIZE};
@@ -171,6 +172,7 @@ pub(in crate::vvc) fn vvc_predictive_frame_slice_unit(
     })
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(in crate::vvc) fn vvc_predictive_ctu_slice_units(
     frame_idx: usize,
     picture_geometry: VvcVideoGeometry,
@@ -313,6 +315,7 @@ pub(in crate::vvc) fn vvc_predictive_frame_skip_slice_unit(
     })
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(in crate::vvc) fn vvc_predictive_frame_skip_slice_unit_with_payload(
     frame_idx: usize,
     picture_geometry: VvcVideoGeometry,
@@ -346,6 +349,7 @@ pub(in crate::vvc) fn vvc_predictive_frame_skip_slice_unit_with_payload(
     )
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(in crate::vvc) fn vvc_predictive_frame_skip_slice_unit_with_cached_payload(
     frame_idx: usize,
     picture_geometry: VvcVideoGeometry,
@@ -373,11 +377,13 @@ pub(in crate::vvc) fn vvc_predictive_frame_skip_slice_unit_with_cached_payload(
     })
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 #[derive(Default)]
 pub(in crate::vvc) struct VvcFrameSkipPayloadCache {
     entries: Vec<(VvcVideoGeometry, VvcSliceSyntaxConfig, VvcCabacPayload)>,
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
 impl VvcFrameSkipPayloadCache {
     pub(in crate::vvc) fn payload_for(
         &mut self,
@@ -1249,6 +1255,8 @@ fn vvc_frame_slice_rbsp_with_poc(
     writer.finish()
 }
 
+#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals"))]
 fn vvc_frame_slice_payload_with_poc_and_cabac_payload(
     picture_kind: VvcPictureKind,
     poc_lsb: u32,
