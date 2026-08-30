@@ -72,6 +72,8 @@ The following changes were behavior-preserving and independently validated:
   tile-edge fallback kernels across lossless and lossy state paths.
 - AV2 coefficient-proxy scoring and high-range symbol-cost helpers now live in
   a dedicated subsystem shared by residual candidate selection paths.
+- AV2 lossless and lossy horizontal, vertical, and above-left predictor
+  selection now share common edge-policy kernels.
 - The optional `vvc-stats` feature was made independently compilable instead of
   implicitly depending on benchmark-only internals.
 
