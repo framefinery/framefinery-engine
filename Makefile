@@ -439,7 +439,10 @@ package-list:
 
 build:
 	$(BUILD_ENV) $(CARGO) build $(BUILD_CARGO_PROFILE_FLAG) -p framefinery $(CARGO_FLAGS)
-	cp $(BUILD_TARGET_DIR)/$(BUILD_ARTIFACT_PROFILE)/ff $(BUILD_BINARY)
+	# Copy to a sibling first, then replace the launcher atomically so a
+	# concurrent validation run can keep executing its existing binary.
+	cp -f $(BUILD_TARGET_DIR)/$(BUILD_ARTIFACT_PROFILE)/ff $(BUILD_BINARY).new
+	mv -f $(BUILD_BINARY).new $(BUILD_BINARY)
 	chmod 755 $(BUILD_BINARY)
 
 debug:
