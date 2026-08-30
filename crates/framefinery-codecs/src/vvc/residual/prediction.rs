@@ -755,25 +755,6 @@ fn vvc_sample_delta_i16(sample: VvcSample, predicted: VvcSample) -> i16 {
         as i16
 }
 
-#[derive(Clone, Copy)]
-pub(in crate::vvc) struct VvcPlaneAvailability<'a> {
-    samples: &'a [bool],
-    stride: usize,
-}
-
-impl<'a> VvcPlaneAvailability<'a> {
-    pub(in crate::vvc) const fn new(samples: &'a [bool], stride: usize) -> Self {
-        Self { samples, stride }
-    }
-
-    fn is_available(self, x: usize, y: usize) -> bool {
-        self.samples
-            .get(y.saturating_mul(self.stride).saturating_add(x))
-            .copied()
-            .unwrap_or(false)
-    }
-}
-
 include!("prediction_cclm.rs");
 
 fn predict_vvc_chroma_planar_block_into(
