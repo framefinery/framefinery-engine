@@ -129,6 +129,7 @@ include!("cabac_dump.rs");
 include!("stats.rs");
 include!("stats_analysis.rs");
 include!("encode.rs");
+include!("encode_predictive.rs");
 include!("predictive_policy.rs");
 #[cfg(test)]
 include!("test_support.rs");
