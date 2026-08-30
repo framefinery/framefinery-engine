@@ -158,6 +158,28 @@ local Wayland screen capture under
 validation cleanup helpers preserve that screen-capture source directory even
 when `--cleanup-vectors` is enabled.
 
+When a full-length high-resolution reference decode exceeds the available
+interactive execution window, split the same manifest into bounded batches;
+`--offset` is applied before `--limit`, so consecutive ranges cover every row:
+
+```sh
+TMPDIR=verification/generated/agent_scratch/tmp \
+python3 scripts/run_validation_set.py --ff ./ff --codec av2 release-aomctc \
+  --set-dir verification/test_vector_sets \
+  --vector-dir verification/generated/test_vectors \
+  --encoded-dir verification/generated/encoded \
+  --log-dir verification/generated/validation_logs \
+  --reference-mode required --direct-source-files --force-lossless \
+  --cleanup-recon --cleanup-output --cleanup-vectors \
+  --limit 1 --offset 0
+```
+
+Repeat with offsets `1`, `2`, and so on through the manifest length. Each batch
+must finish with `OK` and required reference reconstruction before the release
+checkpoint is considered complete. Keep logs under
+`verification/generated/agent_scratch/` or the validation log directory; do
+not use a system temporary directory for large media artifacts.
+
 For version-to-version performance tracking, run:
 
 ```sh
