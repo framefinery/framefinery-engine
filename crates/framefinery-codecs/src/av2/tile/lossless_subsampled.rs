@@ -443,6 +443,7 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                 leaf_x0,
                 leaf_y0,
                 leaf_width,
+                leaf_height,
                 coded_mi_context,
                 edge_sample,
             );
@@ -461,6 +462,7 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                 leaf_x0,
                 leaf_y0,
                 leaf_width,
+                leaf_height,
                 coded_mi_context,
                 edge_sample,
             );
@@ -470,6 +472,7 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                 y0,
                 leaf_x0,
                 leaf_y0,
+                leaf_width,
                 leaf_height,
                 coded_mi_context,
                 edge_sample,
@@ -494,6 +497,7 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                 y0,
                 leaf_x0,
                 leaf_y0,
+                leaf_width,
                 leaf_height,
                 coded_mi_context,
                 edge_sample,

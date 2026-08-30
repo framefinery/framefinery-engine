@@ -21,6 +21,7 @@ impl Av2LosslessSubsampledTileState<'_> {
             leaf_x0,
             leaf_y0,
             leaf_width,
+            leaf_height,
             coded_mi_context,
             edge_sample,
         );
@@ -30,6 +31,7 @@ impl Av2LosslessSubsampledTileState<'_> {
             y0,
             leaf_x0,
             leaf_y0,
+            leaf_width,
             leaf_height,
             coded_mi_context,
             edge_sample,
@@ -67,44 +69,32 @@ impl Av2LosslessSubsampledTileState<'_> {
         leaf_x0: usize,
         leaf_y0: usize,
         leaf_width: usize,
+        leaf_height: usize,
         coded_mi_context: &Av2CodedMiContext,
         edge_sample: &EdgeSample,
     ) -> [Av2Sample; 8]
     where
         EdgeSample: Fn(Av2LosslessPlane, usize, usize) -> Av2Sample,
     {
-        let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        let (plane_width, _) = self.plane_geometry(plane);
-        let (sub_x, sub_y) = self.plane_subsampling(plane);
-        let have_top = y0 > tile_origin_y;
-        let have_left = x0 > tile_origin_x;
-        let mut above = [av2_lossless_v_pred_above_edge(self.bit_depth); 8];
-        if have_top {
-            let plane_sb_width = MVP_SUPERBLOCK_SIZE / sub_x;
-            let plane_sb_height = MVP_SUPERBLOCK_SIZE / sub_y;
-            let sb_origin_x = (x0 / plane_sb_width) * plane_sb_width;
-            let sb_right = (sb_origin_x + plane_sb_width).min(plane_width);
-            let superblock_top_row = y0 % plane_sb_height == 0;
-            for index in 0..above.len() {
-                let x = x0 + index;
-                let overhang = index >= TX4X4_SIZE;
-                let external_top_right_coded = overhang && y0 == leaf_y0 && x < plane_width && {
-                    let (row_mi, col_mi) = self.coded_mi_for_plane_sample(plane, x, y0 - 1);
-                    superblock_top_row
-                        || (x < sb_right && coded_mi_context.is_coded(row_mi, col_mi))
-                };
-                if x < plane_width
-                    && (!overhang || x < leaf_x0 + leaf_width || external_top_right_coded)
-                {
-                    above[index] = edge_sample(plane, x, y0 - 1);
-                } else if index > 0 {
-                    above[index] = above[index - 1];
-                }
-            }
-        } else if have_left {
-            above.fill(edge_sample(plane, x0 - 1, y0));
-        }
-        above
+        let plane_size = self.plane_geometry(plane);
+        av2_directional_above_edge(
+            Av2IntraEdgeContext {
+                bit_depth: self.bit_depth,
+                tile_origin: self.plane_origin(plane),
+                plane_size,
+                edge_limit: plane_size,
+                subsampling: self.plane_subsampling(plane),
+                leaf_origin: (leaf_x0, leaf_y0),
+                leaf_size: (leaf_width, leaf_height),
+            },
+            x0,
+            y0,
+            |x, y| edge_sample(plane, x, y),
+            |x, y| {
+                let (row_mi, col_mi) = self.coded_mi_for_plane_sample(plane, x, y);
+                coded_mi_context.is_coded(row_mi, col_mi)
+            },
+        )
     }
 
     fn directional_left_edge_with<EdgeSample>(
@@ -114,6 +104,7 @@ impl Av2LosslessSubsampledTileState<'_> {
         y0: usize,
         leaf_x0: usize,
         leaf_y0: usize,
+        leaf_width: usize,
         leaf_height: usize,
         coded_mi_context: &Av2CodedMiContext,
         edge_sample: &EdgeSample,
@@ -121,39 +112,25 @@ impl Av2LosslessSubsampledTileState<'_> {
     where
         EdgeSample: Fn(Av2LosslessPlane, usize, usize) -> Av2Sample,
     {
-        let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        let (_, plane_height) = self.plane_geometry(plane);
-        let (sub_x, sub_y) = self.plane_subsampling(plane);
-        let have_top = y0 > tile_origin_y;
-        let have_left = x0 > tile_origin_x;
-        let mut left = [av2_lossless_h_pred_left_edge(self.bit_depth); 8];
-        if have_left {
-            let plane_sb_width = MVP_SUPERBLOCK_SIZE / sub_x;
-            let plane_sb_height = MVP_SUPERBLOCK_SIZE / sub_y;
-            let sb_origin_y = (y0 / plane_sb_height) * plane_sb_height;
-            let sb_bottom = (sb_origin_y + plane_sb_height).min(plane_height);
-            let superblock_left_col = x0 % plane_sb_width == 0;
-            for index in 0..left.len() {
-                let y = y0 + index;
-                let overhang = index >= TX4X4_SIZE;
-                let external_bottom_left_coded = overhang && x0 == leaf_x0 && y < sb_bottom && {
-                    let (row_mi, col_mi) = self.coded_mi_for_plane_sample(plane, x0 - 1, y);
-                    superblock_left_col || coded_mi_context.is_coded(row_mi, col_mi)
-                };
-                if y < plane_height
-                    && (!overhang
-                        || (x0 == leaf_x0
-                            && (y < leaf_y0 + leaf_height || external_bottom_left_coded)))
-                {
-                    left[index] = edge_sample(plane, x0 - 1, y);
-                } else if index > 0 {
-                    left[index] = left[index - 1];
-                }
-            }
-        } else if have_top {
-            left.fill(edge_sample(plane, x0, y0 - 1));
-        }
-        left
+        let plane_size = self.plane_geometry(plane);
+        av2_directional_left_edge(
+            Av2IntraEdgeContext {
+                bit_depth: self.bit_depth,
+                tile_origin: self.plane_origin(plane),
+                plane_size,
+                edge_limit: plane_size,
+                subsampling: self.plane_subsampling(plane),
+                leaf_origin: (leaf_x0, leaf_y0),
+                leaf_size: (leaf_width, leaf_height),
+            },
+            x0,
+            y0,
+            |x, y| edge_sample(plane, x, y),
+            |x, y| {
+                let (row_mi, col_mi) = self.coded_mi_for_plane_sample(plane, x, y);
+                coded_mi_context.is_coded(row_mi, col_mi)
+            },
+        )
     }
 
     fn smooth_edges_with<EdgeSample>(
@@ -172,11 +149,11 @@ impl Av2LosslessSubsampledTileState<'_> {
         EdgeSample: Fn(Av2LosslessPlane, usize, usize) -> Av2Sample,
     {
         av2_smooth_intra_edges(
-            Av2SmoothEdgeContext {
+            Av2IntraEdgeContext {
                 bit_depth: self.bit_depth,
                 tile_origin: self.plane_origin(plane),
                 plane_size: self.plane_geometry(plane),
-                region_limit: self.plane_region_limit(plane),
+                edge_limit: self.plane_region_limit(plane),
                 subsampling: self.plane_subsampling(plane),
                 leaf_origin: (leaf_x0, leaf_y0),
                 leaf_size: (leaf_width, leaf_height),
