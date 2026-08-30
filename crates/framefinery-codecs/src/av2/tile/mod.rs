@@ -23,6 +23,7 @@ use crate::av2::planar::{
 use crate::picture::{read_planar_sample, write_planar_sample, SampleBitDepth};
 include!("cdfs.rs");
 include!("block_layout.rs");
+include!("chroma_geometry.rs");
 include!("tile_payload.rs");
 include!("mode_contexts.rs");
 include!("tile_plan.rs");
