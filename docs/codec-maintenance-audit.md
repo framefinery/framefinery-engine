@@ -173,6 +173,8 @@ The following changes were behavior-preserving and independently validated:
   dedicated sampling module, separate from oriented block traversal.
 - VVC residual scan, coefficient-group, stride, and Rice-state helpers now
   live in a dedicated syntax-helper module, separate from CABAC emission.
+- VVC residual scan, coefficient-group, stride, and Rice-state helpers now
+  live in a dedicated syntax-helper module, separate from CABAC emission.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
