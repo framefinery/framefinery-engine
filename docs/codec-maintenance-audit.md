@@ -132,6 +132,8 @@ The following changes were behavior-preserving and independently validated:
 - AV2 mixed inter/intra lossless entropy emission now lives with the dedicated
   inter syntax writers, keeping its active-inter-leaf handling isolated from
   general tile-plan construction.
+- AV2 fixed-tree intra/palette entropy emission now lives in a dedicated intra
+  syntax module, separate from subsampled and inter writers.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
