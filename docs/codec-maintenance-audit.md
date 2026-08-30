@@ -78,6 +78,8 @@ The following changes were behavior-preserving and independently validated:
   in a dedicated mode-syntax module on the shared CABAC generator.
 - VVC luma post-residual LFNST and MTS syntax gates now live in a dedicated
   residual-tools module on the shared CABAC generator.
+- VVC chroma leaf/tool legality, split contexts, and BT direction selection now
+  live in a dedicated chroma mode-selection module on the shared generator.
 - AV2 lossless intra/inter residual coefficient writers now live in a dedicated
   lossless-residual module, separate from lossy residual selection.
 - AV2 palette-specific luma residual emission now lives in a dedicated
