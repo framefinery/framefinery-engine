@@ -42,7 +42,8 @@ The following changes were behavior-preserving and independently validated:
 - VVC visible luma and chroma reconstruction now share one clipped
   plane-writing loop, with subsampling handled only at the caller boundary.
 - VVC luma and chroma transform-skip SSE scoring now share one kernel,
-  including the common BDPCM accumulation and clipped tail handling.
+  including the common BDPCM accumulation, clipped tail handling, and
+  format-neutral residual accounting utilities.
 - VVC luma and chroma transform-skip AC extraction now share one bounded
   level-placement and nonzero-tracking kernel.
 - AV2 lossy subsampled scoring was separated from its materialization path.
