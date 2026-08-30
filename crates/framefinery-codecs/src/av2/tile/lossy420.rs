@@ -405,12 +405,12 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         }
     }
 
-    fn fill_quantized_recon_txb(
+    fn fill_recon_txb_with(
         &mut self,
         plane: Av2LossyPlane,
         x0: usize,
         y0: usize,
-        analysis: &Av2LossyTxbAnalysis,
+        sample_at: impl Fn(usize) -> Av2Sample,
     ) {
         let (plane_width, plane_height) = self.plane_geometry(plane);
         for local_y in 0..TX4X4_SIZE {
@@ -422,14 +422,24 @@ impl<'a> Av2LossySubsampledTileState<'a> {
                 let x = x0 + local_x;
                 if x < plane_width {
                     let index = local_y * TX4X4_SIZE + local_x;
-                    let predictor = i32::from(analysis.predictor[index]);
-                    let sample = (predictor + i32::from(analysis.delta))
-                        .clamp(0, i32::from(self.bit_depth.max_sample()))
-                        as Av2Sample;
-                    self.set_recon_sample(plane, x, y, sample);
+                    self.set_recon_sample(plane, x, y, sample_at(index));
                 }
             }
         }
+    }
+
+    fn fill_quantized_recon_txb(
+        &mut self,
+        plane: Av2LossyPlane,
+        x0: usize,
+        y0: usize,
+        analysis: &Av2LossyTxbAnalysis,
+    ) {
+        let max_sample = i32::from(self.bit_depth.max_sample());
+        let delta = i32::from(analysis.delta);
+        self.fill_recon_txb_with(plane, x0, y0, |index| {
+            (i32::from(analysis.predictor[index]) + delta).clamp(0, max_sample) as Av2Sample
+        });
     }
 
     fn fill_residual_recon_txb(
@@ -440,24 +450,11 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         analysis: &Av2LossyTxbAnalysis,
         residual: &[i32; TX4X4_SAMPLES],
     ) {
-        let (plane_width, plane_height) = self.plane_geometry(plane);
-        for local_y in 0..TX4X4_SIZE {
-            let y = y0 + local_y;
-            if y >= plane_height {
-                continue;
-            }
-            for local_x in 0..TX4X4_SIZE {
-                let x = x0 + local_x;
-                if x < plane_width {
-                    let index = local_y * TX4X4_SIZE + local_x;
-                    let predictor = i32::from(analysis.predictor[index]);
-                    let sample = (predictor + residual[index])
-                        .clamp(0, i32::from(self.bit_depth.max_sample()))
-                        as Av2Sample;
-                    self.set_recon_sample(plane, x, y, sample);
-                }
-            }
-        }
+        let max_sample = i32::from(self.bit_depth.max_sample());
+        self.fill_recon_txb_with(plane, x0, y0, |index| {
+            (i32::from(analysis.predictor[index]) + residual[index]).clamp(0, max_sample)
+                as Av2Sample
+        });
     }
 
     fn fill_dpcm_residual_recon_txb(
@@ -469,26 +466,13 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         residual: &[i32; TX4X4_SAMPLES],
         horz: bool,
     ) {
-        let (plane_width, plane_height) = self.plane_geometry(plane);
         let (recon_samples, _) = dpcm_recon_samples_and_sse(
             analysis,
             residual,
             horz,
             i32::from(self.bit_depth.max_sample()),
         );
-        for local_y in 0..TX4X4_SIZE {
-            let y = y0 + local_y;
-            if y >= plane_height {
-                continue;
-            }
-            for local_x in 0..TX4X4_SIZE {
-                let x = x0 + local_x;
-                if x < plane_width {
-                    let index = local_y * TX4X4_SIZE + local_x;
-                    self.set_recon_sample(plane, x, y, recon_samples[index] as Av2Sample);
-                }
-            }
-        }
+        self.fill_recon_txb_with(plane, x0, y0, |index| recon_samples[index] as Av2Sample);
     }
 
     fn copy_source_to_recon_txb(
@@ -498,20 +482,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         y0: usize,
         analysis: &Av2LossyTxbAnalysis,
     ) {
-        let (plane_width, plane_height) = self.plane_geometry(plane);
-        for local_y in 0..TX4X4_SIZE {
-            let y = y0 + local_y;
-            if y >= plane_height {
-                continue;
-            }
-            for local_x in 0..TX4X4_SIZE {
-                let x = x0 + local_x;
-                if x < plane_width {
-                    let index = local_y * TX4X4_SIZE + local_x;
-                    self.set_recon_sample(plane, x, y, analysis.source[index]);
-                }
-            }
-        }
+        self.fill_recon_txb_with(plane, x0, y0, |index| analysis.source[index]);
     }
 
     fn chroma_444_intra_tx8x8_analysis(

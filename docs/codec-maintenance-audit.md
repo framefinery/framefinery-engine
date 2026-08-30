@@ -101,6 +101,8 @@ The following changes were behavior-preserving and independently validated:
   kernel instead of a parallel hand-written materialization loop.
 - AV2 source-backed lossless predictor adapters now live in a dedicated module,
   separate from ordinary reconstruction and score-path logic.
+- AV2 lossy subsampled quantized, residual, DPCM, and source-copy writes now
+  share one clipped reconstruction traversal with mode-specific sample logic.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
