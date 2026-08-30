@@ -211,11 +211,26 @@ mod tests {
 
     #[test]
     fn av2_chroma_eob_supports_last_transform_scan_positions() {
+        fn levels_and_bounds<const SAMPLES: usize, Syntax>(
+            coefficients: &[i32; SAMPLES],
+        ) -> ([u32; SAMPLES], Option<(usize, usize)>)
+        where
+            Syntax: Av2ChromaTxbSyntax<SAMPLES>,
+        {
+            coefficient_levels_and_bounds(
+                coefficients,
+                Syntax::SCAN,
+                Syntax::SCALING_INVARIANT,
+            )
+        }
+
         let tx4x4_last = *TX4X4_SCAN.last().expect("TX_4X4 scan is non-empty");
         let mut tx4x4_coefficients = [0i32; TX4X4_SAMPLES];
         tx4x4_coefficients[tx4x4_last] = 8;
-        let (tx4x4_levels, tx4x4_bounds) =
-            lossless_coefficient_levels_and_bounds(&tx4x4_coefficients);
+        let (tx4x4_levels, tx4x4_bounds) = levels_and_bounds::<
+            TX4X4_SAMPLES,
+            Av2ChromaTx4x4Syntax,
+        >(&tx4x4_coefficients);
 
         // AV2 v1.0.0 Section 5.20.7.27 coeffs(), mirrored by AVM coefficient
         // coding, permits EOB values up to the transform sample count. A
@@ -232,7 +247,7 @@ mod tests {
         let mut tx8x8_coefficients = [0i32; TX8X8_SAMPLES];
         tx8x8_coefficients[tx8x8_last] = -16;
         let (tx8x8_levels, tx8x8_bounds) =
-            tx8x8_coefficient_levels_and_bounds(&tx8x8_coefficients);
+            levels_and_bounds::<TX8X8_SAMPLES, Av2ChromaTx8x8Syntax>(&tx8x8_coefficients);
         assert_eq!(tx8x8_levels[tx8x8_last], 2);
         assert_eq!(
             tx8x8_bounds,
@@ -243,7 +258,7 @@ mod tests {
         let mut tx4x8_coefficients = [0i32; TX4X8_SAMPLES];
         tx4x8_coefficients[tx4x8_last] = 24;
         let (tx4x8_levels, tx4x8_bounds) =
-            tx4x8_coefficient_levels_and_bounds(&tx4x8_coefficients);
+            levels_and_bounds::<TX4X8_SAMPLES, Av2ChromaTx4x8Syntax>(&tx4x8_coefficients);
         assert_eq!(tx4x8_levels[tx4x8_last], 3);
         assert_eq!(
             tx4x8_bounds,
@@ -392,12 +407,104 @@ mod tests {
                 "tile.coeff.uv.low_range_tx8x8",
             ]);
         assert_geometry::<TX4X8_SAMPLES, Av2ChromaTx4x8Syntax>([
-                "tile.coeff.uv.base_lf_eob_tx4x8",
+            "tile.coeff.uv.base_lf_eob_tx4x8",
                 "tile.coeff.uv.base_eob_tx4x8",
                 "tile.coeff.uv.base_lf_tx4x8",
                 "tile.coeff.uv.base_tx4x8",
                 "tile.coeff.uv.low_range_tx4x8",
-            ]);
+        ]);
+    }
+
+    #[test]
+    fn av2_chroma_txb_traversal_uses_geometry_policy() {
+        fn emitted_fields<const SAMPLES: usize, Syntax>(
+            plane: Av2ChromaPlane,
+            coefficients: &[i32; SAMPLES],
+            syntax_context: bool,
+        ) -> ((u8, bool), Vec<&'static str>)
+        where
+            Syntax: Av2ChromaTxbSyntax<SAMPLES>,
+        {
+            let mut writer = Av2EntropyWriter::new();
+            let result = write_chroma_txb::<SAMPLES, Syntax>(
+                &mut writer,
+                plane,
+                6,
+                coefficients,
+                syntax_context,
+            );
+            let fields = writer
+                .finish()
+                .fields
+                .into_iter()
+                .map(|field| field.name)
+                .collect();
+            (result, fields)
+        }
+
+        fn assert_geometry<const SAMPLES: usize, Syntax>(
+            zero_field: &'static str,
+            nonzero_fields: [&'static str; 4],
+        ) where
+            Syntax: Av2ChromaTxbSyntax<SAMPLES>,
+        {
+            let zero = [0i32; SAMPLES];
+            assert_eq!(
+                emitted_fields::<SAMPLES, Syntax>(Av2ChromaPlane::U, &zero, true),
+                ((0, false), vec![zero_field])
+            );
+
+            let mut dc = [0i32; SAMPLES];
+            dc[0] = 8;
+            let (result, fields) = emitted_fields::<SAMPLES, Syntax>(
+                Av2ChromaPlane::U,
+                &dc,
+                false,
+            );
+            assert!(result.1);
+            assert_eq!(fields, nonzero_fields);
+        }
+
+        assert_geometry::<TX4X4_SAMPLES, Av2ChromaTx4x4Syntax>(
+            "tile.coeff.u.txb_all_zero_fsc_tx4x4_ctx6",
+            [
+                "tile.coeff.u.txb_nonzero_tx4x4_ctx6",
+                "tile.coeff.uv.eob_pt_tx4x4",
+                "tile.coeff.uv.base_lf_eob",
+                "tile.coeff.u.dc_sign_negative",
+            ],
+        );
+        assert_geometry::<TX8X8_SAMPLES, Av2ChromaTx8x8Syntax>(
+            "tile.coeff.u.txb_all_zero_inter_tx8x8_ctx6",
+            [
+                "tile.coeff.u.txb_nonzero_tx8x8_ctx6",
+                "tile.coeff.uv.eob_pt_tx8x8",
+                "tile.coeff.uv.base_lf_eob_tx8x8",
+                "tile.coeff.u.dc_sign_negative_tx8x8",
+            ],
+        );
+        assert_geometry::<TX4X8_SAMPLES, Av2ChromaTx4x8Syntax>(
+            "tile.coeff.u.txb_all_zero_inter_tx8x8_ctx6",
+            [
+                "tile.coeff.u.txb_nonzero_tx8x8_ctx6",
+                "tile.coeff.uv.eob_pt_tx4x8",
+                "tile.coeff.uv.base_lf_eob_tx4x8",
+                "tile.coeff.u.dc_sign_negative_tx4x8",
+            ],
+        );
+
+        let tx4x8_zero = [0i32; TX4X8_SAMPLES];
+        assert_eq!(
+            emitted_fields::<TX4X8_SAMPLES, Av2ChromaTx4x8Syntax>(
+                Av2ChromaPlane::V,
+                &tx4x8_zero,
+                true,
+            ),
+            (
+                (0, false),
+                vec!["tile.coeff.v.txb_all_zero_tx4x4_ctx6"]
+            )
+        );
     }
 
     #[test]
