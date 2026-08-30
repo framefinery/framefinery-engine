@@ -741,38 +741,7 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         reference: Av2LosslessIntraReference,
     ) -> [i32; TX4X4_SAMPLES] {
         let edge_sample = |plane, x, y| self.intra_reference_sample(reference, plane, x, y);
-        let source_sample = |plane, x, y| self.source_sample(plane, x, y);
-        self.luma_directional_idif_residual4x4_with(
-            x0,
-            y0,
-            angle,
-            leaf_x0,
-            leaf_y0,
-            leaf_width,
-            leaf_height,
-            coded_mi_context,
-            edge_sample,
-            source_sample,
-        )
-    }
-
-    fn luma_directional_idif_residual4x4_with<EdgeSample, SourceSample>(
-        &self,
-        x0: usize,
-        y0: usize,
-        angle: i16,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-        edge_sample: EdgeSample,
-        source_sample: SourceSample,
-    ) -> [i32; TX4X4_SAMPLES]
-    where
-        EdgeSample: Fn(Av2LosslessPlane, usize, usize) -> Av2Sample,
-        SourceSample: Fn(Av2LosslessPlane, usize, usize) -> Av2Sample,
-    {
+        let source = self.source_block4x4(Av2LosslessPlane::Y, x0, y0);
         let (tile_origin_x, tile_origin_y) = self.plane_origin(Av2LosslessPlane::Y);
         let have_top = y0 > tile_origin_y;
         let have_left = x0 > tile_origin_x;
@@ -818,11 +787,8 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                         self.bit_depth,
                     )
                 });
-                residual[local_y * TX4X4_SIZE + local_x] = i32::from(source_sample(
-                    Av2LosslessPlane::Y,
-                    x0 + local_x,
-                    y0 + local_y,
-                )) - i32::from(predictor);
+                let pos = local_y * TX4X4_SIZE + local_x;
+                residual[pos] = source[pos] - i32::from(predictor);
             }
         }
         residual

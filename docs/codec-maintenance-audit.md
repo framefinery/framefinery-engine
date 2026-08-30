@@ -130,6 +130,9 @@ The following changes were behavior-preserving and independently validated:
 - AV2 fast lossless DC/H/V residuals now use the shared intra-prediction
   kernel with a preloaded 4x4 source block, preserving the shortcut's memory
   access pattern while removing its duplicate residual loops and mode gates.
+- AV2 lossless directional-IDIF residuals now preload the same 4x4 source
+  block directly, removing a single-caller generic source callback and wrapper
+  while retaining the shared reconstructed-versus-score edge policy.
 - VVC residual mode scoring and fast-search gate helpers now live in a
   dedicated mode-selection helper module, separate from CTU orchestration while
   retaining the same deepest-level feature gates.
@@ -246,7 +249,7 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 2,098 lines after reference-edge split | shared angular/reference machinery still has several large helpers |
-| AV2 lossless subsampled residuals | 1,156 lines after source-backed path unification | remaining directional-edge and source-block helpers need call-graph review |
+| AV2 lossless subsampled residuals | 1,122 lines after directional source unification | remaining directional-edge and neighbour helpers need call-graph review |
 | AV2 tile transform syntax helpers | 1,516 lines after writer split | coefficient contexts remain broad but syntax-sensitive |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
 
