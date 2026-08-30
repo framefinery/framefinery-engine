@@ -191,6 +191,81 @@ fn write_luma_palette_fsc_txb(
     (lossless_entropy_context(cul_level, dc_val), true)
 }
 
+#[derive(Clone, Copy)]
+enum Av2ChromaTxbGeometry {
+    Tx4x4,
+    Tx8x8,
+    Tx4x8,
+}
+
+impl Av2ChromaTxbGeometry {
+    fn sign_field(self, plane: Av2ChromaPlane, dc: bool) -> &'static str {
+        match (self, plane, dc) {
+            (Self::Tx4x4, Av2ChromaPlane::U, true) => "tile.coeff.u.dc_sign_negative",
+            (Self::Tx4x4, Av2ChromaPlane::V, true) => "tile.coeff.v.dc_sign_negative",
+            (Self::Tx4x4, Av2ChromaPlane::U, false) => "tile.coeff.u.ac_sign_negative",
+            (Self::Tx4x4, Av2ChromaPlane::V, false) => "tile.coeff.v.ac_sign_negative",
+            (Self::Tx8x8, Av2ChromaPlane::U, true) => {
+                "tile.coeff.u.dc_sign_negative_tx8x8"
+            }
+            (Self::Tx8x8, Av2ChromaPlane::V, true) => {
+                "tile.coeff.v.dc_sign_negative_tx8x8"
+            }
+            (Self::Tx8x8, Av2ChromaPlane::U, false) => {
+                "tile.coeff.u.ac_sign_negative_tx8x8"
+            }
+            (Self::Tx8x8, Av2ChromaPlane::V, false) => {
+                "tile.coeff.v.ac_sign_negative_tx8x8"
+            }
+            (Self::Tx4x8, Av2ChromaPlane::U, true) => {
+                "tile.coeff.u.dc_sign_negative_tx4x8"
+            }
+            (Self::Tx4x8, Av2ChromaPlane::V, true) => {
+                "tile.coeff.v.dc_sign_negative_tx4x8"
+            }
+            (Self::Tx4x8, Av2ChromaPlane::U, false) => {
+                "tile.coeff.u.ac_sign_negative_tx4x8"
+            }
+            (Self::Tx4x8, Av2ChromaPlane::V, false) => {
+                "tile.coeff.v.ac_sign_negative_tx4x8"
+            }
+        }
+    }
+}
+
+fn write_chroma_signs_and_high_range<const SAMPLES: usize>(
+    writer: &mut Av2EntropyWriter,
+    plane: Av2ChromaPlane,
+    coefficients: &[i32; SAMPLES],
+    levels: &[u32; SAMPLES],
+    scan: &[usize; SAMPLES],
+    eob: usize,
+    geometry: Av2ChromaTxbGeometry,
+) -> (u32, i32) {
+    let mut cul_level = 0u32;
+    let mut dc_val = 0i32;
+    let mut hr_level_avg = 0u32;
+    for scan_index in (0..eob).rev() {
+        let pos = scan[scan_index];
+        let level = levels[pos];
+        if level == 0 {
+            continue;
+        }
+        let negative = coefficients[pos] < 0;
+        writer.write_literal_bit(geometry.sign_field(plane, scan_index == 0), negative);
+        write_chroma_high_range(writer, plane, pos, level, &mut hr_level_avg);
+        if scan_index == 0 {
+            dc_val = if negative {
+                -(level as i32)
+            } else {
+                level as i32
+            };
+        }
+        cul_level += level;
+    }
+    (cul_level, dc_val)
+}
+
 fn write_chroma_bdpcm_txb(
     writer: &mut Av2EntropyWriter,
     plane: Av2ChromaPlane,
@@ -232,33 +307,15 @@ fn write_chroma_bdpcm_txb(
     let dc_ctx = chroma_nz_map_context(&levels, 0, 0, eob == 1, plane);
     write_chroma_coefficient_level(writer, &levels, 0, eob == 1, dc_ctx, dc_level);
 
-    let mut cul_level = 0u32;
-    let mut dc_val = 0i32;
-    let mut hr_level_avg = 0u32;
-    for scan_index in (0..eob).rev() {
-        let pos = TX4X4_SCAN[scan_index];
-        let level = levels[pos];
-        if level == 0 {
-            continue;
-        }
-        let negative = coefficients[pos] < 0;
-        let sign_name = match plane {
-            Av2ChromaPlane::U if scan_index == 0 => "tile.coeff.u.dc_sign_negative",
-            Av2ChromaPlane::V if scan_index == 0 => "tile.coeff.v.dc_sign_negative",
-            Av2ChromaPlane::U => "tile.coeff.u.ac_sign_negative",
-            Av2ChromaPlane::V => "tile.coeff.v.ac_sign_negative",
-        };
-        writer.write_literal_bit(sign_name, negative);
-        write_chroma_high_range(writer, plane, pos, level, &mut hr_level_avg);
-        if scan_index == 0 {
-            dc_val = if negative {
-                -(level as i32)
-            } else {
-                level as i32
-            };
-        }
-        cul_level += level;
-    }
+    let (cul_level, dc_val) = write_chroma_signs_and_high_range(
+        writer,
+        plane,
+        coefficients,
+        &levels,
+        &TX4X4_SCAN,
+        eob,
+        Av2ChromaTxbGeometry::Tx4x4,
+    );
 
     (lossless_entropy_context(cul_level, dc_val), true)
 }
@@ -304,33 +361,15 @@ fn write_chroma_tx8x8_txb(
     let dc_ctx = chroma_tx8x8_nz_map_context(&levels, 0, 0, eob == 1, plane);
     write_chroma_tx8x8_coefficient_level(writer, &levels, 0, eob == 1, dc_ctx, dc_level);
 
-    let mut cul_level = 0u32;
-    let mut dc_val = 0i32;
-    let mut hr_level_avg = 0u32;
-    for scan_index in (0..eob).rev() {
-        let pos = TX8X8_SCAN[scan_index];
-        let level = levels[pos];
-        if level == 0 {
-            continue;
-        }
-        let negative = coefficients[pos] < 0;
-        let sign_name = match plane {
-            Av2ChromaPlane::U if scan_index == 0 => "tile.coeff.u.dc_sign_negative_tx8x8",
-            Av2ChromaPlane::V if scan_index == 0 => "tile.coeff.v.dc_sign_negative_tx8x8",
-            Av2ChromaPlane::U => "tile.coeff.u.ac_sign_negative_tx8x8",
-            Av2ChromaPlane::V => "tile.coeff.v.ac_sign_negative_tx8x8",
-        };
-        writer.write_literal_bit(sign_name, negative);
-        write_chroma_high_range(writer, plane, pos, level, &mut hr_level_avg);
-        if scan_index == 0 {
-            dc_val = if negative {
-                -(level as i32)
-            } else {
-                level as i32
-            };
-        }
-        cul_level += level;
-    }
+    let (cul_level, dc_val) = write_chroma_signs_and_high_range(
+        writer,
+        plane,
+        coefficients,
+        &levels,
+        &TX8X8_SCAN,
+        eob,
+        Av2ChromaTxbGeometry::Tx8x8,
+    );
 
     (lossless_entropy_context(cul_level, dc_val), true)
 }
@@ -376,33 +415,15 @@ fn write_chroma_tx4x8_txb(
     let dc_ctx = chroma_tx4x8_nz_map_context(&levels, 0, 0, eob == 1, plane);
     write_chroma_tx4x8_coefficient_level(writer, &levels, 0, eob == 1, dc_ctx, dc_level);
 
-    let mut cul_level = 0u32;
-    let mut dc_val = 0i32;
-    let mut hr_level_avg = 0u32;
-    for scan_index in (0..eob).rev() {
-        let pos = TX4X8_SCAN[scan_index];
-        let level = levels[pos];
-        if level == 0 {
-            continue;
-        }
-        let negative = coefficients[pos] < 0;
-        let sign_name = match plane {
-            Av2ChromaPlane::U if scan_index == 0 => "tile.coeff.u.dc_sign_negative_tx4x8",
-            Av2ChromaPlane::V if scan_index == 0 => "tile.coeff.v.dc_sign_negative_tx4x8",
-            Av2ChromaPlane::U => "tile.coeff.u.ac_sign_negative_tx4x8",
-            Av2ChromaPlane::V => "tile.coeff.v.ac_sign_negative_tx4x8",
-        };
-        writer.write_literal_bit(sign_name, negative);
-        write_chroma_high_range(writer, plane, pos, level, &mut hr_level_avg);
-        if scan_index == 0 {
-            dc_val = if negative {
-                -(level as i32)
-            } else {
-                level as i32
-            };
-        }
-        cul_level += level;
-    }
+    let (cul_level, dc_val) = write_chroma_signs_and_high_range(
+        writer,
+        plane,
+        coefficients,
+        &levels,
+        &TX4X8_SCAN,
+        eob,
+        Av2ChromaTxbGeometry::Tx4x8,
+    );
 
     (lossless_entropy_context(cul_level, dc_val), true)
 }
