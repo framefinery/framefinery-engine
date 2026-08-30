@@ -37,6 +37,8 @@ The following changes were behavior-preserving and independently validated:
   kernels while retaining shared availability handling.
 - VVC reference-sample availability, fallback, and top-left access are now
   isolated as shared helpers for prediction and reference-edge collection.
+- VVC reference filtering and DC prediction arithmetic now live in a dedicated
+  helper module shared by the common luma/chroma prediction paths.
 - VVC transform-skip residual placement and reconstruction now share one
   parameterized kernel across luma/chroma and identity/QP/table paths.
 - VVC BDPCM transform-skip inverse traversal and reconstruction now share the
