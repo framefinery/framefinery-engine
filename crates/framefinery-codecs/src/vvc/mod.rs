@@ -127,6 +127,7 @@ include!("ctu_params.rs");
 #[cfg(any(test, feature = "bench-internals"))]
 include!("cabac_dump.rs");
 include!("stats.rs");
+include!("stats_analysis.rs");
 include!("encode.rs");
 include!("predictive_policy.rs");
 #[cfg(test)]
