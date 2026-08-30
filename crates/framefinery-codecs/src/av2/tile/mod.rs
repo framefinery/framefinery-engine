@@ -36,6 +36,7 @@ include!("lossy_analysis.rs");
 include!("lossless_subsampled.rs");
 include!("lossless_mode_selection.rs");
 include!("residual_trace.rs");
+include!("tx_partition_syntax.rs");
 include!("residual.rs");
 include!("lossy_txb_selection.rs");
 include!("residual_support.rs");

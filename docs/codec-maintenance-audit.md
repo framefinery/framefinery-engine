@@ -58,6 +58,8 @@ The following changes were behavior-preserving and independently validated:
 - AV2 inter-residual tracing was separated from residual coefficient writing,
   keeping diagnostics and feature-gated instrumentation out of the coding
   pipeline.
+- AV2 regular transform-partition syntax writers now share a dedicated helper
+  cluster for intra and inter paths.
 - The optional `vvc-stats` feature was made independently compilable instead of
   implicitly depending on benchmark-only internals.
 
