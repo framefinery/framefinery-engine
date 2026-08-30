@@ -24,6 +24,7 @@ use crate::picture::{read_planar_sample, write_planar_sample, SampleBitDepth};
 include!("cdfs.rs");
 include!("block_layout.rs");
 include!("tile_payload.rs");
+include!("mode_contexts.rs");
 include!("partitions.rs");
 include!("palette_syntax.rs");
 include!("black_residual.rs");
