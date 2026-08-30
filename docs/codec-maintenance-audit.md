@@ -153,6 +153,8 @@ The following changes were behavior-preserving and independently validated:
   generator extension shared by intra and inter tree traversal.
 - VVC single-tree residual orchestration now lives in a dedicated generator
   extension, retaining the common luma/chroma residual syntax path.
+- VVC chroma-tree entry and neighbor setup now live in a dedicated generator
+  extension, separate from recursive chroma partition traversal.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
