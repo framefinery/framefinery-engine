@@ -64,6 +64,8 @@ The following changes were behavior-preserving and independently validated:
   geometry module, keeping format conversion separate from encode traversal.
 - VVC scalar residual energy, sum, and signed rounding helpers now live in a
   dedicated transform-math module separate from transform selection.
+- AV2 lossy 4:2:2 and 4:4:4 chroma residual writers now live in a dedicated
+  chroma-residual module while retaining the shared lossy analysis path.
 - AV2 lossy subsampled scoring was separated from its materialization path.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.
