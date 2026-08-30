@@ -185,11 +185,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         read_planar_sample(self.recon, self.offset(plane, x, y), self.bit_depth)
     }
 
-    fn dc_predictor(&self, plane: Av2LosslessPlane, x0: usize, y0: usize) -> Av2Sample {
-        let edge_sample = |plane, x, y| self.recon_sample(plane, x, y);
-        self.dc_predictor_with(plane, x0, y0, &edge_sample)
-    }
-
     fn dc_predictor_with<EdgeSample>(
         &self,
         plane: Av2LosslessPlane,
@@ -682,17 +677,62 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                 }
             }
         }
+        let edge_sample = |plane, x, y| self.recon_sample(plane, x, y);
+        self.intra_residual4x4_with_edge_policy(
+            mode,
+            directional_angle,
+            plane,
+            x0,
+            y0,
+            leaf_x0,
+            leaf_y0,
+            leaf_width,
+            leaf_height,
+            coded_mi_context,
+            edge_sample,
+            || self.smooth_edges(
+                plane,
+                x0,
+                y0,
+                leaf_x0,
+                leaf_y0,
+                leaf_width,
+                leaf_height,
+                coded_mi_context,
+            ),
+        )
+    }
+
+    fn intra_residual4x4_with_edge_policy<EdgeSample, SmoothEdges>(
+        &self,
+        mode: Av2ChromaIntraMode,
+        directional_angle: Option<i16>,
+        plane: Av2LosslessPlane,
+        x0: usize,
+        y0: usize,
+        leaf_x0: usize,
+        leaf_y0: usize,
+        leaf_width: usize,
+        leaf_height: usize,
+        coded_mi_context: &Av2CodedMiContext,
+        edge_sample: EdgeSample,
+        smooth_edges: SmoothEdges,
+    ) -> [i32; TX4X4_SAMPLES]
+    where
+        EdgeSample: Fn(Av2LosslessPlane, usize, usize) -> Av2Sample,
+        SmoothEdges: Fn() -> ([Av2Sample; TX4X4_SIZE + 1], [Av2Sample; TX4X4_SIZE + 1]),
+    {
         av2_intra_residual4x4(
             mode,
             directional_angle,
             self.bit_depth,
             |local_x, local_y| self.source_sample(plane, x0 + local_x, y0 + local_y),
-            || self.dc_predictor(plane, x0, y0),
-            |local_y| self.h_predictor(plane, x0, y0, local_y),
-            |local_x| self.v_predictor(plane, x0, y0, local_x),
-            || self.above_left_predictor(plane, x0, y0),
+            || self.dc_predictor_with(plane, x0, y0, &edge_sample),
+            |local_y| self.h_predictor_with(plane, x0, y0, local_y, &edge_sample),
+            |local_x| self.v_predictor_with(plane, x0, y0, local_x, &edge_sample),
+            || self.above_left_predictor_with(plane, x0, y0, &edge_sample),
             |angle, local_x, local_y| {
-                self.directional_predictor(
+                self.directional_predictor_with(
                     plane,
                     x0,
                     y0,
@@ -704,83 +744,10 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                     leaf_width,
                     leaf_height,
                     coded_mi_context,
+                    &edge_sample,
                 )
             },
-            || {
-                self.smooth_edges(
-                    plane,
-                    x0,
-                    y0,
-                    leaf_x0,
-                    leaf_y0,
-                    leaf_width,
-                    leaf_height,
-                    coded_mi_context,
-                )
-            },
-        )
-    }
-
-    fn directional_predictor(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        angle: i16,
-        local_x: usize,
-        local_y: usize,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-    ) -> Av2Sample {
-        let edge_sample = |plane, x, y| self.recon_sample(plane, x, y);
-        self.directional_predictor_with(
-            plane,
-            x0,
-            y0,
-            angle,
-            local_x,
-            local_y,
-            leaf_x0,
-            leaf_y0,
-            leaf_width,
-            leaf_height,
-            coded_mi_context,
-            &edge_sample,
-        )
-    }
-
-    fn directional_predictor_for_score(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        angle: i16,
-        local_x: usize,
-        local_y: usize,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-    ) -> Av2Sample {
-        let edge_sample =
-            |plane, x, y| self.neighbor_sample_for_score(plane, x, y, leaf_x0, leaf_y0);
-        self.directional_predictor_with(
-            plane,
-            x0,
-            y0,
-            angle,
-            local_x,
-            local_y,
-            leaf_x0,
-            leaf_y0,
-            leaf_width,
-            leaf_height,
-            coded_mi_context,
-            &edge_sample,
+            smooth_edges,
         )
     }
 
@@ -1078,42 +1045,30 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                 }
             }
         }
-        av2_intra_residual4x4(
+        let edge_sample =
+            |plane, x, y| self.neighbor_sample_for_score(plane, x, y, leaf_x0, leaf_y0);
+        self.intra_residual4x4_with_edge_policy(
             mode,
             directional_angle,
-            self.bit_depth,
-            |local_x, local_y| self.source_sample(plane, x0 + local_x, y0 + local_y),
-            || self.dc_predictor_for_score(plane, x0, y0, leaf_x0, leaf_y0),
-            |local_y| self.h_predictor_for_score(plane, x0, y0, local_y, leaf_x0, leaf_y0),
-            |local_x| self.v_predictor_for_score(plane, x0, y0, local_x, leaf_x0, leaf_y0),
-            || self.above_left_predictor_for_score(plane, x0, y0, leaf_x0, leaf_y0),
-            |angle, local_x, local_y| {
-                self.directional_predictor_for_score(
-                    plane,
-                    x0,
-                    y0,
-                    angle,
-                    local_x,
-                    local_y,
-                    leaf_x0,
-                    leaf_y0,
-                    leaf_width,
-                    leaf_height,
-                    coded_mi_context,
-                )
-            },
-            || {
-                self.smooth_edges_for_score(
-                    plane,
-                    x0,
-                    y0,
-                    leaf_x0,
-                    leaf_y0,
-                    leaf_width,
-                    leaf_height,
-                    coded_mi_context,
-                )
-            },
+            plane,
+            x0,
+            y0,
+            leaf_x0,
+            leaf_y0,
+            leaf_width,
+            leaf_height,
+            coded_mi_context,
+            edge_sample,
+            || self.smooth_edges_for_score(
+                plane,
+                x0,
+                y0,
+                leaf_x0,
+                leaf_y0,
+                leaf_width,
+                leaf_height,
+                coded_mi_context,
+            ),
         )
     }
 
@@ -1259,19 +1214,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         }
 
         scores
-    }
-
-    fn dc_predictor_for_score(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        leaf_x0: usize,
-        leaf_y0: usize,
-    ) -> Av2Sample {
-        let edge_sample =
-            |plane, x, y| self.neighbor_sample_for_score(plane, x, y, leaf_x0, leaf_y0);
-        self.dc_predictor_with(plane, x0, y0, &edge_sample)
     }
 
     fn h_predictor_for_score(
@@ -1744,24 +1686,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         }
 
         (above, left)
-    }
-
-    fn above_left_predictor(&self, plane: Av2LosslessPlane, x0: usize, y0: usize) -> Av2Sample {
-        let edge_sample = |plane, x, y| self.recon_sample(plane, x, y);
-        self.above_left_predictor_with(plane, x0, y0, &edge_sample)
-    }
-
-    fn above_left_predictor_for_score(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        leaf_x0: usize,
-        leaf_y0: usize,
-    ) -> Av2Sample {
-        let edge_sample =
-            |plane, x, y| self.neighbor_sample_for_score(plane, x, y, leaf_x0, leaf_y0);
-        self.above_left_predictor_with(plane, x0, y0, &edge_sample)
     }
 
     fn neighbor_sample_for_score(
