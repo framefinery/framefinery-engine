@@ -28,6 +28,8 @@ invariants while the encoders continue to evolve.
 The following changes were behavior-preserving and independently validated:
 
 - VVC CABAC statistics data/sink code was separated from statistics analysis.
+- VVC intra MPM and mode-syntax helpers were separated from CTU traversal and
+  neighbour-state orchestration.
 - VVC predictive encoding helpers were separated from the main encoder path.
 - VVC CTU mode selection was separated from CTU orchestration helpers.
 - VVC CCLM prediction was separated from the remaining prediction kernels.
@@ -51,7 +53,7 @@ current call graph rather than by line count alone:
 
 | Area | Approximate size | Current concern |
 | --- | ---: | --- |
-| VVC CABAC CTU generation | 2,900 lines | tightly coupled partition traversal, neighbour state, and syntax emission |
+| VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 2,098 lines after reference-edge split | shared angular/reference machinery still has several large helpers |
 | AV2 lossless subsampled residuals | 1,753 lines | materialization and score paths need further comparison before extraction |
 | AV2 tile transform syntax helpers | 1,516 lines after writer split | coefficient contexts remain broad but syntax-sensitive |
