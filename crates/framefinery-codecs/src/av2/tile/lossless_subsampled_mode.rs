@@ -50,13 +50,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         if let Some(horz) = mode.luma_bdpcm_horz {
             return self.dpcm_residual4x4(Av2LosslessPlane::Y, x0, y0, horz);
         }
-        if self.source_backed_recon && !mode.use_fsc {
-            if let Some(residual) =
-                self.source_backed_luma_intra_residual4x4(x0, y0, mode.luma_intra_mode)
-            {
-                return residual;
-            }
-        }
         self.luma_intra_residual4x4(
             x0,
             y0,
@@ -84,16 +77,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         if mode.chroma_use_bdpcm {
             let horizontal = mode.chroma_intra_mode.is_horizontal();
             return self.dpcm_residual4x4(plane, x0, y0, horizontal);
-        }
-        if self.source_backed_recon && !mode.use_fsc {
-            if let Some(residual) = self.source_backed_chroma_intra_residual4x4(
-                plane,
-                x0,
-                y0,
-                mode.chroma_intra_mode,
-            ) {
-                return residual;
-            }
         }
         self.intra_residual4x4(
             plane,

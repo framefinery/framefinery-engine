@@ -15,7 +15,6 @@ enum Av2LosslessIntraReference {
 }
 
 include!("lossless_subsampled_state.rs");
-include!("lossless_subsampled_source.rs");
 include!("lossless_subsampled_score.rs");
 include!("lossless_subsampled_mode.rs");
 
@@ -483,11 +482,12 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
             }
         }
         let edge_sample = |plane, x, y| self.intra_reference_sample(reference, plane, x, y);
+        let source = self.source_block4x4(plane, x0, y0);
         av2_intra_residual4x4(
             mode,
             directional_angle,
             self.bit_depth,
-            |local_x, local_y| self.source_sample(plane, x0 + local_x, y0 + local_y),
+            |local_x, local_y| source[local_y * TX4X4_SIZE + local_x] as Av2Sample,
             || self.dc_predictor_with(plane, x0, y0, &edge_sample),
             |local_y| self.h_predictor_with(plane, x0, y0, local_y, &edge_sample),
             |local_x| self.v_predictor_with(plane, x0, y0, local_x, &edge_sample),
