@@ -70,6 +70,8 @@ The following changes were behavior-preserving and independently validated:
   rounding kernel, with only typed edge access supplied by each state path.
 - AV2 horizontal, vertical, and above-left intra predictors now share common
   tile-edge fallback kernels across lossless and lossy state paths.
+- AV2 coefficient-proxy scoring and high-range symbol-cost helpers now live in
+  a dedicated subsystem shared by residual candidate selection paths.
 - The optional `vvc-stats` feature was made independently compilable instead of
   implicitly depending on benchmark-only internals.
 
