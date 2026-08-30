@@ -882,6 +882,20 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         y0: usize,
         horz: bool,
     ) -> [i32; TX4X4_SAMPLES] {
+        self.dpcm_residual4x4_with_edge_predictors(plane, x0, y0, horz, |local_y| {
+            self.h_predictor(plane, x0, y0, local_y)
+        }, |local_x| self.v_predictor(plane, x0, y0, local_x))
+    }
+
+    fn dpcm_residual4x4_with_edge_predictors(
+        &self,
+        plane: Av2LosslessPlane,
+        x0: usize,
+        y0: usize,
+        horz: bool,
+        h_edge: impl Fn(usize) -> Av2Sample,
+        v_edge: impl Fn(usize) -> Av2Sample,
+    ) -> [i32; TX4X4_SAMPLES] {
         let mut residual = [0i32; TX4X4_SAMPLES];
         for local_y in 0..TX4X4_SIZE {
             for local_x in 0..TX4X4_SIZE {
@@ -890,12 +904,12 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
                 let sample = i32::from(self.source_sample(plane, x, y));
                 let predicted_delta = if horz {
                     if local_x == 0 {
-                        sample - i32::from(self.h_predictor(plane, x0, y0, local_y))
+                        sample - i32::from(h_edge(local_y))
                     } else {
                         sample - i32::from(self.source_sample(plane, x - 1, y))
                     }
                 } else if local_y == 0 {
-                    sample - i32::from(self.v_predictor(plane, x0, y0, local_x))
+                    sample - i32::from(v_edge(local_x))
                 } else {
                     sample - i32::from(self.source_sample(plane, x, y - 1))
                 };
@@ -1112,35 +1126,18 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         leaf_x0: usize,
         leaf_y0: usize,
     ) -> [i32; TX4X4_SAMPLES] {
-        let mut residual = [0i32; TX4X4_SAMPLES];
-        for local_y in 0..TX4X4_SIZE {
-            for local_x in 0..TX4X4_SIZE {
-                let x = x0 + local_x;
-                let y = y0 + local_y;
-                let sample = i32::from(self.source_sample(plane, x, y));
-                let predicted_delta = if horz {
-                    if local_x == 0 {
-                        sample
-                            - i32::from(
-                                self.h_predictor_for_score(
-                                    plane, x0, y0, local_y, leaf_x0, leaf_y0,
-                                ),
-                            )
-                    } else {
-                        sample - i32::from(self.source_sample(plane, x - 1, y))
-                    }
-                } else if local_y == 0 {
-                    sample
-                        - i32::from(
-                            self.v_predictor_for_score(plane, x0, y0, local_x, leaf_x0, leaf_y0),
-                        )
-                } else {
-                    sample - i32::from(self.source_sample(plane, x, y - 1))
-                };
-                residual[local_y * TX4X4_SIZE + local_x] = predicted_delta;
-            }
-        }
-        residual
+        self.dpcm_residual4x4_with_edge_predictors(
+            plane,
+            x0,
+            y0,
+            horz,
+            |local_y| {
+                self.h_predictor_for_score(plane, x0, y0, local_y, leaf_x0, leaf_y0)
+            },
+            |local_x| {
+                self.v_predictor_for_score(plane, x0, y0, local_x, leaf_x0, leaf_y0)
+            },
+        )
     }
 
     fn dc_h_v_bdpcm_txb_scores_for_score(
