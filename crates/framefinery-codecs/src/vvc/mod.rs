@@ -128,6 +128,7 @@ include!("ctu_params.rs");
 include!("cabac_dump.rs");
 include!("stats.rs");
 include!("encode.rs");
+include!("predictive_policy.rs");
 #[cfg(test)]
 include!("test_support.rs");
 
