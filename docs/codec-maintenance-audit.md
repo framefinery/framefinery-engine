@@ -182,6 +182,8 @@ The following changes were behavior-preserving and independently validated:
   contract.
 - VVC direct chroma AC quantization and chroma-specific QP helpers now live in
   a dedicated candidate module, separate from shared transform math.
+- VVC legacy-Hadamard and separable-transform luma AC candidate generation now
+  lives in a dedicated candidate module, separate from candidate selection.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
