@@ -1907,8 +1907,17 @@ fn vvc_region_sse_against_reconstruction(
     reconstruction: &VvcReconstructionFrame,
     region: VvcCtuRegion,
 ) -> u64 {
+    vvc_region_sse_with_limit(source_frame, reconstruction, region, None).unwrap_or(u64::MAX)
+}
+
+fn vvc_region_sse_with_limit(
+    source_frame: &VvcSampledFrame,
+    reconstruction: &VvcReconstructionFrame,
+    region: VvcCtuRegion,
+    max_abs_delta: Option<u16>,
+) -> Option<u64> {
     if source_frame.geometry != reconstruction.geometry || source_frame.format != reconstruction.format {
-        return u64::MAX;
+        return None;
     }
     let width = region
         .geometry
@@ -1918,7 +1927,10 @@ fn vvc_region_sse_against_reconstruction(
         .geometry
         .height
         .min(source_frame.geometry.height.saturating_sub(region.origin_y));
-    let mut sse = vvc_plane_region_sse(
+    if width == 0 || height == 0 {
+        return Some(0);
+    }
+    let mut sse = vvc_plane_region_sse_with_limit(
         &source_frame.luma,
         source_frame.geometry.width,
         &reconstruction.luma,
@@ -1927,57 +1939,39 @@ fn vvc_region_sse_against_reconstruction(
         region.origin_y,
         width,
         height,
-    );
+        max_abs_delta,
+    )?;
     let subsample_x = chroma_subsample_x(source_frame.format.chroma_sampling);
     let subsample_y = chroma_subsample_y(source_frame.format.chroma_sampling);
     let chroma_x = region.origin_x / subsample_x;
     let chroma_y = region.origin_y / subsample_y;
     let chroma_width = width / subsample_x;
     let chroma_height = height / subsample_y;
-    sse = sse.saturating_add(vvc_plane_region_sse(
+    let chroma_stride = source_frame.geometry.width / subsample_x;
+    let reconstruction_chroma_stride = reconstruction.chroma_width();
+    sse = sse.saturating_add(vvc_plane_region_sse_with_limit(
         &source_frame.cb,
-        source_frame.geometry.width / subsample_x,
+        chroma_stride,
         &reconstruction.cb,
-        reconstruction.chroma_width(),
+        reconstruction_chroma_stride,
         chroma_x,
         chroma_y,
         chroma_width,
         chroma_height,
-    ));
-    sse.saturating_add(vvc_plane_region_sse(
+        max_abs_delta,
+    )?);
+    sse = sse.saturating_add(vvc_plane_region_sse_with_limit(
         &source_frame.cr,
-        source_frame.geometry.width / subsample_x,
+        chroma_stride,
         &reconstruction.cr,
-        reconstruction.chroma_width(),
+        reconstruction_chroma_stride,
         chroma_x,
         chroma_y,
         chroma_width,
         chroma_height,
-    ))
-}
-
-fn vvc_plane_region_sse(
-    source: &[VvcSample],
-    source_stride: usize,
-    reconstruction: &[VvcSample],
-    reconstruction_stride: usize,
-    start_x: usize,
-    start_y: usize,
-    width: usize,
-    height: usize,
-) -> u64 {
-    vvc_plane_region_sse_with_limit(
-        source,
-        source_stride,
-        reconstruction,
-        reconstruction_stride,
-        start_x,
-        start_y,
-        width,
-        height,
-        None,
-    )
-    .expect("an unrestricted plane SSE cannot exceed its input bounds")
+        max_abs_delta,
+    )?);
+    Some(sse)
 }
 
 fn vvc_plane_region_sse_with_limit(
@@ -2150,12 +2144,6 @@ fn vvc_predictive_lossy_region_sse_if_within_reconstruction_delta(
     region: VvcCtuRegion,
     max_abs_delta: u16,
 ) -> Option<u64> {
-    if current_source.geometry != previous_reconstruction.geometry
-        || current_source.format != previous_reconstruction.format
-    {
-        return None;
-    }
-
     let width = region
         .geometry
         .width
@@ -2167,47 +2155,11 @@ fn vvc_predictive_lossy_region_sse_if_within_reconstruction_delta(
     if width == 0 || height == 0 {
         return None;
     }
-    let mut sse = vvc_plane_region_sse_with_limit(
-        &current_source.luma,
-        current_source.geometry.width,
-        &previous_reconstruction.luma,
-        previous_reconstruction.luma_width(),
-        region.origin_x,
-        region.origin_y,
-        width,
-        height,
+    let sse = vvc_region_sse_with_limit(
+        current_source,
+        previous_reconstruction,
+        region,
         Some(max_abs_delta),
     )?;
-
-    let subsample_x = chroma_subsample_x(current_source.format.chroma_sampling);
-    let subsample_y = chroma_subsample_y(current_source.format.chroma_sampling);
-    let chroma_x = region.origin_x / subsample_x;
-    let chroma_y = region.origin_y / subsample_y;
-    let chroma_width = width / subsample_x;
-    let chroma_height = height / subsample_y;
-    let chroma_stride = current_source.geometry.width / subsample_x;
-    let reference_chroma_stride = previous_reconstruction.chroma_width();
-    sse = sse.saturating_add(vvc_plane_region_sse_with_limit(
-        &current_source.cb,
-        chroma_stride,
-        &previous_reconstruction.cb,
-        reference_chroma_stride,
-        chroma_x,
-        chroma_y,
-        chroma_width,
-        chroma_height,
-        Some(max_abs_delta),
-    )?);
-    sse = sse.saturating_add(vvc_plane_region_sse_with_limit(
-        &current_source.cr,
-        chroma_stride,
-        &previous_reconstruction.cr,
-        reference_chroma_stride,
-        chroma_x,
-        chroma_y,
-        chroma_width,
-        chroma_height,
-        Some(max_abs_delta),
-    )?);
     Some(sse)
 }
