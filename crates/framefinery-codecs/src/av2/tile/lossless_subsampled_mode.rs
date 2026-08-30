@@ -48,11 +48,7 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         coded_mi_context: &Av2CodedMiContext,
     ) -> [i32; TX4X4_SAMPLES] {
         if let Some(horz) = mode.luma_bdpcm_horz {
-            return if self.source_backed_recon && !mode.use_fsc {
-                self.source_backed_dpcm_residual4x4(Av2LosslessPlane::Y, x0, y0, horz)
-            } else {
-                self.dpcm_residual4x4(Av2LosslessPlane::Y, x0, y0, horz)
-            };
+            return self.dpcm_residual4x4(Av2LosslessPlane::Y, x0, y0, horz);
         }
         if self.source_backed_recon && !mode.use_fsc {
             if let Some(residual) =
@@ -87,11 +83,7 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
     ) -> [i32; TX4X4_SAMPLES] {
         if mode.chroma_use_bdpcm {
             let horizontal = mode.chroma_intra_mode.is_horizontal();
-            return if self.source_backed_recon && !mode.use_fsc {
-                self.source_backed_dpcm_residual4x4(plane, x0, y0, horizontal)
-            } else {
-                self.dpcm_residual4x4(plane, x0, y0, horizontal)
-            };
+            return self.dpcm_residual4x4(plane, x0, y0, horizontal);
         }
         if self.source_backed_recon && !mode.use_fsc {
             if let Some(residual) = self.source_backed_chroma_intra_residual4x4(

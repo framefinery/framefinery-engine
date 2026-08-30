@@ -124,6 +124,9 @@ The following changes were behavior-preserving and independently validated:
 - AV2 lossless BDPCM scoring and materialization now use the same neighbour
   reference policy and edge-predictor adapter instead of separate horizontal
   and vertical score wrappers.
+- AV2 fast lossless BDPCM now uses the shared residual path directly; its
+  reconstructed-reference policy already resolves to source samples in fast
+  mode, so the source-backed mode branch and duplicate adapter were removed.
 - VVC residual mode scoring and fast-search gate helpers now live in a
   dedicated mode-selection helper module, separate from CTU orchestration while
   retaining the same deepest-level feature gates.
@@ -240,7 +243,7 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 2,098 lines after reference-edge split | shared angular/reference machinery still has several large helpers |
-| AV2 lossless subsampled residuals | 1,156 lines after DPCM reference-policy unification | source-backed adapters and remaining predictor helpers need call-graph review |
+| AV2 lossless subsampled residuals | 1,156 lines after DPCM reference-policy unification | source-backed DC/H/V bulk shortcuts and remaining predictor helpers need call-graph review |
 | AV2 tile transform syntax helpers | 1,516 lines after writer split | coefficient contexts remain broad but syntax-sensitive |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
 

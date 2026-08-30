@@ -59,23 +59,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         }
     }
 
-    fn source_backed_dpcm_residual4x4(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        horz: bool,
-    ) -> [i32; TX4X4_SAMPLES] {
-        self.dpcm_residual4x4_with_edge_predictors(
-            plane,
-            x0,
-            y0,
-            horz,
-            |local_y| self.source_backed_h_predictor(plane, x0, y0, local_y),
-            |local_x| self.source_backed_v_predictor(plane, x0, y0, local_x),
-        )
-    }
-
     fn source_backed_dc_predictor(
         &self,
         plane: Av2LosslessPlane,
