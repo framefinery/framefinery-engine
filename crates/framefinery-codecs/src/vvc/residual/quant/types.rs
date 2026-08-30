@@ -25,6 +25,7 @@ use super::transform::{
     quantize_vvc_luma_residual_fast_with_qp_and_mts_into,
     quantize_vvc_luma_residual_greedy_with_qp_and_mts_into, transformed_dc_only_residual_sse,
 };
+use super::sample_math::vvc_sample_delta_i16;
 use super::{
     fill_visible_chroma_node, fill_visible_luma_node,
     inverse_transform_vvc_chroma_quantized_block_into_with_qp,

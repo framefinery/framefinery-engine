@@ -2,6 +2,7 @@ mod prediction;
 mod quant;
 #[cfg(test)]
 mod recon;
+mod sample_math;
 mod syntax;
 pub(super) mod transform;
 

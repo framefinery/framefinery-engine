@@ -272,8 +272,3 @@ fn residual_chroma_tu_at_into_impl<const TRACK_ZERO: bool>(
     debug_assert_eq!(residuals.len(), predicted.len());
     all_zero
 }
-
-fn vvc_sample_delta_i16(sample: VvcSample, predicted: VvcSample) -> i16 {
-    (i32::from(sample) - i32::from(predicted)).clamp(i32::from(i16::MIN), i32::from(i16::MAX))
-        as i16
-}

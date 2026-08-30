@@ -1,5 +1,7 @@
 use crate::picture::{ChromaSampling, SampleBitDepth};
 
+use super::sample_math::vvc_sample_delta_i16;
+
 use super::super::{
     chroma_subsample_x, chroma_subsample_y, vvc_neutral_sample, VvcBdpcmMode, VvcChromaCclmMode,
     VvcCodingTreeNode, VvcIntraPredictionMode, VvcSample, VvcVideoGeometry, VVC_CTU_SIZE,
@@ -569,11 +571,6 @@ pub(in crate::vvc) struct VvcDcPredictionScratch {
     top_work: [i32; VVC_CTU_SIZE],
     bottom_delta: [i32; VVC_CTU_SIZE],
     cclm_inner_luma: Vec<i32>,
-}
-
-fn vvc_sample_delta_i16(sample: VvcSample, predicted: VvcSample) -> i16 {
-    (i32::from(sample) - i32::from(predicted)).clamp(i32::from(i16::MIN), i32::from(i16::MAX))
-        as i16
 }
 
 include!("prediction_cclm.rs");
