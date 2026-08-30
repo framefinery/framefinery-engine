@@ -1,5 +1,6 @@
 include!("types.rs");
 include!("ctu.rs");
+include!("ctu_mode_selection.rs");
 include!("trace.rs");
 include!("rd_cache.rs");
 include!("luma_mode.rs");
