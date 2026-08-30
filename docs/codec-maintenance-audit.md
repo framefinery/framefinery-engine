@@ -103,6 +103,8 @@ The following changes were behavior-preserving and independently validated:
   separate from ordinary reconstruction and score-path logic.
 - AV2 lossy subsampled quantized, residual, DPCM, and source-copy writes now
   share one clipped reconstruction traversal with mode-specific sample logic.
+- AV2 lossy 4:2:2 and 4:4:4 chroma leaf reconstruction now shares one clipped
+  writer, with only the transform residual stride supplied by each caller.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from

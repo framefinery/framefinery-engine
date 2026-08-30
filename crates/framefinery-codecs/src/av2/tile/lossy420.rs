@@ -508,17 +508,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         analysis: &Av2LossyTx8x8Analysis,
         residual: &[i32; TX8X8_SAMPLES],
     ) {
-        let max_sample = i32::from(self.bit_depth.max_sample());
-        for local_y in 0..analysis.visible_height {
-            let y = analysis.leaf_y0 + local_y;
-            for local_x in 0..analysis.visible_width {
-                let x = analysis.leaf_x0 + local_x;
-                let index = local_y * TX8X8_SIZE + local_x;
-                let predictor = i32::from(analysis.predictor[index]);
-                let sample = (predictor + residual[index]).clamp(0, max_sample) as Av2Sample;
-                self.set_recon_sample(plane, x, y, sample);
-            }
-        }
+        self.fill_chroma_leaf_with(plane, analysis, residual, TX8X8_SIZE);
     }
 
     fn fill_chroma_422_tx4x8_leaf(
@@ -527,15 +517,25 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         analysis: &Av2LossyTx8x8Analysis,
         residual: &[i32; TX4X8_SAMPLES],
     ) {
-        let max_sample = i32::from(self.bit_depth.max_sample());
         debug_assert!(analysis.visible_width <= TX4X8_WIDTH);
         debug_assert!(analysis.visible_height <= TX4X8_HEIGHT);
+        self.fill_chroma_leaf_with(plane, analysis, residual, TX4X8_WIDTH);
+    }
+
+    fn fill_chroma_leaf_with(
+        &mut self,
+        plane: Av2LossyPlane,
+        analysis: &Av2LossyTx8x8Analysis,
+        residual: &[i32],
+        residual_stride: usize,
+    ) {
+        let max_sample = i32::from(self.bit_depth.max_sample());
         for local_y in 0..analysis.visible_height {
             let y = analysis.leaf_y0 + local_y;
             for local_x in 0..analysis.visible_width {
                 let x = analysis.leaf_x0 + local_x;
                 let analysis_index = local_y * TX8X8_SIZE + local_x;
-                let residual_index = local_y * TX4X8_WIDTH + local_x;
+                let residual_index = local_y * residual_stride + local_x;
                 let predictor = i32::from(analysis.predictor[analysis_index]);
                 let sample = (predictor + residual[residual_index]).clamp(0, max_sample) as Av2Sample;
                 self.set_recon_sample(plane, x, y, sample);
