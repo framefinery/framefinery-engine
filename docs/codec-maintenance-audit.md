@@ -95,6 +95,8 @@ The following changes were behavior-preserving and independently validated:
   live in a dedicated state module, separate from prediction and scoring.
 - AV2 source-backed lossless DPCM now uses the shared edge-predictor residual
   kernel instead of a parallel hand-written materialization loop.
+- AV2 source-backed lossless predictor adapters now live in a dedicated module,
+  separate from ordinary reconstruction and score-path logic.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.
 - AV2 transform-block entropy writers were separated from coefficient/context
