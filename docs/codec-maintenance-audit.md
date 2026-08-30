@@ -111,6 +111,8 @@ The following changes were behavior-preserving and independently validated:
   separate from ordinary 4x4 candidate selection.
 - AV2 lossy DPCM analysis and candidate construction now live in a dedicated
   module, separate from regular transform candidates and leaf orchestration.
+- AV2 lossy regular 4x4 candidate builders now live in a dedicated module,
+  separate from mode-decision orchestration and wide-transform adapters.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
