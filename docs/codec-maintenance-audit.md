@@ -184,6 +184,8 @@ The following changes were behavior-preserving and independently validated:
   a dedicated candidate module, separate from shared transform math.
 - VVC legacy-Hadamard and separable-transform luma AC candidate generation now
   lives in a dedicated candidate module, separate from candidate selection.
+- VVC shared luma AC coefficient extent, Hadamard, and QP math now lives in a
+  dedicated math module used by both luma candidate paths.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
