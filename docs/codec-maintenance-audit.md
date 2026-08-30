@@ -72,6 +72,8 @@ The following changes were behavior-preserving and independently validated:
   in a dedicated dequant module beside the transform-basis helpers.
 - VVC inverse transform and dequantized-level reconstruction now live in a
   dedicated transform-inverse module separate from forward quantization.
+- VVC inter-motion state, AMVP candidate selection, and HMVP retention now
+  live in a dedicated inter-motion module separate from CABAC emission.
 - AV2 lossless intra/inter residual coefficient writers now live in a dedicated
   lossless-residual module, separate from lossy residual selection.
 - AV2 palette-specific luma residual emission now lives in a dedicated
