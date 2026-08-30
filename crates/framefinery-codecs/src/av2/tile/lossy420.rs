@@ -290,8 +290,6 @@ impl<'a> Av2LossySubsampledTileState<'a> {
     ) -> Av2LossyTxbAnalysis {
         let mut source = [0; TX4X4_SAMPLES];
         let mut predictor = [0; TX4X4_SAMPLES];
-        let mut residual = [0i32; TX4X4_SAMPLES];
-        let mut sum = 0i32;
         let predictor_mode = match plane {
             Av2LossyPlane::Y => chroma_mode_for_luma_mode(mode.luma_intra_mode),
             Av2LossyPlane::U | Av2LossyPlane::V => mode.chroma_intra_mode,
@@ -397,34 +395,11 @@ impl<'a> Av2LossySubsampledTileState<'a> {
                         }
                     };
                 let source_sample = self.source_sample(plane, x0 + local_x, y0 + local_y);
-                let diff = i32::from(source_sample) - i32::from(predictor_sample);
                 source[index] = source_sample;
                 predictor[index] = predictor_sample;
-                residual[index] = diff;
-                sum += diff;
             }
         }
-        let average = round_div_i32(sum, TX4X4_SAMPLES as i32);
-        let max_delta = i32::from(self.bit_depth.max_sample());
-        let delta = quantize_i32_to_step(average, lossy_dc_delta_quant_step(self.quant_step()))
-            .clamp(-max_delta, max_delta) as i16;
-        let source_variance = txb_source_variance(&source);
-        let (dc_sse, dc_variance_loss) = txb_dc_recon_distortion_with_source_variance(
-            &source,
-            &predictor,
-            delta,
-            self.bit_depth,
-            source_variance,
-        );
-        Av2LossyTxbAnalysis {
-            source,
-            predictor,
-            residual,
-            delta,
-            dc_sse,
-            dc_variance_loss,
-            source_variance,
-        }
+        self.finish_txb_analysis(source, predictor)
     }
 
     fn analyze_inter_txb(
@@ -460,20 +435,30 @@ impl<'a> Av2LossySubsampledTileState<'a> {
 
         let mut source = [0; TX4X4_SAMPLES];
         let mut predictor = [0; TX4X4_SAMPLES];
-        let mut residual = [0i32; TX4X4_SAMPLES];
-        let mut sum = 0i32;
         for local_y in 0..TX4X4_SIZE {
             for local_x in 0..TX4X4_SIZE {
                 let index = local_y * TX4X4_SIZE + local_x;
                 let source_sample = self.source_sample(plane, x0 + local_x, y0 + local_y);
                 let predictor_sample =
                     self.reference_sample(reference, plane, ref_x0 + local_x, ref_y0 + local_y);
-                let diff = i32::from(source_sample) - i32::from(predictor_sample);
                 source[index] = source_sample;
                 predictor[index] = predictor_sample;
-                residual[index] = diff;
-                sum += diff;
             }
+        }
+        self.finish_txb_analysis(source, predictor)
+    }
+
+    fn finish_txb_analysis(
+        &self,
+        source: [Av2Sample; TX4X4_SAMPLES],
+        predictor: [Av2Sample; TX4X4_SAMPLES],
+    ) -> Av2LossyTxbAnalysis {
+        let mut residual = [0i32; TX4X4_SAMPLES];
+        let mut sum = 0i32;
+        for index in 0..TX4X4_SAMPLES {
+            let diff = i32::from(source[index]) - i32::from(predictor[index]);
+            residual[index] = diff;
+            sum += diff;
         }
         let average = round_div_i32(sum, TX4X4_SAMPLES as i32);
         let max_delta = i32::from(self.bit_depth.max_sample());
