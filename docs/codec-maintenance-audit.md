@@ -192,6 +192,8 @@ The following changes were behavior-preserving and independently validated:
   now live in a dedicated configuration module, separate from CABAC emission.
 - VVC residual pass-1 coefficient, subblock, and Rice context state now lives
   in a dedicated state module shared by direct and test syntax emission.
+- VVC production CABAC emission and test symbol collection now share one
+  stateful coefficient traversal, with sink-specific output only at emission.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
