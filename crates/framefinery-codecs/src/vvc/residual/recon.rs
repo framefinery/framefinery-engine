@@ -1,10 +1,9 @@
-use crate::picture::{ChromaSampling, PlanarYuvGeometry, SampleBitDepth};
+use crate::picture::{ChromaSampling, PlanarYuvGeometry};
 
 use super::super::{
     chroma_subsample_x, chroma_subsample_y, vvc_chroma_transform_nodes,
-    vvc_luma_transform_nodes_for_kind, vvc_neutral_sample, VvcChromaIntraPredictionMode,
-    VvcCodingTreeNode, VvcCtuPartitionParams, VvcIntraPredictionMode, VvcSample, VvcSampledFrame,
-    VvcVideoGeometry,
+    vvc_luma_transform_nodes_for_kind, vvc_neutral_sample, VvcCodingTreeNode,
+    VvcCtuPartitionParams, VvcIntraPredictionMode, VvcSample, VvcSampledFrame,
 };
 use super::quant::{
     reconstruct_vvc_chroma_bdpcm_transform_skip_residuals_into_with_qp,
@@ -17,8 +16,7 @@ use super::{
     inverse_transform_vvc_chroma_quantized_block_into_with_qp,
     inverse_transform_vvc_luma_quantized_block_into_with_qp_and_mts,
     predict_vvc_chroma_bdpcm_block_into_with_availability,
-    predict_vvc_chroma_cclm_block_into_with_availability,
-    predict_vvc_chroma_intra_block_into_with_availability,
+    predict_vvc_chroma_mode_block_into_with_availability,
     predict_vvc_luma_bdpcm_block_into_with_availability,
     predict_vvc_luma_intra_block_into_with_mrl_and_availability, VvcDcPredictionScratch,
     VvcInverseTransformScratch, VvcPlaneAvailability, VvcQuantizedColor, MAX_VVC_LUMA_TUS,
@@ -196,7 +194,7 @@ fn reconstruct_vvc_residual_frame_planar(
             partition_params.luma_tu_count,
             node,
         );
-        predict_vvc_recon_chroma_mode_into(
+        predict_vvc_chroma_mode_block_into_with_availability(
             &mut predicted_cb,
             &mut prediction_scratch,
             chroma_mode,
@@ -286,7 +284,7 @@ fn reconstruct_vvc_residual_frame_planar(
                 Some(VvcPlaneAvailability::new(&cr_available, frame_chroma_width)),
             );
         } else {
-            predict_vvc_recon_chroma_mode_into(
+            predict_vvc_chroma_mode_block_into_with_availability(
                 &mut predicted_cr,
                 &mut prediction_scratch,
                 chroma_mode,
@@ -375,64 +373,6 @@ fn reconstruct_vvc_residual_frame_planar(
     out.extend_from_slice(&cb[..frame_chroma_width * frame_chroma_height]);
     out.extend_from_slice(&cr[..frame_chroma_width * frame_chroma_height]);
     out
-}
-
-fn predict_vvc_recon_chroma_mode_into(
-    prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
-    mode: VvcChromaIntraPredictionMode,
-    co_located_luma_mode: VvcIntraPredictionMode,
-    chroma: &[VvcSample],
-    luma: &[VvcSample],
-    geometry: VvcVideoGeometry,
-    node: VvcCodingTreeNode,
-    chroma_sampling: ChromaSampling,
-    bit_depth: SampleBitDepth,
-    chroma_availability: Option<VvcPlaneAvailability<'_>>,
-    luma_availability: Option<VvcPlaneAvailability<'_>>,
-) {
-    match mode {
-        VvcChromaIntraPredictionMode::Derived => {
-            predict_vvc_chroma_intra_block_into_with_availability(
-                prediction,
-                scratch,
-                co_located_luma_mode,
-                chroma,
-                geometry,
-                node,
-                chroma_sampling,
-                bit_depth,
-                chroma_availability,
-            );
-        }
-        VvcChromaIntraPredictionMode::Explicit(mode) => {
-            predict_vvc_chroma_intra_block_into_with_availability(
-                prediction,
-                scratch,
-                mode,
-                chroma,
-                geometry,
-                node,
-                chroma_sampling,
-                bit_depth,
-                chroma_availability,
-            );
-        }
-        VvcChromaIntraPredictionMode::Cclm(cclm_mode) => {
-            predict_vvc_chroma_cclm_block_into_with_availability(
-                prediction,
-                cclm_mode,
-                chroma,
-                luma,
-                geometry,
-                node,
-                chroma_sampling,
-                bit_depth,
-                chroma_availability,
-                luma_availability,
-            );
-        }
-    }
 }
 
 fn mark_vvc_recon_plane_available(

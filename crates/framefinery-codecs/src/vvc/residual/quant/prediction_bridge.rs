@@ -4,64 +4,6 @@ fn vvc_global_ctu_node(mut node: VvcCodingTreeNode, region: VvcCtuRegion) -> Vvc
     node
 }
 
-fn predict_vvc_chroma_mode_block_into_with_availability(
-    prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
-    mode: VvcChromaIntraPredictionMode,
-    co_located_luma_mode: VvcIntraPredictionMode,
-    chroma: &[VvcSample],
-    luma: &[VvcSample],
-    geometry: VvcVideoGeometry,
-    node: VvcCodingTreeNode,
-    chroma_sampling: ChromaSampling,
-    bit_depth: SampleBitDepth,
-    chroma_availability: Option<super::VvcPlaneAvailability<'_>>,
-    luma_availability: Option<super::VvcPlaneAvailability<'_>>,
-) {
-    match mode {
-        VvcChromaIntraPredictionMode::Derived => {
-            predict_vvc_chroma_intra_block_into_with_availability(
-                prediction,
-                scratch,
-                co_located_luma_mode,
-                chroma,
-                geometry,
-                node,
-                chroma_sampling,
-                bit_depth,
-                chroma_availability,
-            );
-        }
-        VvcChromaIntraPredictionMode::Explicit(mode) => {
-            predict_vvc_chroma_intra_block_into_with_availability(
-                prediction,
-                scratch,
-                mode,
-                chroma,
-                geometry,
-                node,
-                chroma_sampling,
-                bit_depth,
-                chroma_availability,
-            );
-        }
-        VvcChromaIntraPredictionMode::Cclm(cclm_mode) => {
-            predict_vvc_chroma_cclm_block_into_with_availability(
-                prediction,
-                cclm_mode,
-                chroma,
-                luma,
-                geometry,
-                node,
-                chroma_sampling,
-                bit_depth,
-                chroma_availability,
-                luma_availability,
-            );
-        }
-    }
-}
-
 fn predict_vvc_chroma_mode_pair_blocks_into_with_availability(
     cb_prediction: &mut Vec<VvcSample>,
     cr_prediction: &mut Vec<VvcSample>,

@@ -1,4 +1,4 @@
-pub(in crate::vvc) fn predict_vvc_chroma_cclm_block_into_with_availability(
+fn predict_vvc_chroma_cclm_block_into_with_availability(
     prediction: &mut Vec<VvcSample>,
     mode: VvcChromaCclmMode,
     chroma: &[VvcSample],

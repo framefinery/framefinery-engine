@@ -222,6 +222,9 @@ The following changes were behavior-preserving and independently validated:
 - VVC DC and planar reference preparation, interpolation, and PDPC application
   now share a focused core sibling while luma/chroma wrappers retain only
   geometry and subsampling adaptation.
+- VVC quantization and explicit reconstruction now share one chroma-mode
+  dispatcher for derived, explicit, and CCLM prediction; the duplicated
+  reconstruction-only mode switch and lower-level re-exports were removed.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
@@ -259,7 +262,7 @@ current call graph rather than by line count alone:
 | Area | Approximate size | Current concern |
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
-| VVC residual prediction | 489-line orchestration plus focused prediction siblings | public luma/chroma dispatch and scratch ownership still need call-graph review |
+| VVC residual prediction | 491-line orchestration plus focused prediction siblings | plane-level luma/chroma dispatch and scratch ownership still need call-graph review |
 | AV2 lossless subsampled residuals | 1,122 lines after directional source unification | remaining directional-edge and neighbour helpers need call-graph review |
 | AV2 tile transform syntax helpers | 1,516 lines after writer split | coefficient contexts remain broad but syntax-sensitive |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |

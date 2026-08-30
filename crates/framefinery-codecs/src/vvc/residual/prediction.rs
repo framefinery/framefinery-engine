@@ -4,7 +4,8 @@ use super::sample_math::vvc_sample_delta_i16;
 
 use super::super::{
     chroma_subsample_x, chroma_subsample_y, vvc_neutral_sample, VvcBdpcmMode, VvcChromaCclmMode,
-    VvcCodingTreeNode, VvcIntraPredictionMode, VvcSample, VvcVideoGeometry, VVC_CTU_SIZE,
+    VvcChromaIntraPredictionMode, VvcCodingTreeNode, VvcIntraPredictionMode, VvcSample,
+    VvcVideoGeometry, VVC_CTU_SIZE,
 };
 
 const VVC_LUMA_MODE_DIAGONAL: u8 = 34;
@@ -258,7 +259,7 @@ fn predict_vvc_chroma_dc_block_into_with_availability(
     );
 }
 
-pub(in crate::vvc) fn predict_vvc_chroma_intra_block_into_with_availability(
+fn predict_vvc_chroma_intra_block_into_with_availability(
     prediction: &mut Vec<VvcSample>,
     scratch: &mut VvcDcPredictionScratch,
     mode: VvcIntraPredictionMode,
@@ -316,6 +317,7 @@ pub(in crate::vvc) struct VvcDcPredictionScratch {
 
 include!("prediction_cclm.rs");
 include!("prediction_cclm_orchestration.rs");
+include!("prediction_chroma_mode.rs");
 
 fn predict_vvc_chroma_planar_block_into(
     prediction: &mut Vec<VvcSample>,
