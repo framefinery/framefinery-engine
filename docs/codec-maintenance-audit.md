@@ -161,6 +161,8 @@ The following changes were behavior-preserving and independently validated:
   dedicated mode-selection extension, preserving the deepest-level gate.
 - VVC implicit chroma boundary-child emission now lives in a dedicated
   geometry/traversal extension, separate from visible-tree recursion.
+- VVC chroma QT/MTT split-flag syntax now lives in a dedicated syntax
+  extension, shared by visible and implicit boundary traversal.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
