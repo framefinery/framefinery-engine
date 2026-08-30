@@ -27,6 +27,7 @@ include!("chroma_geometry.rs");
 include!("tile_payload.rs");
 include!("mode_contexts.rs");
 include!("tile_plan.rs");
+include!("tile_plan_inter.rs");
 include!("partitions.rs");
 include!("palette_syntax.rs");
 include!("black_residual.rs");
