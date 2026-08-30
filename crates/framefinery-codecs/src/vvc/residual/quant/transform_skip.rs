@@ -45,6 +45,30 @@ fn reconstruct_vvc_transform_skip_residuals_into<const AC_COEFFS: usize>(
     }
 }
 
+fn reconstruct_vvc_bdpcm_transform_skip_residuals_into<const LEVELS: usize>(
+    residuals: &mut Vec<i16>,
+    levels: &mut [i16; LEVELS],
+    width: usize,
+    height: usize,
+    active_width: usize,
+    active_height: usize,
+    inverse_width: usize,
+    bdpcm_mode: VvcBdpcmMode,
+    reconstruct_level: impl Fn(i16) -> i16,
+) {
+    residuals.clear();
+    residuals.resize(width * height, 0);
+    if residuals.is_empty() {
+        return;
+    }
+    inverse_bdpcm_quantized_levels_in_place(levels, inverse_width, active_height, bdpcm_mode);
+    for y in 0..active_height {
+        for x in 0..active_width {
+            residuals[y * width + x] = reconstruct_level(levels[y * inverse_width + x]);
+        }
+    }
+}
+
 #[cfg(test)]
 pub(in crate::vvc) fn reconstruct_vvc_luma_transform_skip_residuals_into_with_qp(
     residuals: &mut Vec<i16>,
@@ -102,11 +126,6 @@ pub(in crate::vvc) fn reconstruct_vvc_luma_bdpcm_transform_skip_residuals_into_w
     bdpcm_mode: VvcBdpcmMode,
 ) {
     debug_assert!(bdpcm_mode.is_enabled());
-    residuals.clear();
-    residuals.resize(width * height, 0);
-    if residuals.is_empty() {
-        return;
-    }
     let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
     let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
     let mut levels = [0i16; 64];
@@ -119,16 +138,17 @@ pub(in crate::vvc) fn reconstruct_vvc_luma_bdpcm_transform_skip_residuals_into_w
             levels[y * active_width + x] = ac_levels[y * active_width + x - 1];
         }
     }
-    inverse_bdpcm_quantized_levels_in_place(&mut levels, active_width, active_height, bdpcm_mode);
-    for y in 0..active_height {
-        for x in 0..active_width {
-            residuals[y * width + x] = reconstruct_vvc_transform_skip_level_with_params(
-                levels[y * active_width + x],
-                scale,
-                right_shift,
-            );
-        }
-    }
+    reconstruct_vvc_bdpcm_transform_skip_residuals_into(
+        residuals,
+        &mut levels,
+        width,
+        height,
+        active_width,
+        active_height,
+        active_width,
+        bdpcm_mode,
+        |level| reconstruct_vvc_transform_skip_level_with_params(level, scale, right_shift),
+    );
 }
 
 fn reconstruct_vvc_luma_bdpcm_transform_skip_residuals_into_with_table(
@@ -141,11 +161,6 @@ fn reconstruct_vvc_luma_bdpcm_transform_skip_residuals_into_with_table(
     bdpcm_mode: VvcBdpcmMode,
 ) {
     debug_assert!(bdpcm_mode.is_enabled());
-    residuals.clear();
-    residuals.resize(width * height, 0);
-    if residuals.is_empty() {
-        return;
-    }
     let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
     let mut levels = [0i16; 64];
     levels[0] = dc_level;
@@ -157,12 +172,17 @@ fn reconstruct_vvc_luma_bdpcm_transform_skip_residuals_into_with_table(
             levels[y * active_width + x] = ac_levels[y * active_width + x - 1];
         }
     }
-    inverse_bdpcm_quantized_levels_in_place(&mut levels, active_width, active_height, bdpcm_mode);
-    for y in 0..active_height {
-        for x in 0..active_width {
-            residuals[y * width + x] = quant_table.reconstructed(levels[y * active_width + x]);
-        }
-    }
+    reconstruct_vvc_bdpcm_transform_skip_residuals_into(
+        residuals,
+        &mut levels,
+        width,
+        height,
+        active_width,
+        active_height,
+        active_width,
+        bdpcm_mode,
+        |level| quant_table.reconstructed(level),
+    );
 }
 
 #[cfg(test)]
@@ -246,11 +266,6 @@ pub(in crate::vvc) fn reconstruct_vvc_chroma_bdpcm_transform_skip_residuals_into
     bdpcm_mode: VvcBdpcmMode,
 ) {
     debug_assert!(bdpcm_mode.is_enabled());
-    residuals.clear();
-    residuals.resize(width * height, 0);
-    if residuals.is_empty() {
-        return;
-    }
     let active_width = width.min(4);
     let active_height = height.min(4);
     let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
@@ -261,16 +276,17 @@ pub(in crate::vvc) fn reconstruct_vvc_chroma_bdpcm_transform_skip_residuals_into
             levels[y * 4 + x] = ac_levels[slot];
         }
     }
-    inverse_bdpcm_quantized_levels_in_place(&mut levels, 4, active_height, bdpcm_mode);
-    for y in 0..active_height {
-        for x in 0..active_width {
-            residuals[y * width + x] = reconstruct_vvc_transform_skip_level_with_params(
-                levels[y * 4 + x],
-                scale,
-                right_shift,
-            );
-        }
-    }
+    reconstruct_vvc_bdpcm_transform_skip_residuals_into(
+        residuals,
+        &mut levels,
+        width,
+        height,
+        active_width,
+        active_height,
+        4,
+        bdpcm_mode,
+        |level| reconstruct_vvc_transform_skip_level_with_params(level, scale, right_shift),
+    );
 }
 
 fn reconstruct_vvc_chroma_bdpcm_transform_skip_residuals_into_with_table(
@@ -283,11 +299,6 @@ fn reconstruct_vvc_chroma_bdpcm_transform_skip_residuals_into_with_table(
     bdpcm_mode: VvcBdpcmMode,
 ) {
     debug_assert!(bdpcm_mode.is_enabled());
-    residuals.clear();
-    residuals.resize(width * height, 0);
-    if residuals.is_empty() {
-        return;
-    }
     let active_width = width.min(4);
     let active_height = height.min(4);
     let mut levels = [0i16; 16];
@@ -297,12 +308,17 @@ fn reconstruct_vvc_chroma_bdpcm_transform_skip_residuals_into_with_table(
             levels[y * 4 + x] = ac_levels[slot];
         }
     }
-    inverse_bdpcm_quantized_levels_in_place(&mut levels, 4, active_height, bdpcm_mode);
-    for y in 0..active_height {
-        for x in 0..active_width {
-            residuals[y * width + x] = quant_table.reconstructed(levels[y * 4 + x]);
-        }
-    }
+    reconstruct_vvc_bdpcm_transform_skip_residuals_into(
+        residuals,
+        &mut levels,
+        width,
+        height,
+        active_width,
+        active_height,
+        4,
+        bdpcm_mode,
+        |level| quant_table.reconstructed(level),
+    );
 }
 
 #[cfg(test)]

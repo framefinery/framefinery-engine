@@ -37,6 +37,8 @@ The following changes were behavior-preserving and independently validated:
   kernels while retaining shared availability handling.
 - VVC transform-skip residual placement and reconstruction now share one
   parameterized kernel across luma/chroma and identity/QP/table paths.
+- VVC BDPCM transform-skip inverse traversal and reconstruction now share the
+  same parameterized kernel across luma and chroma paths.
 - AV2 lossy subsampled scoring was separated from its materialization path.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.
