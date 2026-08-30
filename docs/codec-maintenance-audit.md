@@ -157,6 +157,8 @@ The following changes were behavior-preserving and independently validated:
   extension, separate from recursive chroma partition traversal.
 - VVC visible chroma QT/MTT recursion now lives in a dedicated traversal
   extension, separate from tree entry setup and leaf syntax.
+- VVC chroma inter-skip subtree selection and leaf counting now live in a
+  dedicated mode-selection extension, preserving the deepest-level gate.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
