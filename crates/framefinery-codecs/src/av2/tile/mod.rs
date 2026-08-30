@@ -42,6 +42,7 @@ include!("residual_trace.rs");
 include!("tx_partition_syntax.rs");
 include!("residual_math.rs");
 include!("residual.rs");
+include!("lossless_residual.rs");
 include!("chroma_residual.rs");
 include!("lossy_txb_selection.rs");
 include!("residual_support.rs");

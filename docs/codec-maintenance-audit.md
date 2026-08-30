@@ -70,6 +70,8 @@ The following changes were behavior-preserving and independently validated:
   transform-basis module separate from quantization and dequantization.
 - VVC transform dequantization parameters and DC-only reconstruction now live
   in a dedicated dequant module beside the transform-basis helpers.
+- AV2 lossless intra/inter residual coefficient writers now live in a dedicated
+  lossless-residual module, separate from lossy residual selection.
 - AV2 lossy subsampled scoring was separated from its materialization path.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.
