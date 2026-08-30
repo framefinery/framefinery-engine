@@ -140,6 +140,9 @@ The following changes were behavior-preserving and independently validated:
   writer module, separate from the shared frame-state and mode emitters.
 - VVC frame-level CTU CABAC state and neighbor bookkeeping now live in a
   dedicated state module, separate from per-operation syntax emission.
+- VVC CTU operation dispatch now lives in a dedicated generator extension,
+  keeping traversal routing separate from split, prediction, and residual
+  syntax implementations.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
