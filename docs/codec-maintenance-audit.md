@@ -136,6 +136,9 @@ The following changes were behavior-preserving and independently validated:
 - AV2 lossless residual materialization and coefficient scoring now share one
   luma/chroma/BDPCM mode dispatcher, with only the deepest reconstructed-versus-
   score reference policy differing between callers.
+- AV2 lossless intra and inter chroma residual emission now shares one U/V TXB
+  traversal and entropy-context update path, with residual generation and FSC
+  syntax policy supplied only at the deepest emission boundary.
 - VVC residual mode scoring and fast-search gate helpers now live in a
   dedicated mode-selection helper module, separate from CTU orchestration while
   retaining the same deepest-level feature gates.
