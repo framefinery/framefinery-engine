@@ -139,6 +139,9 @@ The following changes were behavior-preserving and independently validated:
 - AV2 lossless intra and inter chroma residual emission now shares one U/V TXB
   traversal and entropy-context update path, with residual generation and FSC
   syntax policy supplied only at the deepest emission boundary.
+- AV2 lossless intra and inter luma residual emission now shares one TXB
+  traversal, reconstruction update, and entropy-context update path; each mode
+  retains only its TXB-local residual generation and legal syntax selection.
 - VVC residual mode scoring and fast-search gate helpers now live in a
   dedicated mode-selection helper module, separate from CTU orchestration while
   retaining the same deepest-level feature gates.

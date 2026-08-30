@@ -34,14 +34,14 @@ fn write_lossless_subsampled_residual_coefficients(
                 luma_leaf_height,
             )
     });
-    for row in 0..txb_height {
-        let abs_row = decision.row + row;
-        for col in 0..txb_width {
-            let abs_col = decision.col + col;
-            let skip_ctx =
-                luma_txb_skip_context(contexts.y_above[abs_col], contexts.y_left[abs_row]);
-            let dc_sign_ctx = dc_sign_context(contexts.y_above[abs_col], contexts.y_left[abs_row]);
-            let (x0, y0) = lossless.txb_origin(Av2LosslessPlane::Y, abs_col, abs_row);
+    write_lossless_luma_residual_coefficients(
+        writer,
+        decision,
+        contexts,
+        lossless,
+        txb_width,
+        txb_height,
+        |writer, lossless, x0, y0, skip_ctx, dc_sign_ctx| {
             let residual = if let Some(region) = luma_palette_region.as_ref() {
                 lossless.luma_palette_residual4x4(
                     palette.expect("AV2 luma palette mode needs palette state"),
@@ -62,25 +62,22 @@ fn write_lossless_subsampled_residual_coefficients(
                     coded_mi_context,
                 )
             };
-            let (context, _) = if tx4x4_residual_is_zero(&residual) {
+            if tx4x4_residual_is_zero(&residual) {
                 if mode.use_fsc {
                     write_y_fsc_txb_all_zero(writer);
                 } else {
                     write_y_txb_all_zero(writer, skip_ctx);
                 }
-                (0, false)
+                0
             } else if mode.use_fsc {
                 let coefficients = tx4x4_coefficients_from_residual(&residual, true);
-                write_luma_palette_fsc_txb(writer, &coefficients)
+                write_luma_palette_fsc_txb(writer, &coefficients).0
             } else {
                 let coefficients = tx4x4_coefficients_from_residual(&residual, false);
-                write_luma_palette_residual_txb(writer, skip_ctx, dc_sign_ctx, &coefficients)
-            };
-            lossless.copy_source_to_recon_txb(Av2LosslessPlane::Y, x0, y0);
-            contexts.y_above[abs_col] = context;
-            contexts.y_left[abs_row] = context;
-        }
-    }
+                write_luma_palette_residual_txb(writer, skip_ctx, dc_sign_ctx, &coefficients).0
+            }
+        },
+    );
 
     let chroma_span = chroma_tx4x4_span(
         decision,
@@ -139,14 +136,14 @@ fn write_lossless_inter_residual_coefficients(
         .block_size
         .tx4x4_height()
         .min(visible_rows_mi.saturating_sub(decision.row));
-    for row in 0..txb_height {
-        let abs_row = decision.row + row;
-        for col in 0..txb_width {
-            let abs_col = decision.col + col;
-            let skip_ctx =
-                luma_txb_skip_context(contexts.y_above[abs_col], contexts.y_left[abs_row]);
-            let dc_sign_ctx = dc_sign_context(contexts.y_above[abs_col], contexts.y_left[abs_row]);
-            let (x0, y0) = lossless.txb_origin(Av2LosslessPlane::Y, abs_col, abs_row);
+    write_lossless_luma_residual_coefficients(
+        writer,
+        decision,
+        contexts,
+        lossless,
+        txb_width,
+        txb_height,
+        |writer, lossless, x0, y0, skip_ctx, dc_sign_ctx| {
             let residual = lossless.inter_residual4x4(
                 reference,
                 Av2LosslessPlane::Y,
@@ -155,26 +152,23 @@ fn write_lossless_inter_residual_coefficients(
                 mv_row_px,
                 mv_col_px,
             );
-            let (context, _) = if tx4x4_residual_is_zero(&residual) {
+            if tx4x4_residual_is_zero(&residual) {
                 if use_regular_inter_txb_contexts {
                     write_y_inter_txb_all_zero(writer, skip_ctx);
                 } else {
                     write_y_txb_all_zero(writer, skip_ctx);
                 }
-                (0, false)
+                0
             } else {
                 let coefficients = tx4x4_coefficients_from_residual(&residual, false);
                 if use_regular_inter_txb_contexts {
-                    write_luma_inter_residual_txb(writer, skip_ctx, dc_sign_ctx, &coefficients)
+                    write_luma_inter_residual_txb(writer, skip_ctx, dc_sign_ctx, &coefficients).0
                 } else {
-                    write_luma_palette_residual_txb(writer, skip_ctx, dc_sign_ctx, &coefficients)
+                    write_luma_palette_residual_txb(writer, skip_ctx, dc_sign_ctx, &coefficients).0
                 }
-            };
-            lossless.copy_source_to_recon_txb(Av2LosslessPlane::Y, x0, y0);
-            contexts.y_above[abs_col] = context;
-            contexts.y_left[abs_row] = context;
-        }
-    }
+            }
+        },
+    );
 
     let chroma_span = chroma_tx4x4_span(
         decision,
@@ -197,6 +191,38 @@ fn write_lossless_inter_residual_coefficients(
             lossless.inter_residual4x4(reference, plane, x0, y0, mv_row_px, mv_col_px)
         },
     );
+}
+
+fn write_lossless_luma_residual_coefficients(
+    writer: &mut Av2EntropyWriter,
+    decision: Av2TileDecision,
+    contexts: &mut Av2TxbEntropyContexts,
+    lossless: &mut Av2LosslessSubsampledTileState<'_>,
+    txb_width: usize,
+    txb_height: usize,
+    mut write_txb: impl FnMut(
+        &mut Av2EntropyWriter,
+        &Av2LosslessSubsampledTileState<'_>,
+        usize,
+        usize,
+        u8,
+        u8,
+    ) -> u8,
+) {
+    for row in 0..txb_height {
+        let abs_row = decision.row + row;
+        for col in 0..txb_width {
+            let abs_col = decision.col + col;
+            let skip_ctx =
+                luma_txb_skip_context(contexts.y_above[abs_col], contexts.y_left[abs_row]);
+            let dc_sign_ctx = dc_sign_context(contexts.y_above[abs_col], contexts.y_left[abs_row]);
+            let (x0, y0) = lossless.txb_origin(Av2LosslessPlane::Y, abs_col, abs_row);
+            let context = write_txb(writer, lossless, x0, y0, skip_ctx, dc_sign_ctx);
+            lossless.copy_source_to_recon_txb(Av2LosslessPlane::Y, x0, y0);
+            contexts.y_above[abs_col] = context;
+            contexts.y_left[abs_row] = context;
+        }
+    }
 }
 
 struct Av2LosslessChromaResidualSyntax {
