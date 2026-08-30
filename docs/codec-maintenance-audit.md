@@ -56,6 +56,8 @@ The following changes were behavior-preserving and independently validated:
   format-neutral residual accounting utilities.
 - VVC luma and chroma transform-skip AC extraction now share one bounded
   level-placement and nonzero-tracking kernel.
+- VVC finalized residual-block and RD-score value types now live in the shared
+  quantization types module used by luma, chroma, and CTU selection.
 - AV2 lossy subsampled scoring was separated from its materialization path.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.

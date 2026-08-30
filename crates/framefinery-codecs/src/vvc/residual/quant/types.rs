@@ -42,6 +42,42 @@ use super::{
     MAX_VVC_CHROMA_TUS, MAX_VVC_LUMA_TUS, VVC_CHROMA_AC_COEFFS_PER_TU,
     VVC_CHROMA_AC_POSITIONS_4X4, VVC_LUMA_AC_COEFFS_PER_TU,
 };
+
+#[derive(Debug, Clone, Copy)]
+struct VvcFinalizedResidualBlock<const AC_COEFFS: usize> {
+    dc_level: i16,
+    ac_levels: [i16; AC_COEFFS],
+    has_ac: bool,
+    transform_skip: bool,
+    bdpcm_mode: VvcBdpcmMode,
+}
+
+impl<const AC_COEFFS: usize> VvcFinalizedResidualBlock<AC_COEFFS> {
+    fn abs_remainder(self) -> u8 {
+        self.dc_level.unsigned_abs().min(u8::MAX as u16) as u8
+    }
+
+    fn negative(self) -> bool {
+        self.dc_level < 0 && self.abs_remainder() != 0
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct VvcResidualBlockScore {
+    distortion: u64,
+    rate_cost: u64,
+}
+
+impl VvcResidualBlockScore {
+    fn selects_over(self, best: Self) -> bool {
+        vvc_rd_candidate_selects_over(
+            self.distortion,
+            self.rate_cost,
+            best.distortion,
+            best.rate_cost,
+        )
+    }
+}
 #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 use super::VvcQuantizedResidualFrame;
 #[cfg(feature = "vvc-stats")]

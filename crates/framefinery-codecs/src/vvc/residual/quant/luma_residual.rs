@@ -1,23 +1,4 @@
 #[derive(Debug, Clone, Copy)]
-struct VvcFinalizedResidualBlock<const AC_COEFFS: usize> {
-    dc_level: i16,
-    ac_levels: [i16; AC_COEFFS],
-    has_ac: bool,
-    transform_skip: bool,
-    bdpcm_mode: VvcBdpcmMode,
-}
-
-impl<const AC_COEFFS: usize> VvcFinalizedResidualBlock<AC_COEFFS> {
-    fn abs_remainder(self) -> u8 {
-        self.dc_level.unsigned_abs().min(u8::MAX as u16) as u8
-    }
-
-    fn negative(self) -> bool {
-        self.dc_level < 0 && self.abs_remainder() != 0
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
 struct VvcSelectedLumaResidual {
     block: VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU>,
     mts_index: u8,
@@ -810,23 +791,6 @@ fn vvc_luma_transform_skip_score_is_exact(
     let height = usize::from(height);
     let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
     active_width == width && active_height == height && vvc_transform_skip_qp_reconstructs_exact(bit_depth, qp)
-}
-
-#[derive(Debug, Clone, Copy)]
-struct VvcResidualBlockScore {
-    distortion: u64,
-    rate_cost: u64,
-}
-
-impl VvcResidualBlockScore {
-    fn selects_over(self, best: Self) -> bool {
-        vvc_rd_candidate_selects_over(
-            self.distortion,
-            self.rate_cost,
-            best.distortion,
-            best.rate_cost,
-        )
-    }
 }
 
 fn vvc_transform_skip_short_circuits_transformed(score: VvcResidualBlockScore) -> bool {
