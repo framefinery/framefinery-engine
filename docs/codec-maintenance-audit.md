@@ -143,6 +143,8 @@ The following changes were behavior-preserving and independently validated:
 - VVC CTU operation dispatch now lives in a dedicated generator extension,
   keeping traversal routing separate from split, prediction, and residual
   syntax implementations.
+- VVC CTU split-flag emission now lives in a dedicated syntax extension,
+  separate from operation dispatch and mode/residual emission.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
