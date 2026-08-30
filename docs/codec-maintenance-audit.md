@@ -53,6 +53,8 @@ The following changes were behavior-preserving and independently validated:
   plane-writing loop, with subsampling handled only at the caller boundary.
 - VVC visible reconstruction wrappers and their shared clipped plane writer now
   live in a dedicated reconstruction module, separate from prediction kernels.
+- VVC BDPCM prediction and residual adapters now live in a dedicated module,
+  retaining one shared plane predictor for luma and chroma.
 - VVC luma and chroma transform-skip SSE scoring now share one kernel,
   including the common BDPCM accumulation, clipped tail handling, and
   format-neutral residual accounting utilities.
