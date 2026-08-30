@@ -1709,22 +1709,18 @@ pub(in crate::vvc) fn fill_visible_luma_node(
     residuals: &[i16],
     bit_depth: SampleBitDepth,
 ) {
-    let node_width = usize::from(node.width);
-    let start_x = usize::from(node.x);
-    let start_y = usize::from(node.y);
-    let end_x = (start_x + node_width).min(geometry.width);
-    let end_y = (start_y + usize::from(node.height)).min(geometry.height);
-    let max_sample = i32::from(bit_depth.max_sample());
-    for y in start_y..end_y {
-        let row = y * geometry.width;
-        let src_y = y - start_y;
-        for x in start_x..end_x {
-            let src_x = x - start_x;
-            let idx = src_y * node_width + src_x;
-            luma[row + x] = (i32::from(predicted[idx]) + i32::from(residuals[idx]))
-                .clamp(0, max_sample) as VvcSample;
-        }
-    }
+    fill_visible_plane_node(
+        luma,
+        geometry.width,
+        geometry.height,
+        usize::from(node.x),
+        usize::from(node.y),
+        usize::from(node.width),
+        usize::from(node.height),
+        predicted,
+        residuals,
+        bit_depth,
+    );
 }
 
 pub(in crate::vvc) fn fill_visible_chroma_node(
@@ -1744,16 +1740,42 @@ pub(in crate::vvc) fn fill_visible_chroma_node(
     let start_y = usize::from(node.y) / subsample_y;
     let chroma_width = geometry.width / subsample_x;
     let chroma_height = geometry.height / subsample_y;
-    let end_x = (start_x + node_width).min(chroma_width);
-    let end_y = (start_y + node_height).min(chroma_height);
+    fill_visible_plane_node(
+        chroma,
+        chroma_width,
+        chroma_height,
+        start_x,
+        start_y,
+        node_width,
+        node_height,
+        predicted,
+        residuals,
+        bit_depth,
+    );
+}
+
+fn fill_visible_plane_node(
+    plane: &mut [VvcSample],
+    plane_width: usize,
+    plane_height: usize,
+    start_x: usize,
+    start_y: usize,
+    node_width: usize,
+    node_height: usize,
+    predicted: &[VvcSample],
+    residuals: &[i16],
+    bit_depth: SampleBitDepth,
+) {
+    let end_x = (start_x + node_width).min(plane_width);
+    let end_y = (start_y + node_height).min(plane_height);
     let max_sample = i32::from(bit_depth.max_sample());
     for y in start_y..end_y {
-        let row = y * chroma_width;
+        let row = y * plane_width;
         let src_y = y - start_y;
         for x in start_x..end_x {
             let src_x = x - start_x;
             let idx = src_y * node_width + src_x;
-            chroma[row + x] = (i32::from(predicted[idx]) + i32::from(residuals[idx]))
+            plane[row + x] = (i32::from(predicted[idx]) + i32::from(residuals[idx]))
                 .clamp(0, max_sample) as VvcSample;
         }
     }

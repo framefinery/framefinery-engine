@@ -39,6 +39,8 @@ The following changes were behavior-preserving and independently validated:
   parameterized kernel across luma/chroma and identity/QP/table paths.
 - VVC BDPCM transform-skip inverse traversal and reconstruction now share the
   same parameterized kernel across luma and chroma paths.
+- VVC visible luma and chroma reconstruction now share one clipped
+  plane-writing loop, with subsampling handled only at the caller boundary.
 - AV2 lossy subsampled scoring was separated from its materialization path.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.
