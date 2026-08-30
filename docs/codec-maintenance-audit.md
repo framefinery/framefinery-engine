@@ -127,6 +127,8 @@ The following changes were behavior-preserving and independently validated:
   clipped sample writer, with subsampling reduced to wrapper geometry setup.
 - AV2 lossy inter residual entropy emission now lives with the other inter-only
   writers, keeping intra/palette planning separate from inter leaf state.
+- AV2 fixed-NEWMV inter entropy emission now shares the dedicated inter syntax
+  module with global-MV and residual inter writers.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from

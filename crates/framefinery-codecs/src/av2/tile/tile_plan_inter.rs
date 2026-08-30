@@ -1,4 +1,78 @@
 impl Av2Black444TilePlan {
+    fn write_lossless_new_mv_inter_entropy(
+        &self,
+        writer: &mut Av2EntropyWriter,
+        total_refs: usize,
+        mv_row_px: i16,
+        mv_col_px: i16,
+    ) {
+        assert!(
+            mv_row_px != 0 || mv_col_px != 0,
+            "NEWMV entropy helper expects a non-zero motion vector"
+        );
+        let mut partition_context =
+            Av2PartitionContext::new(self.visible_rows_mi, self.visible_cols_mi);
+        let mut skip_context =
+            Av2IntrabcContext::new(self.visible_rows_mi, self.visible_cols_mi);
+        let mut inter_context =
+            Av2InterModeContext::new(self.visible_rows_mi, self.visible_cols_mi);
+        for decision in &self.decisions {
+            match decision.kind {
+                Av2TileDecisionKind::Partition(partition) => {
+                    write_partition(
+                        writer,
+                        *decision,
+                        partition,
+                        &partition_context,
+                        self.visible_rows_mi,
+                        self.visible_cols_mi,
+                    );
+                    if partition == Av2MvpPartition::None {
+                        write_inter_newmv_skip(
+                            writer,
+                            *decision,
+                            &skip_context,
+                            &inter_context,
+                            total_refs,
+                            mv_row_px,
+                            mv_col_px,
+                        );
+                        partition_context.update_leaf(
+                            decision.row,
+                            decision.col,
+                            decision.block_size,
+                        );
+                        skip_context.update_leaf(
+                            decision.row,
+                            decision.col,
+                            decision.block_size,
+                            false,
+                            true,
+                        );
+                        inter_context.update_leaf(
+                            decision.row,
+                            decision.col,
+                            decision.block_size,
+                            true,
+                            0,
+                            true,
+                            mv_row_px,
+                            mv_col_px,
+                        );
+                    }
+                }
+                Av2TileDecisionKind::IntrabcFlag(_)
+                | Av2TileDecisionKind::IntrabcCopy { .. }
+                | Av2TileDecisionKind::IntraLumaMode { .. }
+                | Av2TileDecisionKind::IntraChromaMode { .. }
+                | Av2TileDecisionKind::LumaPaletteModeInfo
+                | Av2TileDecisionKind::LumaPaletteColorMap
+                | Av2TileDecisionKind::BlackDcResidualCoefficients
+                | Av2TileDecisionKind::LumaPaletteResidualCoefficients { .. } => {}
+            }
+        }
+    }
+
     fn write_lossy_zero_mv_residual_inter_entropy(
         &self,
         writer: &mut Av2EntropyWriter,
