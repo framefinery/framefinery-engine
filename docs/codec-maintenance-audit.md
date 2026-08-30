@@ -51,6 +51,8 @@ The following changes were behavior-preserving and independently validated:
   same parameterized kernel across luma and chroma paths.
 - VVC visible luma and chroma reconstruction now share one clipped
   plane-writing loop, with subsampling handled only at the caller boundary.
+- VVC visible reconstruction wrappers and their shared clipped plane writer now
+  live in a dedicated reconstruction module, separate from prediction kernels.
 - VVC luma and chroma transform-skip SSE scoring now share one kernel,
   including the common BDPCM accumulation, clipped tail handling, and
   format-neutral residual accounting utilities.
