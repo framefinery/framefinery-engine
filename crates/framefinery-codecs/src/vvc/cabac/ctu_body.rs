@@ -35,6 +35,7 @@ include!("ctu_dispatch.rs");
 include!("ctu_split_syntax.rs");
 include!("ctu_inter_syntax.rs");
 include!("ctu_scc_syntax.rs");
+include!("ctu_single_tree_prediction.rs");
 include!("ctu_neighbours.rs");
 include!("ctu_luma_mode_syntax.rs");
 include!("ctu_luma_residual_tools.rs");
@@ -146,28 +147,6 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         self.inter_skip_neighbours = skip_neighbours;
         self.inter_motion_neighbours = motion_neighbours;
         self
-    }
-
-    fn emit_single_tree_chroma_prediction(
-        &mut self,
-        cabac: &mut VvcCabacEncoder,
-        node: VvcCodingTreeNode,
-        luma_mode_neighbours: &VvcLumaModeNeighbourState,
-    ) {
-        if node.tree_type != VvcTreeType::SingleTree
-            || self.params.chroma_sampling == ChromaSampling::Monochrome
-        {
-            return;
-        }
-        let tu_idx = self.chroma_tu_index;
-        assert!(
-            tu_idx < self.params.chroma_tu_count,
-            "missing chroma TU prediction data for single-tree leaf {tu_idx}"
-        );
-        let chroma_bdpcm_mode = self.params.chroma_tu_bdpcm_modes[tu_idx];
-        if !self.emit_chroma_bdpcm_mode(cabac, node, chroma_bdpcm_mode) {
-            self.emit_chroma_intra_prediction_mode(cabac, node, tu_idx, luma_mode_neighbours);
-        }
     }
 
     fn emit_single_tree_residual(&mut self, cabac: &mut VvcCabacEncoder, node: VvcCodingTreeNode) {

@@ -149,6 +149,8 @@ The following changes were behavior-preserving and independently validated:
   extension, separate from intra and transform-tree syntax.
 - VVC SCC/IBC intra syntax now lives in a dedicated generator extension, with
   its feature gates and legality assertions preserved at mode selection.
+- VVC single-tree chroma prediction dispatch now lives in a dedicated
+  generator extension shared by intra and inter tree traversal.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
