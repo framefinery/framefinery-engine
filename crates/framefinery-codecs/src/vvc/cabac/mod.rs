@@ -4,6 +4,7 @@ mod ctu_body;
 mod ctu_split;
 mod writer;
 
+#[cfg(any(test, feature = "bench-internals"))]
 pub(in crate::vvc) use binarization::vvc_encode_exp_golomb_ep_combined;
 #[cfg(test)]
 pub(super) use context::VvcCabacInitType;
@@ -23,16 +24,17 @@ pub(super) use ctu_body::{
 };
 #[cfg(test)]
 pub(super) use ctu_split::vvc_luma_transform_nodes;
+#[cfg(any(test, feature = "bench-internals"))]
+pub(super) use ctu_split::VvcCtuCabacOp;
 pub(super) use ctu_split::{
     vvc_chroma_transform_nodes, vvc_chroma_transform_nodes_into, vvc_luma_transform_nodes_for_kind,
-    vvc_luma_transform_nodes_into_for_kind, VvcCodingTreeNode, VvcCtuCabacOp,
-    VvcCtuPartitionParams, VvcCtuPartitionShape, VvcLumaSplitAvailabilityKind, VvcPartSplit,
+    vvc_luma_transform_nodes_into_for_kind, VvcCodingTreeNode, VvcCtuPartitionParams,
+    VvcCtuPartitionShape, VvcLumaSplitAvailabilityKind, VvcPartSplit,
 };
 #[cfg(test)]
 pub(super) use ctu_split::{
     VvcLumaNeighbourState, VvcQtSplitCtxInput, VvcSplitCtxInput, VvcTreeType,
 };
-pub(super) use writer::{
-    VvcCabacDumpBinEngineEvent, VvcCabacDumpContextEvent, VvcCabacDumpSymbol, VvcCabacEncoder,
-    VvcCabacPayload,
-};
+#[cfg(any(test, feature = "bench-internals"))]
+pub(super) use writer::{VvcCabacDumpBinEngineEvent, VvcCabacDumpContextEvent, VvcCabacDumpSymbol};
+pub(super) use writer::{VvcCabacEncoder, VvcCabacPayload};

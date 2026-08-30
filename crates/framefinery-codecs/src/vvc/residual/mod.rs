@@ -7,6 +7,7 @@ pub(super) mod transform;
 
 #[cfg(feature = "vvc-stats")]
 use super::VvcChromaCclmMode;
+#[cfg(any(test, feature = "bench-internals"))]
 use super::VvcSample;
 use super::{
     VvcBdpcmMode, VvcChromaIntraPredictionMode, VvcIntraPredictionMode, VvcLumaSccDecision,
@@ -15,12 +16,13 @@ use super::{
 #[cfg(test)]
 mod tests;
 
+#[cfg(any(test, feature = "bench-internals"))]
+pub(super) use transform::VVC_DEFAULT_LOSSY_CHROMA_QP;
 pub(super) use transform::{
     inverse_transform_vvc_chroma_quantized_block_into_with_qp,
     inverse_transform_vvc_luma_quantized_block_into_with_qp_and_mts,
     quantize_vvc_chroma_residual_greedy_with_qp, quantize_vvc_chroma_sample,
-    reconstruct_vvc_chroma, VvcInverseTransformScratch, VVC_DEFAULT_LOSSY_CHROMA_QP,
-    VVC_DEFAULT_LOSSY_LUMA_QP,
+    reconstruct_vvc_chroma, VvcInverseTransformScratch, VVC_DEFAULT_LOSSY_LUMA_QP,
 };
 #[cfg(test)]
 pub(super) use transform::{

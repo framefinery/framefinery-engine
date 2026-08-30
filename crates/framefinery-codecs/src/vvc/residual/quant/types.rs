@@ -14,10 +14,12 @@ use super::super::{
     VvcFastSearch, VvcIntraPredictionMode, VvcLumaIntraCandidateCost, VvcLumaIntraCandidateCosts,
     VvcLumaInterDecision, VvcLumaSccDecision, VvcLumaTuCodingDecision, VvcPictureFormat,
     VvcIbcCuDecision, VvcReconstructionFrame, VvcResidualCodingMode, VvcResidualCodingPolicy,
-    VvcResidualScoreMetric, VvcSample, VvcSampledColor, VvcSampledFrame,
+    VvcResidualScoreMetric, VvcSample, VvcSampledFrame,
     VvcTuResidualCodingMode, VvcVideoGeometry, VVC_CHROMA_INTRA_CANDIDATE_CAPACITY, VVC_CTU_SIZE,
     VVC_LUMA_INTRA_CANDIDATE_CAPACITY,
 };
+#[cfg(any(test, feature = "bench-internals"))]
+use super::super::VvcSampledColor;
 use super::transform::{
     luma_ac_syntax_cost_estimate, luma_reconstructed_residual_sse_with_mts_into,
     quantize_vvc_luma_residual_fast_with_qp_and_mts_into,

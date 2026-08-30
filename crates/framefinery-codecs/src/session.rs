@@ -1,4 +1,5 @@
 use std::io::{Cursor, Read, Write};
+#[cfg(test)]
 use std::time::Duration;
 
 use framefinery_api::{

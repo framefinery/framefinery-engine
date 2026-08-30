@@ -6,7 +6,9 @@
 //! reconstruction semantics need to keep converging toward real implementations
 //! before FrameFinery can encode arbitrary input pictures.
 
-use std::io::{Cursor, Read, Write};
+#[cfg(test)]
+use std::io::Cursor;
+use std::io::{Read, Write};
 
 use crate::instrumentation::CountingWriter;
 #[cfg(feature = "vvc-stats")]
@@ -50,11 +52,15 @@ use cabac::{
 use cabac::{
     vvc_chroma_intra_mode_syntax_bin_count, vvc_chroma_transform_nodes,
     vvc_chroma_transform_nodes_into, vvc_luma_intra_mode_is_mpm,
-    vvc_luma_intra_mode_syntax_bin_count, vvc_luma_transform_nodes_for_kind, VvcCabacContext,
-    VvcCabacContexts, VvcCabacDumpContextEvent, VvcCabacDumpSymbol, VvcCabacEncoder,
-    VvcCabacPayload, VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams, VvcCtuPartitionShape,
-    VvcLastSigCoeffPrefixCtxInput, VvcLumaSplitAvailabilityKind, VvcPartSplit,
+    vvc_luma_intra_mode_syntax_bin_count, vvc_luma_transform_nodes_for_kind, VvcCabacContexts,
+    VvcCabacEncoder, VvcCabacPayload, VvcCodingTreeNode, VvcCtuPartitionParams,
+    VvcCtuPartitionShape, VvcLastSigCoeffPrefixCtxInput, VvcLumaSplitAvailabilityKind,
+    VvcPartSplit,
 };
+#[cfg(any(test, feature = "bench-internals"))]
+use cabac::{VvcCabacContext, VvcCtuCabacOp};
+#[cfg(any(test, feature = "bench-internals"))]
+use cabac::{VvcCabacDumpContextEvent, VvcCabacDumpSymbol};
 use header::{
     vvc_frame_slice_unit, vvc_one_slice_per_ctu_partitioning_supported, vvc_picture_ctu_cols,
     vvc_picture_ctu_count, vvc_picture_ctu_rows, vvc_pps_unit_with_partitioning_and_config,
@@ -125,6 +131,7 @@ include!("encode.rs");
 #[cfg(test)]
 include!("test_support.rs");
 
+#[allow(unused_imports)]
 pub use interface::{
     VVC_CODEC, VVC_FAST_SEARCH_SETTING, VVC_FAST_SEARCH_SETTING_SPEC, VVC_PROFILE_SETTING,
     VVC_PROFILE_SETTING_SPEC,

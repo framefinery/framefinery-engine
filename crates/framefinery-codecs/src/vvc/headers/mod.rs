@@ -4,10 +4,12 @@ use crate::picture::{ChromaSampling, SampleBitDepth};
 use super::vvc_cabac_bits_with_luma_max_leaf_size;
 #[cfg(any(test, feature = "bench-internals"))]
 use super::vvc_frame_inter_skip_cabac_payload;
+#[cfg(any(test, feature = "bench-internals"))]
+use super::VvcCabacPayload;
 use super::{
-    vvc_ctu_cabac_payload, vvc_frame_cabac_payload, VvcCabacPayload, VvcNalUnit, VvcNalUnitType,
-    VvcProfile, VvcQuantizedCtu, VvcQuantizedCtuPayload, VvcSliceSyntaxConfig, VvcSyntaxRbsp,
-    VvcSyntaxWriter, VvcVideoGeometry, VvcVuiSignal, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
+    vvc_ctu_cabac_payload, vvc_frame_cabac_payload, VvcNalUnit, VvcNalUnitType, VvcProfile,
+    VvcQuantizedCtu, VvcQuantizedCtuPayload, VvcSliceSyntaxConfig, VvcSyntaxRbsp, VvcSyntaxWriter,
+    VvcVideoGeometry, VvcVuiSignal, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
 };
 #[cfg(test)]
 use super::{VvcQuantizedColor, VVC_CURRENT_MAX_LUMA_LEAF_SIZE};
