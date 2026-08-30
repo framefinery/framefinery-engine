@@ -8,6 +8,7 @@ include!("luma_prediction.rs");
 include!("directional.rs");
 include!("luma_residual.rs");
 include!("chroma_residual.rs");
+include!("chroma_selection.rs");
 include!("prediction_bridge.rs");
 include!("transform_skip.rs");
 include!("residual_samples.rs");
