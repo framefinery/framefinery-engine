@@ -145,6 +145,8 @@ The following changes were behavior-preserving and independently validated:
   syntax implementations.
 - VVC CTU split-flag emission now lives in a dedicated syntax extension,
   separate from operation dispatch and mode/residual emission.
+- VVC inter-prediction syntax helpers now live in a dedicated generator
+  extension, separate from intra and transform-tree syntax.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
