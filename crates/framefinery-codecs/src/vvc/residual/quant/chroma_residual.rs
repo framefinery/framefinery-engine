@@ -718,6 +718,32 @@ fn select_vvc_chroma_residual_block_with_transform_skip(
         return transformed;
     }
 
+    select_best_vvc_chroma_residual_block(
+        residuals,
+        width,
+        height,
+        bit_depth,
+        chroma_qp,
+        chroma_ts_quant,
+        transformed,
+        transform_skip,
+        transform_scratch,
+        reconstructed_residual,
+    )
+}
+
+fn select_best_vvc_chroma_residual_block(
+    residuals: &[i16],
+    width: usize,
+    height: usize,
+    bit_depth: SampleBitDepth,
+    chroma_qp: i32,
+    chroma_ts_quant: &VvcTransformSkipQuantTable,
+    transformed: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
+    transform_skip: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
+    transform_scratch: &mut VvcInverseTransformScratch,
+    reconstructed_residual: &mut Vec<i16>,
+) -> VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU> {
     let transformed_score = vvc_chroma_residual_block_score(
         residuals,
         width,
