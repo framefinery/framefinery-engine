@@ -62,6 +62,8 @@ The following changes were behavior-preserving and independently validated:
   cluster for intra and inter paths.
 - AV2 residual scalar rounding, quantization-step, and TXB end-of-block
   helpers now live in a shared residual-math module.
+- AV2 lossless directional-angle and residual proxy scoring helpers are now
+  isolated from the stateful lossless tile implementation.
 - The optional `vvc-stats` feature was made independently compilable instead of
   implicitly depending on benchmark-only internals.
 

@@ -33,6 +33,7 @@ include!("black_residual.rs");
 include!("lossy420.rs");
 include!("lossy420_scoring.rs");
 include!("lossy_analysis.rs");
+include!("lossless_scoring.rs");
 include!("lossless_subsampled.rs");
 include!("lossless_mode_selection.rs");
 include!("residual_trace.rs");
