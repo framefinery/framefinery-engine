@@ -1212,7 +1212,6 @@ fn vvc_residual_symbol_stream_can_be_derived_from_quantized_luma_coefficients() 
 #[test]
 fn vvc_residual_symbol_stream_emits_through_context_models() {
     let coeffs = vvc_luma_coefficients(8, 8, &[(0, -2)]);
-    let stream = VvcResidualCabacSymbolStream::luma_coefficients(3, 3, &coeffs);
     let mut contexts = VvcCabacContexts::new();
     let initial_last_x0 = contexts.last_sig_coeff_x_prefix[3].state();
     let initial_abs0 = contexts.abs_level_gtx_flag[0].state();
@@ -1221,7 +1220,7 @@ fn vvc_residual_symbol_stream_emits_through_context_models() {
     cabac.start();
     let mut residual =
         VvcResidualCabacEncoder::new(&mut contexts, vvc_test_slice_config().residual_options());
-    stream.emit(&mut residual, &mut cabac);
+    VvcResidualCabacSymbolStream::emit_luma_coefficients(3, 3, &coeffs, &mut residual, &mut cabac);
 
     assert_ne!(contexts.last_sig_coeff_x_prefix[3].state(), initial_last_x0);
     assert_ne!(contexts.abs_level_gtx_flag[0].state(), initial_abs0);
@@ -1304,7 +1303,7 @@ fn vvc_residual_ac_symbol_stream_uses_spec_context_derivations() {
     cabac.start();
     let mut residual =
         VvcResidualCabacEncoder::new(&mut contexts, vvc_test_slice_config().residual_options());
-    stream.emit(&mut residual, &mut cabac);
+    VvcResidualCabacSymbolStream::emit_luma_coefficients(3, 3, &coeffs, &mut residual, &mut cabac);
     assert!(cabac.dump_symbols.iter().any(|symbol| symbol.kind == 3));
 }
 

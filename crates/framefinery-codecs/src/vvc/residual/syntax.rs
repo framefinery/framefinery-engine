@@ -28,73 +28,6 @@ impl<'a> VvcResidualCabacEncoder<'a> {
         Self { contexts, options }
     }
 
-    #[cfg(test)]
-    fn emit_residual_symbol(
-        &mut self,
-        cabac: &mut VvcCabacEncoder,
-        state: &VvcResidualPass1State,
-        symbol: VvcResidualCabacSymbol,
-    ) {
-        match symbol {
-            VvcResidualCabacSymbol::LastSigCoeffXPrefix { bin_idx, bin } => {
-                self.emit_last_sig_coeff_prefix_bin(
-                    cabac,
-                    state.config.component,
-                    true,
-                    state.config.log2_zo_tb_width,
-                    bin_idx,
-                    bin,
-                );
-            }
-            VvcResidualCabacSymbol::LastSigCoeffXSuffix { bits, count } => {
-                cabac.encode_bins_ep(bits, u32::from(count));
-            }
-            VvcResidualCabacSymbol::LastSigCoeffYPrefix { bin_idx, bin } => {
-                self.emit_last_sig_coeff_prefix_bin(
-                    cabac,
-                    state.config.component,
-                    false,
-                    state.config.log2_zo_tb_height,
-                    bin_idx,
-                    bin,
-                );
-            }
-            VvcResidualCabacSymbol::LastSigCoeffYSuffix { bits, count } => {
-                cabac.encode_bins_ep(bits, u32::from(count));
-            }
-            VvcResidualCabacSymbol::SbCodedFlag { x_s, y_s, coded } => {
-                self.emit_sb_coded_flag(cabac, state, x_s, y_s, coded);
-            }
-            VvcResidualCabacSymbol::SigCoeffFlag { x, y, significant } => {
-                self.emit_sig_coeff_flag(cabac, state, x, y, significant);
-            }
-            VvcResidualCabacSymbol::ParLevelFlag { x, y, par_level } => {
-                self.emit_par_level_flag(cabac, state, x, y, par_level);
-            }
-            VvcResidualCabacSymbol::AbsLevelGtxFlag {
-                x,
-                y,
-                gtx_idx,
-                greater_than,
-            } => {
-                self.emit_abs_level_gtx_flag(cabac, state, x, y, gtx_idx, greater_than);
-            }
-            VvcResidualCabacSymbol::AbsRemainder {
-                value, rice_param, ..
-            } => {
-                cabac.encode_rem_abs_ep(value, u32::from(rice_param));
-            }
-            VvcResidualCabacSymbol::BypassAbsLevel {
-                value, rice_param, ..
-            } => {
-                cabac.encode_rem_abs_ep(value, u32::from(rice_param));
-            }
-            VvcResidualCabacSymbol::CoeffSignPattern { bits, count } => {
-                cabac.encode_bins_ep(bits, u32::from(count));
-            }
-        }
-    }
-
     fn emit_last_sig_coeff_prefix_bin(
         &mut self,
         cabac: &mut VvcCabacEncoder,
@@ -473,6 +406,26 @@ impl VvcResidualCabacSymbolStream {
             log2_tb_height,
             coeff_levels,
             true,
+            encoder,
+            cabac,
+        );
+    }
+
+    #[cfg(test)]
+    pub(in crate::vvc) fn emit_luma_coefficients(
+        log2_tb_width: u8,
+        log2_tb_height: u8,
+        coeff_levels: &[i16],
+        encoder: &mut VvcResidualCabacEncoder<'_>,
+        cabac: &mut VvcCabacEncoder,
+    ) {
+        Self::emit_coefficients_with_tool_flags(
+            VvcResidualComponent::Luma,
+            log2_tb_width,
+            log2_tb_height,
+            coeff_levels,
+            false,
+            false,
             encoder,
             cabac,
         );
@@ -1134,19 +1087,6 @@ impl VvcResidualCabacSymbolStream {
             pass1_state,
             scan,
             last_scan_pos,
-        }
-    }
-
-    #[cfg(test)]
-    pub(in crate::vvc) fn emit(
-        &self,
-        encoder: &mut VvcResidualCabacEncoder<'_>,
-        cabac: &mut VvcCabacEncoder,
-    ) {
-        debug_assert_eq!(self.config, self.pass1_state.config);
-        encoder.emit_default_tool_control_hooks(cabac, &self.pass1_state);
-        for symbol in &self.symbols {
-            encoder.emit_residual_symbol(cabac, &self.pass1_state, *symbol);
         }
     }
 }

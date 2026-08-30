@@ -194,6 +194,8 @@ The following changes were behavior-preserving and independently validated:
   in a dedicated state module shared by direct and test syntax emission.
 - VVC production CABAC emission and test symbol collection now share one
   stateful coefficient traversal, with sink-specific output only at emission.
+- VVC context-model tests now invoke the shared direct coefficient emitter;
+  the stale completed-state symbol replay implementation was removed.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
