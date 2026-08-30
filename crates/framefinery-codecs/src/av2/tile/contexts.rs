@@ -327,6 +327,80 @@ mod tests {
     }
 
     #[test]
+    fn av2_chroma_coefficient_levels_share_branches_across_geometries() {
+        fn emitted_fields<const SAMPLES: usize, Syntax>(
+            pos: usize,
+            is_eob: bool,
+        ) -> Vec<&'static str>
+        where
+            Syntax: Av2ChromaTxbSyntax<SAMPLES>,
+        {
+            let level = 6;
+            let mut levels = [0u32; SAMPLES];
+            levels[pos] = level;
+            let mut writer = Av2EntropyWriter::new();
+            write_chroma_coefficient_level::<SAMPLES, Syntax>(
+                &mut writer,
+                &levels,
+                pos,
+                is_eob,
+                0,
+                level,
+            );
+            writer
+                .finish()
+                .fields
+                .into_iter()
+                .map(|field| field.name)
+                .collect()
+        }
+
+        fn assert_geometry<const SAMPLES: usize, Syntax>(expected: [&'static str; 5])
+        where
+            Syntax: Av2ChromaTxbSyntax<SAMPLES>,
+        {
+            assert_eq!(
+                emitted_fields::<SAMPLES, Syntax>(0, true),
+                [expected[0]]
+            );
+            assert_eq!(
+                emitted_fields::<SAMPLES, Syntax>(1, true),
+                [expected[1], expected[4]]
+            );
+            assert_eq!(
+                emitted_fields::<SAMPLES, Syntax>(0, false),
+                [expected[2]]
+            );
+            assert_eq!(
+                emitted_fields::<SAMPLES, Syntax>(1, false),
+                [expected[3], expected[4]]
+            );
+        }
+
+        assert_geometry::<TX4X4_SAMPLES, Av2ChromaTx4x4Syntax>([
+                "tile.coeff.uv.base_lf_eob",
+                "tile.coeff.uv.base_eob",
+                "tile.coeff.uv.base_lf",
+                "tile.coeff.uv.base",
+                "tile.coeff.uv.low_range",
+            ]);
+        assert_geometry::<TX8X8_SAMPLES, Av2ChromaTx8x8Syntax>([
+                "tile.coeff.uv.base_lf_eob_tx8x8",
+                "tile.coeff.uv.base_eob_tx8x8",
+                "tile.coeff.uv.base_lf_tx8x8",
+                "tile.coeff.uv.base_tx8x8",
+                "tile.coeff.uv.low_range_tx8x8",
+            ]);
+        assert_geometry::<TX4X8_SAMPLES, Av2ChromaTx4x8Syntax>([
+                "tile.coeff.uv.base_lf_eob_tx4x8",
+                "tile.coeff.uv.base_eob_tx4x8",
+                "tile.coeff.uv.base_lf_tx4x8",
+                "tile.coeff.uv.base_tx4x8",
+                "tile.coeff.uv.low_range_tx4x8",
+            ]);
+    }
+
+    #[test]
     fn av2_lossless_422_chroma_h_predictor_uses_row_edges() {
         let geometry = Av2VideoGeometry {
             width: 16,

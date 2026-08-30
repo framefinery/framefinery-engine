@@ -269,6 +269,10 @@ The following changes were behavior-preserving and independently validated:
 - AV2 luma intra/inter and 4x4, 8x8, and 4x8 chroma EOB writers now share one
   token and extra-bit traversal; a focused syntax policy retains only each
   path's CDF, symbol count, static key, and field labels.
+- AV2 4x4, 8x8, and 4x8 chroma coefficient-level writers now share one
+  const-generic base/LF/EOB/low-range branch body; a compile-time geometry
+  policy retains only field labels, sign labels, and neighbor-context
+  derivation, and all three DC-only LF predicates now share one definition.
 - AV2 inter-residual tracing was separated from residual coefficient writing,
   keeping diagnostics and feature-gated instrumentation out of the coding
   pipeline.
@@ -304,7 +308,7 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 491-line orchestration plus focused prediction siblings | plane-level luma/chroma dispatch and scratch ownership still need call-graph review |
-| AV2 tile transform syntax helpers | 1,063-line emission core plus 332-line context sibling | chroma base-level size variants remain syntax-sensitive |
+| AV2 tile transform syntax helpers | 998-line emission core plus 320-line context sibling | chroma TXB traversal wrappers still duplicate skip and context dispatch |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
 
 For the next functional cleanup, prefer extracting a small shared helper with

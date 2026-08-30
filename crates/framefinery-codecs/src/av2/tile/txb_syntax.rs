@@ -192,56 +192,106 @@ fn write_luma_palette_fsc_txb(
 }
 
 #[derive(Clone, Copy)]
-enum Av2ChromaTxbGeometry {
-    Tx4x4,
-    Tx8x8,
-    Tx4x8,
+struct Av2ChromaCoefficientFields {
+    base_lf_eob: &'static str,
+    base_eob: &'static str,
+    base_lf: &'static str,
+    base: &'static str,
+    low_range: &'static str,
 }
 
-impl Av2ChromaTxbGeometry {
-    fn sign_field(self, plane: Av2ChromaPlane, dc: bool) -> &'static str {
-        match (self, plane, dc) {
-            (Self::Tx4x4, Av2ChromaPlane::U, true) => "tile.coeff.u.dc_sign_negative",
-            (Self::Tx4x4, Av2ChromaPlane::V, true) => "tile.coeff.v.dc_sign_negative",
-            (Self::Tx4x4, Av2ChromaPlane::U, false) => "tile.coeff.u.ac_sign_negative",
-            (Self::Tx4x4, Av2ChromaPlane::V, false) => "tile.coeff.v.ac_sign_negative",
-            (Self::Tx8x8, Av2ChromaPlane::U, true) => {
-                "tile.coeff.u.dc_sign_negative_tx8x8"
-            }
-            (Self::Tx8x8, Av2ChromaPlane::V, true) => {
-                "tile.coeff.v.dc_sign_negative_tx8x8"
-            }
-            (Self::Tx8x8, Av2ChromaPlane::U, false) => {
-                "tile.coeff.u.ac_sign_negative_tx8x8"
-            }
-            (Self::Tx8x8, Av2ChromaPlane::V, false) => {
-                "tile.coeff.v.ac_sign_negative_tx8x8"
-            }
-            (Self::Tx4x8, Av2ChromaPlane::U, true) => {
-                "tile.coeff.u.dc_sign_negative_tx4x8"
-            }
-            (Self::Tx4x8, Av2ChromaPlane::V, true) => {
-                "tile.coeff.v.dc_sign_negative_tx4x8"
-            }
-            (Self::Tx4x8, Av2ChromaPlane::U, false) => {
-                "tile.coeff.u.ac_sign_negative_tx4x8"
-            }
-            (Self::Tx4x8, Av2ChromaPlane::V, false) => {
-                "tile.coeff.v.ac_sign_negative_tx4x8"
-            }
+trait Av2ChromaTxbSyntax<const SAMPLES: usize> {
+    const COEFFICIENT_FIELDS: Av2ChromaCoefficientFields;
+
+    fn sign_field(plane: Av2ChromaPlane, dc: bool) -> &'static str;
+    fn br_context(levels: &[u32; SAMPLES], pos: usize) -> usize;
+}
+
+struct Av2ChromaTx4x4Syntax;
+struct Av2ChromaTx8x8Syntax;
+struct Av2ChromaTx4x8Syntax;
+
+impl Av2ChromaTxbSyntax<TX4X4_SAMPLES> for Av2ChromaTx4x4Syntax {
+    const COEFFICIENT_FIELDS: Av2ChromaCoefficientFields = Av2ChromaCoefficientFields {
+        base_lf_eob: "tile.coeff.uv.base_lf_eob",
+        base_eob: "tile.coeff.uv.base_eob",
+        base_lf: "tile.coeff.uv.base_lf",
+        base: "tile.coeff.uv.base",
+        low_range: "tile.coeff.uv.low_range",
+    };
+
+    fn sign_field(plane: Av2ChromaPlane, dc: bool) -> &'static str {
+        match (plane, dc) {
+            (Av2ChromaPlane::U, true) => "tile.coeff.u.dc_sign_negative",
+            (Av2ChromaPlane::V, true) => "tile.coeff.v.dc_sign_negative",
+            (Av2ChromaPlane::U, false) => "tile.coeff.u.ac_sign_negative",
+            (Av2ChromaPlane::V, false) => "tile.coeff.v.ac_sign_negative",
         }
+    }
+
+    fn br_context(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> usize {
+        chroma_br_context(levels, pos)
     }
 }
 
-fn write_chroma_signs_and_high_range<const SAMPLES: usize>(
+impl Av2ChromaTxbSyntax<TX8X8_SAMPLES> for Av2ChromaTx8x8Syntax {
+    const COEFFICIENT_FIELDS: Av2ChromaCoefficientFields = Av2ChromaCoefficientFields {
+        base_lf_eob: "tile.coeff.uv.base_lf_eob_tx8x8",
+        base_eob: "tile.coeff.uv.base_eob_tx8x8",
+        base_lf: "tile.coeff.uv.base_lf_tx8x8",
+        base: "tile.coeff.uv.base_tx8x8",
+        low_range: "tile.coeff.uv.low_range_tx8x8",
+    };
+
+    fn sign_field(plane: Av2ChromaPlane, dc: bool) -> &'static str {
+        match (plane, dc) {
+            (Av2ChromaPlane::U, true) => "tile.coeff.u.dc_sign_negative_tx8x8",
+            (Av2ChromaPlane::V, true) => "tile.coeff.v.dc_sign_negative_tx8x8",
+            (Av2ChromaPlane::U, false) => "tile.coeff.u.ac_sign_negative_tx8x8",
+            (Av2ChromaPlane::V, false) => "tile.coeff.v.ac_sign_negative_tx8x8",
+        }
+    }
+
+    fn br_context(levels: &[u32; TX8X8_SAMPLES], pos: usize) -> usize {
+        chroma_tx8x8_br_context(levels, pos)
+    }
+}
+
+impl Av2ChromaTxbSyntax<TX4X8_SAMPLES> for Av2ChromaTx4x8Syntax {
+    const COEFFICIENT_FIELDS: Av2ChromaCoefficientFields = Av2ChromaCoefficientFields {
+        base_lf_eob: "tile.coeff.uv.base_lf_eob_tx4x8",
+        base_eob: "tile.coeff.uv.base_eob_tx4x8",
+        base_lf: "tile.coeff.uv.base_lf_tx4x8",
+        base: "tile.coeff.uv.base_tx4x8",
+        low_range: "tile.coeff.uv.low_range_tx4x8",
+    };
+
+    fn sign_field(plane: Av2ChromaPlane, dc: bool) -> &'static str {
+        match (plane, dc) {
+            (Av2ChromaPlane::U, true) => "tile.coeff.u.dc_sign_negative_tx4x8",
+            (Av2ChromaPlane::V, true) => "tile.coeff.v.dc_sign_negative_tx4x8",
+            (Av2ChromaPlane::U, false) => "tile.coeff.u.ac_sign_negative_tx4x8",
+            (Av2ChromaPlane::V, false) => "tile.coeff.v.ac_sign_negative_tx4x8",
+        }
+    }
+
+    fn br_context(levels: &[u32; TX4X8_SAMPLES], pos: usize) -> usize {
+        chroma_tx4x8_br_context(levels, pos)
+    }
+}
+
+fn write_chroma_signs_and_high_range<const SAMPLES: usize, Syntax>(
     writer: &mut Av2EntropyWriter,
     plane: Av2ChromaPlane,
     coefficients: &[i32; SAMPLES],
     levels: &[u32; SAMPLES],
     scan: &[usize; SAMPLES],
     eob: usize,
-    geometry: Av2ChromaTxbGeometry,
-) -> (u32, i32) {
+)
+-> (u32, i32)
+where
+    Syntax: Av2ChromaTxbSyntax<SAMPLES>,
+{
     let mut cul_level = 0u32;
     let mut dc_val = 0i32;
     let mut hr_level_avg = 0u32;
@@ -252,7 +302,7 @@ fn write_chroma_signs_and_high_range<const SAMPLES: usize>(
             continue;
         }
         let negative = coefficients[pos] < 0;
-        writer.write_literal_bit(geometry.sign_field(plane, scan_index == 0), negative);
+        writer.write_literal_bit(Syntax::sign_field(plane, scan_index == 0), negative);
         write_chroma_high_range(writer, plane, pos, level, &mut hr_level_avg);
         if scan_index == 0 {
             dc_val = if negative {
@@ -293,7 +343,7 @@ fn write_chroma_bdpcm_txb(
         let level = levels[pos];
         let coeff_ctx =
             chroma_nz_map_context(&levels, pos, scan_index, scan_index + 1 == eob, plane);
-        write_chroma_coefficient_level(
+        write_chroma_coefficient_level::<TX4X4_SAMPLES, Av2ChromaTx4x4Syntax>(
             writer,
             &levels,
             pos,
@@ -305,17 +355,24 @@ fn write_chroma_bdpcm_txb(
 
     let dc_level = levels[0];
     let dc_ctx = chroma_nz_map_context(&levels, 0, 0, eob == 1, plane);
-    write_chroma_coefficient_level(writer, &levels, 0, eob == 1, dc_ctx, dc_level);
+    write_chroma_coefficient_level::<TX4X4_SAMPLES, Av2ChromaTx4x4Syntax>(
+        writer,
+        &levels,
+        0,
+        eob == 1,
+        dc_ctx,
+        dc_level,
+    );
 
-    let (cul_level, dc_val) = write_chroma_signs_and_high_range(
+    let (cul_level, dc_val) =
+        write_chroma_signs_and_high_range::<TX4X4_SAMPLES, Av2ChromaTx4x4Syntax>(
         writer,
         plane,
         coefficients,
         &levels,
         &TX4X4_SCAN,
-        eob,
-        Av2ChromaTxbGeometry::Tx4x4,
-    );
+            eob,
+        );
 
     (lossless_entropy_context(cul_level, dc_val), true)
 }
@@ -347,7 +404,7 @@ fn write_chroma_tx8x8_txb(
         let level = levels[pos];
         let coeff_ctx =
             chroma_tx8x8_nz_map_context(&levels, pos, scan_index, scan_index + 1 == eob, plane);
-        write_chroma_tx8x8_coefficient_level(
+        write_chroma_coefficient_level::<TX8X8_SAMPLES, Av2ChromaTx8x8Syntax>(
             writer,
             &levels,
             pos,
@@ -359,17 +416,24 @@ fn write_chroma_tx8x8_txb(
 
     let dc_level = levels[0];
     let dc_ctx = chroma_tx8x8_nz_map_context(&levels, 0, 0, eob == 1, plane);
-    write_chroma_tx8x8_coefficient_level(writer, &levels, 0, eob == 1, dc_ctx, dc_level);
+    write_chroma_coefficient_level::<TX8X8_SAMPLES, Av2ChromaTx8x8Syntax>(
+        writer,
+        &levels,
+        0,
+        eob == 1,
+        dc_ctx,
+        dc_level,
+    );
 
-    let (cul_level, dc_val) = write_chroma_signs_and_high_range(
+    let (cul_level, dc_val) =
+        write_chroma_signs_and_high_range::<TX8X8_SAMPLES, Av2ChromaTx8x8Syntax>(
         writer,
         plane,
         coefficients,
         &levels,
         &TX8X8_SCAN,
-        eob,
-        Av2ChromaTxbGeometry::Tx8x8,
-    );
+            eob,
+        );
 
     (lossless_entropy_context(cul_level, dc_val), true)
 }
@@ -401,7 +465,7 @@ fn write_chroma_tx4x8_txb(
         let level = levels[pos];
         let coeff_ctx =
             chroma_tx4x8_nz_map_context(&levels, pos, scan_index, scan_index + 1 == eob, plane);
-        write_chroma_tx4x8_coefficient_level(
+        write_chroma_coefficient_level::<TX4X8_SAMPLES, Av2ChromaTx4x8Syntax>(
             writer,
             &levels,
             pos,
@@ -413,17 +477,24 @@ fn write_chroma_tx4x8_txb(
 
     let dc_level = levels[0];
     let dc_ctx = chroma_tx4x8_nz_map_context(&levels, 0, 0, eob == 1, plane);
-    write_chroma_tx4x8_coefficient_level(writer, &levels, 0, eob == 1, dc_ctx, dc_level);
+    write_chroma_coefficient_level::<TX4X8_SAMPLES, Av2ChromaTx4x8Syntax>(
+        writer,
+        &levels,
+        0,
+        eob == 1,
+        dc_ctx,
+        dc_level,
+    );
 
-    let (cul_level, dc_val) = write_chroma_signs_and_high_range(
+    let (cul_level, dc_val) =
+        write_chroma_signs_and_high_range::<TX4X8_SAMPLES, Av2ChromaTx4x8Syntax>(
         writer,
         plane,
         coefficients,
         &levels,
         &TX4X8_SCAN,
-        eob,
-        Av2ChromaTxbGeometry::Tx4x8,
-    );
+            eob,
+        );
 
     (lossless_entropy_context(cul_level, dc_val), true)
 }
@@ -649,21 +720,25 @@ fn eob_offset_bits(eob_pt: usize) -> usize {
     EOB_OFFSET_BITS[eob_pt]
 }
 
-fn write_chroma_coefficient_level(
+fn write_chroma_coefficient_level<const SAMPLES: usize, Syntax>(
     writer: &mut Av2EntropyWriter,
-    levels: &[u32; TX4X4_SAMPLES],
+    levels: &[u32; SAMPLES],
     pos: usize,
     is_eob_coefficient: bool,
     coeff_ctx: usize,
     level: u32,
-) {
+)
+where
+    Syntax: Av2ChromaTxbSyntax<SAMPLES>,
+{
     let limits = chroma_lf_limits(pos);
+    let fields = Syntax::COEFFICIENT_FIELDS;
     if is_eob_coefficient {
         assert!(level > 0, "AV2 EOB coefficient must be non-zero");
         if limits {
             let mut cdf = DEFAULT_COEFF_BASE_LF_EOB_UV_CDFS[coeff_ctx];
             writer.write_symbol_with_static_cdf_key(
-                "tile.coeff.uv.base_lf_eob",
+                fields.base_lf_eob,
                 AV2_STATIC_CDF_COEFF_UV_BASE_LF_EOB_BASE + coeff_ctx,
                 level.min(5) as usize - 1,
                 &mut cdf,
@@ -673,7 +748,7 @@ fn write_chroma_coefficient_level(
         } else {
             let mut cdf = DEFAULT_COEFF_BASE_EOB_UV_CDFS[coeff_ctx];
             writer.write_symbol_with_static_cdf_key(
-                "tile.coeff.uv.base_eob",
+                fields.base_eob,
                 AV2_STATIC_CDF_COEFF_UV_BASE_EOB_BASE + coeff_ctx,
                 level.min(3) as usize - 1,
                 &mut cdf,
@@ -681,13 +756,19 @@ fn write_chroma_coefficient_level(
                 false,
             );
             if level > 2 {
-                write_chroma_low_range(writer, levels, pos, level - 3);
+                write_chroma_low_range::<SAMPLES, Syntax>(
+                    writer,
+                    levels,
+                    pos,
+                    level - 3,
+                    fields.low_range,
+                );
             }
         }
     } else if limits {
         let mut cdf = DEFAULT_COEFF_BASE_LF_UV_CDFS[coeff_ctx];
         writer.write_symbol_with_static_cdf_key(
-            "tile.coeff.uv.base_lf",
+            fields.base_lf,
             AV2_STATIC_CDF_COEFF_UV_BASE_LF_BASE + coeff_ctx,
             level.min(5) as usize,
             &mut cdf,
@@ -697,7 +778,7 @@ fn write_chroma_coefficient_level(
     } else {
         let mut cdf = DEFAULT_COEFF_BASE_UV_CDFS[coeff_ctx];
         writer.write_symbol_with_static_cdf_key(
-            "tile.coeff.uv.base",
+            fields.base,
             AV2_STATIC_CDF_COEFF_UV_BASE_BASE + coeff_ctx,
             level.min(3) as usize,
             &mut cdf,
@@ -705,129 +786,13 @@ fn write_chroma_coefficient_level(
             false,
         );
         if level > 2 {
-            write_chroma_low_range(writer, levels, pos, level - 3);
-        }
-    }
-}
-
-fn write_chroma_tx8x8_coefficient_level(
-    writer: &mut Av2EntropyWriter,
-    levels: &[u32; TX8X8_SAMPLES],
-    pos: usize,
-    is_eob_coefficient: bool,
-    coeff_ctx: usize,
-    level: u32,
-) {
-    let limits = chroma_tx8x8_lf_limits(pos);
-    if is_eob_coefficient {
-        assert!(level > 0, "AV2 EOB coefficient must be non-zero");
-        if limits {
-            let mut cdf = DEFAULT_COEFF_BASE_LF_EOB_UV_CDFS[coeff_ctx];
-            writer.write_symbol_with_static_cdf_key(
-                "tile.coeff.uv.base_lf_eob_tx8x8",
-                AV2_STATIC_CDF_COEFF_UV_BASE_LF_EOB_BASE + coeff_ctx,
-                level.min(5) as usize - 1,
-                &mut cdf,
-                5,
-                false,
+            write_chroma_low_range::<SAMPLES, Syntax>(
+                writer,
+                levels,
+                pos,
+                level - 3,
+                fields.low_range,
             );
-        } else {
-            let mut cdf = DEFAULT_COEFF_BASE_EOB_UV_CDFS[coeff_ctx];
-            writer.write_symbol_with_static_cdf_key(
-                "tile.coeff.uv.base_eob_tx8x8",
-                AV2_STATIC_CDF_COEFF_UV_BASE_EOB_BASE + coeff_ctx,
-                level.min(3) as usize - 1,
-                &mut cdf,
-                3,
-                false,
-            );
-            if level > 2 {
-                write_chroma_tx8x8_low_range(writer, levels, pos, level - 3);
-            }
-        }
-    } else if limits {
-        let mut cdf = DEFAULT_COEFF_BASE_LF_UV_CDFS[coeff_ctx];
-        writer.write_symbol_with_static_cdf_key(
-            "tile.coeff.uv.base_lf_tx8x8",
-            AV2_STATIC_CDF_COEFF_UV_BASE_LF_BASE + coeff_ctx,
-            level.min(5) as usize,
-            &mut cdf,
-            6,
-            false,
-        );
-    } else {
-        let mut cdf = DEFAULT_COEFF_BASE_UV_CDFS[coeff_ctx];
-        writer.write_symbol_with_static_cdf_key(
-            "tile.coeff.uv.base_tx8x8",
-            AV2_STATIC_CDF_COEFF_UV_BASE_BASE + coeff_ctx,
-            level.min(3) as usize,
-            &mut cdf,
-            4,
-            false,
-        );
-        if level > 2 {
-            write_chroma_tx8x8_low_range(writer, levels, pos, level - 3);
-        }
-    }
-}
-
-fn write_chroma_tx4x8_coefficient_level(
-    writer: &mut Av2EntropyWriter,
-    levels: &[u32; TX4X8_SAMPLES],
-    pos: usize,
-    is_eob_coefficient: bool,
-    coeff_ctx: usize,
-    level: u32,
-) {
-    let limits = chroma_tx4x8_lf_limits(pos);
-    if is_eob_coefficient {
-        assert!(level > 0, "AV2 EOB coefficient must be non-zero");
-        if limits {
-            let mut cdf = DEFAULT_COEFF_BASE_LF_EOB_UV_CDFS[coeff_ctx];
-            writer.write_symbol_with_static_cdf_key(
-                "tile.coeff.uv.base_lf_eob_tx4x8",
-                AV2_STATIC_CDF_COEFF_UV_BASE_LF_EOB_BASE + coeff_ctx,
-                level.min(5) as usize - 1,
-                &mut cdf,
-                5,
-                false,
-            );
-        } else {
-            let mut cdf = DEFAULT_COEFF_BASE_EOB_UV_CDFS[coeff_ctx];
-            writer.write_symbol_with_static_cdf_key(
-                "tile.coeff.uv.base_eob_tx4x8",
-                AV2_STATIC_CDF_COEFF_UV_BASE_EOB_BASE + coeff_ctx,
-                level.min(3) as usize - 1,
-                &mut cdf,
-                3,
-                false,
-            );
-            if level > 2 {
-                write_chroma_tx4x8_low_range(writer, levels, pos, level - 3);
-            }
-        }
-    } else if limits {
-        let mut cdf = DEFAULT_COEFF_BASE_LF_UV_CDFS[coeff_ctx];
-        writer.write_symbol_with_static_cdf_key(
-            "tile.coeff.uv.base_lf_tx4x8",
-            AV2_STATIC_CDF_COEFF_UV_BASE_LF_BASE + coeff_ctx,
-            level.min(5) as usize,
-            &mut cdf,
-            6,
-            false,
-        );
-    } else {
-        let mut cdf = DEFAULT_COEFF_BASE_UV_CDFS[coeff_ctx];
-        writer.write_symbol_with_static_cdf_key(
-            "tile.coeff.uv.base_tx4x8",
-            AV2_STATIC_CDF_COEFF_UV_BASE_BASE + coeff_ctx,
-            level.min(3) as usize,
-            &mut cdf,
-            4,
-            false,
-        );
-        if level > 2 {
-            write_chroma_tx4x8_low_range(writer, levels, pos, level - 3);
         }
     }
 }
@@ -931,52 +896,20 @@ fn write_luma_low_range(
     }
 }
 
-fn write_chroma_low_range(
+fn write_chroma_low_range<const SAMPLES: usize, Syntax>(
     writer: &mut Av2EntropyWriter,
-    levels: &[u32; TX4X4_SAMPLES],
+    levels: &[u32; SAMPLES],
     pos: usize,
     base_range: u32,
-) {
-    let br_ctx = chroma_br_context(levels, pos);
+    field_name: &'static str,
+)
+where
+    Syntax: Av2ChromaTxbSyntax<SAMPLES>,
+{
+    let br_ctx = Syntax::br_context(levels, pos);
     let mut cdf = DEFAULT_COEFF_BR_UV_CDFS[br_ctx];
     writer.write_symbol_with_static_cdf_key(
-        "tile.coeff.uv.low_range",
-        AV2_STATIC_CDF_COEFF_UV_BR_BASE + br_ctx,
-        base_range.min(3) as usize,
-        &mut cdf,
-        4,
-        false,
-    );
-}
-
-fn write_chroma_tx8x8_low_range(
-    writer: &mut Av2EntropyWriter,
-    levels: &[u32; TX8X8_SAMPLES],
-    pos: usize,
-    base_range: u32,
-) {
-    let br_ctx = chroma_tx8x8_br_context(levels, pos);
-    let mut cdf = DEFAULT_COEFF_BR_UV_CDFS[br_ctx];
-    writer.write_symbol_with_static_cdf_key(
-        "tile.coeff.uv.low_range_tx8x8",
-        AV2_STATIC_CDF_COEFF_UV_BR_BASE + br_ctx,
-        base_range.min(3) as usize,
-        &mut cdf,
-        4,
-        false,
-    );
-}
-
-fn write_chroma_tx4x8_low_range(
-    writer: &mut Av2EntropyWriter,
-    levels: &[u32; TX4X8_SAMPLES],
-    pos: usize,
-    base_range: u32,
-) {
-    let br_ctx = chroma_tx4x8_br_context(levels, pos);
-    let mut cdf = DEFAULT_COEFF_BR_UV_CDFS[br_ctx];
-    writer.write_symbol_with_static_cdf_key(
-        "tile.coeff.uv.low_range_tx4x8",
+        field_name,
         AV2_STATIC_CDF_COEFF_UV_BR_BASE + br_ctx,
         base_range.min(3) as usize,
         &mut cdf,

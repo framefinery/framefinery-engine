@@ -24,7 +24,7 @@ fn chroma_tx8x8_nz_map_context(
     if is_eob_coefficient {
         return get_lower_levels_ctx_eob_for_txb(scan_index, TX8X8_SAMPLES);
     }
-    if chroma_tx8x8_lf_limits(pos) {
+    if chroma_lf_limits(pos) {
         return chroma_tx8x8_lower_levels_lf_context(levels, pos, plane);
     }
     chroma_tx8x8_lower_levels_context(levels, pos, plane)
@@ -40,7 +40,7 @@ fn chroma_tx4x8_nz_map_context(
     if is_eob_coefficient {
         return get_lower_levels_ctx_eob_for_txb(scan_index, TX4X8_SAMPLES);
     }
-    if chroma_tx4x8_lf_limits(pos) {
+    if chroma_lf_limits(pos) {
         return chroma_tx4x8_lower_levels_lf_context(levels, pos, plane);
     }
     chroma_tx4x8_lower_levels_context(levels, pos, plane)
@@ -283,21 +283,9 @@ fn tx4x8_level_at(
 }
 
 fn chroma_lf_limits(pos: usize) -> bool {
-    let row = pos / TX4X4_SIZE;
-    let col = pos % TX4X4_SIZE;
-    row + col < 1
-}
-
-fn chroma_tx8x8_lf_limits(pos: usize) -> bool {
-    let row = pos / TX8X8_SIZE;
-    let col = pos % TX8X8_SIZE;
-    row + col < 1
-}
-
-fn chroma_tx4x8_lf_limits(pos: usize) -> bool {
-    let row = pos / TX4X8_WIDTH;
-    let col = pos % TX4X8_WIDTH;
-    row + col < 1
+    // AV2's chroma LF coefficient set is the DC position for each transform
+    // geometry currently emitted by this encoder.
+    pos == 0
 }
 
 fn luma_lf_limits(pos: usize) -> bool {
