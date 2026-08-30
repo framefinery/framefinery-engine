@@ -479,15 +479,60 @@ fn tx4x8_coefficient_levels_and_bounds(
     )
 }
 
-fn write_eob_y(writer: &mut Av2EntropyWriter, eob: usize) {
+#[derive(Clone, Copy)]
+struct Av2EobSyntax {
+    point_name: &'static str,
+    point_cdf_key: usize,
+    point_symbols: usize,
+    extra_name: &'static str,
+}
+
+const EOB_Y_TX4X4_SYNTAX: Av2EobSyntax = Av2EobSyntax {
+    point_name: "tile.coeff.y.eob_pt_tx4x4",
+    point_cdf_key: AV2_STATIC_CDF_EOB_Y,
+    point_symbols: 5,
+    extra_name: "tile.coeff.y.eob_extra",
+};
+const EOB_Y_INTER_TX4X4_SYNTAX: Av2EobSyntax = Av2EobSyntax {
+    point_name: "tile.coeff.y.inter_eob_pt_tx4x4",
+    point_cdf_key: AV2_STATIC_CDF_EOB_Y_INTER,
+    point_symbols: 5,
+    extra_name: "tile.coeff.y.inter_eob_extra",
+};
+const EOB_UV_TX4X4_SYNTAX: Av2EobSyntax = Av2EobSyntax {
+    point_name: "tile.coeff.uv.eob_pt_tx4x4",
+    point_cdf_key: AV2_STATIC_CDF_EOB_UV,
+    point_symbols: 5,
+    extra_name: "tile.coeff.uv.eob_extra",
+};
+const EOB_UV_TX8X8_SYNTAX: Av2EobSyntax = Av2EobSyntax {
+    point_name: "tile.coeff.uv.eob_pt_tx8x8",
+    point_cdf_key: AV2_STATIC_CDF_EOB_UV_TX8X8,
+    point_symbols: 7,
+    extra_name: "tile.coeff.uv.eob_extra_tx8x8",
+};
+const EOB_UV_TX4X8_SYNTAX: Av2EobSyntax = Av2EobSyntax {
+    point_name: "tile.coeff.uv.eob_pt_tx4x8",
+    point_cdf_key: AV2_STATIC_CDF_EOB_UV_TX4X8,
+    point_symbols: 6,
+    extra_name: "tile.coeff.uv.eob_extra_tx4x8",
+};
+
+fn write_eob<const CDF_SIZE: usize>(
+    writer: &mut Av2EntropyWriter,
+    eob: usize,
+    mut point_cdf: [u16; CDF_SIZE],
+    syntax: Av2EobSyntax,
+) {
     let (eob_pt, eob_extra) = eob_pos_token(eob);
-    let mut cdf = DEFAULT_EOB_MULTI16_Y_CTX0_CDF;
+    debug_assert_eq!(point_cdf.len(), syntax.point_symbols + 4);
+    debug_assert!((1..=syntax.point_symbols).contains(&eob_pt));
     writer.write_symbol_with_static_cdf_key(
-        "tile.coeff.y.eob_pt_tx4x4",
-        AV2_STATIC_CDF_EOB_Y,
+        syntax.point_name,
+        syntax.point_cdf_key,
         eob_pt - 1,
-        &mut cdf,
-        5,
+        &mut point_cdf,
+        syntax.point_symbols,
         false,
     );
 
@@ -505,38 +550,26 @@ fn write_eob_y(writer: &mut Av2EntropyWriter, eob: usize) {
             false,
         );
         let low_bits = eob_extra & ((1 << eob_shift) - 1);
-        writer.write_literal("tile.coeff.y.eob_extra", low_bits as u32, eob_shift as u8);
+        writer.write_literal(syntax.extra_name, low_bits as u32, eob_shift as u8);
     }
 }
 
-fn write_eob_y_inter(writer: &mut Av2EntropyWriter, eob: usize) {
-    let (eob_pt, eob_extra) = eob_pos_token(eob);
-    let mut cdf = DEFAULT_EOB_MULTI16_Y_INTER_CTX0_CDF;
-    writer.write_symbol_with_static_cdf_key(
-        "tile.coeff.y.inter_eob_pt_tx4x4",
-        AV2_STATIC_CDF_EOB_Y_INTER,
-        eob_pt - 1,
-        &mut cdf,
-        5,
-        false,
+fn write_eob_y(writer: &mut Av2EntropyWriter, eob: usize) {
+    write_eob(
+        writer,
+        eob,
+        DEFAULT_EOB_MULTI16_Y_CTX0_CDF,
+        EOB_Y_TX4X4_SYNTAX,
     );
+}
 
-    let eob_offset_bits = eob_offset_bits(eob_pt);
-    if eob_offset_bits > 0 {
-        let eob_shift = eob_offset_bits - 1;
-        let bit = (eob_extra & (1 << eob_shift)) != 0;
-        let mut extra_cdf = DEFAULT_EOB_EXTRA_CDF;
-        writer.write_symbol_with_static_cdf_key(
-            "tile.coeff.eob_extra_bit",
-            AV2_STATIC_CDF_EOB_EXTRA,
-            usize::from(bit),
-            &mut extra_cdf,
-            2,
-            false,
-        );
-        let low_bits = eob_extra & ((1 << eob_shift) - 1);
-        writer.write_literal("tile.coeff.y.inter_eob_extra", low_bits as u32, eob_shift as u8);
-    }
+fn write_eob_y_inter(writer: &mut Av2EntropyWriter, eob: usize) {
+    write_eob(
+        writer,
+        eob,
+        DEFAULT_EOB_MULTI16_Y_INTER_CTX0_CDF,
+        EOB_Y_INTER_TX4X4_SYNTAX,
+    );
 }
 
 fn regular_inter_tx_type_eob_ctx_4x4(eob: usize) -> usize {
@@ -570,93 +603,30 @@ fn write_regular_inter_dct_dct_tx_type(writer: &mut Av2EntropyWriter, eob: usize
 }
 
 fn write_eob_uv(writer: &mut Av2EntropyWriter, eob: usize) {
-    let (eob_pt, eob_extra) = eob_pos_token(eob);
-    let mut cdf = DEFAULT_EOB_MULTI16_UV_CTX2_CDF;
-    writer.write_symbol_with_static_cdf_key(
-        "tile.coeff.uv.eob_pt_tx4x4",
-        AV2_STATIC_CDF_EOB_UV,
-        eob_pt - 1,
-        &mut cdf,
-        5,
-        false,
+    write_eob(
+        writer,
+        eob,
+        DEFAULT_EOB_MULTI16_UV_CTX2_CDF,
+        EOB_UV_TX4X4_SYNTAX,
     );
-
-    let eob_offset_bits = eob_offset_bits(eob_pt);
-    if eob_offset_bits > 0 {
-        let eob_shift = eob_offset_bits - 1;
-        let bit = (eob_extra & (1 << eob_shift)) != 0;
-        let mut extra_cdf = DEFAULT_EOB_EXTRA_CDF;
-        writer.write_symbol_with_static_cdf_key(
-            "tile.coeff.eob_extra_bit",
-            AV2_STATIC_CDF_EOB_EXTRA,
-            usize::from(bit),
-            &mut extra_cdf,
-            2,
-            false,
-        );
-        let low_bits = eob_extra & ((1 << eob_shift) - 1);
-        writer.write_literal("tile.coeff.uv.eob_extra", low_bits as u32, eob_shift as u8);
-    }
 }
 
 fn write_eob_uv_tx8x8(writer: &mut Av2EntropyWriter, eob: usize) {
-    let (eob_pt, eob_extra) = eob_pos_token(eob);
-    let mut cdf = DEFAULT_EOB_MULTI64_UV_CTX2_CDF;
-    writer.write_symbol_with_static_cdf_key(
-        "tile.coeff.uv.eob_pt_tx8x8",
-        AV2_STATIC_CDF_EOB_UV_TX8X8,
-        eob_pt - 1,
-        &mut cdf,
-        7,
-        false,
+    write_eob(
+        writer,
+        eob,
+        DEFAULT_EOB_MULTI64_UV_CTX2_CDF,
+        EOB_UV_TX8X8_SYNTAX,
     );
-
-    let eob_offset_bits = eob_offset_bits(eob_pt);
-    if eob_offset_bits > 0 {
-        let eob_shift = eob_offset_bits - 1;
-        let bit = (eob_extra & (1 << eob_shift)) != 0;
-        let mut extra_cdf = DEFAULT_EOB_EXTRA_CDF;
-        writer.write_symbol_with_static_cdf_key(
-            "tile.coeff.eob_extra_bit",
-            AV2_STATIC_CDF_EOB_EXTRA,
-            usize::from(bit),
-            &mut extra_cdf,
-            2,
-            false,
-        );
-        let low_bits = eob_extra & ((1 << eob_shift) - 1);
-        writer.write_literal("tile.coeff.uv.eob_extra_tx8x8", low_bits as u32, eob_shift as u8);
-    }
 }
 
 fn write_eob_uv_tx4x8(writer: &mut Av2EntropyWriter, eob: usize) {
-    let (eob_pt, eob_extra) = eob_pos_token(eob);
-    let mut cdf = DEFAULT_EOB_MULTI32_UV_CTX2_CDF;
-    writer.write_symbol_with_static_cdf_key(
-        "tile.coeff.uv.eob_pt_tx4x8",
-        AV2_STATIC_CDF_EOB_UV_TX4X8,
-        eob_pt - 1,
-        &mut cdf,
-        6,
-        false,
+    write_eob(
+        writer,
+        eob,
+        DEFAULT_EOB_MULTI32_UV_CTX2_CDF,
+        EOB_UV_TX4X8_SYNTAX,
     );
-
-    let eob_offset_bits = eob_offset_bits(eob_pt);
-    if eob_offset_bits > 0 {
-        let eob_shift = eob_offset_bits - 1;
-        let bit = (eob_extra & (1 << eob_shift)) != 0;
-        let mut extra_cdf = DEFAULT_EOB_EXTRA_CDF;
-        writer.write_symbol_with_static_cdf_key(
-            "tile.coeff.eob_extra_bit",
-            AV2_STATIC_CDF_EOB_EXTRA,
-            usize::from(bit),
-            &mut extra_cdf,
-            2,
-            false,
-        );
-        let low_bits = eob_extra & ((1 << eob_shift) - 1);
-        writer.write_literal("tile.coeff.uv.eob_extra_tx4x8", low_bits as u32, eob_shift as u8);
-    }
 }
 
 fn eob_pos_token(eob: usize) -> (usize, usize) {

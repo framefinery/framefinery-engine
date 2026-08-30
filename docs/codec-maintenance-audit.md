@@ -266,6 +266,9 @@ The following changes were behavior-preserving and independently validated:
 - AV2 4x4, 8x8, and 4x8 coefficient normalization and first/EOB bound
   discovery now share one const-generic scan pass; typed adapters retain the
   geometry-specific scans and invariant diagnostics.
+- AV2 luma intra/inter and 4x4, 8x8, and 4x8 chroma EOB writers now share one
+  token and extra-bit traversal; a focused syntax policy retains only each
+  path's CDF, symbol count, static key, and field labels.
 - AV2 inter-residual tracing was separated from residual coefficient writing,
   keeping diagnostics and feature-gated instrumentation out of the coding
   pipeline.
@@ -301,7 +304,7 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 491-line orchestration plus focused prediction siblings | plane-level luma/chroma dispatch and scratch ownership still need call-graph review |
-| AV2 tile transform syntax helpers | 1,095-line emission core plus 332-line context sibling | chroma EOB and base-level size variants remain syntax-sensitive |
+| AV2 tile transform syntax helpers | 1,063-line emission core plus 332-line context sibling | chroma base-level size variants remain syntax-sensitive |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
 
 For the next functional cleanup, prefer extracting a small shared helper with

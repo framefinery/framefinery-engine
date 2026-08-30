@@ -252,6 +252,81 @@ mod tests {
     }
 
     #[test]
+    fn av2_eob_writers_keep_geometry_specific_point_and_extra_fields() {
+        type EobWriter = fn(&mut Av2EntropyWriter, usize);
+
+        let cases: [(EobWriter, usize, &str, usize, &str, u32, usize); 5] = [
+            (
+                write_eob_y,
+                TX4X4_SAMPLES,
+                "tile.coeff.y.eob_pt_tx4x4",
+                4,
+                "tile.coeff.y.eob_extra",
+                3,
+                2,
+            ),
+            (
+                write_eob_y_inter,
+                TX4X4_SAMPLES,
+                "tile.coeff.y.inter_eob_pt_tx4x4",
+                4,
+                "tile.coeff.y.inter_eob_extra",
+                3,
+                2,
+            ),
+            (
+                write_eob_uv,
+                TX4X4_SAMPLES,
+                "tile.coeff.uv.eob_pt_tx4x4",
+                4,
+                "tile.coeff.uv.eob_extra",
+                3,
+                2,
+            ),
+            (
+                write_eob_uv_tx8x8,
+                TX8X8_SAMPLES,
+                "tile.coeff.uv.eob_pt_tx8x8",
+                6,
+                "tile.coeff.uv.eob_extra_tx8x8",
+                15,
+                4,
+            ),
+            (
+                write_eob_uv_tx4x8,
+                TX4X8_SAMPLES,
+                "tile.coeff.uv.eob_pt_tx4x8",
+                5,
+                "tile.coeff.uv.eob_extra_tx4x8",
+                7,
+                3,
+            ),
+        ];
+
+        for (write, eob, point_name, point_symbol, extra_name, low_bits, bit_count) in cases {
+            let mut writer = Av2EntropyWriter::new();
+            write(&mut writer, eob);
+            let fields = writer.finish().fields;
+
+            assert_eq!(fields.len(), 3, "unexpected field count for {point_name}");
+            assert_eq!(fields[0].name, point_name);
+            assert_eq!(fields[0].symbol, Some(point_symbol));
+            assert_eq!(fields[1].name, "tile.coeff.eob_extra_bit");
+            assert_eq!(fields[1].symbol, Some(1));
+            assert_eq!(fields[2].name, extra_name);
+            assert_eq!(fields[2].literal_value, Some(low_bits));
+            assert_eq!(fields[2].bit_count, bit_count);
+        }
+
+        let mut writer = Av2EntropyWriter::new();
+        write_eob_uv(&mut writer, 1);
+        let fields = writer.finish().fields;
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].name, "tile.coeff.uv.eob_pt_tx4x4");
+        assert_eq!(fields[0].symbol, Some(0));
+    }
+
+    #[test]
     fn av2_lossless_422_chroma_h_predictor_uses_row_edges() {
         let geometry = Av2VideoGeometry {
             width: 16,
