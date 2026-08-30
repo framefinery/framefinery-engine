@@ -138,6 +138,8 @@ The following changes were behavior-preserving and independently validated:
   keeping lossy mode-cache and profiling state local to that coding path.
 - VVC inter-skip CTU traversal and CABAC emission now live in a dedicated
   writer module, separate from the shared frame-state and mode emitters.
+- VVC frame-level CTU CABAC state and neighbor bookkeeping now live in a
+  dedicated state module, separate from per-operation syntax emission.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
