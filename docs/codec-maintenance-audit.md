@@ -51,6 +51,9 @@ The following changes were behavior-preserving and independently validated:
   residual coefficient writing.
 - AV2 transform-block entropy writers were separated from coefficient/context
   helpers.
+- AV2 inter-residual tracing was separated from residual coefficient writing,
+  keeping diagnostics and feature-gated instrumentation out of the coding
+  pipeline.
 - The optional `vvc-stats` feature was made independently compilable instead of
   implicitly depending on benchmark-only internals.
 
