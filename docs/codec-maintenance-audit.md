@@ -76,6 +76,8 @@ The following changes were behavior-preserving and independently validated:
   live in a dedicated inter-motion module separate from CABAC emission.
 - VVC luma intra-mode syntax and BDPCM/MIP/MRL/ISP eligibility checks now live
   in a dedicated mode-syntax module on the shared CABAC generator.
+- VVC luma post-residual LFNST and MTS syntax gates now live in a dedicated
+  residual-tools module on the shared CABAC generator.
 - AV2 lossless intra/inter residual coefficient writers now live in a dedicated
   lossless-residual module, separate from lossy residual selection.
 - AV2 palette-specific luma residual emission now lives in a dedicated
