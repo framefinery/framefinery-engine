@@ -66,6 +66,8 @@ The following changes were behavior-preserving and independently validated:
   helpers now live in a shared residual-math module.
 - AV2 lossless directional-angle and residual proxy scoring helpers are now
   isolated from the stateful lossless tile implementation.
+- AV2 lossless and lossy DC prediction now share one edge-accumulation and
+  rounding kernel, with only typed edge access supplied by each state path.
 - The optional `vvc-stats` feature was made independently compilable instead of
   implicitly depending on benchmark-only internals.
 

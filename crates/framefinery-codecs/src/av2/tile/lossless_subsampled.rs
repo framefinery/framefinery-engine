@@ -153,27 +153,14 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         EdgeSample: Fn(Av2LosslessPlane, usize, usize) -> Av2Sample,
     {
         let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        let have_left = x0 > tile_origin_x;
-        let have_top = y0 > tile_origin_y;
-        if !have_left && !have_top {
-            return av2_lossless_dc_predictor(self.bit_depth);
-        }
-
-        let mut sum = 0u32;
-        let mut count = 0u32;
-        if have_top {
-            for x in x0..(x0 + TX4X4_SIZE) {
-                sum += u32::from(edge_sample(plane, x, y0 - 1));
-                count += 1;
-            }
-        }
-        if have_left {
-            for y in y0..(y0 + TX4X4_SIZE) {
-                sum += u32::from(edge_sample(plane, x0 - 1, y));
-                count += 1;
-            }
-        }
-        ((sum + count / 2) / count) as Av2Sample
+        av2_dc_predictor_from_edges(
+            self.bit_depth,
+            tile_origin_x,
+            tile_origin_y,
+            x0,
+            y0,
+            |x, y| edge_sample(plane, x, y),
+        )
     }
 
     fn h_predictor(

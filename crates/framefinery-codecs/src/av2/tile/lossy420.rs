@@ -154,27 +154,14 @@ impl<'a> Av2LossySubsampledTileState<'a> {
 
     fn dc_predictor(&self, plane: Av2LossyPlane, x0: usize, y0: usize) -> Av2Sample {
         let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        let have_left = x0 > tile_origin_x;
-        let have_top = y0 > tile_origin_y;
-        if !have_left && !have_top {
-            return av2_lossless_dc_predictor(self.bit_depth);
-        }
-
-        let mut sum = 0u32;
-        let mut count = 0u32;
-        if have_top {
-            for x in x0..(x0 + TX4X4_SIZE) {
-                sum += u32::from(self.recon_sample(plane, x, y0 - 1));
-                count += 1;
-            }
-        }
-        if have_left {
-            for y in y0..(y0 + TX4X4_SIZE) {
-                sum += u32::from(self.recon_sample(plane, x0 - 1, y));
-                count += 1;
-            }
-        }
-        av2_reference_dc_average(sum, count)
+        av2_dc_predictor_from_edges(
+            self.bit_depth,
+            tile_origin_x,
+            tile_origin_y,
+            x0,
+            y0,
+            |x, y| self.recon_sample(plane, x, y),
+        )
     }
 
     fn h_predictor(&self, plane: Av2LossyPlane, x0: usize, y0: usize, local_y: usize) -> Av2Sample {
