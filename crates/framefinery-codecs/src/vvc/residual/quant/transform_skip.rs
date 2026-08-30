@@ -6,28 +6,41 @@ pub(in crate::vvc) fn reconstruct_vvc_luma_transform_skip_residuals_into(
     width: usize,
     height: usize,
 ) {
+    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
+    reconstruct_vvc_transform_skip_residuals_into(
+        residuals,
+        dc_level,
+        ac_levels,
+        width,
+        height,
+        active_width,
+        active_height,
+        |level| level,
+    );
+}
+
+fn reconstruct_vvc_transform_skip_residuals_into<const AC_COEFFS: usize>(
+    residuals: &mut Vec<i16>,
+    dc_level: i16,
+    ac_levels: &[i16; AC_COEFFS],
+    width: usize,
+    height: usize,
+    active_width: usize,
+    active_height: usize,
+    reconstruct_level: impl Fn(i16) -> i16,
+) {
     residuals.clear();
     residuals.resize(width * height, 0);
     if residuals.is_empty() {
         return;
     }
-    residuals[0] = dc_level;
-    let active_width = if width == 8 && height == 8 {
-        8
-    } else {
-        width.min(4)
-    };
-    let active_height = if width == 8 && height == 8 {
-        8
-    } else {
-        height.min(4)
-    };
+    residuals[0] = reconstruct_level(dc_level);
     for y in 0..active_height {
         for x in 0..active_width {
             if x == 0 && y == 0 {
                 continue;
             }
-            residuals[y * width + x] = ac_levels[y * active_width + x - 1];
+            residuals[y * width + x] = reconstruct_level(ac_levels[y * active_width + x - 1]);
         }
     }
 }
@@ -42,35 +55,18 @@ pub(in crate::vvc) fn reconstruct_vvc_luma_transform_skip_residuals_into_with_qp
     bit_depth: SampleBitDepth,
     qp: i32,
 ) {
-    residuals.clear();
-    residuals.resize(width * height, 0);
-    if residuals.is_empty() {
-        return;
-    }
+    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
     let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
-    residuals[0] = reconstruct_vvc_transform_skip_level_with_params(dc_level, scale, right_shift);
-    let active_width = if width == 8 && height == 8 {
-        8
-    } else {
-        width.min(4)
-    };
-    let active_height = if width == 8 && height == 8 {
-        8
-    } else {
-        height.min(4)
-    };
-    for y in 0..active_height {
-        for x in 0..active_width {
-            if x == 0 && y == 0 {
-                continue;
-            }
-            residuals[y * width + x] = reconstruct_vvc_transform_skip_level_with_params(
-                ac_levels[y * active_width + x - 1],
-                scale,
-                right_shift,
-            );
-        }
-    }
+    reconstruct_vvc_transform_skip_residuals_into(
+        residuals,
+        dc_level,
+        ac_levels,
+        width,
+        height,
+        active_width,
+        active_height,
+        |level| reconstruct_vvc_transform_skip_level_with_params(level, scale, right_shift),
+    );
 }
 
 fn reconstruct_vvc_luma_transform_skip_residuals_into_with_table(
@@ -81,31 +77,17 @@ fn reconstruct_vvc_luma_transform_skip_residuals_into_with_table(
     height: usize,
     quant_table: &VvcTransformSkipQuantTable,
 ) {
-    residuals.clear();
-    residuals.resize(width * height, 0);
-    if residuals.is_empty() {
-        return;
-    }
-    residuals[0] = quant_table.reconstructed(dc_level);
-    let active_width = if width == 8 && height == 8 {
-        8
-    } else {
-        width.min(4)
-    };
-    let active_height = if width == 8 && height == 8 {
-        8
-    } else {
-        height.min(4)
-    };
-    for y in 0..active_height {
-        for x in 0..active_width {
-            if x == 0 && y == 0 {
-                continue;
-            }
-            residuals[y * width + x] =
-                quant_table.reconstructed(ac_levels[y * active_width + x - 1]);
-        }
-    }
+    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
+    reconstruct_vvc_transform_skip_residuals_into(
+        residuals,
+        dc_level,
+        ac_levels,
+        width,
+        height,
+        active_width,
+        active_height,
+        |level| quant_table.reconstructed(level),
+    );
 }
 
 #[cfg(test)]
@@ -191,22 +173,18 @@ pub(in crate::vvc) fn reconstruct_vvc_chroma_transform_skip_residuals_into(
     width: usize,
     height: usize,
 ) {
-    residuals.clear();
-    residuals.resize(width * height, 0);
-    if residuals.is_empty() {
-        return;
-    }
-    residuals[0] = dc_level;
     let active_width = width.min(8);
     let active_height = height.min(8);
-    for y in 0..active_height {
-        for x in 0..active_width {
-            if x == 0 && y == 0 {
-                continue;
-            }
-            residuals[y * width + x] = ac_levels[y * active_width + x - 1];
-        }
-    }
+    reconstruct_vvc_transform_skip_residuals_into(
+        residuals,
+        dc_level,
+        ac_levels,
+        width,
+        height,
+        active_width,
+        active_height,
+        |level| level,
+    );
 }
 
 #[cfg(test)]
@@ -219,27 +197,19 @@ pub(in crate::vvc) fn reconstruct_vvc_chroma_transform_skip_residuals_into_with_
     bit_depth: SampleBitDepth,
     qp: i32,
 ) {
-    residuals.clear();
-    residuals.resize(width * height, 0);
-    if residuals.is_empty() {
-        return;
-    }
-    let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
-    residuals[0] = reconstruct_vvc_transform_skip_level_with_params(dc_level, scale, right_shift);
     let active_width = width.min(8);
     let active_height = height.min(8);
-    for y in 0..active_height {
-        for x in 0..active_width {
-            if x == 0 && y == 0 {
-                continue;
-            }
-            residuals[y * width + x] = reconstruct_vvc_transform_skip_level_with_params(
-                ac_levels[y * active_width + x - 1],
-                scale,
-                right_shift,
-            );
-        }
-    }
+    let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
+    reconstruct_vvc_transform_skip_residuals_into(
+        residuals,
+        dc_level,
+        ac_levels,
+        width,
+        height,
+        active_width,
+        active_height,
+        |level| reconstruct_vvc_transform_skip_level_with_params(level, scale, right_shift),
+    );
 }
 
 fn reconstruct_vvc_chroma_transform_skip_residuals_into_with_table(
@@ -250,23 +220,18 @@ fn reconstruct_vvc_chroma_transform_skip_residuals_into_with_table(
     height: usize,
     quant_table: &VvcTransformSkipQuantTable,
 ) {
-    residuals.clear();
-    residuals.resize(width * height, 0);
-    if residuals.is_empty() {
-        return;
-    }
-    residuals[0] = quant_table.reconstructed(dc_level);
     let active_width = width.min(8);
     let active_height = height.min(8);
-    for y in 0..active_height {
-        for x in 0..active_width {
-            if x == 0 && y == 0 {
-                continue;
-            }
-            residuals[y * width + x] =
-                quant_table.reconstructed(ac_levels[y * active_width + x - 1]);
-        }
-    }
+    reconstruct_vvc_transform_skip_residuals_into(
+        residuals,
+        dc_level,
+        ac_levels,
+        width,
+        height,
+        active_width,
+        active_height,
+        |level| quant_table.reconstructed(level),
+    );
 }
 
 #[cfg(test)]

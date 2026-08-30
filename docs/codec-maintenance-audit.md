@@ -35,6 +35,8 @@ The following changes were behavior-preserving and independently validated:
 - VVC CCLM prediction was separated from the remaining prediction kernels.
 - VVC intra top/left reference-edge collection was separated from prediction
   kernels while retaining shared availability handling.
+- VVC transform-skip residual placement and reconstruction now share one
+  parameterized kernel across luma/chroma and identity/QP/table paths.
 - AV2 lossy subsampled scoring was separated from its materialization path.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.
