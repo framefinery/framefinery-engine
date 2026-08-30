@@ -281,92 +281,8 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         leaf_height: usize,
         coded_mi_context: &Av2CodedMiContext,
     ) -> [i32; TX4X4_SAMPLES] {
-        let residual = match plane {
-            Av2LosslessPlane::Y => {
-                if let Some(horz) = mode.luma_bdpcm_horz {
-                    self.dpcm_residual4x4_for_score(plane, x0, y0, horz, leaf_x0, leaf_y0)
-                } else {
-                    self.luma_intra_residual4x4_for_score(
-                        x0,
-                        y0,
-                        mode.luma_intra_mode,
-                        leaf_x0,
-                        leaf_y0,
-                        leaf_width,
-                        leaf_height,
-                        coded_mi_context,
-                    )
-                }
-            }
-            Av2LosslessPlane::U | Av2LosslessPlane::V => {
-                if mode.chroma_use_bdpcm {
-                    self.dpcm_residual4x4_for_score(
-                        plane,
-                        x0,
-                        y0,
-                        mode.chroma_intra_mode.is_horizontal(),
-                        leaf_x0,
-                        leaf_y0,
-                    )
-                } else {
-                    self.intra_residual4x4_for_score(
-                        plane,
-                        x0,
-                        y0,
-                        mode.chroma_intra_mode,
-                        chroma_directional_angle_for_mode(mode),
-                        leaf_x0,
-                        leaf_y0,
-                        leaf_width,
-                        leaf_height,
-                        coded_mi_context,
-                    )
-                }
-            }
-        };
-        if mode.use_fsc {
-            idtx4x4_coefficients(&residual)
-        } else {
-            av2_fwht4x4(&residual)
-        }
-    }
-
-    fn luma_intra_residual4x4(
-        &self,
-        x0: usize,
-        y0: usize,
-        mode: Av2LumaIntraMode,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-    ) -> [i32; TX4X4_SAMPLES] {
-        self.luma_intra_residual4x4_with_reference(
-            x0,
-            y0,
-            mode,
-            leaf_x0,
-            leaf_y0,
-            leaf_width,
-            leaf_height,
-            coded_mi_context,
-            Av2LosslessIntraReference::Reconstructed,
-        )
-    }
-
-    fn luma_intra_residual4x4_for_score(
-        &self,
-        x0: usize,
-        y0: usize,
-        mode: Av2LumaIntraMode,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-    ) -> [i32; TX4X4_SAMPLES] {
-        self.luma_intra_residual4x4_with_reference(
+        let residual = self.tx4x4_residual_for_mode_with_reference(
+            plane,
             x0,
             y0,
             mode,
@@ -376,7 +292,12 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
             leaf_height,
             coded_mi_context,
             Av2LosslessIntraReference::Score { leaf_x0, leaf_y0 },
-        )
+        );
+        if mode.use_fsc {
+            idtx4x4_coefficients(&residual)
+        } else {
+            av2_fwht4x4(&residual)
+        }
     }
 
     fn luma_intra_residual4x4_with_reference(
@@ -419,34 +340,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
             leaf_height,
             coded_mi_context,
             reference,
-        )
-    }
-
-    fn intra_residual4x4(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        mode: Av2ChromaIntraMode,
-        directional_angle: Option<i16>,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-    ) -> [i32; TX4X4_SAMPLES] {
-        self.intra_residual4x4_with_reference(
-            plane,
-            x0,
-            y0,
-            mode,
-            directional_angle,
-            leaf_x0,
-            leaf_y0,
-            leaf_width,
-            leaf_height,
-            coded_mi_context,
-            Av2LosslessIntraReference::Reconstructed,
         )
     }
 
@@ -615,22 +508,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         unreachable!("generic directional predictor expects a non-cardinal angle")
     }
 
-    fn dpcm_residual4x4(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        horz: bool,
-    ) -> [i32; TX4X4_SAMPLES] {
-        self.dpcm_residual4x4_with_reference(
-            plane,
-            x0,
-            y0,
-            horz,
-            Av2LosslessIntraReference::Reconstructed,
-        )
-    }
-
     fn dpcm_residual4x4_with_reference(
         &self,
         plane: Av2LosslessPlane,
@@ -680,52 +557,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
             }
         }
         residual
-    }
-
-    fn intra_residual4x4_for_score(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        mode: Av2ChromaIntraMode,
-        directional_angle: Option<i16>,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-    ) -> [i32; TX4X4_SAMPLES] {
-        self.intra_residual4x4_with_reference(
-            plane,
-            x0,
-            y0,
-            mode,
-            directional_angle,
-            leaf_x0,
-            leaf_y0,
-            leaf_width,
-            leaf_height,
-            coded_mi_context,
-            Av2LosslessIntraReference::Score { leaf_x0, leaf_y0 },
-        )
-    }
-
-    fn dpcm_residual4x4_for_score(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        horz: bool,
-        leaf_x0: usize,
-        leaf_y0: usize,
-    ) -> [i32; TX4X4_SAMPLES] {
-        self.dpcm_residual4x4_with_reference(
-            plane,
-            x0,
-            y0,
-            horz,
-            Av2LosslessIntraReference::Score { leaf_x0, leaf_y0 },
-        )
     }
 
     fn luma_directional_idif_residual4x4_with_reference(
