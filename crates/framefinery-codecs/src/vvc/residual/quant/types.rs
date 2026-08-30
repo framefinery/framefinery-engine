@@ -42,7 +42,7 @@ use super::{
     MAX_VVC_CHROMA_TUS, MAX_VVC_LUMA_TUS, VVC_CHROMA_AC_COEFFS_PER_TU,
     VVC_CHROMA_AC_POSITIONS_4X4, VVC_LUMA_AC_COEFFS_PER_TU,
 };
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 use super::VvcQuantizedResidualFrame;
 #[cfg(feature = "vvc-stats")]
 use super::{

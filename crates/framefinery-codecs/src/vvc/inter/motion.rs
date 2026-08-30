@@ -27,7 +27,7 @@ pub(in crate::vvc) struct VvcLumaMotionSearchBlock {
     pub(in crate::vvc) height: usize,
 }
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(in crate::vvc) struct VvcLumaMotionRegionAnalysis {
     pub(in crate::vvc) block_count: usize,
@@ -42,7 +42,7 @@ pub(in crate::vvc) struct VvcLumaMotionRegionAnalysis {
     pub(in crate::vvc) aggregate_64x64: VvcLumaMotionAggregateSummary,
 }
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(in crate::vvc) struct VvcLumaMotionAggregateSummary {
     pub(in crate::vvc) candidate_count: usize,
@@ -82,7 +82,7 @@ pub(in crate::vvc) struct VvcLumaMotionMap {
     candidates: Vec<VvcLumaMotionCandidate>,
 }
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(in crate::vvc) fn vvc_luma_motion_analysis_for_region(
     current: &VvcSampledFrame,
     reference: &VvcSampledFrame,
@@ -295,7 +295,7 @@ impl VvcLumaMotionMap {
         })
     }
 
-    #[cfg(any(test, feature = "bench-internals"))]
+    #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
     fn block_analysis(&self, near_sad_per_sample: u64) -> VvcLumaMotionRegionAnalysis {
         let summary = self.aggregate_summary(1, near_sad_per_sample);
         VvcLumaMotionRegionAnalysis {
@@ -312,7 +312,7 @@ impl VvcLumaMotionMap {
         }
     }
 
-    #[cfg(any(test, feature = "bench-internals"))]
+    #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
     fn aggregate_summary(
         &self,
         blocks_per_side: usize,
@@ -419,7 +419,7 @@ struct VvcLumaMotionAggregateArea {
     mv: Option<VvcLumaMotionVector>,
 }
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 fn motion_near_threshold(near_sad_per_sample: u64, samples: usize) -> u64 {
     near_sad_per_sample.saturating_mul(samples as u64)
 }

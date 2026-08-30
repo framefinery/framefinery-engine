@@ -7,7 +7,7 @@ pub(super) mod transform;
 
 #[cfg(feature = "vvc-stats")]
 use super::VvcChromaCclmMode;
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 use super::VvcSample;
 use super::{
     VvcBdpcmMode, VvcChromaIntraPredictionMode, VvcIntraPredictionMode, VvcLumaSccDecision,
@@ -16,7 +16,7 @@ use super::{
 #[cfg(test)]
 mod tests;
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(super) use transform::VVC_DEFAULT_LOSSY_CHROMA_QP;
 pub(super) use transform::{
     inverse_transform_vvc_chroma_quantized_block_into_with_qp,
@@ -45,11 +45,11 @@ pub(super) use prediction::{
 };
 #[cfg(test)]
 pub use quant::quantize_vvc_color;
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(super) use quant::quantize_vvc_frame;
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(super) use quant::quantize_vvc_frame_with_reconstruction;
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(super) use quant::quantize_vvc_residual_ctu_into_frame_reconstruction;
 #[cfg(feature = "bench-internals")]
 pub(super) use quant::quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes;
@@ -538,7 +538,7 @@ fn residual_energy_split(residuals: &[i16], width: usize, height: usize) -> VvcR
     split
 }
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct VvcQuantizedResidualFrame {
     pub(super) quantized: VvcQuantizedColor,

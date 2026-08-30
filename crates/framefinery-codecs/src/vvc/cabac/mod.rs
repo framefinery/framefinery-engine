@@ -9,7 +9,7 @@ pub(in crate::vvc) use binarization::vvc_encode_exp_golomb_ep_combined;
 #[cfg(test)]
 pub(super) use context::VvcCabacInitType;
 pub(super) use context::{VvcCabacContext, VvcCabacContexts, VvcLastSigCoeffPrefixCtxInput};
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(super) use ctu_body::encode_ctu_partition_body;
 pub(super) use ctu_body::VvcFrameCtuCabacState;
 #[cfg(test)]
@@ -24,7 +24,7 @@ pub(super) use ctu_body::{
 };
 #[cfg(test)]
 pub(super) use ctu_split::vvc_luma_transform_nodes;
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(super) use ctu_split::VvcCtuCabacOp;
 pub(super) use ctu_split::{
     vvc_chroma_transform_nodes, vvc_chroma_transform_nodes_into, vvc_luma_transform_nodes_for_kind,
@@ -35,6 +35,6 @@ pub(super) use ctu_split::{
 pub(super) use ctu_split::{
     VvcLumaNeighbourState, VvcQtSplitCtxInput, VvcSplitCtxInput, VvcTreeType,
 };
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(super) use writer::{VvcCabacDumpBinEngineEvent, VvcCabacDumpContextEvent, VvcCabacDumpSymbol};
 pub(super) use writer::{VvcCabacEncoder, VvcCabacPayload};

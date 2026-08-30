@@ -40,7 +40,7 @@ mod palette;
 mod residual;
 #[path = "bitstream/syntax.rs"]
 mod syntax;
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 use cabac::encode_ctu_partition_body;
 use cabac::VvcFrameCtuCabacState;
 #[cfg(test)]
@@ -57,9 +57,9 @@ use cabac::{
     VvcCtuPartitionShape, VvcLastSigCoeffPrefixCtxInput, VvcLumaSplitAvailabilityKind,
     VvcPartSplit,
 };
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 use cabac::{VvcCabacContext, VvcCtuCabacOp};
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 use cabac::{VvcCabacDumpContextEvent, VvcCabacDumpSymbol};
 use header::{
     vvc_frame_slice_unit, vvc_one_slice_per_ctu_partitioning_supported, vvc_picture_ctu_cols,
@@ -99,7 +99,7 @@ use palette::{
 };
 #[cfg(test)]
 pub use residual::quantize_vvc_color;
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 use residual::quantize_vvc_frame;
 #[cfg(test)]
 use residual::VVC_LUMA_DC_BASE;
@@ -124,7 +124,7 @@ include!("sampling.rs");
 include!("reconstruction.rs");
 include!("ctu.rs");
 include!("ctu_params.rs");
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 include!("cabac_dump.rs");
 include!("stats.rs");
 include!("stats_analysis.rs");

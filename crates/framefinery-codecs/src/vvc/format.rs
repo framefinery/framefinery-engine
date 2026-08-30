@@ -241,7 +241,7 @@ impl VvcSliceSyntaxConfig {
         config
     }
 
-    #[cfg(any(test, feature = "bench-internals"))]
+    #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
     const fn for_picture_format(format: VvcPictureFormat) -> Self {
         Self::residual(format.chroma_sampling, VvcResidualCodingMode::Lossy)
     }

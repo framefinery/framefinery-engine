@@ -3,12 +3,12 @@ pub fn quantize_vvc_color(color: VvcSampledColor) -> VvcQuantizedColor {
     quantize_vvc_frame(&VvcSampledFrame::solid(color))
 }
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(in crate::vvc) fn quantize_vvc_frame(frame: &VvcSampledFrame) -> VvcQuantizedColor {
     quantize_vvc_frame_with_reconstruction(frame).quantized
 }
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(in crate::vvc) fn quantize_vvc_frame_with_reconstruction(
     frame: &VvcSampledFrame,
 ) -> VvcQuantizedResidualFrame {
@@ -31,7 +31,7 @@ pub(in crate::vvc) fn quantize_vvc_frame_with_reconstruction(
     }
 }
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction(
     source_frame: &VvcSampledFrame,
     frame_recon: &mut VvcReconstructionFrame,
@@ -59,7 +59,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction(
     )
 }
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp(
     source_frame: &VvcSampledFrame,
     frame_recon: &mut VvcReconstructionFrame,
@@ -140,7 +140,7 @@ impl Default for VvcCtuQuantScratch {
 const VVC_TEMPORAL_MODE_HINT_MAX_AVG_ABS_RESIDUAL_8BIT: u64 = 16;
 const VVC_LOSSY_TEMPORAL_MODE_HINT_MAX_AVG_ABS_RESIDUAL_8BIT: u64 = 0;
 
-#[cfg(feature = "bench-internals")]
+#[cfg(any(feature = "bench-internals", feature = "vvc-stats"))]
 pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes(
     source_frame: &VvcSampledFrame,
     frame_recon: &mut VvcReconstructionFrame,
@@ -165,7 +165,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     )
 }
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes_and_scratch(
     source_frame: &VvcSampledFrame,
     frame_recon: &mut VvcReconstructionFrame,

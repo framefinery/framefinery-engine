@@ -87,7 +87,7 @@ fn vvc_ctu_cabac_payload(
     cabac.finish_payload()
 }
 
-#[cfg(any(test, feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 fn vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
     geometry: VvcVideoGeometry,
     color: VvcQuantizedColor,
