@@ -56,6 +56,9 @@ def main() -> int:
     parser.add_argument("--log-dir", type=Path, default=DEFAULT_LOG_DIR)
     parser.add_argument("--limit", type=int, default=0, help="run only the first N vectors")
     parser.add_argument(
+        "--offset", type=int, default=0, help="skip this many vectors before applying --limit"
+    )
+    parser.add_argument(
         "--reference-mode",
         choices=("auto", "required", "off"),
         default="auto",
@@ -139,6 +142,11 @@ def main() -> int:
     cases = [
         case for case in cases if vector_enabled_for_codec(case.vector, args.codec)
     ]
+    if args.offset < 0:
+        parser.error("--offset must be non-negative")
+    if args.limit < 0:
+        parser.error("--limit must be non-negative")
+    cases = cases[args.offset :]
     if args.limit:
         cases = cases[: args.limit]
     if skipped_by_codec:
