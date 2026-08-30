@@ -29,6 +29,7 @@ include!("mode_contexts.rs");
 include!("tile_plan.rs");
 include!("tile_plan_inter.rs");
 include!("tile_plan_intra.rs");
+include!("tile_plan_lossy.rs");
 include!("partitions.rs");
 include!("palette_syntax.rs");
 include!("black_residual.rs");
