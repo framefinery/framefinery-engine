@@ -31,6 +31,35 @@ impl DirectionalIdifEdges {
     }
 }
 
+fn assemble_directional_idif_edges(
+    bit_depth: SampleBitDepth,
+    angle: i16,
+    above_core: [Av2Sample; 8],
+    left_core: [Av2Sample; 8],
+    above_left: Av2Sample,
+) -> DirectionalIdifEdges {
+    let mut edges = DirectionalIdifEdges::new(bit_depth);
+    edges.set_above(-2, above_left);
+    edges.set_above(-1, above_left);
+    edges.set_left(-2, above_left);
+    edges.set_left(-1, above_left);
+    for index in 0..8 {
+        edges.set_above(index as i32, above_core[index]);
+        edges.set_left(index as i32, left_core[index]);
+    }
+    if angle > 90 && angle < 180 {
+        for index in TX4X4_SIZE..8 {
+            edges.set_above(index as i32, above_core[TX4X4_SIZE - 1]);
+            edges.set_left(index as i32, left_core[TX4X4_SIZE - 1]);
+        }
+    }
+    edges.set_above(8, edges.above(7));
+    edges.set_above(9, edges.above(7));
+    edges.set_left(8, edges.left(7));
+    edges.set_left(9, edges.left(7));
+    edges
+}
+
 const AV2_DR_INTERP_FILTER_BITS: u32 = 7;
 const AV2_DR_INTRA_DERIVATIVE: [i32; 90] = [
     0, 4096, 2048, 1365, 1024, 819, 682, 585, 512, 455, 409, 409, 409, 372, 341, 292, 273, 256,

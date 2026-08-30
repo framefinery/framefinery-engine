@@ -145,6 +145,8 @@ The following changes were behavior-preserving and independently validated:
 - AV2 lossless directional, IDIF, and smooth edge collection now lives in a
   focused sibling module, reducing the general subsampled state implementation
   while preserving the existing availability and reconstructed/source policy.
+- AV2 lossless and lossy IDIF prediction now shares one edge-buffer assembler;
+  each state retains only its format- and region-aware edge collection.
 - VVC residual mode scoring and fast-search gate helpers now live in a
   dedicated mode-selection helper module, separate from CTU orchestration while
   retaining the same deepest-level feature gates.

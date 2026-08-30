@@ -35,26 +35,7 @@ impl Av2LosslessSubsampledTileState<'_> {
             edge_sample,
         );
         let above_left = self.above_left_predictor_with(Av2LosslessPlane::Y, x0, y0, edge_sample);
-        let mut edges = DirectionalIdifEdges::new(self.bit_depth);
-        edges.set_above(-2, above_left);
-        edges.set_above(-1, above_left);
-        edges.set_left(-2, above_left);
-        edges.set_left(-1, above_left);
-        for index in 0..8 {
-            edges.set_above(index as i32, above_core[index]);
-            edges.set_left(index as i32, left_core[index]);
-        }
-        if angle > 90 && angle < 180 {
-            for index in TX4X4_SIZE..8 {
-                edges.set_above(index as i32, above_core[TX4X4_SIZE - 1]);
-                edges.set_left(index as i32, left_core[TX4X4_SIZE - 1]);
-            }
-        }
-        edges.set_above(8, edges.above(7));
-        edges.set_above(9, edges.above(7));
-        edges.set_left(8, edges.left(7));
-        edges.set_left(9, edges.left(7));
-        edges
+        assemble_directional_idif_edges(self.bit_depth, angle, above_core, left_core, above_left)
     }
 
     fn above_left_predictor_with<EdgeSample>(
