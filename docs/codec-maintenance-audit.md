@@ -41,6 +41,8 @@ The following changes were behavior-preserving and independently validated:
   same parameterized kernel across luma and chroma paths.
 - VVC visible luma and chroma reconstruction now share one clipped
   plane-writing loop, with subsampling handled only at the caller boundary.
+- VVC luma and chroma transform-skip SSE scoring now share one kernel,
+  including the common BDPCM accumulation and clipped tail handling.
 - AV2 lossy subsampled scoring was separated from its materialization path.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.
