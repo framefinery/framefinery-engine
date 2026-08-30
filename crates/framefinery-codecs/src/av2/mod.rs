@@ -63,6 +63,7 @@ use tile::{
 
 include!("format.rs");
 include!("layout.rs");
+include!("geometry.rs");
 include!("api.rs");
 include!("frame_mode.rs");
 include!("encode.rs");

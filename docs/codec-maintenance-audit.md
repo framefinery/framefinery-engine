@@ -60,6 +60,8 @@ The following changes were behavior-preserving and independently validated:
   quantization types module used by luma, chroma, and CTU selection.
 - VVC finalized luma and chroma TU records now live beside the shared
   quantization records used by CTU orchestration and tracing.
+- AV2 visible/coded geometry padding and cropping now lives in a dedicated
+  geometry module, keeping format conversion separate from encode traversal.
 - AV2 lossy subsampled scoring was separated from its materialization path.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.
