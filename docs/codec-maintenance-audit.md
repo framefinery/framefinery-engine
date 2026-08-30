@@ -115,6 +115,9 @@ The following changes were behavior-preserving and independently validated:
   separate from mode-decision orchestration and wide-transform adapters.
 - AV2 lossy intra/inter TXB analysis now shares a dedicated finalization module,
   keeping both analysis paths on one residual and distortion contract.
+- AV2 lossless subsampled luma/chroma residual mode dispatch now shares one
+  source-backed/reconstructed-reference selector, keeping fast-mode gates at
+  mode selection while reusing the common residual materialization path.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from

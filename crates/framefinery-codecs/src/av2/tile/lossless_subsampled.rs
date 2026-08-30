@@ -11,6 +11,7 @@ struct Av2LosslessSubsampledTileState<'a> {
 include!("lossless_subsampled_state.rs");
 include!("lossless_subsampled_source.rs");
 include!("lossless_subsampled_score.rs");
+include!("lossless_subsampled_mode.rs");
 
 impl<'a> Av2LosslessSubsampledTileState<'a> {
     fn source_block4x4(&self, plane: Av2LosslessPlane, x0: usize, y0: usize) -> [i32; 16] {
@@ -206,116 +207,6 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
             coded_mi_context,
         );
         tx4x4_coefficients_from_residual(&residual, mode.use_fsc)
-    }
-
-    fn tx4x4_residual_for_mode(
-        &self,
-        plane: Av2LosslessPlane,
-        x0: usize,
-        y0: usize,
-        mode: Av2LosslessSubsampledModeDecision,
-        leaf_x0: usize,
-        leaf_y0: usize,
-        leaf_width: usize,
-        leaf_height: usize,
-        coded_mi_context: &Av2CodedMiContext,
-    ) -> [i32; TX4X4_SAMPLES] {
-        if self.source_backed_recon && !mode.use_fsc {
-            match plane {
-                Av2LosslessPlane::Y => {
-                    if let Some(horz) = mode.luma_bdpcm_horz {
-                        self.source_backed_dpcm_residual4x4(plane, x0, y0, horz)
-                    } else if let Some(residual) =
-                        self.source_backed_luma_intra_residual4x4(x0, y0, mode.luma_intra_mode)
-                    {
-                        residual
-                    } else {
-                        self.luma_intra_residual4x4(
-                            x0,
-                            y0,
-                            mode.luma_intra_mode,
-                            leaf_x0,
-                            leaf_y0,
-                            leaf_width,
-                            leaf_height,
-                            coded_mi_context,
-                        )
-                    }
-                }
-                Av2LosslessPlane::U | Av2LosslessPlane::V => {
-                    if mode.chroma_use_bdpcm {
-                        self.source_backed_dpcm_residual4x4(
-                            plane,
-                            x0,
-                            y0,
-                            mode.chroma_intra_mode.is_horizontal(),
-                        )
-                    } else if let Some(residual) = self.source_backed_chroma_intra_residual4x4(
-                        plane,
-                        x0,
-                        y0,
-                        mode.chroma_intra_mode,
-                    ) {
-                        residual
-                    } else {
-                        self.intra_residual4x4(
-                            plane,
-                            x0,
-                            y0,
-                            mode.chroma_intra_mode,
-                            chroma_directional_angle_for_mode(mode),
-                            leaf_x0,
-                            leaf_y0,
-                            leaf_width,
-                            leaf_height,
-                            coded_mi_context,
-                        )
-                    }
-                }
-            }
-        } else {
-            match plane {
-                Av2LosslessPlane::Y => {
-                    if let Some(horz) = mode.luma_bdpcm_horz {
-                        self.dpcm_residual4x4(plane, x0, y0, horz)
-                    } else {
-                        self.luma_intra_residual4x4(
-                            x0,
-                            y0,
-                            mode.luma_intra_mode,
-                            leaf_x0,
-                            leaf_y0,
-                            leaf_width,
-                            leaf_height,
-                            coded_mi_context,
-                        )
-                    }
-                }
-                Av2LosslessPlane::U | Av2LosslessPlane::V => {
-                    if mode.chroma_use_bdpcm {
-                        self.dpcm_residual4x4(
-                            plane,
-                            x0,
-                            y0,
-                            mode.chroma_intra_mode.is_horizontal(),
-                        )
-                    } else {
-                        self.intra_residual4x4(
-                            plane,
-                            x0,
-                            y0,
-                            mode.chroma_intra_mode,
-                            chroma_directional_angle_for_mode(mode),
-                            leaf_x0,
-                            leaf_y0,
-                            leaf_width,
-                            leaf_height,
-                            coded_mi_context,
-                        )
-                    }
-                }
-            }
-        }
     }
 
     fn luma_palette_residual4x4(
