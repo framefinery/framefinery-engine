@@ -68,6 +68,8 @@ The following changes were behavior-preserving and independently validated:
   isolated from the stateful lossless tile implementation.
 - AV2 lossless and lossy DC prediction now share one edge-accumulation and
   rounding kernel, with only typed edge access supplied by each state path.
+- AV2 horizontal, vertical, and above-left intra predictors now share common
+  tile-edge fallback kernels across lossless and lossy state paths.
 - The optional `vvc-stats` feature was made independently compilable instead of
   implicitly depending on benchmark-only internals.
 

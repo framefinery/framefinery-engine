@@ -186,13 +186,15 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         EdgeSample: Fn(Av2LosslessPlane, usize, usize) -> Av2Sample,
     {
         let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        if x0 > tile_origin_x {
-            edge_sample(plane, x0 - 1, y0 + local_y)
-        } else if y0 > tile_origin_y {
-            edge_sample(plane, x0, y0 - 1)
-        } else {
-            av2_lossless_h_pred_left_edge(self.bit_depth)
-        }
+        av2_h_predictor_from_edges(
+            self.bit_depth,
+            tile_origin_x,
+            tile_origin_y,
+            x0,
+            y0,
+            local_y,
+            |x, y| edge_sample(plane, x, y),
+        )
     }
 
     fn v_predictor(
@@ -218,13 +220,15 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         EdgeSample: Fn(Av2LosslessPlane, usize, usize) -> Av2Sample,
     {
         let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        if y0 > tile_origin_y {
-            edge_sample(plane, x0 + local_x, y0 - 1)
-        } else if x0 > tile_origin_x {
-            edge_sample(plane, x0 - 1, y0)
-        } else {
-            av2_lossless_v_pred_above_edge(self.bit_depth)
-        }
+        av2_v_predictor_from_edges(
+            self.bit_depth,
+            tile_origin_x,
+            tile_origin_y,
+            x0,
+            y0,
+            local_x,
+            |x, y| edge_sample(plane, x, y),
+        )
     }
 
     #[cfg(test)]
@@ -1384,17 +1388,14 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         EdgeSample: Fn(Av2LosslessPlane, usize, usize) -> Av2Sample,
     {
         let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        let have_left = x0 > tile_origin_x;
-        let have_top = y0 > tile_origin_y;
-        if have_left && have_top {
-            edge_sample(plane, x0 - 1, y0 - 1)
-        } else if have_top {
-            edge_sample(plane, x0, y0 - 1)
-        } else if have_left {
-            edge_sample(plane, x0 - 1, y0)
-        } else {
-            av2_lossless_dc_predictor(self.bit_depth)
-        }
+        av2_above_left_predictor_from_edges(
+            self.bit_depth,
+            tile_origin_x,
+            tile_origin_y,
+            x0,
+            y0,
+            |x, y| edge_sample(plane, x, y),
+        )
     }
 
     fn directional_above_edge_with<EdgeSample>(
