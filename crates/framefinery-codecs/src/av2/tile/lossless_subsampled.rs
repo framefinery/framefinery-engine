@@ -825,35 +825,14 @@ impl<'a> Av2LosslessSubsampledTileState<'a> {
         y0: usize,
         horz: bool,
     ) -> [i32; TX4X4_SAMPLES] {
-        let mut residual = [0i32; TX4X4_SAMPLES];
-        let source = self.source_block4x4(plane, x0, y0);
-        if horz {
-            for local_y in 0..TX4X4_SIZE {
-                let row_start = local_y * TX4X4_SIZE;
-                let predictor = i32::from(self.source_backed_h_predictor(plane, x0, y0, local_y));
-                residual[row_start] = source[row_start] - predictor;
-                for local_x in 1..TX4X4_SIZE {
-                    let pos = row_start + local_x;
-                    residual[pos] = source[pos] - source[pos - 1];
-                }
-            }
-        } else {
-            let mut predictors = [0i32; TX4X4_SIZE];
-            for (local_x, predictor) in predictors.iter_mut().enumerate() {
-                *predictor = i32::from(self.source_backed_v_predictor(plane, x0, y0, local_x));
-            }
-            for local_x in 0..TX4X4_SIZE {
-                residual[local_x] = source[local_x] - predictors[local_x];
-            }
-            for local_y in 1..TX4X4_SIZE {
-                let row_start = local_y * TX4X4_SIZE;
-                for local_x in 0..TX4X4_SIZE {
-                    let pos = row_start + local_x;
-                    residual[pos] = source[pos] - source[pos - TX4X4_SIZE];
-                }
-            }
-        }
-        residual
+        self.dpcm_residual4x4_with_edge_predictors(
+            plane,
+            x0,
+            y0,
+            horz,
+            |local_y| self.source_backed_h_predictor(plane, x0, y0, local_y),
+            |local_x| self.source_backed_v_predictor(plane, x0, y0, local_x),
+        )
     }
 
     fn source_backed_dc_predictor(

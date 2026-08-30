@@ -93,6 +93,8 @@ The following changes were behavior-preserving and independently validated:
 - AV2 lossy subsampled scoring was separated from its materialization path.
 - AV2 lossless subsampled tile construction and plane-coordinate mapping now
   live in a dedicated state module, separate from prediction and scoring.
+- AV2 source-backed lossless DPCM now uses the shared edge-predictor residual
+  kernel instead of a parallel hand-written materialization loop.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.
 - AV2 transform-block entropy writers were separated from coefficient/context
