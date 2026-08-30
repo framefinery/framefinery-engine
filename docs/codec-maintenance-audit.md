@@ -31,6 +31,8 @@ The following changes were behavior-preserving and independently validated:
 - VVC predictive encoding helpers were separated from the main encoder path.
 - VVC CTU mode selection was separated from CTU orchestration helpers.
 - VVC CCLM prediction was separated from the remaining prediction kernels.
+- VVC intra top/left reference-edge collection was separated from prediction
+  kernels while retaining shared availability handling.
 - AV2 lossy subsampled scoring was separated from its materialization path.
 - AV2 lossy transform candidate selection and RD gates were separated from
   residual coefficient writing.
@@ -50,7 +52,7 @@ current call graph rather than by line count alone:
 | Area | Approximate size | Current concern |
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,900 lines | tightly coupled partition traversal, neighbour state, and syntax emission |
-| VVC residual prediction | 2,200 lines after CCLM split | shared angular/reference-edge machinery still has several large helpers |
+| VVC residual prediction | 2,098 lines after reference-edge split | shared angular/reference machinery still has several large helpers |
 | AV2 lossless subsampled residuals | 1,753 lines | materialization and score paths need further comparison before extraction |
 | AV2 tile transform syntax helpers | 1,516 lines after writer split | coefficient contexts remain broad but syntax-sensitive |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
