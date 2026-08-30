@@ -40,6 +40,7 @@ include!("predictor_common.rs");
 include!("lossless_scoring.rs");
 include!("coefficient_proxy.rs");
 include!("lossless_subsampled.rs");
+include!("lossless_subsampled_edges.rs");
 include!("lossless_mode_selection.rs");
 include!("residual_trace.rs");
 include!("tx_partition_syntax.rs");

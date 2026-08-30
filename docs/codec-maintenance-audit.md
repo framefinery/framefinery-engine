@@ -142,6 +142,9 @@ The following changes were behavior-preserving and independently validated:
 - AV2 lossless intra and inter luma residual emission now shares one TXB
   traversal, reconstruction update, and entropy-context update path; each mode
   retains only its TXB-local residual generation and legal syntax selection.
+- AV2 lossless directional, IDIF, and smooth edge collection now lives in a
+  focused sibling module, reducing the general subsampled state implementation
+  while preserving the existing availability and reconstructed/source policy.
 - VVC residual mode scoring and fast-search gate helpers now live in a
   dedicated mode-selection helper module, separate from CTU orchestration while
   retaining the same deepest-level feature gates.
@@ -272,7 +275,7 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 491-line orchestration plus focused prediction siblings | plane-level luma/chroma dispatch and scratch ownership still need call-graph review |
-| AV2 lossless subsampled residuals | 953 lines after shared mode dispatch | remaining directional-edge and neighbour helpers need call-graph review |
+| AV2 lossless subsampled residuals | 690-line state core plus 264-line edge sibling | edge availability logic is isolated for focused call-graph review |
 | AV2 tile transform syntax helpers | 1,516 lines after writer split | coefficient contexts remain broad but syntax-sensitive |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
 
