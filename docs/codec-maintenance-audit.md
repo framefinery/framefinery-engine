@@ -118,6 +118,9 @@ The following changes were behavior-preserving and independently validated:
 - AV2 lossless subsampled luma/chroma residual mode dispatch now shares one
   source-backed/reconstructed-reference selector, keeping fast-mode gates at
   mode selection while reusing the common residual materialization path.
+- VVC residual mode scoring and fast-search gate helpers now live in a
+  dedicated mode-selection helper module, separate from CTU orchestration while
+  retaining the same deepest-level feature gates.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
