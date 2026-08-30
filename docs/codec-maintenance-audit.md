@@ -163,6 +163,9 @@ The following changes were behavior-preserving and independently validated:
   geometry/traversal extension, separate from visible-tree recursion.
 - VVC chroma QT/MTT split-flag syntax now lives in a dedicated syntax
   extension, shared by visible and implicit boundary traversal.
+- VVC angular prediction parameter derivation and interpolation selection now
+  live in a dedicated helper module, separate from the shared oriented block
+  prediction and reference-sample kernels.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
