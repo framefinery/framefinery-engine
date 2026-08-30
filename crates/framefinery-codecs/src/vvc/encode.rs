@@ -1525,46 +1525,32 @@ fn vvc_inter_chroma_source_motion_is_exact(
     node: VvcCodingTreeNode,
     decision: VvcLumaInterDecision,
 ) -> bool {
-    let subsample_x = chroma_subsample_x(current.format.chroma_sampling);
-    let subsample_y = chroma_subsample_y(current.format.chroma_sampling);
-    if i32::from(decision.mv_x).rem_euclid(subsample_x as i32) != 0
-        || i32::from(decision.mv_y).rem_euclid(subsample_y as i32) != 0
-    {
-        return false;
-    }
-    let dst_x = usize::from(node.x) / subsample_x;
-    let dst_y = usize::from(node.y) / subsample_y;
-    let Some(src_x) = offset_vvc_encode_origin(dst_x, decision.mv_x / subsample_x as i16) else {
+    let Some(region) = vvc_chroma_motion_region(current.format, node, decision) else {
         return false;
     };
-    let Some(src_y) = offset_vvc_encode_origin(dst_y, decision.mv_y / subsample_y as i16) else {
-        return false;
-    };
-    let width = usize::from(node.width) / subsample_x;
-    let height = usize::from(node.height) / subsample_y;
-    let stride = current.geometry.width / subsample_x;
+    let stride = current.geometry.width / region.subsample_x;
     vvc_plane_regions_equal(
         &current.cb,
         stride,
-        dst_x,
-        dst_y,
+        region.dst_x,
+        region.dst_y,
         &previous_source.cb,
         stride,
-        src_x,
-        src_y,
-        width,
-        height,
+        region.src_x,
+        region.src_y,
+        region.width,
+        region.height,
     ) && vvc_plane_regions_equal(
         &current.cr,
         stride,
-        dst_x,
-        dst_y,
+        region.dst_x,
+        region.dst_y,
         &previous_source.cr,
         stride,
-        src_x,
-        src_y,
-        width,
-        height,
+        region.src_x,
+        region.src_y,
+        region.width,
+        region.height,
     )
 }
 
@@ -1574,45 +1560,31 @@ fn vvc_inter_chroma_reconstruction_predicts_source_exact(
     node: VvcCodingTreeNode,
     decision: VvcLumaInterDecision,
 ) -> bool {
-    let subsample_x = chroma_subsample_x(current.format.chroma_sampling);
-    let subsample_y = chroma_subsample_y(current.format.chroma_sampling);
-    if i32::from(decision.mv_x).rem_euclid(subsample_x as i32) != 0
-        || i32::from(decision.mv_y).rem_euclid(subsample_y as i32) != 0
-    {
-        return false;
-    }
-    let dst_x = usize::from(node.x) / subsample_x;
-    let dst_y = usize::from(node.y) / subsample_y;
-    let Some(src_x) = offset_vvc_encode_origin(dst_x, decision.mv_x / subsample_x as i16) else {
+    let Some(region) = vvc_chroma_motion_region(current.format, node, decision) else {
         return false;
     };
-    let Some(src_y) = offset_vvc_encode_origin(dst_y, decision.mv_y / subsample_y as i16) else {
-        return false;
-    };
-    let width = usize::from(node.width) / subsample_x;
-    let height = usize::from(node.height) / subsample_y;
     vvc_plane_regions_equal(
         &current.cb,
-        current.geometry.width / subsample_x,
-        dst_x,
-        dst_y,
+        current.geometry.width / region.subsample_x,
+        region.dst_x,
+        region.dst_y,
         &previous_reconstruction.cb,
         previous_reconstruction.chroma_width(),
-        src_x,
-        src_y,
-        width,
-        height,
+        region.src_x,
+        region.src_y,
+        region.width,
+        region.height,
     ) && vvc_plane_regions_equal(
         &current.cr,
-        current.geometry.width / subsample_x,
-        dst_x,
-        dst_y,
+        current.geometry.width / region.subsample_x,
+        region.dst_x,
+        region.dst_y,
         &previous_reconstruction.cr,
         previous_reconstruction.chroma_width(),
-        src_x,
-        src_y,
-        width,
-        height,
+        region.src_x,
+        region.src_y,
+        region.width,
+        region.height,
     )
 }
 
@@ -1643,38 +1615,64 @@ fn vvc_inter_chroma_prediction_fits(
     node: VvcCodingTreeNode,
     decision: VvcLumaInterDecision,
 ) -> bool {
-    let subsample_x = chroma_subsample_x(current.format.chroma_sampling);
-    let subsample_y = chroma_subsample_y(current.format.chroma_sampling);
-    if i32::from(decision.mv_x).rem_euclid(subsample_x as i32) != 0
-        || i32::from(decision.mv_y).rem_euclid(subsample_y as i32) != 0
-    {
-        return false;
-    }
-    let dst_x = usize::from(node.x) / subsample_x;
-    let dst_y = usize::from(node.y) / subsample_y;
-    let Some(src_x) = offset_vvc_encode_origin(dst_x, decision.mv_x / subsample_x as i16) else {
+    let Some(region) = vvc_chroma_motion_region(current.format, node, decision) else {
         return false;
     };
-    let Some(src_y) = offset_vvc_encode_origin(dst_y, decision.mv_y / subsample_y as i16) else {
-        return false;
-    };
-    let width = usize::from(node.width) / subsample_x;
-    let height = usize::from(node.height) / subsample_y;
     vvc_plane_region_fits(
         previous_reconstruction.chroma_width(),
         previous_reconstruction.chroma_height(),
-        src_x,
-        src_y,
-        width,
-        height,
+        region.src_x,
+        region.src_y,
+        region.width,
+        region.height,
     ) && vvc_plane_region_fits(
-        current.geometry.width / subsample_x,
-        current.geometry.height / subsample_y,
+        current.geometry.width / region.subsample_x,
+        current.geometry.height / region.subsample_y,
+        region.dst_x,
+        region.dst_y,
+        region.width,
+        region.height,
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+struct VvcChromaMotionRegion {
+    subsample_x: usize,
+    subsample_y: usize,
+    dst_x: usize,
+    dst_y: usize,
+    src_x: usize,
+    src_y: usize,
+    width: usize,
+    height: usize,
+}
+
+fn vvc_chroma_motion_region(
+    format: VvcPictureFormat,
+    node: VvcCodingTreeNode,
+    decision: VvcLumaInterDecision,
+) -> Option<VvcChromaMotionRegion> {
+    let subsample_x = chroma_subsample_x(format.chroma_sampling);
+    let subsample_y = chroma_subsample_y(format.chroma_sampling);
+    if i32::from(decision.mv_x).rem_euclid(subsample_x as i32) != 0
+        || i32::from(decision.mv_y).rem_euclid(subsample_y as i32) != 0
+    {
+        return None;
+    }
+    let dst_x = usize::from(node.x) / subsample_x;
+    let dst_y = usize::from(node.y) / subsample_y;
+    let src_x = offset_vvc_encode_origin(dst_x, decision.mv_x / subsample_x as i16)?;
+    let src_y = offset_vvc_encode_origin(dst_y, decision.mv_y / subsample_y as i16)?;
+    Some(VvcChromaMotionRegion {
+        subsample_x,
+        subsample_y,
         dst_x,
         dst_y,
-        width,
-        height,
-    )
+        src_x,
+        src_y,
+        width: usize::from(node.width) / subsample_x,
+        height: usize::from(node.height) / subsample_y,
+    })
 }
 
 fn vvc_plane_region_fits(
