@@ -428,19 +428,17 @@ fn write_chroma_tx4x8_txb(
     (lossless_entropy_context(cul_level, dc_val), true)
 }
 
-fn lossless_coefficient_levels_and_bounds(
-    coefficients: &[i32; TX4X4_SAMPLES],
-) -> ([u32; TX4X4_SAMPLES], Option<(usize, usize)>) {
-    let mut levels = [0u32; TX4X4_SAMPLES];
+fn coefficient_levels_and_bounds<const SAMPLES: usize>(
+    coefficients: &[i32; SAMPLES],
+    scan: &[usize; SAMPLES],
+    scaling_invariant: &'static str,
+) -> ([u32; SAMPLES], Option<(usize, usize)>) {
+    let mut levels = [0u32; SAMPLES];
     let mut first = None;
     let mut eob = 0usize;
-    for (scan_index, &index) in TX4X4_SCAN.iter().enumerate() {
+    for (scan_index, &index) in scan.iter().enumerate() {
         let coefficient = coefficients[index];
-        debug_assert_eq!(
-            coefficient % 8,
-            0,
-            "AV2 lossless WHT coefficient must be divisible by UNIT_QUANT_FACTOR"
-        );
+        debug_assert_eq!(coefficient % 8, 0, "{scaling_invariant}");
         let level = coefficient.unsigned_abs() / 8;
         levels[index] = level;
         if level != 0 {
@@ -449,52 +447,36 @@ fn lossless_coefficient_levels_and_bounds(
         }
     }
     (levels, first.map(|first| (first, eob)))
+}
+
+fn lossless_coefficient_levels_and_bounds(
+    coefficients: &[i32; TX4X4_SAMPLES],
+) -> ([u32; TX4X4_SAMPLES], Option<(usize, usize)>) {
+    coefficient_levels_and_bounds(
+        coefficients,
+        &TX4X4_SCAN,
+        "AV2 lossless WHT coefficient must be divisible by UNIT_QUANT_FACTOR",
+    )
 }
 
 fn tx8x8_coefficient_levels_and_bounds(
     coefficients: &[i32; TX8X8_SAMPLES],
 ) -> ([u32; TX8X8_SAMPLES], Option<(usize, usize)>) {
-    let mut levels = [0u32; TX8X8_SAMPLES];
-    let mut first = None;
-    let mut eob = 0usize;
-    for (scan_index, &index) in TX8X8_SCAN.iter().enumerate() {
-        let coefficient = coefficients[index];
-        debug_assert_eq!(
-            coefficient % 8,
-            0,
-            "AV2 quantized DCT coefficient must be scaled by UNIT_QUANT_FACTOR"
-        );
-        let level = coefficient.unsigned_abs() / 8;
-        levels[index] = level;
-        if level != 0 {
-            first.get_or_insert(scan_index);
-            eob = scan_index + 1;
-        }
-    }
-    (levels, first.map(|first| (first, eob)))
+    coefficient_levels_and_bounds(
+        coefficients,
+        &TX8X8_SCAN,
+        "AV2 quantized DCT coefficient must be scaled by UNIT_QUANT_FACTOR",
+    )
 }
 
 fn tx4x8_coefficient_levels_and_bounds(
     coefficients: &[i32; TX4X8_SAMPLES],
 ) -> ([u32; TX4X8_SAMPLES], Option<(usize, usize)>) {
-    let mut levels = [0u32; TX4X8_SAMPLES];
-    let mut first = None;
-    let mut eob = 0usize;
-    for (scan_index, &index) in TX4X8_SCAN.iter().enumerate() {
-        let coefficient = coefficients[index];
-        debug_assert_eq!(
-            coefficient % 8,
-            0,
-            "AV2 quantized DCT coefficient must be scaled by UNIT_QUANT_FACTOR"
-        );
-        let level = coefficient.unsigned_abs() / 8;
-        levels[index] = level;
-        if level != 0 {
-            first.get_or_insert(scan_index);
-            eob = scan_index + 1;
-        }
-    }
-    (levels, first.map(|first| (first, eob)))
+    coefficient_levels_and_bounds(
+        coefficients,
+        &TX4X8_SCAN,
+        "AV2 quantized DCT coefficient must be scaled by UNIT_QUANT_FACTOR",
+    )
 }
 
 fn write_eob_y(writer: &mut Av2EntropyWriter, eob: usize) {

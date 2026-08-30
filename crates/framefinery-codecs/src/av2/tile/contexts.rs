@@ -210,17 +210,45 @@ mod tests {
     }
 
     #[test]
-    fn av2_chroma_eob_supports_last_tx4x4_scan_position() {
-        let mut coefficients = [0i32; TX4X4_SAMPLES];
-        coefficients[*TX4X4_SCAN.last().expect("TX_4X4 scan is non-empty")] = 8;
-        let (_, bounds) = lossless_coefficient_levels_and_bounds(&coefficients);
+    fn av2_chroma_eob_supports_last_transform_scan_positions() {
+        let tx4x4_last = *TX4X4_SCAN.last().expect("TX_4X4 scan is non-empty");
+        let mut tx4x4_coefficients = [0i32; TX4X4_SAMPLES];
+        tx4x4_coefficients[tx4x4_last] = 8;
+        let (tx4x4_levels, tx4x4_bounds) =
+            lossless_coefficient_levels_and_bounds(&tx4x4_coefficients);
 
         // AV2 v1.0.0 Section 5.20.7.27 coeffs(), mirrored by AVM coefficient
         // coding, permits EOB values up to the transform sample count. A
         // nonzero final scan coefficient must therefore signal eob=16, not
         // wrap to txb_skip=1 in narrower RTL state.
-        assert_eq!(bounds, Some((TX4X4_SAMPLES - 1, TX4X4_SAMPLES)));
+        assert_eq!(tx4x4_levels[tx4x4_last], 1);
+        assert_eq!(
+            tx4x4_bounds,
+            Some((TX4X4_SAMPLES - 1, TX4X4_SAMPLES))
+        );
         assert_eq!(eob_pos_token(TX4X4_SAMPLES), (5, 7));
+
+        let tx8x8_last = *TX8X8_SCAN.last().expect("TX_8X8 scan is non-empty");
+        let mut tx8x8_coefficients = [0i32; TX8X8_SAMPLES];
+        tx8x8_coefficients[tx8x8_last] = -16;
+        let (tx8x8_levels, tx8x8_bounds) =
+            tx8x8_coefficient_levels_and_bounds(&tx8x8_coefficients);
+        assert_eq!(tx8x8_levels[tx8x8_last], 2);
+        assert_eq!(
+            tx8x8_bounds,
+            Some((TX8X8_SAMPLES - 1, TX8X8_SAMPLES))
+        );
+
+        let tx4x8_last = *TX4X8_SCAN.last().expect("TX_4X8 scan is non-empty");
+        let mut tx4x8_coefficients = [0i32; TX4X8_SAMPLES];
+        tx4x8_coefficients[tx4x8_last] = 24;
+        let (tx4x8_levels, tx4x8_bounds) =
+            tx4x8_coefficient_levels_and_bounds(&tx4x8_coefficients);
+        assert_eq!(tx4x8_levels[tx4x8_last], 3);
+        assert_eq!(
+            tx4x8_bounds,
+            Some((TX4X8_SAMPLES - 1, TX4X8_SAMPLES))
+        );
     }
 
     #[test]
