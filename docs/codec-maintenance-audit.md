@@ -150,6 +150,9 @@ The following changes were behavior-preserving and independently validated:
   while preserving the existing availability and reconstructed/source policy.
 - AV2 lossless and lossy IDIF prediction now shares one edge-buffer assembler;
   each state retains only its format- and region-aware edge collection.
+- AV2 lossless and lossy smooth prediction now shares one region-clipped,
+  superblock-aware edge-availability kernel; state adapters supply only plane
+  coordinates, coded-neighbour lookup, and reconstructed/source sample policy.
 - VVC residual mode scoring and fast-search gate helpers now live in a
   dedicated mode-selection helper module, separate from CTU orchestration while
   retaining the same deepest-level feature gates.
@@ -283,8 +286,8 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 491-line orchestration plus focused prediction siblings | plane-level luma/chroma dispatch and scratch ownership still need call-graph review |
-| AV2 lossless subsampled residuals | 690-line state core plus 264-line edge sibling | edge availability logic is isolated for focused call-graph review |
-| AV2 lossy subsampled scoring | 559-line scoring core plus 383-line prediction sibling | prediction and edge policy are isolated for focused sharing review |
+| AV2 lossless subsampled residuals | 690-line state core plus 193-line edge adapter | remaining directional availability differs from the lossy region policy |
+| AV2 lossy subsampled scoring | 559-line scoring core plus 329-line prediction sibling | remaining directional availability differs from the lossless plane policy |
 | AV2 tile transform syntax helpers | 1,516 lines after writer split | coefficient contexts remain broad but syntax-sensitive |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
 
