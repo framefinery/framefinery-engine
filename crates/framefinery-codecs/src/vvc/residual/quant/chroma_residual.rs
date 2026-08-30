@@ -1,17 +1,4 @@
 #[derive(Debug, Clone, Copy)]
-struct VvcFinalizedChromaTu {
-    cb_dc_level: i16,
-    cr_dc_level: i16,
-    cb_ac_levels: [i16; VVC_CHROMA_AC_COEFFS_PER_TU],
-    cr_ac_levels: [i16; VVC_CHROMA_AC_COEFFS_PER_TU],
-    cb_has_ac: bool,
-    cr_has_ac: bool,
-    cb_transform_skip: bool,
-    cr_transform_skip: bool,
-    bdpcm_mode: VvcBdpcmMode,
-}
-
-#[derive(Debug, Clone, Copy)]
 struct VvcSelectedChromaResidual {
     cb: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
     cr: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,

@@ -47,19 +47,6 @@ impl VvcScoredSelectedLumaResidual {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct VvcFinalizedLumaTu {
-    abs_remainder: u8,
-    negative: bool,
-    dc_level: i16,
-    ac_levels: [i16; VVC_LUMA_AC_COEFFS_PER_TU],
-    has_ac: bool,
-    transform_skip: bool,
-    bdpcm_mode: VvcBdpcmMode,
-    mrl_index: u8,
-    mts_index: u8,
-}
-
 fn finalize_vvc_luma_tu(
     coding_decision: VvcLumaTuCodingDecision,
     source_frame: &VvcSampledFrame,

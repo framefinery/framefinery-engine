@@ -78,6 +78,33 @@ impl VvcResidualBlockScore {
         )
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+struct VvcFinalizedLumaTu {
+    abs_remainder: u8,
+    negative: bool,
+    dc_level: i16,
+    ac_levels: [i16; VVC_LUMA_AC_COEFFS_PER_TU],
+    has_ac: bool,
+    transform_skip: bool,
+    bdpcm_mode: VvcBdpcmMode,
+    mrl_index: u8,
+    mts_index: u8,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct VvcFinalizedChromaTu {
+    cb_dc_level: i16,
+    cr_dc_level: i16,
+    cb_ac_levels: [i16; VVC_CHROMA_AC_COEFFS_PER_TU],
+    cr_ac_levels: [i16; VVC_CHROMA_AC_COEFFS_PER_TU],
+    cb_has_ac: bool,
+    cr_has_ac: bool,
+    cb_transform_skip: bool,
+    cr_transform_skip: bool,
+    bdpcm_mode: VvcBdpcmMode,
+}
+
 #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
 use super::VvcQuantizedResidualFrame;
 #[cfg(feature = "vvc-stats")]
