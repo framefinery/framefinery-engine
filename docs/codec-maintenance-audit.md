@@ -256,6 +256,9 @@ The following changes were behavior-preserving and independently validated:
   rounding kernel, with only typed edge access supplied by each state path.
 - AV2 horizontal, vertical, and above-left intra predictors now share common
   tile-edge fallback kernels across lossless and lossy state paths.
+- AV2 lossy score-only DC, horizontal, vertical, and above-left prediction now
+  uses those same reconstruction kernels, with only the score-neighbour sample
+  callback differing from materialization.
 - AV2 coefficient-proxy scoring and high-range symbol-cost helpers now live in
   a dedicated subsystem shared by residual candidate selection paths.
 - AV2 lossless and lossy horizontal, vertical, and above-left predictor

@@ -602,17 +602,14 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         EdgeSample: Fn(Av2LossyPlane, usize, usize) -> Av2Sample,
     {
         let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        let have_left = x0 > tile_origin_x;
-        let have_top = y0 > tile_origin_y;
-        if have_left && have_top {
-            edge_sample(plane, x0 - 1, y0 - 1)
-        } else if have_top {
-            edge_sample(plane, x0, y0 - 1)
-        } else if have_left {
-            edge_sample(plane, x0 - 1, y0)
-        } else {
-            av2_lossless_dc_predictor(self.bit_depth)
-        }
+        av2_above_left_predictor_from_edges(
+            self.bit_depth,
+            tile_origin_x,
+            tile_origin_y,
+            x0,
+            y0,
+            |x, y| edge_sample(plane, x, y),
+        )
     }
 
     fn directional_above_edge_with<EdgeSample>(
@@ -727,27 +724,14 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         context: Av2LossyLeafPredictorContext<'_>,
     ) -> Av2Sample {
         let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        let have_left = x0 > tile_origin_x;
-        let have_top = y0 > tile_origin_y;
-        if !have_left && !have_top {
-            return av2_lossless_dc_predictor(self.bit_depth);
-        }
-
-        let mut sum = 0u32;
-        let mut count = 0u32;
-        if have_top {
-            for x in x0..(x0 + TX4X4_SIZE) {
-                sum += u32::from(self.neighbor_sample_for_score(plane, x, y0 - 1, context));
-                count += 1;
-            }
-        }
-        if have_left {
-            for y in y0..(y0 + TX4X4_SIZE) {
-                sum += u32::from(self.neighbor_sample_for_score(plane, x0 - 1, y, context));
-                count += 1;
-            }
-        }
-        av2_reference_dc_average(sum, count)
+        av2_dc_predictor_from_edges(
+            self.bit_depth,
+            tile_origin_x,
+            tile_origin_y,
+            x0,
+            y0,
+            |x, y| self.neighbor_sample_for_score(plane, x, y, context),
+        )
     }
 
     fn h_predictor_for_score(
@@ -759,13 +743,15 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         context: Av2LossyLeafPredictorContext<'_>,
     ) -> Av2Sample {
         let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        if x0 > tile_origin_x {
-            self.neighbor_sample_for_score(plane, x0 - 1, y0 + local_y, context)
-        } else if y0 > tile_origin_y {
-            self.neighbor_sample_for_score(plane, x0, y0 - 1, context)
-        } else {
-            av2_lossless_h_pred_left_edge(self.bit_depth)
-        }
+        av2_h_predictor_from_edges(
+            self.bit_depth,
+            tile_origin_x,
+            tile_origin_y,
+            x0,
+            y0,
+            local_y,
+            |x, y| self.neighbor_sample_for_score(plane, x, y, context),
+        )
     }
 
     fn v_predictor_for_score(
@@ -777,13 +763,15 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         context: Av2LossyLeafPredictorContext<'_>,
     ) -> Av2Sample {
         let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        if y0 > tile_origin_y {
-            self.neighbor_sample_for_score(plane, x0 + local_x, y0 - 1, context)
-        } else if x0 > tile_origin_x {
-            self.neighbor_sample_for_score(plane, x0 - 1, y0, context)
-        } else {
-            av2_lossless_v_pred_above_edge(self.bit_depth)
-        }
+        av2_v_predictor_from_edges(
+            self.bit_depth,
+            tile_origin_x,
+            tile_origin_y,
+            x0,
+            y0,
+            local_x,
+            |x, y| self.neighbor_sample_for_score(plane, x, y, context),
+        )
     }
 
     fn above_left_predictor_for_score(
@@ -794,17 +782,14 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         context: Av2LossyLeafPredictorContext<'_>,
     ) -> Av2Sample {
         let (tile_origin_x, tile_origin_y) = self.plane_origin(plane);
-        let have_left = x0 > tile_origin_x;
-        let have_top = y0 > tile_origin_y;
-        if have_left && have_top {
-            self.neighbor_sample_for_score(plane, x0 - 1, y0 - 1, context)
-        } else if have_top {
-            self.neighbor_sample_for_score(plane, x0, y0 - 1, context)
-        } else if have_left {
-            self.neighbor_sample_for_score(plane, x0 - 1, y0, context)
-        } else {
-            av2_lossless_dc_predictor(self.bit_depth)
-        }
+        av2_above_left_predictor_from_edges(
+            self.bit_depth,
+            tile_origin_x,
+            tile_origin_y,
+            x0,
+            y0,
+            |x, y| self.neighbor_sample_for_score(plane, x, y, context),
+        )
     }
 
     fn smooth_edges(
