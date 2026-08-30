@@ -84,6 +84,8 @@ The following changes were behavior-preserving and independently validated:
   dedicated chroma-leaf module on the shared generator.
 - VVC chroma coefficient emission now lives in a dedicated residual-syntax
   module while retaining the common CABAC coefficient writer.
+- VVC luma CBF, transform-unit dispatch, and stored-coefficient emission now
+  live in a dedicated luma-residual module on the shared generator.
 - AV2 lossless intra/inter residual coefficient writers now live in a dedicated
   lossless-residual module, separate from lossy residual selection.
 - AV2 palette-specific luma residual emission now lives in a dedicated
