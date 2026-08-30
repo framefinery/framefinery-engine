@@ -60,6 +60,8 @@ The following changes were behavior-preserving and independently validated:
   pipeline.
 - AV2 regular transform-partition syntax writers now share a dedicated helper
   cluster for intra and inter paths.
+- AV2 residual scalar rounding, quantization-step, and TXB end-of-block
+  helpers now live in a shared residual-math module.
 - The optional `vvc-stats` feature was made independently compilable instead of
   implicitly depending on benchmark-only internals.
 

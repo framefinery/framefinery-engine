@@ -1,28 +1,7 @@
-fn round_div_i32(value: i32, divisor: i32) -> i32 {
-    debug_assert!(divisor > 0);
-    if value >= 0 {
-        (value + divisor / 2) / divisor
-    } else {
-        -((-value + divisor / 2) / divisor)
-    }
-}
-
-fn quantize_i32_to_step(value: i32, step: i32) -> i32 {
-    debug_assert!(step > 0);
-    round_div_i32(value, step) * step
-}
-
 const AV2_STATIC_CDF_TX_PARTITION_INTRA_DO_8X8: usize = 580;
 const AV2_STATIC_CDF_TX_PARTITION_INTRA_TYPE_8X8: usize = 581;
 const AV2_STATIC_CDF_TX_PARTITION_INTER_DO_8X8: usize = 582;
 const AV2_STATIC_CDF_TX_PARTITION_INTER_TYPE_8X8: usize = 583;
-
-fn quantized_txb_eob(coefficients: &[i32; TX4X4_SAMPLES]) -> usize {
-    TX4X4_SCAN
-        .iter()
-        .rposition(|&pos| coefficients[pos] != 0)
-        .map_or(0, |index| index + 1)
-}
 
 fn write_lossy_subsampled_residual_coefficients(
     writer: &mut Av2EntropyWriter,
