@@ -175,6 +175,8 @@ The following changes were behavior-preserving and independently validated:
   live in a dedicated syntax-helper module, separate from CABAC emission.
 - AV2 IDTX coefficient neighbor, magnitude, and sign-context helpers now live
   in a dedicated context module, separate from transform-block emission.
+- VVC luma AC candidate dispatch and RD selection now live in a dedicated
+  selection module, keeping candidate generation and reconstruction shared.
 - AV2 lossless DC, horizontal, vertical, and BDPCM proxy scoring now lives in a
   dedicated score module, separate from residual materialization.
 - AV2 lossy transform candidate selection and RD gates were separated from
