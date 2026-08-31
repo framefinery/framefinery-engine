@@ -1,18 +1,43 @@
-fn av2_idct4x4(input: &[i32; TX4X4_SAMPLES], bit_depth: SampleBitDepth) -> [i32; TX4X4_SAMPLES] {
-    let intermediate_bitdepth = i32::from(bit_depth.bits()) + 8;
-    let rng_min = -(1 << (intermediate_bitdepth - 1));
-    let rng_max = (1 << (intermediate_bitdepth - 1)) - 1;
-    let col_rng_min = -(1 << bit_depth.bits());
-    let col_rng_max = (1 << bit_depth.bits()) - 1;
+// The AV2 inverse-transform clipping ranges depend on bit depth, not geometry.
+// Geometry wrappers retain their kernel and shift selection below.
+#[derive(Clone, Copy)]
+struct Av2InverseTransformLimits {
+    intermediate_min: i32,
+    intermediate_max: i32,
+    output_min: i32,
+    output_max: i32,
+}
 
-    let mut block = *input;
-    for coeff in &mut block {
-        *coeff = (*coeff).clamp(rng_min, rng_max);
+impl Av2InverseTransformLimits {
+    fn for_bit_depth(bit_depth: SampleBitDepth) -> Self {
+        let intermediate_bit_depth = i32::from(bit_depth.bits()) + 8;
+        Self {
+            intermediate_min: -(1 << (intermediate_bit_depth - 1)),
+            intermediate_max: (1 << (intermediate_bit_depth - 1)) - 1,
+            output_min: -(1 << bit_depth.bits()),
+            output_max: (1 << bit_depth.bits()) - 1,
+        }
     }
 
-    let tmp = inv_dct4_pass(&block, 7, rng_min, rng_max);
-    let block = inv_dct4_pass(&tmp, 10, col_rng_min, col_rng_max);
-    block
+    fn clamp_intermediate(self, value: i32) -> i32 {
+        value.clamp(self.intermediate_min, self.intermediate_max)
+    }
+
+    fn clamp_output(self, value: i32) -> i32 {
+        value.clamp(self.output_min, self.output_max)
+    }
+
+    fn clamp_input<const SAMPLES: usize>(self, input: &[i32; SAMPLES]) -> [i32; SAMPLES] {
+        (*input).map(|coefficient| self.clamp_intermediate(coefficient))
+    }
+}
+
+fn av2_idct4x4(input: &[i32; TX4X4_SAMPLES], bit_depth: SampleBitDepth) -> [i32; TX4X4_SAMPLES] {
+    let limits = Av2InverseTransformLimits::for_bit_depth(bit_depth);
+    let block = limits.clamp_input(input);
+
+    let tmp = inv_dct4_pass(&block, 7, limits.intermediate_min, limits.intermediate_max);
+    inv_dct4_pass(&tmp, 10, limits.output_min, limits.output_max)
 }
 
 // A DC-only transform produces a constant block.  Keep the two rounded and
@@ -22,32 +47,26 @@ fn av2_idct4x4_dc_only(
     input: &[i32; TX4X4_SAMPLES],
     bit_depth: SampleBitDepth,
 ) -> [i32; TX4X4_SAMPLES] {
-    debug_assert!(input[1..].iter().all(|&coefficient| coefficient == 0));
-    let intermediate_bitdepth = i32::from(bit_depth.bits()) + 8;
-    let rng_min = -(1 << (intermediate_bitdepth - 1));
-    let rng_max = (1 << (intermediate_bitdepth - 1)) - 1;
-    let col_rng_min = -(1 << bit_depth.bits());
-    let col_rng_max = (1 << bit_depth.bits()) - 1;
-    let first_stage = ((AV2_DCT4_KERNEL[0][0] * input[0] + (1 << 6)) >> 7).clamp(rng_min, rng_max);
-    let sample =
-        ((AV2_DCT4_KERNEL[0][0] * first_stage + (1 << 9)) >> 10).clamp(col_rng_min, col_rng_max);
-    [sample; TX4X4_SAMPLES]
+    av2_idct_dc_only(
+        input,
+        AV2_DCT4_KERNEL[0][0],
+        10,
+        Av2InverseTransformLimits::for_bit_depth(bit_depth),
+    )
 }
 
 fn av2_idct8x8(input: &[i32; TX8X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32; TX8X8_SAMPLES] {
-    let intermediate_bitdepth = i32::from(bit_depth.bits()) + 8;
-    let rng_min = -(1 << (intermediate_bitdepth - 1));
-    let rng_max = (1 << (intermediate_bitdepth - 1)) - 1;
-    let col_rng_min = -(1 << bit_depth.bits());
-    let col_rng_max = (1 << bit_depth.bits()) - 1;
+    let limits = Av2InverseTransformLimits::for_bit_depth(bit_depth);
+    let block = limits.clamp_input(input);
 
-    let mut block = *input;
-    for coeff in &mut block {
-        *coeff = (*coeff).clamp(rng_min, rng_max);
-    }
-
-    let tmp = inv_dct8_pass(&block, 7, TX8X8_SIZE, rng_min, rng_max);
-    inv_dct8_pass(&tmp, 11, TX8X8_SIZE, col_rng_min, col_rng_max)
+    let tmp = inv_dct8_pass(
+        &block,
+        7,
+        TX8X8_SIZE,
+        limits.intermediate_min,
+        limits.intermediate_max,
+    );
+    inv_dct8_pass(&tmp, 11, TX8X8_SIZE, limits.output_min, limits.output_max)
 }
 
 // The 8x8 DC-only inverse has the same separable structure as the full
@@ -56,24 +75,29 @@ fn av2_idct8x8_dc_only(
     input: &[i32; TX8X8_SAMPLES],
     bit_depth: SampleBitDepth,
 ) -> [i32; TX8X8_SAMPLES] {
+    av2_idct_dc_only(
+        input,
+        AV2_DCT8_KERNEL[0][0],
+        11,
+        Av2InverseTransformLimits::for_bit_depth(bit_depth),
+    )
+}
+
+fn av2_idct_dc_only<const SAMPLES: usize>(
+    input: &[i32; SAMPLES],
+    dc_kernel: i32,
+    output_shift: u8,
+    limits: Av2InverseTransformLimits,
+) -> [i32; SAMPLES] {
     debug_assert!(input[1..].iter().all(|&coefficient| coefficient == 0));
-    let intermediate_bitdepth = i32::from(bit_depth.bits()) + 8;
-    let rng_min = -(1 << (intermediate_bitdepth - 1));
-    let rng_max = (1 << (intermediate_bitdepth - 1)) - 1;
-    let col_rng_min = -(1 << bit_depth.bits());
-    let col_rng_max = (1 << bit_depth.bits()) - 1;
-    let first_stage = ((AV2_DCT8_KERNEL[0][0] * input[0] + (1 << 6)) >> 7).clamp(rng_min, rng_max);
-    let sample =
-        ((AV2_DCT8_KERNEL[0][0] * first_stage + (1 << 10)) >> 11).clamp(col_rng_min, col_rng_max);
-    [sample; TX8X8_SAMPLES]
+    let first_stage = limits.clamp_intermediate((dc_kernel * input[0] + (1 << 6)) >> 7);
+    let output_add = 1 << (output_shift - 1);
+    let sample = limits.clamp_output((dc_kernel * first_stage + output_add) >> output_shift);
+    [sample; SAMPLES]
 }
 
 fn av2_idct4x8(input: &[i32; TX4X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32; TX4X8_SAMPLES] {
-    let intermediate_bitdepth = i32::from(bit_depth.bits()) + 8;
-    let rng_min = -(1 << (intermediate_bitdepth - 1));
-    let rng_max = (1 << (intermediate_bitdepth - 1)) - 1;
-    let col_rng_min = -(1 << bit_depth.bits());
-    let col_rng_max = (1 << bit_depth.bits()) - 1;
+    let limits = Av2InverseTransformLimits::for_bit_depth(bit_depth);
 
     let mut block = *input;
     for coeff in &mut block {
@@ -81,7 +105,7 @@ fn av2_idct4x8(input: &[i32; TX4X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32;
             i64::from(*coeff) * i64::from(AV2_NEW_INV_SQRT2),
             AV2_NEW_SQRT2_BITS,
         ) as i32;
-        *coeff = (*coeff).clamp(rng_min, rng_max);
+        *coeff = limits.clamp_intermediate(*coeff);
     }
 
     let mut intermediate = [0i32; TX4X8_SAMPLES];
@@ -92,7 +116,7 @@ fn av2_idct4x8(input: &[i32; TX4X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32;
             block[row * TX4X8_WIDTH + 2],
             block[row * TX4X8_WIDTH + 3],
         ];
-        let dst = inv_dct4_shifted(&src, 7, rng_min, rng_max);
+        let dst = inv_dct4_shifted(&src, 7, limits.intermediate_min, limits.intermediate_max);
         for col in 0..TX4X8_WIDTH {
             intermediate[col * TX4X8_HEIGHT + row] = dst[col];
         }
@@ -110,7 +134,7 @@ fn av2_idct4x8(input: &[i32; TX4X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32;
             intermediate[col * TX4X8_HEIGHT + 6],
             intermediate[col * TX4X8_HEIGHT + 7],
         ];
-        let dst = inv_dct8_shifted(&src, 10, col_rng_min, col_rng_max);
+        let dst = inv_dct8_shifted(&src, 10, limits.output_min, limits.output_max);
         for row in 0..TX4X8_HEIGHT {
             output[row * TX4X8_WIDTH + col] = dst[row];
         }
@@ -215,41 +239,40 @@ fn inv_dct4_pass(
 mod dc_only_tests {
     use super::*;
 
-    #[test]
-    fn dc_only_inverse_matches_full_inverse() {
+    const DC_VALUES: [i32; 13] = [
+        -1_000_000, -131_073, -32_769, -32_768, -1_024, -1, 0, 1, 1_024, 32_767, 32_768, 131_072,
+        1_000_000,
+    ];
+
+    fn assert_dc_only_matches_full<const SAMPLES: usize>(
+        geometry: &str,
+        dc_only: fn(&[i32; SAMPLES], SampleBitDepth) -> [i32; SAMPLES],
+        full: fn(&[i32; SAMPLES], SampleBitDepth) -> [i32; SAMPLES],
+    ) {
         for bit_depth in [
             SampleBitDepth::new(8).unwrap(),
             SampleBitDepth::new(10).unwrap(),
             SampleBitDepth::new(12).unwrap(),
         ] {
-            for dc in [-32768, -1024, -1, 0, 1, 1024, 32767] {
-                let mut coefficients = [0; TX4X4_SAMPLES];
+            for dc in DC_VALUES {
+                let mut coefficients = [0; SAMPLES];
                 coefficients[0] = dc;
                 assert_eq!(
-                    av2_idct4x4_dc_only(&coefficients, bit_depth),
-                    av2_idct4x4(&coefficients, bit_depth),
-                    "DC-only inverse mismatch for {bit_depth:?}, dc={dc}"
+                    dc_only(&coefficients, bit_depth),
+                    full(&coefficients, bit_depth),
+                    "{geometry} DC-only inverse mismatch for {bit_depth:?}, dc={dc}"
                 );
             }
         }
     }
 
     #[test]
+    fn dc_only_inverse_matches_full_inverse() {
+        assert_dc_only_matches_full("4x4", av2_idct4x4_dc_only, av2_idct4x4);
+    }
+
+    #[test]
     fn dc_only_inverse_8x8_matches_full_inverse() {
-        for bit_depth in [
-            SampleBitDepth::new(8).unwrap(),
-            SampleBitDepth::new(10).unwrap(),
-            SampleBitDepth::new(12).unwrap(),
-        ] {
-            for dc in [-32768, -1024, -1, 0, 1, 1024, 32767] {
-                let mut coefficients = [0; TX8X8_SAMPLES];
-                coefficients[0] = dc;
-                assert_eq!(
-                    av2_idct8x8_dc_only(&coefficients, bit_depth),
-                    av2_idct8x8(&coefficients, bit_depth),
-                    "8x8 DC-only inverse mismatch for {bit_depth:?}, dc={dc}"
-                );
-            }
-        }
+        assert_dc_only_matches_full("8x8", av2_idct8x8_dc_only, av2_idct8x8);
     }
 }
