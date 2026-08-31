@@ -208,3 +208,107 @@ fn score_chroma_mode_candidate(
         )
     }
 }
+
+fn vvc_chroma_lossless_speed_skips_near_exact_explicit_search(
+    policy: VvcResidualCodingPolicy,
+    best_score: u64,
+    chroma_width: usize,
+    chroma_height: usize,
+) -> bool {
+    policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+        && best_score <= vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
+}
+
+fn vvc_chroma_fast_search_uses_derived_only(policy: VvcResidualCodingPolicy) -> bool {
+    // Derived-only chroma is a lossless-speed shortcut for lossless mode.
+    // Lossy probes rely on the shared RD selector to reject explicit and CCLM
+    // candidates when the derived chroma mode is better.
+    policy.fast_search() == VvcFastSearch::LosslessSpeed
+        && policy.residual_mode() == VvcResidualCodingMode::Lossless
+}
+
+fn vvc_chroma_explicit_candidate_allowed_for_search(
+    policy: VvcResidualCodingPolicy,
+    mode: VvcIntraPredictionMode,
+) -> bool {
+    if !vvc_residual_chroma_explicit_candidate_allowed(mode) {
+        return false;
+    }
+    if policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+    {
+        return false;
+    }
+    if policy.residual_mode() == VvcResidualCodingMode::Lossy
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+        && matches!(mode, VvcIntraPredictionMode::Dc)
+    {
+        return false;
+    }
+    true
+}
+
+fn vvc_chroma_cclm_fast_search_allowed(
+    policy: VvcResidualCodingPolicy,
+    best_score: u64,
+    chroma_width: usize,
+    chroma_height: usize,
+) -> bool {
+    if policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+    {
+        return false;
+    }
+    match policy.fast_search() {
+        VvcFastSearch::Off | VvcFastSearch::Conservative => true,
+        VvcFastSearch::LosslessSpeed if policy.residual_mode() == VvcResidualCodingMode::Lossy => {
+            policy.chroma_sampling() == ChromaSampling::Cs444
+        }
+        VvcFastSearch::Moderate | VvcFastSearch::LosslessSpeed => {
+            best_score > vvc_chroma_cclm_fast_search_score(policy, chroma_width, chroma_height)
+        }
+        VvcFastSearch::Aggressive => {
+            best_score
+                > vvc_chroma_fast_search_low_residual_score(policy, chroma_width, chroma_height)
+        }
+    }
+}
+
+fn vvc_chroma_fast_search_near_exact_score(
+    policy: VvcResidualCodingPolicy,
+    chroma_width: usize,
+    chroma_height: usize,
+) -> u64 {
+    if policy.residual_mode() == VvcResidualCodingMode::Lossless {
+        64
+    } else {
+        (chroma_width as u64)
+            .saturating_mul(chroma_height as u64)
+            .saturating_mul(2)
+            .saturating_mul(64)
+    }
+}
+
+fn vvc_chroma_cclm_fast_search_score(
+    policy: VvcResidualCodingPolicy,
+    chroma_width: usize,
+    chroma_height: usize,
+) -> u64 {
+    if policy.residual_mode() == VvcResidualCodingMode::Lossless
+        && policy.fast_search() == VvcFastSearch::LosslessSpeed
+    {
+        256
+    } else {
+        vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
+    }
+}
+
+fn vvc_chroma_fast_search_low_residual_score(
+    policy: VvcResidualCodingPolicy,
+    chroma_width: usize,
+    chroma_height: usize,
+) -> u64 {
+    vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
+        .saturating_mul(4)
+}

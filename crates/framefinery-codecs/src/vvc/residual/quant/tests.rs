@@ -193,6 +193,71 @@ fn vvc_luma_intra_search_promotes_only_strict_winners_and_records_ties() {
 }
 
 #[test]
+fn vvc_luma_candidate_evaluator_shares_dc_planar_and_directional_scoring() {
+    let frame = sampled_luma_frame(
+        8,
+        8,
+        (0..8)
+            .flat_map(|y| (0..8).map(move |x| ((x * 11 + y * 7) & 0xff) as VvcSample))
+            .collect(),
+    );
+    let frame_recon = VvcReconstructionFrame::new_neutral(frame.geometry, frame.format);
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
+    let policy = VvcResidualCodingPolicy::new(frame.format, VvcResidualCodingMode::Lossy);
+    let mode_search_state = VvcLumaModeSearchState::new_for_geometry(frame.geometry);
+    let context = VvcLumaModeSearchContext {
+        policy,
+        metric: policy.score_metric(),
+        source_frame: &frame,
+        frame_recon: &frame_recon,
+        mode_search_state: &mode_search_state,
+        node,
+        left: None,
+        above: None,
+    };
+
+    for mode in [
+        VvcIntraPredictionMode::Dc,
+        VvcIntraPredictionMode::Planar,
+        VvcIntraPredictionMode::Angular(42),
+    ] {
+        let mut cache = VvcLumaModeRdCache::new();
+        cache.reset(policy, node);
+        let mut prediction_scratch = VvcDcPredictionScratch::default();
+        let mut predicted = Vec::new();
+        let mut residuals = Vec::new();
+        #[cfg(feature = "vvc-stats")]
+        let mut stats = VvcIntraSearchStats::default();
+        #[cfg(not(feature = "vvc-stats"))]
+        let mut stats = VvcIntraSearchStats;
+
+        let score = context.predict_and_score_candidate(
+            &mut cache,
+            mode,
+            &mut prediction_scratch,
+            &mut predicted,
+            &mut residuals,
+            &mut stats,
+        );
+        assert_eq!(
+            score,
+            luma_prediction_mode_selection_score(
+                policy.score_metric(),
+                &frame,
+                node,
+                &predicted,
+                None,
+                None,
+                mode,
+            ),
+            "mode={mode:?}",
+        );
+        assert_eq!(predicted.len(), 64, "mode={mode:?}");
+        assert_eq!(residuals.len(), 64, "mode={mode:?}");
+    }
+}
+
+#[test]
 fn vvc_luma_tu_metadata_records_each_exit_without_cross_talk() {
     let mut metadata = VvcLumaTuMetadata::new();
     let scc_decision = VvcLumaSccDecision::IbcExact(VvcLumaIbcDecision {

@@ -3,7 +3,6 @@ include!("luma_tu_metadata.rs");
 include!("chroma_tu_metadata.rs");
 include!("ctu.rs");
 include!("ctu_mode_selection.rs");
-include!("mode_selection_helpers.rs");
 include!("trace.rs");
 include!("rd_cache.rs");
 include!("luma_mode.rs");

@@ -240,156 +240,29 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         }
         #[cfg(feature = "vvc-stats")]
         let luma_mode_search_start = StageStart::now();
-        let initial_luma_score = if !vvc_luma_lossless_speed_skips_dc(policy) {
-            #[cfg(feature = "vvc-stats")]
-            let prediction_start = StageStart::now();
-            predict_vvc_luma_intra_block_into_with_availability(
-                &mut predicted_luma,
-                &mut prediction_scratch,
-                VvcIntraPredictionMode::Dc,
-                &frame_recon.luma,
-                frame_recon.coded_geometry(),
-                node,
-                source_frame.format.bit_depth,
-                Some(frame_recon.luma_availability()),
-            );
-            #[cfg(feature = "vvc-stats")]
-            intra_search_stats.add_luma_prediction_nanos(
-                VvcLumaPredictionStatsFamily::Dc,
-                vvc_elapsed_nanos(prediction_start),
-            );
-            #[cfg(feature = "vvc-stats")]
-            let score_start = StageStart::now();
-            let dc_score = score_luma_mode_candidate(
-                &mut luma_rd_cache,
-                score_metric,
-                VvcIntraPredictionMode::Dc,
-                source_frame,
-                node,
-                &predicted_luma,
-                left_luma_mode,
-                above_luma_mode,
-                &mut candidate_luma_residuals,
-                &mut intra_search_stats,
-            );
-            #[cfg(feature = "vvc-stats")]
-            intra_search_stats.add_luma_mode_score_nanos(vvc_elapsed_nanos(score_start));
-            #[cfg(feature = "vvc-stats")]
-            intra_search_stats.add_luma_dc();
-            dc_score
-        } else {
-            u64::MAX
-        };
-        let mut luma_search = VvcLumaIntraSearch::new(initial_luma_score);
-        if policy.luma_planar_candidate_allowed(node)
-            && vvc_luma_lossless_speed_evaluates_planar(policy, left_luma_mode, above_luma_mode)
-        {
-            let candidate_score = score_vvc_luma_planar_candidate(
-                &mut luma_rd_cache,
-                score_metric,
-                source_frame,
-                frame_recon,
-                node,
-                left_luma_mode,
-                above_luma_mode,
-                &mut prediction_scratch,
-                &mut candidate_luma_prediction,
-                &mut candidate_luma_residuals,
-                &mut intra_search_stats,
-            );
-            #[cfg(feature = "vvc-stats")]
-            intra_search_stats.add_luma_planar();
-            luma_search.consider_candidate(
-                VvcIntraPredictionMode::Planar,
-                candidate_score,
-                &mut predicted_luma,
-                &mut candidate_luma_prediction,
-            );
-        }
-        if policy.luma_directional_candidate_allowed(node)
-            && !vvc_luma_exact_min_syntax_mode_search_done(luma_search.best_score())
-        {
-            let luma_search_context = VvcLumaModeSearchContext {
+        let VvcLumaModeSearchResult {
+            mode: raw_luma_mode,
+            candidate_costs: luma_candidate_costs,
+        } = {
+            let search_context = VvcLumaModeSearchContext {
+                policy,
                 metric: score_metric,
                 source_frame,
                 frame_recon,
+                mode_search_state: luma_mode_search_state,
                 node,
                 left: left_luma_mode,
                 above: above_luma_mode,
             };
-            let mut luma_directional_candidates = vvc_luma_directional_search_candidates(
-                policy,
-                source_frame,
-                &luma_mode_search_state,
-                node,
-            );
-            for mode in luma_directional_candidates.iter() {
-                let candidate_score = luma_search_context
-                    .predict_and_score_directional_candidate(
-                    &mut luma_rd_cache,
-                    mode,
-                    &mut prediction_scratch,
-                    &mut candidate_luma_prediction,
-                    &mut candidate_luma_residuals,
-                    &mut intra_search_stats,
-                );
-                #[cfg(feature = "vvc-stats")]
-                intra_search_stats.add_luma_directional_coarse();
-                luma_search.consider_candidate(
-                    mode,
-                    candidate_score,
-                    &mut predicted_luma,
-                    &mut candidate_luma_prediction,
-                );
-                if vvc_luma_exact_min_syntax_mode_search_done(luma_search.best_score()) {
-                    break;
-                }
-            }
-            if (2..=66).contains(&luma_search.best_mode().luma_mode_index())
-                && !vvc_luma_exact_min_syntax_mode_search_done(luma_search.best_score())
-                && !vvc_luma_lossless_speed_skips_directional_refinement(policy)
-            {
-                let refinement_start = luma_directional_candidates.count();
-                let refinement_fast_search =
-                    if policy.residual_mode() == VvcResidualCodingMode::Lossy
-                        && policy.fast_search() == VvcFastSearch::LosslessSpeed
-                    {
-                        VvcFastSearch::Off
-                    } else {
-                        policy.fast_search()
-                    };
-                luma_directional_candidates.add_refinement(
-                    luma_search.best_mode().luma_mode_index(),
-                    refinement_fast_search,
-                );
-                for mode in luma_directional_candidates.iter_from(refinement_start) {
-                    let candidate_score = luma_search_context
-                        .predict_and_score_directional_candidate(
-                        &mut luma_rd_cache,
-                        mode,
-                        &mut prediction_scratch,
-                        &mut candidate_luma_prediction,
-                        &mut candidate_luma_residuals,
-                        &mut intra_search_stats,
-                    );
-                    #[cfg(feature = "vvc-stats")]
-                    intra_search_stats.add_luma_directional_refinement();
-                    luma_search.consider_candidate(
-                        mode,
-                        candidate_score,
-                        &mut predicted_luma,
-                        &mut candidate_luma_prediction,
-                    );
-                    if vvc_luma_exact_min_syntax_mode_search_done(luma_search.best_score()) {
-                        break;
-                    }
-                }
-            }
-        }
-        let luma_candidate_costs = luma_search.candidate_costs();
-        let raw_luma_mode = policy.select_luma_intra_mode(node, luma_candidate_costs);
-        debug_assert_eq!(raw_luma_mode, luma_search.best_mode());
-        let _best_luma_score = luma_search.best_score();
+            search_context.select_intra_mode(VvcLumaModeSearchBuffers {
+                cache: &mut luma_rd_cache,
+                prediction_scratch: &mut prediction_scratch,
+                selected_prediction: &mut predicted_luma,
+                candidate_prediction: &mut candidate_luma_prediction,
+                candidate_residuals: &mut candidate_luma_residuals,
+                stats: &mut intra_search_stats,
+            })
+        };
         #[cfg(feature = "vvc-stats")]
         intra_search_stats
             .add_luma_mode_search_nanos(luma_mode_search_start.elapsed().as_nanos() as u64);
