@@ -367,6 +367,75 @@ fn vvc_ctu_quant_scratch_reuse_is_bit_exact_and_retains_allocations() {
 }
 
 #[test]
+fn vvc_ctu_quant_scratch_clears_transient_sample_buffers_without_reallocation() {
+    let mut scratch = VvcCtuQuantScratch::default();
+    for buffer in [
+        &mut scratch.predicted_luma,
+        &mut scratch.predicted_cb,
+        &mut scratch.predicted_cr,
+        &mut scratch.candidate_luma_prediction,
+        &mut scratch.candidate_cb_prediction,
+        &mut scratch.candidate_cr_prediction,
+    ] {
+        buffer.extend([1, 2, 3]);
+    }
+    for buffer in [
+        &mut scratch.reconstructed_residual,
+        &mut scratch.luma_residuals,
+        &mut scratch.candidate_luma_residuals,
+        &mut scratch.cb_residuals,
+        &mut scratch.cr_residuals,
+        &mut scratch.candidate_cb_residuals,
+        &mut scratch.candidate_cr_residuals,
+    ] {
+        buffer.extend([-1, 0, 1]);
+    }
+    let capacities = |scratch: &VvcCtuQuantScratch| {
+        [
+            scratch.predicted_luma.capacity(),
+            scratch.predicted_cb.capacity(),
+            scratch.predicted_cr.capacity(),
+            scratch.reconstructed_residual.capacity(),
+            scratch.luma_residuals.capacity(),
+            scratch.candidate_luma_prediction.capacity(),
+            scratch.candidate_luma_residuals.capacity(),
+            scratch.cb_residuals.capacity(),
+            scratch.cr_residuals.capacity(),
+            scratch.candidate_cb_prediction.capacity(),
+            scratch.candidate_cr_prediction.capacity(),
+            scratch.candidate_cb_residuals.capacity(),
+            scratch.candidate_cr_residuals.capacity(),
+        ]
+    };
+    let original_capacities = capacities(&scratch);
+
+    scratch.clear_transient_sample_buffers();
+
+    for buffer in [
+        &scratch.predicted_luma,
+        &scratch.predicted_cb,
+        &scratch.predicted_cr,
+        &scratch.candidate_luma_prediction,
+        &scratch.candidate_cb_prediction,
+        &scratch.candidate_cr_prediction,
+    ] {
+        assert!(buffer.is_empty());
+    }
+    for buffer in [
+        &scratch.reconstructed_residual,
+        &scratch.luma_residuals,
+        &scratch.candidate_luma_residuals,
+        &scratch.cb_residuals,
+        &scratch.cr_residuals,
+        &scratch.candidate_cb_residuals,
+        &scratch.candidate_cr_residuals,
+    ] {
+        assert!(buffer.is_empty());
+    }
+    assert_eq!(capacities(&scratch), original_capacities);
+}
+
+#[test]
 fn vvc_ctu_quantization_result_uses_shared_metadata_and_chroma_finalization() {
     let mut frame = sampled_luma_frame(8, 8, vec![200; 64]);
     frame.cb.fill(201);

@@ -134,6 +134,24 @@ impl Default for VvcCtuQuantScratch {
     }
 }
 
+impl VvcCtuQuantScratch {
+    fn clear_transient_sample_buffers(&mut self) {
+        self.predicted_luma.clear();
+        self.predicted_cb.clear();
+        self.predicted_cr.clear();
+        self.reconstructed_residual.clear();
+        self.luma_residuals.clear();
+        self.candidate_luma_prediction.clear();
+        self.candidate_luma_residuals.clear();
+        self.cb_residuals.clear();
+        self.cr_residuals.clear();
+        self.candidate_cb_prediction.clear();
+        self.candidate_cr_prediction.clear();
+        self.candidate_cb_residuals.clear();
+        self.candidate_cr_residuals.clear();
+    }
+}
+
 // Wider temporal reuse avoids intra-search work on changed predictive CTUs.
 // The 50-frame screen-content sweep kept lossless PSNR exact and showed a
 // better speed/byte tradeoff at 16 than adjacent wider thresholds.

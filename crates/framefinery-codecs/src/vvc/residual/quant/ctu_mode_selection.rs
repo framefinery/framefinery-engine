@@ -15,6 +15,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     selected_luma_inter_decisions: Option<&mut [Option<VvcLumaInterDecision>; MAX_VVC_LUMA_TUS]>,
     temporal_mode_hints: Option<&VvcQuantizedColor>,
 ) -> VvcQuantizedColor {
+    scratch.clear_transient_sample_buffers();
     let VvcCtuQuantScratch {
         luma_nodes,
         chroma_nodes,
@@ -36,19 +37,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         candidate_cr_residuals,
         chroma_rd_cache,
     } = scratch;
-    predicted_luma.clear();
-    predicted_cb.clear();
-    predicted_cr.clear();
-    reconstructed_residual.clear();
-    luma_residuals.clear();
-    candidate_luma_prediction.clear();
-    candidate_luma_residuals.clear();
-    cb_residuals.clear();
-    cr_residuals.clear();
-    candidate_cb_prediction.clear();
-    candidate_cr_prediction.clear();
-    candidate_cb_residuals.clear();
-    candidate_cr_residuals.clear();
     #[cfg(feature = "vvc-stats")]
     let mut intra_search_stats = VvcIntraSearchStats::default();
     #[cfg(not(feature = "vvc-stats"))]

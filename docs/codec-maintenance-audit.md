@@ -397,8 +397,12 @@ The following changes were behavior-preserving and independently validated:
   only promotion boundary.
 - VVC CTU residual quantization now borrows every reusable scratch field
   directly instead of taking vectors and replacing caches before restoring
-  them at the function tail. A repeated-use test proves bit-exact codec state,
-  reconstruction identity, and retention of all reusable vector capacities.
+  them at the function tail. The scratch record owns one reset operation for
+  all 13 transient selected/candidate sample buffers while node construction,
+  prediction scratch, transform scratch, and RD caches retain their narrower
+  reset contracts. Direct lifecycle and repeated-use tests prove cleared
+  lengths, retained capacities, bit-exact codec state, and reconstruction
+  identity.
 - VVC CTU metadata fan-in, sampled-color finalization, TU counts, and optional
   statistics now produce `VvcQuantizedColor` through one focused 107-line
   result sibling. Every coding-mode exit reaches that assembler, and its
@@ -455,7 +459,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | approximately 2,616 lines after removing disabled leaf-skip syntax | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 477-line CTU helper, 175-line CTU orchestrator plus a 10-line shared immutable context, focused 175/210-line luma/chroma passes, and a 107-line result assembler, 424/304-line luma/chroma TU selection orchestration plus a 123-line chroma temporal helper, 275/443-line search helpers, a 416-line luma mode helper, and 312/440/289-line chroma mode/BDPCM/RD helpers | top-level traversal ownership and shared immutable setup are explicit; remaining work should centralize transient scratch lifecycle and inspect lower selectors without hiding component-specific selection, syntax, or reconstruction contracts |
+| VVC residual quantization | 486-line CTU helper, 163-line CTU orchestrator plus a 10-line shared immutable context, focused 175/210-line luma/chroma passes, and a 107-line result assembler, 424/304-line luma/chroma TU selection orchestration plus a 123-line chroma temporal helper, 275/443-line search helpers, a 416-line luma mode helper, and 312/440/289-line chroma mode/BDPCM/RD helpers | top-level traversal, shared immutable setup, and transient sample-buffer lifecycle are explicit; remaining work should inspect lower selectors without hiding component-specific selection, syntax, or reconstruction contracts |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2
