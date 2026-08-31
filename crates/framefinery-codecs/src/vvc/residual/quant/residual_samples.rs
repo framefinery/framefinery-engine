@@ -58,6 +58,38 @@ pub(in crate::vvc) fn residual_luma_tu_at_into(
     debug_assert_eq!(residuals.len(), predicted.len());
 }
 
+#[inline]
+fn materialize_vvc_luma_tu_residuals(
+    residuals: &mut Vec<i16>,
+    frame: &VvcSampledFrame,
+    node: VvcCodingTreeNode,
+    predicted: &[VvcSample],
+    stats: &mut VvcIntraSearchStats,
+) -> u64 {
+    #[cfg(feature = "vvc-stats")]
+    let residual_start = StageStart::now();
+    residual_luma_tu_at_into(
+        residuals,
+        frame,
+        usize::from(node.x),
+        usize::from(node.y),
+        usize::from(node.width),
+        usize::from(node.height),
+        predicted,
+    );
+    #[cfg(feature = "vvc-stats")]
+    {
+        let nanos = vvc_elapsed_nanos(residual_start);
+        stats.add_luma_residual_build_nanos(nanos);
+        nanos
+    }
+    #[cfg(not(feature = "vvc-stats"))]
+    {
+        let _ = stats;
+        0
+    }
+}
+
 pub(in crate::vvc) fn residual_chroma_tu_at_into(
     residuals: &mut Vec<i16>,
     samples: &[VvcSample],

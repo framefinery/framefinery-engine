@@ -74,6 +74,26 @@ fn test_intra_search_stats() -> VvcIntraSearchStats {
 }
 
 #[test]
+fn vvc_luma_residual_materializer_matches_scalar_residuals() {
+    let frame = sampled_luma_frame(
+        4,
+        4,
+        vec![0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60],
+    );
+    let node = VvcCodingTreeNode::root(4, 4, VvcTreeType::DualTreeLuma);
+    let prediction = vec![3; 16];
+    let mut residuals = Vec::new();
+    let mut stats = test_intra_search_stats();
+
+    materialize_vvc_luma_tu_residuals(&mut residuals, &frame, node, &prediction, &mut stats);
+
+    assert_eq!(
+        residuals,
+        vec![-3, 1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57]
+    );
+}
+
+#[test]
 fn vvc_luma_rd_cache_transfers_only_present_candidate_residuals() {
     let frame = sampled_luma_frame(8, 8, vec![128; 64]);
     let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);

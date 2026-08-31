@@ -81,23 +81,17 @@ fn select_vvc_luma_mrl_prediction(
             stats.add_luma_prediction_nanos(VvcLumaPredictionStatsFamily::Mrl, nanos);
             stats.add_luma_rd_prediction_nanos(nanos);
         }
-        #[cfg(feature = "vvc-stats")]
-        let residual_start = StageStart::now();
-        residual_luma_tu_at_into(
+        let residual_nanos = materialize_vvc_luma_tu_residuals(
             candidate_residuals,
             source_frame,
-            usize::from(node.x),
-            usize::from(node.y),
-            usize::from(node.width),
-            usize::from(node.height),
+            node,
             candidate_prediction,
+            stats,
         );
         #[cfg(feature = "vvc-stats")]
-        {
-            let nanos = vvc_elapsed_nanos(residual_start);
-            stats.add_luma_residual_build_nanos(nanos);
-            stats.add_luma_rd_residual_build_nanos(nanos);
-        }
+        stats.add_luma_rd_residual_build_nanos(residual_nanos);
+        #[cfg(not(feature = "vvc-stats"))]
+        let _ = residual_nanos;
         #[cfg(feature = "vvc-stats")]
         let score_start = StageStart::now();
         let candidate = score_vvc_luma_mrl_candidate(
@@ -232,19 +226,13 @@ fn select_vvc_luma_bdpcm_prediction(
                 VvcLumaPredictionStatsFamily::Bdpcm,
                 vvc_elapsed_nanos(prediction_start),
             );
-            #[cfg(feature = "vvc-stats")]
-            let residual_start = StageStart::now();
-            residual_luma_tu_at_into(
+            materialize_vvc_luma_tu_residuals(
                 candidate_residuals,
                 source_frame,
-                usize::from(node.x),
-                usize::from(node.y),
-                usize::from(node.width),
-                usize::from(node.height),
+                node,
                 candidate_prediction,
+                stats,
             );
-            #[cfg(feature = "vvc-stats")]
-            stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         }
         #[cfg(feature = "vvc-stats")]
         let score_start = StageStart::now();

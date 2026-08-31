@@ -99,19 +99,13 @@ impl VvcLumaTuSelectionContext<'_> {
         stats.add_luma_mode_search_nanos(mode_search_start.elapsed().as_nanos() as u64);
 
         if !cache.take_residuals_if_present(raw_mode, selected_residuals) {
-            #[cfg(feature = "vvc-stats")]
-            let residual_start = StageStart::now();
-            residual_luma_tu_at_into(
+            materialize_vvc_luma_tu_residuals(
                 selected_residuals,
                 self.source_frame,
-                usize::from(self.node.x),
-                usize::from(self.node.y),
-                usize::from(self.node.width),
-                usize::from(self.node.height),
+                self.node,
                 selected_prediction,
+                stats,
             );
-            #[cfg(feature = "vvc-stats")]
-            stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         }
 
         #[cfg(feature = "vvc-stats")]
@@ -282,7 +276,13 @@ impl VvcLumaTuSelectionContext<'_> {
                 VvcLumaPredictionStatsFamily::Bdpcm,
                 vvc_elapsed_nanos(prediction_start),
             );
-            self.materialize_temporal_hint_residual(predicted_luma, luma_residuals, stats);
+            materialize_vvc_luma_tu_residuals(
+                luma_residuals,
+                self.source_frame,
+                self.node,
+                predicted_luma,
+                stats,
+            );
             if !self.temporal_hint_residual_is_cheap(luma_residuals) {
                 return None;
             }
@@ -334,7 +334,13 @@ impl VvcLumaTuSelectionContext<'_> {
                 vvc_luma_prediction_stats_family(hint.mode),
                 vvc_elapsed_nanos(prediction_start),
             );
-            self.materialize_temporal_hint_residual(predicted_luma, luma_residuals, stats);
+            materialize_vvc_luma_tu_residuals(
+                luma_residuals,
+                self.source_frame,
+                self.node,
+                predicted_luma,
+                stats,
+            );
             if !self.temporal_hint_residual_is_cheap(luma_residuals) {
                 return None;
             }
@@ -348,29 +354,6 @@ impl VvcLumaTuSelectionContext<'_> {
             residual: preselected_residual,
             inter_decision: None,
         })
-    }
-
-    fn materialize_temporal_hint_residual(
-        &self,
-        predicted_luma: &[VvcSample],
-        luma_residuals: &mut Vec<i16>,
-        stats: &mut VvcIntraSearchStats,
-    ) {
-        #[cfg(feature = "vvc-stats")]
-        let residual_start = StageStart::now();
-        residual_luma_tu_at_into(
-            luma_residuals,
-            self.source_frame,
-            usize::from(self.node.x),
-            usize::from(self.node.y),
-            usize::from(self.node.width),
-            usize::from(self.node.height),
-            predicted_luma,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-        #[cfg(not(feature = "vvc-stats"))]
-        let _ = stats;
     }
 
     fn temporal_hint_residual_is_cheap(&self, residuals: &[i16]) -> bool {

@@ -400,19 +400,13 @@ fn select_vvc_luma_explicit_inter_candidate(
     ) {
         return None;
     }
-    #[cfg(feature = "vvc-stats")]
-    let residual_start = StageStart::now();
-    residual_luma_tu_at_into(
+    materialize_vvc_luma_tu_residuals(
         inter_residuals,
         source_frame,
-        usize::from(node.x),
-        usize::from(node.y),
-        usize::from(node.width),
-        usize::from(node.height),
+        node,
         inter_prediction,
+        stats,
     );
-    #[cfg(feature = "vvc-stats")]
-    stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
 
     let inter_coding_decision =
         policy.select_luma_tu_coding_decision(node, VvcIntraPredictionMode::Dc);

@@ -13,19 +13,7 @@ fn score_luma_mode_candidate(
     #[cfg(not(feature = "vvc-stats"))]
     let _ = stats;
     if cache.materializes_mode_search_residuals() {
-        #[cfg(feature = "vvc-stats")]
-        let residual_start = StageStart::now();
-        residual_luma_tu_at_into(
-            residuals,
-            source_frame,
-            usize::from(node.x),
-            usize::from(node.y),
-            usize::from(node.width),
-            usize::from(node.height),
-            predicted,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+        materialize_vvc_luma_tu_residuals(residuals, source_frame, node, predicted, stats);
         let score = luma_residual_mode_selection_score(metric, residuals, left, above, mode);
         cache.consider(mode, score, residuals);
         score
@@ -188,23 +176,17 @@ fn select_vvc_luma_mode_with_rd_refinement(
             stats.add_luma_rd_prediction_nanos(nanos);
             stats.add_luma_prediction_nanos(vvc_luma_prediction_stats_family(mode), nanos);
         }
-        #[cfg(feature = "vvc-stats")]
-        let residual_start = StageStart::now();
-        residual_luma_tu_at_into(
+        let residual_nanos = materialize_vvc_luma_tu_residuals(
             candidate_residuals,
             source_frame,
-            usize::from(node.x),
-            usize::from(node.y),
-            usize::from(node.width),
-            usize::from(node.height),
+            node,
             candidate_prediction,
+            stats,
         );
         #[cfg(feature = "vvc-stats")]
-        {
-            let nanos = vvc_elapsed_nanos(residual_start);
-            stats.add_luma_rd_residual_build_nanos(nanos);
-            stats.add_luma_residual_build_nanos(nanos);
-        }
+        stats.add_luma_rd_residual_build_nanos(residual_nanos);
+        #[cfg(not(feature = "vvc-stats"))]
+        let _ = residual_nanos;
         #[cfg(feature = "vvc-stats")]
         let score_start = StageStart::now();
         let rd_candidate = score_vvc_luma_mode_rd_candidate(
