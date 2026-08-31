@@ -1,13 +1,14 @@
 impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
-    fn emit_chroma_visible_qt_split(
+    fn emit_chroma_qt_split(
         &mut self,
         cabac: &mut VvcCabacEncoder,
         node: VvcCodingTreeNode,
         split: VvcChromaSplitAvailability,
+        write_split_flag: bool,
         neighbours: &VvcChromaNeighbourState,
     ) {
         let qt_ctx = Self::chroma_qt_split_ctx(node, neighbours);
-        if split.can_no {
+        if write_split_flag && split.can_no {
             self.contexts.encode_split_flag(
                 cabac,
                 Self::chroma_split_ctx(node, split, neighbours),
@@ -19,15 +20,28 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         }
     }
 
-    fn emit_chroma_visible_mtt_split(
+    fn emit_chroma_bt_split(
         &mut self,
         cabac: &mut VvcCabacEncoder,
         node: VvcCodingTreeNode,
         split: VvcChromaSplitAvailability,
         vertical: bool,
-        binary: bool,
+        write_split_flag: bool,
         neighbours: &VvcChromaNeighbourState,
     ) {
+        if !write_split_flag {
+            // H.266 7.3.11.4 still signals split_qt_flag for an implicit
+            // boundary BT when both QT and BTT are available; split_cu_flag,
+            // direction, and binary/ternary choice are inferred.
+            if split.allow_qt && split.allow_btt() {
+                self.contexts.encode_split_qt_flag(
+                    cabac,
+                    Self::chroma_qt_split_ctx(node, neighbours),
+                    false,
+                );
+            }
+            return;
+        }
         debug_assert!(!split.allow_qt || split.allow_btt());
         if split.can_no {
             self.contexts.encode_split_flag(
@@ -65,27 +79,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             self.contexts.encode_mtt_split_cu_binary_flag(
                 cabac,
                 VvcCtuCabacOp::mtt_binary_ctx(vertical, node.mtt_depth),
-                binary,
-            );
-        }
-    }
-
-    fn emit_chroma_boundary_bt_split(
-        &mut self,
-        cabac: &mut VvcCabacEncoder,
-        node: VvcCodingTreeNode,
-        split: VvcChromaSplitAvailability,
-        _vertical: bool,
-        neighbours: &VvcChromaNeighbourState,
-    ) {
-        // H.266 7.3.11.4 still signals split_qt_flag for an implicit
-        // boundary BT when both QT and BTT are available; split_cu_flag itself
-        // is inferred by 7.4.12.4 and therefore not written.
-        if split.allow_qt && split.allow_btt() {
-            self.contexts.encode_split_qt_flag(
-                cabac,
-                Self::chroma_qt_split_ctx(node, neighbours),
-                false,
+                true,
             );
         }
     }

@@ -1,9 +1,9 @@
 use super::binarization::vvc_encode_exp_golomb_ep_combined;
 use super::context::VvcCabacInitType;
 use super::ctu_split::{
-    vvc_chroma_height, vvc_chroma_split_availability, vvc_chroma_width, VvcChromaSplitAvailability,
-    VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams, VvcCtuPartitionShape,
-    VvcLumaNeighbourState, VvcPartSplit, VvcQtSplitCtxInput, VvcSplitCtxInput, VvcTreeType,
+    visit_visible_chroma_partition, vvc_chroma_height, vvc_chroma_width, VvcChromaPartitionEvent,
+    VvcChromaSplitAvailability, VvcCodingTreeNode, VvcCtuCabacOp, VvcCtuPartitionParams,
+    VvcCtuPartitionShape, VvcLumaNeighbourState, VvcQtSplitCtxInput, VvcSplitCtxInput, VvcTreeType,
 };
 use super::{VvcCabacContext, VvcCabacContexts, VvcCabacEncoder};
 use crate::picture::ChromaSampling;
@@ -13,8 +13,7 @@ use crate::vvc::{
     vvc_chroma_explicit_candidate_index, VvcBdpcmMode, VvcChromaCclmMode,
     VvcChromaIntraPredictionMode, VvcIntraPredictionMode, VvcLumaIbcDecision, VvcLumaInterDecision,
     VvcLumaSccDecision, VvcResidualComponent, VvcSliceSyntaxConfig, VvcVideoGeometry,
-    VVC_CHROMA_AC_COEFFS_PER_TU, VVC_CTU_SIZE, VVC_CURRENT_ENCODER_CHROMA_420_TB_SIZE,
-    VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
+    VVC_CHROMA_AC_COEFFS_PER_TU, VVC_CTU_SIZE, VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
 };
 
 const VVC_LUMA_ANGULAR_BASE: i16 = 2;
@@ -39,7 +38,6 @@ include!("ctu_single_tree_prediction.rs");
 include!("ctu_single_tree_residual.rs");
 include!("ctu_chroma_tree_entry.rs");
 include!("ctu_chroma_tree_traversal.rs");
-include!("ctu_chroma_boundary.rs");
 include!("ctu_chroma_split_syntax.rs");
 include!("ctu_neighbours.rs");
 include!("ctu_luma_mode_syntax.rs");
@@ -133,6 +131,11 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             inter_skip_neighbours: None,
             inter_motion_neighbours: None,
         }
+    }
+
+    #[cfg(test)]
+    pub(in crate::vvc) const fn emitted_chroma_tu_count(&self) -> usize {
+        self.chroma_tu_index
     }
 
     fn with_inter_slice(

@@ -102,8 +102,7 @@ pub(in crate::vvc) fn vvc_chroma_transform_nodes_into(
     shape: VvcCtuPartitionShape,
 ) {
     nodes.clear();
-    append_chroma_visible_qt_subtree(
-        nodes,
+    visit_visible_chroma_partition(
         VvcCodingTreeNode::root(
             shape.root_width,
             shape.root_height,
@@ -112,6 +111,11 @@ pub(in crate::vvc) fn vvc_chroma_transform_nodes_into(
         shape.visible_width,
         shape.visible_height,
         shape.chroma_sampling,
+        &mut |event| {
+            if let VvcChromaPartitionEvent::Leaf { node, .. } = event {
+                nodes.push(node);
+            }
+        },
     );
 }
 
@@ -170,133 +174,7 @@ pub(in crate::vvc) fn vvc_luma_transform_nodes_into_for_kind(
 }
 
 include!("ctu_luma_partition.rs");
-
-fn append_chroma_visible_qt_subtree(
-    nodes: &mut Vec<VvcCodingTreeNode>,
-    node: VvcCodingTreeNode,
-    visible_width: u16,
-    visible_height: u16,
-    chroma_sampling: ChromaSampling,
-) {
-    debug_assert_eq!(node.tree_type, VvcTreeType::DualTreeChroma);
-    if !node.intersects_visible(visible_width, visible_height) {
-        return;
-    }
-    if node.fits_visible(visible_width, visible_height)
-        && chroma_leaf_allowed(node, chroma_sampling)
-    {
-        nodes.push(node);
-        return;
-    }
-
-    if !node.fits_visible(visible_width, visible_height) {
-        append_chroma_implicit_boundary_children(
-            nodes,
-            node,
-            visible_width,
-            visible_height,
-            chroma_sampling,
-        );
-        return;
-    }
-
-    let split = vvc_chroma_split_availability(node, visible_width, visible_height, chroma_sampling);
-    if split.allow_qt {
-        for child_idx in 0..4 {
-            append_chroma_visible_qt_subtree(
-                nodes,
-                node.qt_child(child_idx),
-                visible_width,
-                visible_height,
-                chroma_sampling,
-            );
-        }
-    } else {
-        let vertical = chroma_prefer_vertical_bt(node, split);
-        for child_idx in 0..2 {
-            append_chroma_visible_qt_subtree(
-                nodes,
-                node.mtt_child(vertical, child_idx),
-                visible_width,
-                visible_height,
-                chroma_sampling,
-            );
-        }
-    }
-}
-
-fn append_chroma_implicit_boundary_children(
-    nodes: &mut Vec<VvcCodingTreeNode>,
-    node: VvcCodingTreeNode,
-    visible_width: u16,
-    visible_height: u16,
-    chroma_sampling: ChromaSampling,
-) {
-    let split = vvc_chroma_split_availability(node, visible_width, visible_height, chroma_sampling);
-    if split.allow_qt {
-        for child_idx in 0..4 {
-            append_chroma_visible_qt_subtree(
-                nodes,
-                node.qt_child(child_idx),
-                visible_width,
-                visible_height,
-                chroma_sampling,
-            );
-        }
-        return;
-    }
-    match split.implicit_split {
-        VvcPartSplit::Quad => {
-            for child_idx in 0..4 {
-                append_chroma_visible_qt_subtree(
-                    nodes,
-                    node.qt_child(child_idx),
-                    visible_width,
-                    visible_height,
-                    chroma_sampling,
-                );
-            }
-        }
-        VvcPartSplit::HorizontalBinary => {
-            for child_idx in 0..2 {
-                append_chroma_visible_qt_subtree(
-                    nodes,
-                    node.mtt_child_with_boundary_depth_offset(
-                        false,
-                        child_idx,
-                        visible_width,
-                        visible_height,
-                    ),
-                    visible_width,
-                    visible_height,
-                    chroma_sampling,
-                );
-            }
-        }
-        VvcPartSplit::VerticalBinary => {
-            for child_idx in 0..2 {
-                append_chroma_visible_qt_subtree(
-                    nodes,
-                    node.mtt_child_with_boundary_depth_offset(
-                        true,
-                        child_idx,
-                        visible_width,
-                        visible_height,
-                    ),
-                    visible_width,
-                    visible_height,
-                    chroma_sampling,
-                );
-            }
-        }
-        VvcPartSplit::None => {
-            debug_assert!(
-                !node.intersects_visible(visible_width, visible_height),
-                "boundary chroma node must have an implicit split"
-            );
-        }
-    }
-}
+include!("ctu_chroma_partition.rs");
 
 fn chroma_leaf_allowed(node: VvcCodingTreeNode, chroma_sampling: ChromaSampling) -> bool {
     let chroma_width = vvc_chroma_width(node, chroma_sampling);

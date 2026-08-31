@@ -38,7 +38,6 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             node,
             visible_width,
             visible_height,
-            4,
             luma_mode_neighbours,
             neighbours,
         );

@@ -1,16 +1,4 @@
 impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
-    fn chroma_leaf_allowed(&self, node: VvcCodingTreeNode) -> bool {
-        let chroma_width = vvc_chroma_width(node, self.params.chroma_sampling);
-        let chroma_height = vvc_chroma_height(node, self.params.chroma_sampling);
-        // H.266 7.3.11.10 transform_unit() is reached after the encoder's
-        // chosen legal coding-tree split. The spec maximum for this SPS remains
-        // MaxTbSizeY/SubWidthC by MaxTbSizeY/SubHeightC, but this hardware
-        // residual subset chooses 8x8 luma-coordinate leaves so each 4:2:0
-        // chroma TU is 4x4 samples and shares the luma TU cadence.
-        chroma_width <= VVC_CURRENT_ENCODER_CHROMA_420_TB_SIZE
-            && chroma_height <= VVC_CURRENT_ENCODER_CHROMA_420_TB_SIZE
-    }
-
     fn chroma_cclm_enabled(&self, node: VvcCodingTreeNode) -> bool {
         if !self.slice_config.tools.cclm_enabled {
             return false;
@@ -98,18 +86,5 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         } else {
             2
         }
-    }
-
-    fn chroma_prefer_vertical_bt(
-        node: VvcCodingTreeNode,
-        split: VvcChromaSplitAvailability,
-    ) -> bool {
-        if !split.allow_bt_vertical {
-            return false;
-        }
-        if !split.allow_bt_horizontal {
-            return true;
-        }
-        node.width >= node.height
     }
 }

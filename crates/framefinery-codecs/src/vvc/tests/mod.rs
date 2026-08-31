@@ -1433,6 +1433,69 @@ fn vvc_luma_transform_node_and_cabac_traversals_match_geometry_sweep() {
 }
 
 #[test]
+fn vvc_chroma_transform_and_cabac_traversals_match_geometry_sweep() {
+    let visible_extents = [
+        8, 9, 14, 15, 16, 17, 23, 24, 31, 32, 33, 47, 48, 55, 56, 63, 64,
+    ];
+    let black = quantize_vvc_color(VvcSampledColor { y: 0, u: 0, v: 0 });
+    for chroma_sampling in [
+        ChromaSampling::Cs420,
+        ChromaSampling::Cs422,
+        ChromaSampling::Cs444,
+    ] {
+        let mut case_count = 0;
+        for visible_width in visible_extents {
+            for visible_height in visible_extents {
+                if (chroma_sampling == ChromaSampling::Cs420
+                    && (visible_width % 2 != 0 || visible_height % 2 != 0))
+                    || (chroma_sampling == ChromaSampling::Cs422 && visible_width % 2 != 0)
+                {
+                    continue;
+                }
+                case_count += 1;
+                let geometry = VvcVideoGeometry {
+                    width: visible_width,
+                    height: visible_height,
+                };
+                let params = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma(
+                    geometry,
+                    black.clone(),
+                    VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+                    chroma_sampling,
+                    true,
+                )
+                .unwrap_or_else(|| {
+                    panic!("missing {chroma_sampling:?} partition for {visible_width}x{visible_height}")
+                });
+                let planned_nodes = vvc_chroma_transform_nodes(params.shape());
+                assert_eq!(params.chroma_tu_count, planned_nodes.len());
+
+                let mut cabac = VvcCabacEncoder::new();
+                let mut contexts = initial_vvc_cabac_contexts(vvc_test_slice_config());
+                let mut generator =
+                    VvcCtuCabacGenerator::new(&mut contexts, &params, vvc_test_slice_config());
+                cabac.start();
+                for op in VvcCtuCabacOp::ctu_partition(&params) {
+                    generator.emit(&mut cabac, op);
+                }
+                assert_eq!(
+                    generator.emitted_chroma_tu_count(),
+                    planned_nodes.len(),
+                    "{chroma_sampling:?} visible={visible_width}x{visible_height}",
+                );
+            }
+        }
+        let expected_count = match chroma_sampling {
+            ChromaSampling::Cs420 => 64,
+            ChromaSampling::Cs422 => 136,
+            ChromaSampling::Cs444 => 289,
+            ChromaSampling::Monochrome => unreachable!(),
+        };
+        assert_eq!(case_count, expected_count);
+    }
+}
+
+#[test]
 fn vvc_inter_transform_nodes_match_global_edge_ctu_coordinates() {
     let shape = VvcCtuPartitionShape {
         root_width: VVC_CTU_SIZE as u16,
