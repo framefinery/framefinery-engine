@@ -350,6 +350,11 @@ The following changes were behavior-preserving and independently validated:
   separate 254- and 474-line included helpers. BDPCM legality, fast-search,
   direct-SSE safety, prediction, residual construction, and winner promotion
   remain one contiguous selector called after ordinary chroma mode refinement.
+- VVC chroma RD refinement and BDPCM selection now share one immutable geometry,
+  policy, and reconstruction context plus one mutable selected/candidate buffer
+  contract. Cb/Cr predictions and residuals are promoted together through one
+  tested operation, preventing either selector from swapping only part of the
+  winning chroma state.
 - VVC SCC, temporal-hint, and finalized luma-TU metadata writes now share one
   bounded record type; temporal, exact-inter, and ordinary finalization no
   longer fan the same result out to parallel arrays through three duplicated
@@ -378,7 +383,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 479-line CTU helper, 538-line mode-selection sibling, 424/493-line luma/chroma TU selection orchestration, 275/489-line search helpers, a 416-line luma mode helper, and 254/474/289-line chroma mode/BDPCM/RD helpers | selected candidates, cache transfers, materialization, and tool scoring are now separated into focused helpers; mutable chroma scratch ownership across refinement and BDPCM still needs a focused contract review |
+| VVC residual quantization | 479-line CTU helper, 538-line mode-selection sibling, 424/487-line luma/chroma TU selection orchestration, 275/489-line search helpers, a 416-line luma mode helper, and 286/440/289-line chroma mode/BDPCM/RD helpers | refinement and BDPCM now share explicit selected/candidate ownership; mode search still promotes predictions before cache-backed residual transfer, so that pre-refinement boundary needs review before attempting a broader candidate record |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2

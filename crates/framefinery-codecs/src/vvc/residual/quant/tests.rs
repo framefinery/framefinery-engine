@@ -695,6 +695,57 @@ fn vvc_chroma_search_preserves_unscored_derived_only_fast_path() {
 }
 
 #[test]
+fn vvc_chroma_refinement_promotes_prediction_and_residual_pair_as_one_unit() {
+    let mut selected_cb_prediction = vec![1];
+    let mut selected_cr_prediction = vec![2];
+    let mut selected_cb_residuals = vec![3];
+    let mut selected_cr_residuals = vec![4];
+    let mut candidate_cb_prediction = vec![11];
+    let mut candidate_cr_prediction = vec![12];
+    let mut candidate_cb_residuals = vec![13];
+    let mut candidate_cr_residuals = vec![14];
+    let mut prediction_scratch = VvcDcPredictionScratch::default();
+    #[cfg(feature = "vvc-stats")]
+    let mut stats = VvcIntraSearchStats::default();
+    #[cfg(not(feature = "vvc-stats"))]
+    let mut stats = VvcIntraSearchStats;
+    let mut transform_scratch = VvcInverseTransformScratch::default();
+    let mut reconstructed_residual = Vec::new();
+
+    {
+        let mut buffers = VvcChromaRefinementBuffers {
+            prediction_scratch: &mut prediction_scratch,
+            selected: VvcChromaCandidateBuffers {
+                cb_prediction: &mut selected_cb_prediction,
+                cr_prediction: &mut selected_cr_prediction,
+                cb_residuals: &mut selected_cb_residuals,
+                cr_residuals: &mut selected_cr_residuals,
+            },
+            candidate: VvcChromaCandidateBuffers {
+                cb_prediction: &mut candidate_cb_prediction,
+                cr_prediction: &mut candidate_cr_prediction,
+                cb_residuals: &mut candidate_cb_residuals,
+                cr_residuals: &mut candidate_cr_residuals,
+            },
+            stats: &mut stats,
+            transform_scratch: &mut transform_scratch,
+            reconstructed_residual: &mut reconstructed_residual,
+        };
+
+        buffers.promote_candidate();
+    }
+
+    assert_eq!(selected_cb_prediction, vec![11]);
+    assert_eq!(selected_cr_prediction, vec![12]);
+    assert_eq!(selected_cb_residuals, vec![13]);
+    assert_eq!(selected_cr_residuals, vec![14]);
+    assert_eq!(candidate_cb_prediction, vec![1]);
+    assert_eq!(candidate_cr_prediction, vec![2]);
+    assert_eq!(candidate_cb_residuals, vec![3]);
+    assert_eq!(candidate_cr_residuals, vec![4]);
+}
+
+#[test]
 fn vvc_luma_intra_search_promotes_only_strict_winners_and_records_ties() {
     let directional = VvcIntraPredictionMode::Horizontal;
     let mut search = VvcLumaIntraSearch::new(100);

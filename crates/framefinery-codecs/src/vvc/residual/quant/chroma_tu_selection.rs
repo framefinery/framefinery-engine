@@ -178,11 +178,8 @@ impl VvcChromaTuSelectionContext<'_> {
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_mode_search_nanos(mode_search_start.elapsed().as_nanos() as u64);
 
-        if !cache.take_residuals_if_present(
-            raw_mode,
-            selected_cb_residuals,
-            selected_cr_residuals,
-        ) {
+        if !cache.take_residuals_if_present(raw_mode, selected_cb_residuals, selected_cr_residuals)
+        {
             self.materialize_residuals(
                 selected_cb_prediction,
                 selected_cr_prediction,
@@ -191,6 +188,39 @@ impl VvcChromaTuSelectionContext<'_> {
                 stats,
             );
         }
+
+        let refinement_context = VvcChromaRefinementContext {
+            policy: self.policy,
+            node: self.node,
+            co_located_luma_mode: self.co_located_luma_mode,
+            cclm_syntax_enabled: self.cclm_enabled,
+            source_frame: self.source_frame,
+            frame_recon: self.frame_recon,
+            chroma_x: self.chroma_x,
+            chroma_y: self.chroma_y,
+            chroma_width: self.chroma_width,
+            chroma_height: self.chroma_height,
+            chroma_qp: self.chroma_qp,
+            chroma_ts_quant: self.chroma_ts_quant,
+        };
+        let mut refinement_buffers = VvcChromaRefinementBuffers {
+            prediction_scratch,
+            selected: VvcChromaCandidateBuffers {
+                cb_prediction: selected_cb_prediction,
+                cr_prediction: selected_cr_prediction,
+                cb_residuals: selected_cb_residuals,
+                cr_residuals: selected_cr_residuals,
+            },
+            candidate: VvcChromaCandidateBuffers {
+                cb_prediction: candidate_cb_prediction,
+                cr_prediction: candidate_cr_prediction,
+                cb_residuals: candidate_cb_residuals,
+                cr_residuals: candidate_cr_residuals,
+            },
+            stats,
+            transform_scratch,
+            reconstructed_residual,
+        };
 
         #[cfg(feature = "vvc-stats")]
         let rd_start = StageStart::now();
@@ -205,41 +235,22 @@ impl VvcChromaTuSelectionContext<'_> {
                 residual: None,
             }
         } else {
-            select_vvc_chroma_mode_with_rd_refinement(
-                self.policy,
-                self.node,
+            refinement_context.select_mode_with_rd_refinement(
                 raw_mode,
                 candidate_costs,
                 cache,
-                stats,
-                self.co_located_luma_mode,
-                self.cclm_enabled,
-                self.source_frame,
-                self.frame_recon,
-                self.chroma_width,
-                self.chroma_height,
-                self.chroma_qp,
-                self.chroma_ts_quant,
-                prediction_scratch,
-                selected_cb_prediction,
-                selected_cr_prediction,
-                selected_cb_residuals,
-                selected_cr_residuals,
-                candidate_cb_prediction,
-                candidate_cr_prediction,
-                candidate_cb_residuals,
-                candidate_cr_residuals,
-                transform_scratch,
-                reconstructed_residual,
+                &mut refinement_buffers,
             )
         };
         #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_rd_refinement_nanos(rd_start.elapsed().as_nanos() as u64);
+        refinement_buffers
+            .stats
+            .add_chroma_rd_refinement_nanos(rd_start.elapsed().as_nanos() as u64);
         #[cfg(feature = "vvc-stats")]
         if selected_mode.residual.is_some() {
-            stats.add_chroma_rd_refinement_attempt();
+            refinement_buffers.stats.add_chroma_rd_refinement_attempt();
             if selected_mode.mode != raw_mode {
-                stats.add_chroma_rd_refinement_switch();
+                refinement_buffers.stats.add_chroma_rd_refinement_switch();
             }
         }
 
@@ -247,41 +258,24 @@ impl VvcChromaTuSelectionContext<'_> {
         let mut selected_residual = selected_mode.residual;
         #[cfg(feature = "vvc-stats")]
         let bdpcm_start = StageStart::now();
-        if let Some(selected_bdpcm) = select_vvc_chroma_bdpcm_prediction(
-            self.policy,
-            self.node,
+        if let Some(selected_bdpcm) = refinement_context.select_bdpcm_prediction(
             mode,
-            self.co_located_luma_mode,
-            self.cclm_enabled,
-            self.source_frame,
-            self.frame_recon,
-            self.chroma_width,
-            self.chroma_height,
-            self.chroma_qp,
-            self.chroma_ts_quant,
             selected_residual,
-            stats,
-            prediction_scratch,
-            selected_cb_prediction,
-            selected_cr_prediction,
-            selected_cb_residuals,
-            selected_cr_residuals,
-            candidate_cb_prediction,
-            candidate_cr_prediction,
-            candidate_cb_residuals,
-            candidate_cr_residuals,
-            transform_scratch,
-            reconstructed_residual,
+            &mut refinement_buffers,
         ) {
             mode = selected_bdpcm.mode;
             selected_residual = Some(selected_bdpcm.residual);
         }
         #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_bdpcm_nanos(bdpcm_start.elapsed().as_nanos() as u64);
+        refinement_buffers
+            .stats
+            .add_chroma_bdpcm_nanos(bdpcm_start.elapsed().as_nanos() as u64);
 
         VvcSelectedChromaTuCandidate {
             mode,
-            coding_decision: self.policy.select_chroma_tu_coding_decision(self.node, mode),
+            coding_decision: self
+                .policy
+                .select_chroma_tu_coding_decision(self.node, mode),
             residual: selected_residual,
         }
     }

@@ -1,251 +1,216 @@
-fn select_vvc_chroma_bdpcm_prediction(
-    policy: VvcResidualCodingPolicy,
-    node: VvcCodingTreeNode,
-    selected_mode: VvcChromaIntraPredictionMode,
-    co_located_luma_mode: VvcIntraPredictionMode,
-    cclm_syntax_enabled: bool,
-    source_frame: &VvcSampledFrame,
-    frame_recon: &VvcReconstructionFrame,
-    chroma_width: usize,
-    chroma_height: usize,
-    chroma_qp: i32,
-    chroma_ts_quant: &VvcTransformSkipQuantTable,
-    selected_residual: Option<VvcScoredSelectedChromaResidual>,
-    stats: &mut VvcIntraSearchStats,
-    prediction_scratch: &mut VvcDcPredictionScratch,
-    selected_cb_prediction: &mut Vec<VvcSample>,
-    selected_cr_prediction: &mut Vec<VvcSample>,
-    selected_cb_residuals: &mut Vec<i16>,
-    selected_cr_residuals: &mut Vec<i16>,
-    candidate_cb_prediction: &mut Vec<VvcSample>,
-    candidate_cr_prediction: &mut Vec<VvcSample>,
-    candidate_cb_residuals: &mut Vec<i16>,
-    candidate_cr_residuals: &mut Vec<i16>,
-    transform_scratch: &mut VvcInverseTransformScratch,
-    reconstructed_residual: &mut Vec<i16>,
-) -> Option<VvcSelectedChromaBdpcm> {
-    if !vvc_chroma_bdpcm_selection_allowed(policy, chroma_width, chroma_height)
-        || !vvc_chroma_lossless_speed_bdpcm_format_allowed(policy, source_frame.format)
-        || !vvc_chroma_bdpcm_fast_search_allowed(policy, selected_mode)
-    {
-        return None;
-    }
-
-    let baseline_decision = policy.select_chroma_tu_coding_decision(node, selected_mode);
-    let baseline_residual = selected_residual.unwrap_or_else(|| {
-        #[cfg(feature = "vvc-stats")]
-        let score_start = StageStart::now();
-        let residual = VvcSelectedChromaResidual {
-            cb: finalize_vvc_chroma_residual_block(
-                baseline_decision.residual_coding,
-                selected_cb_residuals,
-                chroma_width,
-                chroma_height,
-                source_frame.format.bit_depth,
-                chroma_qp,
-                chroma_ts_quant,
-                stats,
-                transform_scratch,
-                reconstructed_residual,
-            ),
-            cr: finalize_vvc_chroma_residual_block(
-                baseline_decision.residual_coding,
-                selected_cr_residuals,
-                chroma_width,
-                chroma_height,
-                source_frame.format.bit_depth,
-                chroma_qp,
-                chroma_ts_quant,
-                stats,
-                transform_scratch,
-                reconstructed_residual,
-            ),
-        };
-        let residual = VvcScoredSelectedChromaResidual::new(
-            selected_cb_residuals,
-            selected_cr_residuals,
-            chroma_width,
-            chroma_height,
-            source_frame.format.bit_depth,
-            chroma_qp,
-            chroma_ts_quant,
-            residual,
-            transform_scratch,
-            reconstructed_residual,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
-        residual
-    });
-    let mut best_score = vvc_scored_chroma_quantized_residual_score(
-        baseline_residual,
-        u64::from(vvc_bdpcm_mode_syntax_bin_count(VvcBdpcmMode::None)).saturating_add(u64::from(
-            vvc_chroma_intra_mode_syntax_bin_count(selected_mode, cclm_syntax_enabled),
-        )),
-    );
-
-    for bdpcm_mode in vvc_chroma_lossy_speed_direct_bdpcm_candidate_modes(
-        policy,
-        source_frame.format.chroma_sampling,
-        source_frame.format.bit_depth,
-        selected_mode,
-        co_located_luma_mode,
-    )
-    .into_iter()
-    .flatten()
-    {
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_bdpcm_direct_candidate();
-        build_vvc_chroma_bdpcm_candidate(
-            node,
-            bdpcm_mode,
-            source_frame,
-            frame_recon,
-            chroma_width,
-            chroma_height,
-            stats,
-            prediction_scratch,
-            candidate_cb_prediction,
-            candidate_cr_prediction,
-            candidate_cb_residuals,
-            candidate_cr_residuals,
-        );
-        let direct_bdpcm_safe = vvc_chroma_direct_bdpcm_residual_is_safe(
-            selected_cb_residuals,
-            selected_cr_residuals,
-            candidate_cb_residuals,
-            candidate_cr_residuals,
-        );
-        #[cfg(feature = "vvc-stats")]
-        if direct_bdpcm_safe {
-            stats.add_chroma_bdpcm_direct_safe_candidate();
+impl VvcChromaRefinementContext<'_> {
+    fn select_bdpcm_prediction(
+        &self,
+        selected_mode: VvcChromaIntraPredictionMode,
+        selected_residual: Option<VvcScoredSelectedChromaResidual>,
+        buffers: &mut VvcChromaRefinementBuffers<'_>,
+    ) -> Option<VvcSelectedChromaBdpcm> {
+        if !vvc_chroma_bdpcm_selection_allowed(self.policy, self.chroma_width, self.chroma_height)
+            || !vvc_chroma_lossless_speed_bdpcm_format_allowed(
+                self.policy,
+                self.source_frame.format,
+            )
+            || !vvc_chroma_bdpcm_fast_search_allowed(self.policy, selected_mode)
+        {
+            return None;
         }
-        if !direct_bdpcm_safe {
-            continue;
-        }
-        let (residual, candidate_score) = score_vvc_chroma_bdpcm_candidate(
-            bdpcm_mode,
-            chroma_width,
-            chroma_height,
-            chroma_qp,
-            chroma_ts_quant,
-            source_frame.format.bit_depth,
-            stats,
-            candidate_cb_residuals,
-            candidate_cr_residuals,
-            transform_scratch,
-            reconstructed_residual,
-        );
-        if candidate_score.selects_over(best_score) {
+
+        let baseline_decision = self
+            .policy
+            .select_chroma_tu_coding_decision(self.node, selected_mode);
+        let baseline_residual = selected_residual.unwrap_or_else(|| {
             #[cfg(feature = "vvc-stats")]
-            stats.add_chroma_bdpcm_direct_selected();
-            std::mem::swap(selected_cb_prediction, candidate_cb_prediction);
-            std::mem::swap(selected_cr_prediction, candidate_cr_prediction);
-            std::mem::swap(selected_cb_residuals, candidate_cb_residuals);
-            std::mem::swap(selected_cr_residuals, candidate_cr_residuals);
-            let mode = VvcChromaIntraPredictionMode::Explicit(
-                bdpcm_mode
-                    .inferred_intra_mode()
-                    .expect("enabled BDPCM mode has an inferred intra mode"),
+            let score_start = StageStart::now();
+            let residual = VvcSelectedChromaResidual {
+                cb: finalize_vvc_chroma_residual_block(
+                    baseline_decision.residual_coding,
+                    buffers.selected.cb_residuals,
+                    self.chroma_width,
+                    self.chroma_height,
+                    self.source_frame.format.bit_depth,
+                    self.chroma_qp,
+                    self.chroma_ts_quant,
+                    buffers.stats,
+                    buffers.transform_scratch,
+                    buffers.reconstructed_residual,
+                ),
+                cr: finalize_vvc_chroma_residual_block(
+                    baseline_decision.residual_coding,
+                    buffers.selected.cr_residuals,
+                    self.chroma_width,
+                    self.chroma_height,
+                    self.source_frame.format.bit_depth,
+                    self.chroma_qp,
+                    self.chroma_ts_quant,
+                    buffers.stats,
+                    buffers.transform_scratch,
+                    buffers.reconstructed_residual,
+                ),
+            };
+            let residual = VvcScoredSelectedChromaResidual::new(
+                buffers.selected.cb_residuals,
+                buffers.selected.cr_residuals,
+                self.chroma_width,
+                self.chroma_height,
+                self.source_frame.format.bit_depth,
+                self.chroma_qp,
+                self.chroma_ts_quant,
+                residual,
+                buffers.transform_scratch,
+                buffers.reconstructed_residual,
             );
-            return Some(VvcSelectedChromaBdpcm { mode, residual });
-        }
-    }
+            #[cfg(feature = "vvc-stats")]
+            buffers
+                .stats
+                .add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
+            residual
+        });
+        let mut best_score = vvc_scored_chroma_quantized_residual_score(
+            baseline_residual,
+            u64::from(vvc_bdpcm_mode_syntax_bin_count(VvcBdpcmMode::None)).saturating_add(
+                u64::from(vvc_chroma_intra_mode_syntax_bin_count(
+                    selected_mode,
+                    self.cclm_syntax_enabled,
+                )),
+            ),
+        );
 
-    let mut best = None;
-
-    for bdpcm_mode in vvc_chroma_bdpcm_candidate_modes(policy, co_located_luma_mode)
+        for bdpcm_mode in vvc_chroma_lossy_speed_direct_bdpcm_candidate_modes(
+            self.policy,
+            self.source_frame.format.chroma_sampling,
+            self.source_frame.format.bit_depth,
+            selected_mode,
+            self.co_located_luma_mode,
+        )
         .into_iter()
         .flatten()
-    {
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_bdpcm_regular_candidate();
-        build_vvc_chroma_bdpcm_candidate(
-            node,
-            bdpcm_mode,
-            source_frame,
-            frame_recon,
-            chroma_width,
-            chroma_height,
-            stats,
-            prediction_scratch,
-            candidate_cb_prediction,
-            candidate_cr_prediction,
-            candidate_cb_residuals,
-            candidate_cr_residuals,
-        );
-        let (residual, candidate_score) = score_vvc_chroma_bdpcm_candidate(
-            bdpcm_mode,
-            chroma_width,
-            chroma_height,
-            chroma_qp,
-            chroma_ts_quant,
-            source_frame.format.bit_depth,
-            stats,
-            candidate_cb_residuals,
-            candidate_cr_residuals,
-            transform_scratch,
-            reconstructed_residual,
-        );
-        if candidate_score.selects_over(best_score) {
+        {
             #[cfg(feature = "vvc-stats")]
-            stats.add_chroma_bdpcm_regular_best_update();
-            best_score = candidate_score;
-            let mode = VvcChromaIntraPredictionMode::Explicit(
-                bdpcm_mode
-                    .inferred_intra_mode()
-                    .expect("enabled BDPCM mode has an inferred intra mode"),
+            buffers.stats.add_chroma_bdpcm_direct_candidate();
+            build_vvc_chroma_bdpcm_candidate(
+                self,
+                bdpcm_mode,
+                buffers.stats,
+                buffers.prediction_scratch,
+                &mut buffers.candidate,
             );
-            best = Some(VvcSelectedChromaBdpcm { mode, residual });
-            std::mem::swap(selected_cb_prediction, candidate_cb_prediction);
-            std::mem::swap(selected_cr_prediction, candidate_cr_prediction);
-            std::mem::swap(selected_cb_residuals, candidate_cb_residuals);
-            std::mem::swap(selected_cr_residuals, candidate_cr_residuals);
+            let direct_bdpcm_safe = vvc_chroma_direct_bdpcm_residual_is_safe(
+                buffers.selected.cb_residuals,
+                buffers.selected.cr_residuals,
+                buffers.candidate.cb_residuals,
+                buffers.candidate.cr_residuals,
+            );
+            #[cfg(feature = "vvc-stats")]
+            if direct_bdpcm_safe {
+                buffers.stats.add_chroma_bdpcm_direct_safe_candidate();
+            }
+            if !direct_bdpcm_safe {
+                continue;
+            }
+            let (residual, candidate_score) = score_vvc_chroma_bdpcm_candidate(
+                bdpcm_mode,
+                self.chroma_width,
+                self.chroma_height,
+                self.chroma_qp,
+                self.chroma_ts_quant,
+                self.source_frame.format.bit_depth,
+                buffers.stats,
+                buffers.candidate.cb_residuals,
+                buffers.candidate.cr_residuals,
+                buffers.transform_scratch,
+                buffers.reconstructed_residual,
+            );
+            if candidate_score.selects_over(best_score) {
+                #[cfg(feature = "vvc-stats")]
+                buffers.stats.add_chroma_bdpcm_direct_selected();
+                buffers.promote_candidate();
+                let mode = VvcChromaIntraPredictionMode::Explicit(
+                    bdpcm_mode
+                        .inferred_intra_mode()
+                        .expect("enabled BDPCM mode has an inferred intra mode"),
+                );
+                return Some(VvcSelectedChromaBdpcm { mode, residual });
+            }
         }
-    }
 
-    best
+        let mut best = None;
+
+        for bdpcm_mode in vvc_chroma_bdpcm_candidate_modes(self.policy, self.co_located_luma_mode)
+            .into_iter()
+            .flatten()
+        {
+            #[cfg(feature = "vvc-stats")]
+            buffers.stats.add_chroma_bdpcm_regular_candidate();
+            build_vvc_chroma_bdpcm_candidate(
+                self,
+                bdpcm_mode,
+                buffers.stats,
+                buffers.prediction_scratch,
+                &mut buffers.candidate,
+            );
+            let (residual, candidate_score) = score_vvc_chroma_bdpcm_candidate(
+                bdpcm_mode,
+                self.chroma_width,
+                self.chroma_height,
+                self.chroma_qp,
+                self.chroma_ts_quant,
+                self.source_frame.format.bit_depth,
+                buffers.stats,
+                buffers.candidate.cb_residuals,
+                buffers.candidate.cr_residuals,
+                buffers.transform_scratch,
+                buffers.reconstructed_residual,
+            );
+            if candidate_score.selects_over(best_score) {
+                #[cfg(feature = "vvc-stats")]
+                buffers.stats.add_chroma_bdpcm_regular_best_update();
+                best_score = candidate_score;
+                let mode = VvcChromaIntraPredictionMode::Explicit(
+                    bdpcm_mode
+                        .inferred_intra_mode()
+                        .expect("enabled BDPCM mode has an inferred intra mode"),
+                );
+                best = Some(VvcSelectedChromaBdpcm { mode, residual });
+                buffers.promote_candidate();
+            }
+        }
+
+        best
+    }
 }
 
 fn build_vvc_chroma_bdpcm_candidate(
-    node: VvcCodingTreeNode,
+    context: &VvcChromaRefinementContext<'_>,
     bdpcm_mode: VvcBdpcmMode,
-    source_frame: &VvcSampledFrame,
-    frame_recon: &VvcReconstructionFrame,
-    chroma_width: usize,
-    chroma_height: usize,
     stats: &mut VvcIntraSearchStats,
     prediction_scratch: &mut VvcDcPredictionScratch,
-    candidate_cb_prediction: &mut Vec<VvcSample>,
-    candidate_cr_prediction: &mut Vec<VvcSample>,
-    candidate_cb_residuals: &mut Vec<i16>,
-    candidate_cr_residuals: &mut Vec<i16>,
+    candidate: &mut VvcChromaCandidateBuffers<'_>,
 ) {
     #[cfg(not(feature = "vvc-stats"))]
     let _ = stats;
     #[cfg(feature = "vvc-stats")]
     let prediction_start = StageStart::now();
     predict_vvc_chroma_bdpcm_block_into_with_availability(
-        candidate_cb_prediction,
+        candidate.cb_prediction,
         prediction_scratch,
         bdpcm_mode,
-        &frame_recon.cb,
-        frame_recon.coded_geometry(),
-        node,
-        source_frame.format.chroma_sampling,
-        source_frame.format.bit_depth,
-        Some(frame_recon.cb_availability()),
+        &context.frame_recon.cb,
+        context.frame_recon.coded_geometry(),
+        context.node,
+        context.source_frame.format.chroma_sampling,
+        context.source_frame.format.bit_depth,
+        Some(context.frame_recon.cb_availability()),
     );
     predict_vvc_chroma_bdpcm_block_into_with_availability(
-        candidate_cr_prediction,
+        candidate.cr_prediction,
         prediction_scratch,
         bdpcm_mode,
-        &frame_recon.cr,
-        frame_recon.coded_geometry(),
-        node,
-        source_frame.format.chroma_sampling,
-        source_frame.format.bit_depth,
-        Some(frame_recon.cr_availability()),
+        &context.frame_recon.cr,
+        context.frame_recon.coded_geometry(),
+        context.node,
+        context.source_frame.format.chroma_sampling,
+        context.source_frame.format.bit_depth,
+        Some(context.frame_recon.cr_availability()),
     );
     #[cfg(feature = "vvc-stats")]
     stats.add_chroma_prediction_nanos(
@@ -253,27 +218,24 @@ fn build_vvc_chroma_bdpcm_candidate(
         vvc_elapsed_nanos(prediction_start),
     );
 
-    let chroma_x = usize::from(node.x) / chroma_subsample_x(source_frame.format.chroma_sampling);
-    let chroma_y = usize::from(node.y) / chroma_subsample_y(source_frame.format.chroma_sampling);
     #[cfg(feature = "vvc-stats")]
     let residual_start = StageStart::now();
     residual_chroma_pair_tu_at_into(
-        candidate_cb_residuals,
-        candidate_cr_residuals,
-        &source_frame.cb,
-        &source_frame.cr,
-        source_frame.geometry,
-        source_frame.format,
-        chroma_x,
-        chroma_y,
-        chroma_width,
-        chroma_height,
-        candidate_cb_prediction,
-        candidate_cr_prediction,
+        candidate.cb_residuals,
+        candidate.cr_residuals,
+        &context.source_frame.cb,
+        &context.source_frame.cr,
+        context.source_frame.geometry,
+        context.source_frame.format,
+        context.chroma_x,
+        context.chroma_y,
+        context.chroma_width,
+        context.chroma_height,
+        candidate.cb_prediction,
+        candidate.cr_prediction,
     );
     #[cfg(feature = "vvc-stats")]
     stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-
 }
 
 fn score_vvc_chroma_bdpcm_candidate(
@@ -288,7 +250,10 @@ fn score_vvc_chroma_bdpcm_candidate(
     candidate_cr_residuals: &[i16],
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
-) -> (VvcScoredSelectedChromaResidual, VvcChromaQuantizedResidualScore) {
+) -> (
+    VvcScoredSelectedChromaResidual,
+    VvcChromaQuantizedResidualScore,
+) {
     #[cfg(not(feature = "vvc-stats"))]
     let _ = stats;
     #[cfg(feature = "vvc-stats")]
@@ -395,7 +360,8 @@ fn vvc_chroma_direct_bdpcm_residual_is_safe(
     candidate_cr_residuals: &[i16],
 ) -> bool {
     let selected_sse = vvc_chroma_pair_residual_sse(selected_cb_residuals, selected_cr_residuals);
-    let candidate_sse = vvc_chroma_pair_residual_sse(candidate_cb_residuals, candidate_cr_residuals);
+    let candidate_sse =
+        vvc_chroma_pair_residual_sse(candidate_cb_residuals, candidate_cr_residuals);
     // Bypass the RD check only when BDPCM materially improves raw prediction SSE.
     candidate_sse.saturating_mul(16) <= selected_sse.saturating_mul(15)
 }
