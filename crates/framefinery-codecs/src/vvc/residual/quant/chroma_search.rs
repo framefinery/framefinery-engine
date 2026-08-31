@@ -1,4 +1,5 @@
 struct VvcChromaModeSearchContext<'a> {
+    policy: VvcResidualCodingPolicy,
     metric: VvcResidualScoreMetric,
     source_frame: &'a VvcSampledFrame,
     frame_recon: &'a VvcReconstructionFrame,
@@ -12,7 +13,162 @@ struct VvcChromaModeSearchContext<'a> {
     syntax_tie_breaker_enabled: bool,
 }
 
+struct VvcChromaModeSearchBuffers<'a> {
+    cache: &'a mut VvcChromaModeRdCache,
+    prediction_scratch: &'a mut VvcDcPredictionScratch,
+    selected_cb_prediction: &'a mut Vec<VvcSample>,
+    selected_cr_prediction: &'a mut Vec<VvcSample>,
+    candidate_cb_prediction: &'a mut Vec<VvcSample>,
+    candidate_cr_prediction: &'a mut Vec<VvcSample>,
+    candidate_cb_residuals: &'a mut Vec<i16>,
+    candidate_cr_residuals: &'a mut Vec<i16>,
+    stats: &'a mut VvcIntraSearchStats,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct VvcChromaModeSearchResult {
+    mode: VvcChromaIntraPredictionMode,
+    candidate_costs: VvcChromaIntraCandidateCosts,
+}
+
 impl VvcChromaModeSearchContext<'_> {
+    fn select_intra_mode(
+        &self,
+        buffers: VvcChromaModeSearchBuffers<'_>,
+    ) -> VvcChromaModeSearchResult {
+        let VvcChromaModeSearchBuffers {
+            cache,
+            prediction_scratch,
+            selected_cb_prediction,
+            selected_cr_prediction,
+            candidate_cb_prediction,
+            candidate_cr_prediction,
+            candidate_cb_residuals,
+            candidate_cr_residuals,
+            stats,
+        } = buffers;
+        let initial_mode = VvcChromaIntraPredictionMode::Derived;
+        self.predict_candidate(
+            initial_mode,
+            prediction_scratch,
+            selected_cb_prediction,
+            selected_cr_prediction,
+            stats,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_chroma_derived();
+        if vvc_chroma_fast_search_uses_derived_only(self.policy) {
+            return VvcChromaModeSearchResult {
+                mode: initial_mode,
+                candidate_costs: VvcChromaIntraCandidateCosts::new(0),
+            };
+        }
+
+        let initial_score = self.score_prediction(
+            cache,
+            initial_mode,
+            selected_cb_prediction,
+            selected_cr_prediction,
+            candidate_cb_residuals,
+            candidate_cr_residuals,
+            stats,
+        );
+        let mut search = VvcChromaIntraSearch::new(initial_score);
+        if !vvc_chroma_lossless_speed_skips_near_exact_explicit_search(
+            self.policy,
+            search.best_score(),
+            self.chroma_width,
+            self.chroma_height,
+        ) && !vvc_chroma_lossy_exact_mode_search_done(
+            self.syntax_tie_breaker_enabled,
+            search.best_score(),
+        ) {
+            for explicit_mode in vvc_chroma_explicit_candidates(self.co_located_luma_mode) {
+                if !vvc_chroma_explicit_candidate_allowed_for_search(self.policy, explicit_mode) {
+                    continue;
+                }
+                let mode = VvcChromaIntraPredictionMode::Explicit(explicit_mode);
+                let score = self.predict_and_score_candidate(
+                    cache,
+                    mode,
+                    prediction_scratch,
+                    candidate_cb_prediction,
+                    candidate_cr_prediction,
+                    candidate_cb_residuals,
+                    candidate_cr_residuals,
+                    stats,
+                );
+                #[cfg(feature = "vvc-stats")]
+                stats.add_chroma_explicit();
+                search.consider_candidate(
+                    mode,
+                    score,
+                    selected_cb_prediction,
+                    selected_cr_prediction,
+                    candidate_cb_prediction,
+                    candidate_cr_prediction,
+                );
+                if vvc_chroma_lossy_exact_mode_search_done(
+                    self.syntax_tie_breaker_enabled,
+                    search.best_score(),
+                ) {
+                    break;
+                }
+            }
+        }
+        if self
+            .policy
+            .chroma_cclm_candidate_allowed(self.node, self.source_frame.geometry)
+            && vvc_chroma_cclm_fast_search_allowed(
+                self.policy,
+                search.best_score(),
+                self.chroma_width,
+                self.chroma_height,
+            )
+            && !vvc_chroma_lossy_exact_mode_search_done(
+                self.syntax_tie_breaker_enabled,
+                search.best_score(),
+            )
+        {
+            for cclm_mode in [
+                VvcChromaCclmMode::Linear,
+                VvcChromaCclmMode::MdlmLeft,
+                VvcChromaCclmMode::MdlmTop,
+            ] {
+                let mode = VvcChromaIntraPredictionMode::Cclm(cclm_mode);
+                let score = self.predict_and_score_candidate(
+                    cache,
+                    mode,
+                    prediction_scratch,
+                    candidate_cb_prediction,
+                    candidate_cr_prediction,
+                    candidate_cb_residuals,
+                    candidate_cr_residuals,
+                    stats,
+                );
+                #[cfg(feature = "vvc-stats")]
+                stats.add_chroma_cclm_mode(cclm_mode);
+                search.consider_candidate(
+                    mode,
+                    score,
+                    selected_cb_prediction,
+                    selected_cr_prediction,
+                    candidate_cb_prediction,
+                    candidate_cr_prediction,
+                );
+            }
+        }
+        let candidate_costs = search.candidate_costs();
+        let mode = self
+            .policy
+            .select_chroma_intra_mode(self.node, candidate_costs);
+        debug_assert_eq!(mode, search.best_mode());
+        VvcChromaModeSearchResult {
+            mode,
+            candidate_costs,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn predict_and_score_candidate(
         &self,
@@ -25,6 +181,34 @@ impl VvcChromaModeSearchContext<'_> {
         cr_residuals: &mut Vec<i16>,
         stats: &mut VvcIntraSearchStats,
     ) -> u64 {
+        self.predict_candidate(
+            mode,
+            prediction_scratch,
+            predicted_cb,
+            predicted_cr,
+            stats,
+        );
+        self.score_prediction(
+            cache,
+            mode,
+            predicted_cb,
+            predicted_cr,
+            cb_residuals,
+            cr_residuals,
+            stats,
+        )
+    }
+
+    fn predict_candidate(
+        &self,
+        mode: VvcChromaIntraPredictionMode,
+        prediction_scratch: &mut VvcDcPredictionScratch,
+        predicted_cb: &mut Vec<VvcSample>,
+        predicted_cr: &mut Vec<VvcSample>,
+        stats: &mut VvcIntraSearchStats,
+    ) {
+        #[cfg(not(feature = "vvc-stats"))]
+        let _ = stats;
         #[cfg(feature = "vvc-stats")]
         let prediction_start = StageStart::now();
         predict_vvc_chroma_mode_pair_blocks_into_with_availability(
@@ -49,15 +233,6 @@ impl VvcChromaModeSearchContext<'_> {
             vvc_chroma_prediction_stats_family(mode),
             vvc_elapsed_nanos(prediction_start),
         );
-        self.score_prediction(
-            cache,
-            mode,
-            predicted_cb,
-            predicted_cr,
-            cb_residuals,
-            cr_residuals,
-            stats,
-        )
     }
 
     #[allow(clippy::too_many_arguments)]

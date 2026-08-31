@@ -312,10 +312,11 @@ The following changes were behavior-preserving and independently validated:
   dispatcher and one plane-region descriptor; luma MRL/filtering and chroma
   subsampling/4:2:2 angle mapping remain explicit only where their syntax and
   sample geometry differ.
-- VVC derived, explicit, and CCLM chroma candidate scoring now shares one
-  search context, while explicit and CCLM prediction/scoring also shares one
-  candidate evaluator and strict-winner promotion state; their distinct
-  legality and fast-search gates remain at mode selection.
+- VVC derived, explicit, and CCLM chroma candidates now share one prediction
+  helper, while every scored candidate shares one evaluator and strict-winner
+  state. Their complete candidate loop and deepest legality/fast-search gates
+  live in the focused chroma-search module; the unscored derived-only shortcut
+  remains an explicit mode-selection result feeding the common RD path.
 - VVC SCC, temporal-hint, and finalized luma-TU metadata writes now share one
   bounded record type; temporal, exact-inter, and ordinary finalization no
   longer fan the same result out to parallel arrays through three duplicated
@@ -344,7 +345,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 937-line CTU setup plus 1,124-line mode-selection sibling and 275/314-line luma/chroma search helpers | luma/chroma candidate evaluation and deepest search gates are cohesive; RD/finalization orchestration still needs call-graph review |
+| VVC residual quantization | 937-line CTU setup plus 1,003-line mode-selection sibling and 275/489-line luma/chroma search helpers | luma/chroma candidate evaluation and deepest search gates are cohesive; RD/finalization orchestration still needs call-graph review |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2

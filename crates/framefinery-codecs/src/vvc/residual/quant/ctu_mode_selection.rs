@@ -690,6 +690,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             }
         }
         let chroma_mode_search_context = VvcChromaModeSearchContext {
+            policy,
             metric: score_metric,
             source_frame,
             frame_recon,
@@ -702,144 +703,22 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             cclm_enabled: cclm_syntax_enabled,
             syntax_tie_breaker_enabled: chroma_syntax_tie_breaker,
         };
-        let initial_chroma_mode = VvcChromaIntraPredictionMode::Derived;
         #[cfg(feature = "vvc-stats")]
         let chroma_mode_search_start = StageStart::now();
-        #[cfg(feature = "vvc-stats")]
-        let prediction_start = StageStart::now();
-        predict_vvc_chroma_mode_pair_blocks_into_with_availability(
-            &mut predicted_cb,
-            &mut predicted_cr,
-            &mut prediction_scratch,
-            initial_chroma_mode,
-            co_located_luma_mode,
-            &frame_recon.cb,
-            &frame_recon.cr,
-            &frame_recon.luma,
-            frame_recon.coded_geometry(),
-            node,
-            source_frame.format.chroma_sampling,
-            source_frame.format.bit_depth,
-            Some(frame_recon.cb_availability()),
-            Some(frame_recon.cr_availability()),
-            Some(frame_recon.luma_availability()),
-        );
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats.add_chroma_prediction_nanos(
-            VvcChromaPredictionStatsFamily::Derived,
-            vvc_elapsed_nanos(prediction_start),
-        );
-        let (raw_chroma_mode, chroma_candidate_costs) =
-            if vvc_chroma_fast_search_uses_derived_only(policy) {
-                #[cfg(feature = "vvc-stats")]
-                intra_search_stats.add_chroma_derived();
-                (
-                    initial_chroma_mode,
-                    VvcChromaIntraCandidateCosts::new(0),
-                )
-            } else {
-                let initial_score = chroma_mode_search_context.score_prediction(
-                    &mut chroma_rd_cache,
-                    initial_chroma_mode,
-                    &predicted_cb,
-                    &predicted_cr,
-                    &mut candidate_cb_residuals,
-                    &mut candidate_cr_residuals,
-                    &mut intra_search_stats,
-                );
-                let mut chroma_search = VvcChromaIntraSearch::new(initial_score);
-                #[cfg(feature = "vvc-stats")]
-                intra_search_stats.add_chroma_derived();
-                if !vvc_chroma_lossless_speed_skips_near_exact_explicit_search(
-                    policy,
-                    chroma_search.best_score(),
-                    chroma_width,
-                    chroma_height,
-                ) && !vvc_chroma_lossy_exact_mode_search_done(
-                    chroma_syntax_tie_breaker,
-                    chroma_search.best_score(),
-                ) {
-                    for explicit_mode in vvc_chroma_explicit_candidates(co_located_luma_mode) {
-                        if !vvc_chroma_explicit_candidate_allowed_for_search(policy, explicit_mode)
-                        {
-                            continue;
-                        }
-                        let chroma_mode = VvcChromaIntraPredictionMode::Explicit(explicit_mode);
-                        let candidate_score =
-                            chroma_mode_search_context.predict_and_score_candidate(
-                                &mut chroma_rd_cache,
-                                chroma_mode,
-                                &mut prediction_scratch,
-                                &mut candidate_cb_prediction,
-                                &mut candidate_cr_prediction,
-                                &mut candidate_cb_residuals,
-                                &mut candidate_cr_residuals,
-                                &mut intra_search_stats,
-                            );
-                        #[cfg(feature = "vvc-stats")]
-                        intra_search_stats.add_chroma_explicit();
-                        chroma_search.consider_candidate(
-                            chroma_mode,
-                            candidate_score,
-                            &mut predicted_cb,
-                            &mut predicted_cr,
-                            &mut candidate_cb_prediction,
-                            &mut candidate_cr_prediction,
-                        );
-                        if vvc_chroma_lossy_exact_mode_search_done(
-                            chroma_syntax_tie_breaker,
-                            chroma_search.best_score(),
-                        ) {
-                            break;
-                        }
-                    }
-                }
-                if policy.chroma_cclm_candidate_allowed(node, source_frame.geometry)
-                    && vvc_chroma_cclm_fast_search_allowed(
-                        policy,
-                        chroma_search.best_score(),
-                        chroma_width,
-                        chroma_height,
-                    )
-                    && !vvc_chroma_lossy_exact_mode_search_done(
-                        chroma_syntax_tie_breaker,
-                        chroma_search.best_score(),
-                    )
-                {
-                    for cclm_mode in [
-                        VvcChromaCclmMode::Linear,
-                        VvcChromaCclmMode::MdlmLeft,
-                        VvcChromaCclmMode::MdlmTop,
-                    ] {
-                        let chroma_mode = VvcChromaIntraPredictionMode::Cclm(cclm_mode);
-                        let candidate_score =
-                            chroma_mode_search_context.predict_and_score_candidate(
-                                &mut chroma_rd_cache,
-                                chroma_mode,
-                                &mut prediction_scratch,
-                                &mut candidate_cb_prediction,
-                                &mut candidate_cr_prediction,
-                                &mut candidate_cb_residuals,
-                                &mut candidate_cr_residuals,
-                                &mut intra_search_stats,
-                            );
-                        #[cfg(feature = "vvc-stats")]
-                        intra_search_stats.add_chroma_cclm_mode(cclm_mode);
-                        chroma_search.consider_candidate(
-                            chroma_mode,
-                            candidate_score,
-                            &mut predicted_cb,
-                            &mut predicted_cr,
-                            &mut candidate_cb_prediction,
-                            &mut candidate_cr_prediction,
-                        );
-                    }
-                }
-                let chroma_candidate_costs = chroma_search.candidate_costs();
-                let raw_chroma_mode = policy.select_chroma_intra_mode(node, chroma_candidate_costs);
-                debug_assert_eq!(raw_chroma_mode, chroma_search.best_mode());
-                (raw_chroma_mode, chroma_candidate_costs)
-            };
+        let VvcChromaModeSearchResult {
+            mode: raw_chroma_mode,
+            candidate_costs: chroma_candidate_costs,
+        } = chroma_mode_search_context.select_intra_mode(VvcChromaModeSearchBuffers {
+            cache: &mut chroma_rd_cache,
+            prediction_scratch: &mut prediction_scratch,
+            selected_cb_prediction: &mut predicted_cb,
+            selected_cr_prediction: &mut predicted_cr,
+            candidate_cb_prediction: &mut candidate_cb_prediction,
+            candidate_cr_prediction: &mut candidate_cr_prediction,
+            candidate_cb_residuals: &mut candidate_cb_residuals,
+            candidate_cr_residuals: &mut candidate_cr_residuals,
+            stats: &mut intra_search_stats,
+        });
         #[cfg(feature = "vvc-stats")]
         intra_search_stats
             .add_chroma_mode_search_nanos(chroma_mode_search_start.elapsed().as_nanos() as u64);

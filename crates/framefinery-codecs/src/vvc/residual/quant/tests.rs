@@ -154,6 +154,154 @@ fn vvc_chroma_intra_search_promotes_only_strict_winners_and_records_ties() {
 }
 
 #[test]
+fn vvc_chroma_candidate_evaluator_shares_derived_explicit_and_cclm_scoring() {
+    let mut frame = sampled_luma_frame(
+        8,
+        8,
+        (0..8)
+            .flat_map(|y| (0..8).map(move |x| ((x * 13 + y * 5) & 0xff) as VvcSample))
+            .collect(),
+    );
+    frame.cb = (0..16).map(|index| (index * 9) as VvcSample).collect();
+    frame.cr = (0..16)
+        .map(|index| (255 - index * 7) as VvcSample)
+        .collect();
+    let frame_recon = VvcReconstructionFrame::new_neutral(frame.geometry, frame.format);
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeChroma);
+    let policy = VvcResidualCodingPolicy::new(frame.format, VvcResidualCodingMode::Lossy);
+    let context = VvcChromaModeSearchContext {
+        policy,
+        metric: policy.score_metric(),
+        source_frame: &frame,
+        frame_recon: &frame_recon,
+        node,
+        co_located_luma_mode: VvcIntraPredictionMode::Horizontal,
+        chroma_x: 0,
+        chroma_y: 0,
+        chroma_width: 4,
+        chroma_height: 4,
+        cclm_enabled: true,
+        syntax_tie_breaker_enabled: policy.chroma_syntax_tie_breaker(),
+    };
+
+    for mode in [
+        VvcChromaIntraPredictionMode::Derived,
+        VvcChromaIntraPredictionMode::Explicit(VvcIntraPredictionMode::Planar),
+        VvcChromaIntraPredictionMode::Cclm(VvcChromaCclmMode::Linear),
+    ] {
+        let mut cache = VvcChromaModeRdCache::new();
+        cache.reset(policy, node);
+        let mut prediction_scratch = VvcDcPredictionScratch::default();
+        let mut predicted_cb = Vec::new();
+        let mut predicted_cr = Vec::new();
+        let mut cb_residuals = Vec::new();
+        let mut cr_residuals = Vec::new();
+        #[cfg(feature = "vvc-stats")]
+        let mut stats = VvcIntraSearchStats::default();
+        #[cfg(not(feature = "vvc-stats"))]
+        let mut stats = VvcIntraSearchStats;
+
+        let score = context.predict_and_score_candidate(
+            &mut cache,
+            mode,
+            &mut prediction_scratch,
+            &mut predicted_cb,
+            &mut predicted_cr,
+            &mut cb_residuals,
+            &mut cr_residuals,
+            &mut stats,
+        );
+        assert_eq!(
+            score,
+            chroma_prediction_mode_selection_score(
+                policy.score_metric(),
+                &frame,
+                0,
+                0,
+                4,
+                4,
+                &predicted_cb,
+                &predicted_cr,
+                mode,
+                true,
+                policy.chroma_syntax_tie_breaker(),
+            ),
+            "mode={mode:?}",
+        );
+        assert_eq!(predicted_cb.len(), 16, "mode={mode:?}");
+        assert_eq!(predicted_cr.len(), 16, "mode={mode:?}");
+        assert_eq!(cb_residuals.len(), 16, "mode={mode:?}");
+        assert_eq!(cr_residuals.len(), 16, "mode={mode:?}");
+    }
+}
+
+#[test]
+fn vvc_chroma_search_preserves_unscored_derived_only_fast_path() {
+    let mut frame = sampled_luma_frame(8, 8, vec![32; 64]);
+    frame.cb = vec![0; 16];
+    frame.cr = vec![255; 16];
+    let frame_recon = VvcReconstructionFrame::new_neutral(frame.geometry, frame.format);
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeChroma);
+    let policy = VvcResidualCodingPolicy::new(frame.format, VvcResidualCodingMode::Lossless)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+    let context = VvcChromaModeSearchContext {
+        policy,
+        metric: policy.score_metric(),
+        source_frame: &frame,
+        frame_recon: &frame_recon,
+        node,
+        co_located_luma_mode: VvcIntraPredictionMode::Horizontal,
+        chroma_x: 0,
+        chroma_y: 0,
+        chroma_width: 4,
+        chroma_height: 4,
+        cclm_enabled: true,
+        syntax_tie_breaker_enabled: policy.chroma_syntax_tie_breaker(),
+    };
+    let mut cache = VvcChromaModeRdCache::new();
+    cache.reset(policy, node);
+    let mut prediction_scratch = VvcDcPredictionScratch::default();
+    let mut selected_cb = Vec::new();
+    let mut selected_cr = Vec::new();
+    let mut candidate_cb = Vec::new();
+    let mut candidate_cr = Vec::new();
+    let mut candidate_cb_residuals = Vec::new();
+    let mut candidate_cr_residuals = Vec::new();
+    #[cfg(feature = "vvc-stats")]
+    let mut stats = VvcIntraSearchStats::default();
+    #[cfg(not(feature = "vvc-stats"))]
+    let mut stats = VvcIntraSearchStats;
+
+    let result = context.select_intra_mode(VvcChromaModeSearchBuffers {
+        cache: &mut cache,
+        prediction_scratch: &mut prediction_scratch,
+        selected_cb_prediction: &mut selected_cb,
+        selected_cr_prediction: &mut selected_cr,
+        candidate_cb_prediction: &mut candidate_cb,
+        candidate_cr_prediction: &mut candidate_cr,
+        candidate_cb_residuals: &mut candidate_cb_residuals,
+        candidate_cr_residuals: &mut candidate_cr_residuals,
+        stats: &mut stats,
+    });
+
+    assert_eq!(result.mode, VvcChromaIntraPredictionMode::Derived);
+    assert_eq!(
+        result
+            .candidate_costs
+            .iter()
+            .map(|candidate| (candidate.mode(), candidate.score()))
+            .collect::<Vec<_>>(),
+        vec![(VvcChromaIntraPredictionMode::Derived, 0)],
+    );
+    assert_eq!(selected_cb.len(), 16);
+    assert_eq!(selected_cr.len(), 16);
+    assert!(candidate_cb.is_empty());
+    assert!(candidate_cr.is_empty());
+    assert!(candidate_cb_residuals.is_empty());
+    assert!(candidate_cr_residuals.is_empty());
+}
+
+#[test]
 fn vvc_luma_intra_search_promotes_only_strict_winners_and_records_ties() {
     let directional = VvcIntraPredictionMode::Horizontal;
     let mut search = VvcLumaIntraSearch::new(100);
