@@ -42,6 +42,7 @@ pub(in crate::vvc) fn predict_vvc_chroma_mode_block_into_with_availability(
         VvcChromaIntraPredictionMode::Cclm(cclm_mode) => {
             predict_vvc_chroma_cclm_block_into_with_availability(
                 prediction,
+                &mut scratch.cclm,
                 cclm_mode,
                 chroma,
                 luma,

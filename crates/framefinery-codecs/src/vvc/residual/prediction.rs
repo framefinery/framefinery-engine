@@ -256,12 +256,17 @@ fn predict_vvc_chroma_intra_block_into_with_availability(
     );
 }
 
+#[derive(Default)]
+struct VvcCclmPredictionScratch {
+    inner_luma: Vec<i32>,
+}
+
 pub(in crate::vvc) struct VvcDcPredictionScratch {
     top: [VvcSample; VVC_ANGULAR_REFERENCE_CAPACITY],
     left: [VvcSample; VVC_ANGULAR_REFERENCE_CAPACITY],
     top_work: [i32; VVC_CTU_SIZE],
     bottom_delta: [i32; VVC_CTU_SIZE],
-    cclm_inner_luma: Vec<i32>,
+    cclm: VvcCclmPredictionScratch,
 }
 
 include!("prediction_cclm.rs");
@@ -288,7 +293,7 @@ impl Default for VvcDcPredictionScratch {
             left: [0; VVC_ANGULAR_REFERENCE_CAPACITY],
             top_work: [0; VVC_CTU_SIZE],
             bottom_delta: [0; VVC_CTU_SIZE],
-            cclm_inner_luma: Vec::new(),
+            cclm: VvcCclmPredictionScratch::default(),
         }
     }
 }
@@ -450,5 +455,66 @@ mod tests {
 
         assert_eq!(actual, 80);
         assert_eq!(incorrectly_padded, 100);
+    }
+
+    #[test]
+    fn cclm_single_block_reuses_owned_inner_luma_scratch() {
+        let geometry = VvcVideoGeometry {
+            width: 8,
+            height: 8,
+        };
+        let node = VvcCodingTreeNode {
+            x: 0,
+            y: 0,
+            width: 8,
+            height: 8,
+            cqt_depth: 0,
+            mtt_depth: 0,
+            depth_offset: 0,
+            part_idx: 0,
+            parent_split: VvcPartSplit::None,
+            tree_type: VvcTreeType::SingleTree,
+            split_history: [VvcPartSplit::None; 2],
+        };
+        let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
+        let luma = vec![64; geometry.width * geometry.height];
+        let chroma = vec![128; geometry.width * geometry.height];
+        let mut prediction = Vec::new();
+        let mut scratch = VvcDcPredictionScratch::default();
+
+        predict_vvc_chroma_mode_block_into_with_availability(
+            &mut prediction,
+            &mut scratch,
+            VvcChromaIntraPredictionMode::Cclm(VvcChromaCclmMode::Linear),
+            VvcIntraPredictionMode::Dc,
+            &chroma,
+            &luma,
+            geometry,
+            node,
+            ChromaSampling::Cs444,
+            bit_depth,
+            None,
+            None,
+        );
+        let first_prediction = prediction.clone();
+        let retained_capacity = scratch.cclm.inner_luma.capacity();
+        assert_eq!(scratch.cclm.inner_luma.len(), prediction.len());
+
+        predict_vvc_chroma_mode_block_into_with_availability(
+            &mut prediction,
+            &mut scratch,
+            VvcChromaIntraPredictionMode::Cclm(VvcChromaCclmMode::Linear),
+            VvcIntraPredictionMode::Dc,
+            &chroma,
+            &luma,
+            geometry,
+            node,
+            ChromaSampling::Cs444,
+            bit_depth,
+            None,
+            None,
+        );
+        assert_eq!(prediction, first_prediction);
+        assert_eq!(scratch.cclm.inner_luma.capacity(), retained_capacity);
     }
 }

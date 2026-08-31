@@ -1,5 +1,6 @@
 fn predict_vvc_chroma_cclm_block_into_with_availability(
     prediction: &mut Vec<VvcSample>,
+    scratch: &mut VvcCclmPredictionScratch,
     mode: VvcChromaCclmMode,
     chroma: &[VvcSample],
     luma: &[VvcSample],
@@ -10,10 +11,9 @@ fn predict_vvc_chroma_cclm_block_into_with_availability(
     chroma_availability: Option<VvcPlaneAvailability<'_>>,
     luma_availability: Option<VvcPlaneAvailability<'_>>,
 ) {
-    let mut inner_luma = Vec::new();
     predict_vvc_chroma_cclm_block_with_luma_scratch_into(
         prediction,
-        &mut inner_luma,
+        &mut scratch.inner_luma,
         mode,
         chroma,
         luma,
@@ -47,7 +47,7 @@ pub(in crate::vvc) fn predict_vvc_chroma_cclm_pair_into_with_availability(
     if cb_layout != cr_layout {
         predict_vvc_chroma_cclm_block_with_luma_scratch_into(
             cb_prediction,
-            &mut scratch.cclm_inner_luma,
+            &mut scratch.cclm.inner_luma,
             mode,
             cb,
             luma,
@@ -60,7 +60,7 @@ pub(in crate::vvc) fn predict_vvc_chroma_cclm_pair_into_with_availability(
         );
         predict_vvc_chroma_cclm_block_with_luma_scratch_into(
             cr_prediction,
-            &mut scratch.cclm_inner_luma,
+            &mut scratch.cclm.inner_luma,
             mode,
             cr,
             luma,
@@ -75,7 +75,7 @@ pub(in crate::vvc) fn predict_vvc_chroma_cclm_pair_into_with_availability(
     }
 
     prepare_vvc_cclm_inner_luma_into(
-        &mut scratch.cclm_inner_luma,
+        &mut scratch.cclm.inner_luma,
         cb_layout,
         luma,
         geometry,
@@ -95,7 +95,7 @@ pub(in crate::vvc) fn predict_vvc_chroma_cclm_pair_into_with_availability(
     );
     predict_vvc_chroma_cclm_block_from_inner_luma_into(
         cb_prediction,
-        &scratch.cclm_inner_luma,
+        &scratch.cclm.inner_luma,
         cb_layout,
         luma_selection,
         cb,
@@ -107,7 +107,7 @@ pub(in crate::vvc) fn predict_vvc_chroma_cclm_pair_into_with_availability(
     );
     predict_vvc_chroma_cclm_block_from_inner_luma_into(
         cr_prediction,
-        &scratch.cclm_inner_luma,
+        &scratch.cclm.inner_luma,
         cb_layout,
         luma_selection,
         cr,
