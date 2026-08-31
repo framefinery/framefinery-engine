@@ -85,14 +85,8 @@ struct VvcChromaTuSelectionContext<'a> {
 struct VvcChromaTuSelectionBuffers<'a> {
     cache: &'a mut VvcChromaModeRdCache,
     prediction_scratch: &'a mut VvcDcPredictionScratch,
-    selected_cb_prediction: &'a mut Vec<VvcSample>,
-    selected_cr_prediction: &'a mut Vec<VvcSample>,
-    selected_cb_residuals: &'a mut Vec<i16>,
-    selected_cr_residuals: &'a mut Vec<i16>,
-    candidate_cb_prediction: &'a mut Vec<VvcSample>,
-    candidate_cr_prediction: &'a mut Vec<VvcSample>,
-    candidate_cb_residuals: &'a mut Vec<i16>,
-    candidate_cr_residuals: &'a mut Vec<i16>,
+    selected: VvcChromaCandidateBuffers<'a>,
+    candidate: VvcChromaCandidateBuffers<'a>,
     stats: &'a mut VvcIntraSearchStats,
     transform_scratch: &'a mut VvcInverseTransformScratch,
     reconstructed_residual: &'a mut Vec<i16>,
@@ -106,37 +100,15 @@ impl VvcChromaTuSelectionContext<'_> {
         let VvcChromaTuSelectionBuffers {
             cache,
             prediction_scratch,
-            selected_cb_prediction,
-            selected_cr_prediction,
-            selected_cb_residuals,
-            selected_cr_residuals,
-            candidate_cb_prediction,
-            candidate_cr_prediction,
-            candidate_cb_residuals,
-            candidate_cr_residuals,
+            mut selected,
+            candidate,
             stats,
             transform_scratch,
             reconstructed_residual,
         } = buffers;
         if let Some(hint) = self.temporal_hint {
-            let temporal_candidate = {
-                let mut temporal_buffers = VvcChromaCandidateBuffers {
-                    prediction: VvcChromaPredictionBuffers {
-                        cb: selected_cb_prediction,
-                        cr: selected_cr_prediction,
-                    },
-                    residuals: VvcChromaResidualBuffers {
-                        cb: selected_cb_residuals,
-                        cr: selected_cr_residuals,
-                    },
-                };
-                self.select_temporal_hint_candidate(
-                    hint,
-                    prediction_scratch,
-                    &mut temporal_buffers,
-                    stats,
-                )
-            };
+            let temporal_candidate =
+                self.select_temporal_hint_candidate(hint, prediction_scratch, &mut selected, stats);
             if let Some(candidate) = temporal_candidate {
                 return candidate;
             }
@@ -164,31 +136,25 @@ impl VvcChromaTuSelectionContext<'_> {
             cache,
             prediction_scratch,
             selected_prediction: VvcChromaPredictionBuffers {
-                cb: selected_cb_prediction,
-                cr: selected_cr_prediction,
+                cb: selected.prediction.cb,
+                cr: selected.prediction.cr,
             },
             candidate_prediction: VvcChromaPredictionBuffers {
-                cb: candidate_cb_prediction,
-                cr: candidate_cr_prediction,
+                cb: candidate.prediction.cb,
+                cr: candidate.prediction.cr,
             },
             candidate_residuals: VvcChromaResidualBuffers {
-                cb: candidate_cb_residuals,
-                cr: candidate_cr_residuals,
+                cb: candidate.residuals.cb,
+                cr: candidate.residuals.cr,
             },
             stats,
         });
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_mode_search_nanos(mode_search_start.elapsed().as_nanos() as u64);
 
-        if !cache.take_residuals_if_present(raw_mode, selected_cb_residuals, selected_cr_residuals)
+        if !cache.take_residuals_if_present(raw_mode, selected.residuals.cb, selected.residuals.cr)
         {
-            self.materialize_residuals(
-                selected_cb_prediction,
-                selected_cr_prediction,
-                selected_cb_residuals,
-                selected_cr_residuals,
-                stats,
-            );
+            self.materialize_residuals(&mut selected, stats);
         }
 
         let refinement_context = VvcChromaRefinementContext {
@@ -207,26 +173,8 @@ impl VvcChromaTuSelectionContext<'_> {
         };
         let mut refinement_buffers = VvcChromaRefinementBuffers {
             prediction_scratch,
-            selected: VvcChromaCandidateBuffers {
-                prediction: VvcChromaPredictionBuffers {
-                    cb: selected_cb_prediction,
-                    cr: selected_cr_prediction,
-                },
-                residuals: VvcChromaResidualBuffers {
-                    cb: selected_cb_residuals,
-                    cr: selected_cr_residuals,
-                },
-            },
-            candidate: VvcChromaCandidateBuffers {
-                prediction: VvcChromaPredictionBuffers {
-                    cb: candidate_cb_prediction,
-                    cr: candidate_cr_prediction,
-                },
-                residuals: VvcChromaResidualBuffers {
-                    cb: candidate_cb_residuals,
-                    cr: candidate_cr_residuals,
-                },
-            },
+            selected,
+            candidate,
             stats,
             transform_scratch,
             reconstructed_residual,
@@ -292,16 +240,13 @@ impl VvcChromaTuSelectionContext<'_> {
 
     fn materialize_residuals(
         &self,
-        cb_prediction: &[VvcSample],
-        cr_prediction: &[VvcSample],
-        cb_residuals: &mut Vec<i16>,
-        cr_residuals: &mut Vec<i16>,
+        buffers: &mut VvcChromaCandidateBuffers<'_>,
         stats: &mut VvcIntraSearchStats,
     ) {
         #[cfg(feature = "vvc-stats")]
         let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
-            cb_residuals,
+            buffers.residuals.cb,
             &self.source_frame.cb,
             self.source_frame.geometry,
             self.source_frame.format,
@@ -309,14 +254,14 @@ impl VvcChromaTuSelectionContext<'_> {
             self.chroma_y,
             self.chroma_width,
             self.chroma_height,
-            cb_prediction,
+            buffers.prediction.cb,
         );
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         #[cfg(feature = "vvc-stats")]
         let residual_start = StageStart::now();
         residual_chroma_tu_at_into(
-            cr_residuals,
+            buffers.residuals.cr,
             &self.source_frame.cr,
             self.source_frame.geometry,
             self.source_frame.format,
@@ -324,7 +269,7 @@ impl VvcChromaTuSelectionContext<'_> {
             self.chroma_y,
             self.chroma_width,
             self.chroma_height,
-            cr_prediction,
+            buffers.prediction.cr,
         );
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));

@@ -36,13 +36,7 @@ impl VvcChromaTuSelectionContext<'_> {
                 VvcChromaPredictionStatsFamily::Explicit,
                 vvc_elapsed_nanos(prediction_start),
             );
-            self.materialize_residuals(
-                buffers.prediction.cb,
-                buffers.prediction.cr,
-                buffers.residuals.cb,
-                buffers.residuals.cr,
-                stats,
-            );
+            self.materialize_residuals(buffers, stats);
             if !self.temporal_hint_residuals_are_cheap(buffers.residuals.cb, buffers.residuals.cr) {
                 return None;
             }
@@ -91,13 +85,7 @@ impl VvcChromaTuSelectionContext<'_> {
                 vvc_chroma_prediction_stats_family(hint.mode),
                 vvc_elapsed_nanos(prediction_start),
             );
-            self.materialize_residuals(
-                buffers.prediction.cb,
-                buffers.prediction.cr,
-                buffers.residuals.cb,
-                buffers.residuals.cr,
-                stats,
-            );
+            self.materialize_residuals(buffers, stats);
             if !self.temporal_hint_residuals_are_cheap(buffers.residuals.cb, buffers.residuals.cr) {
                 return None;
             }

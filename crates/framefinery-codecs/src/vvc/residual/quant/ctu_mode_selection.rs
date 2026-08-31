@@ -357,14 +357,26 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             .select_candidate(VvcChromaTuSelectionBuffers {
                 cache: &mut chroma_rd_cache,
                 prediction_scratch: &mut prediction_scratch,
-                selected_cb_prediction: &mut predicted_cb,
-                selected_cr_prediction: &mut predicted_cr,
-                selected_cb_residuals: &mut cb_residuals,
-                selected_cr_residuals: &mut cr_residuals,
-                candidate_cb_prediction: &mut candidate_cb_prediction,
-                candidate_cr_prediction: &mut candidate_cr_prediction,
-                candidate_cb_residuals: &mut candidate_cb_residuals,
-                candidate_cr_residuals: &mut candidate_cr_residuals,
+                selected: VvcChromaCandidateBuffers {
+                    prediction: VvcChromaPredictionBuffers {
+                        cb: &mut predicted_cb,
+                        cr: &mut predicted_cr,
+                    },
+                    residuals: VvcChromaResidualBuffers {
+                        cb: &mut cb_residuals,
+                        cr: &mut cr_residuals,
+                    },
+                },
+                candidate: VvcChromaCandidateBuffers {
+                    prediction: VvcChromaPredictionBuffers {
+                        cb: &mut candidate_cb_prediction,
+                        cr: &mut candidate_cr_prediction,
+                    },
+                    residuals: VvcChromaResidualBuffers {
+                        cb: &mut candidate_cb_residuals,
+                        cr: &mut candidate_cr_residuals,
+                    },
+                },
                 stats: &mut intra_search_stats,
                 transform_scratch: &mut transform_scratch,
                 reconstructed_residual: &mut reconstructed_residual,
