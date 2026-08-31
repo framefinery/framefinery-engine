@@ -277,6 +277,10 @@ The following changes were behavior-preserving and independently validated:
   reverse coefficient, DC, sign, high-range, and entropy-context traversal;
   compile-time geometry policies retain only scan order, normalization
   diagnostics, and the syntax/context choices that differ by transform size.
+- The unified AV2 chroma TXB policy and traversal now live in a focused
+  360-line included sibling, reducing the shared transform-emission core from
+  1,031 to 672 lines without changing module scope, visibility, or coding
+  dispatch.
 - AV2 inter-residual tracing was separated from residual coefficient writing,
   keeping diagnostics and feature-gated instrumentation out of the coding
   pipeline.
@@ -312,7 +316,7 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 491-line orchestration plus focused prediction siblings | plane-level luma/chroma dispatch and scratch ownership still need call-graph review |
-| AV2 tile transform syntax helpers | 1,031-line emission core plus 320-line context sibling | geometry-policy declarations remain co-located with the shared traversal and emission kernels |
+| AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
 
 For the next functional cleanup, prefer extracting a small shared helper with
