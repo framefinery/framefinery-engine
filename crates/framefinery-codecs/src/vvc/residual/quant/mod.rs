@@ -26,6 +26,7 @@ include!("chroma_residual.rs");
 include!("chroma_tu_finalization.rs");
 include!("chroma_selection.rs");
 include!("prediction_bridge.rs");
+include!("transform_skip_bdpcm.rs");
 include!("transform_skip.rs");
 include!("transform_skip_reconstruction.rs");
 include!("transform_skip_sse.rs");

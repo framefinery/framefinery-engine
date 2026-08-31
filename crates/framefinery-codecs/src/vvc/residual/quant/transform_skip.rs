@@ -161,26 +161,15 @@ fn finalize_vvc_bdpcm_transform_skip_residual_block<const AC_COEFFS: usize>(
     if residuals.iter().all(|&residual| residual == 0) {
         return VvcFinalizedResidualBlock::zero_transform_skip(bdpcm_mode);
     }
-    let mut quantized_levels = [0i16; VVC_TRANSFORM_SKIP_MAX_SAMPLES];
+    let mut level_state = VvcBdpcmLevelState::default();
     let mut ac_levels = [0; AC_COEFFS];
     let mut dc_level = 0i16;
     let mut has_ac = false;
     for y in 0..layout.active_height {
+        level_state.begin_row();
         for x in 0..layout.active_width {
             let level = quant_table.level(residuals[y * layout.source_width + x]);
-            quantized_levels[y * layout.coefficient_stride + x] = level;
-            let predictor = match bdpcm_mode {
-                VvcBdpcmMode::None => unreachable!("BDPCM block requires a direction"),
-                VvcBdpcmMode::Horizontal if x > 0 => {
-                    quantized_levels[y * layout.coefficient_stride + x - 1]
-                }
-                VvcBdpcmMode::Vertical if y > 0 => {
-                    quantized_levels[(y - 1) * layout.coefficient_stride + x]
-                }
-                VvcBdpcmMode::Horizontal | VvcBdpcmMode::Vertical => 0,
-            };
-            let coeff = (i32::from(level) - i32::from(predictor))
-                .clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+            let coeff = level_state.difference(bdpcm_mode, x, y, level);
             if x == 0 && y == 0 {
                 dc_level = coeff;
             } else {

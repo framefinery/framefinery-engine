@@ -2570,6 +2570,37 @@ fn vvc_transform_skip_reconstruction_shares_component_layouts() {
 }
 
 #[test]
+fn vvc_bdpcm_level_state_round_trips_both_directions() {
+    let source = [-7, 2, 11, 6, -3, 15, 9, 4, -8];
+    for (mode, expected_deltas) in [
+        (VvcBdpcmMode::Horizontal, [-7, 9, 9, 6, -9, 18, 9, -5, -12]),
+        (VvcBdpcmMode::Vertical, [-7, 2, 11, 13, -5, 4, 3, 7, -23]),
+    ] {
+        let mut forward = VvcBdpcmLevelState::default();
+        let mut deltas = [0; 9];
+        for y in 0..3 {
+            forward.begin_row();
+            for x in 0..3 {
+                let idx = y * 3 + x;
+                deltas[idx] = forward.difference(mode, x, y, source[idx]);
+            }
+        }
+        assert_eq!(deltas, expected_deltas, "mode={mode:?}");
+
+        let mut inverse = VvcBdpcmLevelState::default();
+        let mut reconstructed = [0; 9];
+        for y in 0..3 {
+            inverse.begin_row();
+            for x in 0..3 {
+                let idx = y * 3 + x;
+                reconstructed[idx] = inverse.reconstruct(mode, x, y, deltas[idx]);
+            }
+        }
+        assert_eq!(reconstructed, source, "mode={mode:?}");
+    }
+}
+
+#[test]
 fn vvc_transform_skip_table_reconstructs_indexed_quantized_levels() {
     let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
     let quant_table = VvcTransformSkipQuantTable::new(bit_depth, 19);

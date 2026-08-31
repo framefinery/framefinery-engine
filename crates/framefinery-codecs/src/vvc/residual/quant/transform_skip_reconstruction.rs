@@ -1,5 +1,3 @@
-const VVC_TRANSFORM_SKIP_MAX_SAMPLES: usize = 64;
-
 #[cfg(test)]
 pub(in crate::vvc) fn reconstruct_vvc_luma_transform_skip_residuals_into(
     residuals: &mut Vec<i16>,
@@ -262,30 +260,12 @@ fn inverse_bdpcm_quantized_levels_in_place(
     height: usize,
     bdpcm_mode: VvcBdpcmMode,
 ) {
-    match bdpcm_mode {
-        VvcBdpcmMode::None => unreachable!("BDPCM inverse requires a direction"),
-        VvcBdpcmMode::Horizontal => {
-            for y in 0..height {
-                let row = y * stride;
-                for x in 1..stride {
-                    let idx = row + x;
-                    levels[idx] = (i32::from(levels[idx]) + i32::from(levels[idx - 1]))
-                        .clamp(i32::from(i16::MIN), i32::from(i16::MAX))
-                        as i16;
-                }
-            }
-        }
-        VvcBdpcmMode::Vertical => {
-            for y in 1..height {
-                let row = y * stride;
-                let above = row - stride;
-                for x in 0..stride {
-                    let idx = row + x;
-                    levels[idx] = (i32::from(levels[idx]) + i32::from(levels[above + x]))
-                        .clamp(i32::from(i16::MIN), i32::from(i16::MAX))
-                        as i16;
-                }
-            }
+    let mut level_state = VvcBdpcmLevelState::default();
+    for y in 0..height {
+        level_state.begin_row();
+        for x in 0..stride {
+            let idx = y * stride + x;
+            levels[idx] = level_state.reconstruct(bdpcm_mode, x, y, levels[idx]);
         }
     }
 }

@@ -59,28 +59,17 @@ fn vvc_bdpcm_transform_skip_residual_sse<const AC_COEFFS: usize>(
     residual: VvcFinalizedResidualBlock<AC_COEFFS>,
 ) -> u64 {
     let mut sse = 0u64;
-    let mut vertical_predictors = [0i16; 8];
+    let mut level_state = VvcBdpcmLevelState::default();
     for y in 0..active_height {
         let source_row = &source_residuals[y * width..(y + 1) * width];
-        let mut horizontal_predictor = 0i16;
+        level_state.begin_row();
         for x in 0..active_width {
             let delta = if x == 0 && y == 0 {
                 residual.dc_level
             } else {
                 residual.ac_levels[y * ac_stride + x - 1]
             };
-            let level = match residual.bdpcm_mode {
-                VvcBdpcmMode::None => unreachable!("BDPCM SSE requires a direction"),
-                VvcBdpcmMode::Horizontal if x > 0 => {
-                    add_bdpcm_quantized_levels(delta, horizontal_predictor)
-                }
-                VvcBdpcmMode::Vertical if y > 0 => {
-                    add_bdpcm_quantized_levels(delta, vertical_predictors[x])
-                }
-                VvcBdpcmMode::Horizontal | VvcBdpcmMode::Vertical => delta,
-            };
-            horizontal_predictor = level;
-            vertical_predictors[x] = level;
+            let level = level_state.reconstruct(residual.bdpcm_mode, x, y, delta);
             sse += residual_diff_square(source_row[x], ts_quant.reconstructed(level));
         }
         for &source in &source_row[active_width..] {
@@ -94,12 +83,6 @@ fn vvc_bdpcm_transform_skip_residual_sse<const AC_COEFFS: usize>(
         }
     }
     sse
-}
-
-#[inline]
-fn add_bdpcm_quantized_levels(level: i16, predictor: i16) -> i16 {
-    (i32::from(level) + i32::from(predictor))
-        .clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16
 }
 
 #[inline]
