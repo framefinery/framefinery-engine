@@ -76,14 +76,20 @@ impl VvcLumaModeRdCache {
             .find(|candidate| candidate.mode.luma_mode_index() == mode.luma_mode_index())
     }
 
-    fn take_residuals(&mut self, mode: VvcIntraPredictionMode, residuals: &mut Vec<i16>) {
-        let candidate = self.candidates[..self.count]
+    fn take_residuals_if_present(
+        &mut self,
+        mode: VvcIntraPredictionMode,
+        residuals: &mut Vec<i16>,
+    ) -> bool {
+        let Some(candidate) = self.candidates[..self.count]
             .iter_mut()
             .find(|candidate| candidate.mode.luma_mode_index() == mode.luma_mode_index())
-            .expect("selected luma mode must be cached");
+        else {
+            return false;
+        };
         std::mem::swap(&mut candidate.residuals, residuals);
+        true
     }
-
 }
 
 struct VvcCachedLumaModeRdCandidate {
@@ -191,20 +197,22 @@ impl VvcChromaModeRdCache {
             .find(|candidate| candidate.mode == mode)
     }
 
-    fn take_residuals(
+    fn take_residuals_if_present(
         &mut self,
         mode: VvcChromaIntraPredictionMode,
         cb_residuals: &mut Vec<i16>,
         cr_residuals: &mut Vec<i16>,
-    ) {
-        let candidate = self.candidates[..self.count]
+    ) -> bool {
+        let Some(candidate) = self.candidates[..self.count]
             .iter_mut()
             .find(|candidate| candidate.mode == mode)
-            .expect("cached chroma candidate must exist");
+        else {
+            return false;
+        };
         std::mem::swap(&mut candidate.cb_residuals, cb_residuals);
         std::mem::swap(&mut candidate.cr_residuals, cr_residuals);
+        true
     }
-
 }
 
 struct VvcCachedChromaModeRdCandidate {

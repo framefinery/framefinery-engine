@@ -98,9 +98,7 @@ impl VvcLumaTuSelectionContext<'_> {
         #[cfg(feature = "vvc-stats")]
         stats.add_luma_mode_search_nanos(mode_search_start.elapsed().as_nanos() as u64);
 
-        if cache.get(raw_mode).is_some() {
-            cache.take_residuals(raw_mode, selected_residuals);
-        } else {
+        if !cache.take_residuals_if_present(raw_mode, selected_residuals) {
             #[cfg(feature = "vvc-stats")]
             let residual_start = StageStart::now();
             residual_luma_tu_at_into(

@@ -122,31 +122,26 @@ fn select_vvc_luma_mode_with_rd_refinement(
         ) {
             continue;
         }
-        if rd_cache.get(mode).is_some() {
+        if let Some(cached) = rd_cache.get(mode) {
             #[cfg(feature = "vvc-stats")]
             stats.add_luma_rd_cached_candidate();
             #[cfg(feature = "vvc-stats")]
             let score_start = StageStart::now();
-            let rd_candidate = {
-                let cached = rd_cache
-                    .get(mode)
-                    .expect("cached luma mode disappeared during scoring");
-                score_vvc_luma_mode_rd_candidate(
-                    policy,
-                    coding_decision,
-                    node,
-                    mode,
-                    left,
-                    above,
-                    &cached.residuals,
-                    source_frame.format.bit_depth,
-                    luma_qp,
-                    luma_ts_quant,
-                    stats,
-                    transform_scratch,
-                    reconstructed_residual,
-                )
-            };
+            let rd_candidate = score_vvc_luma_mode_rd_candidate(
+                policy,
+                coding_decision,
+                node,
+                mode,
+                left,
+                above,
+                &cached.residuals,
+                source_frame.format.bit_depth,
+                luma_qp,
+                luma_ts_quant,
+                stats,
+                transform_scratch,
+                reconstructed_residual,
+            );
             #[cfg(feature = "vvc-stats")]
             stats.add_luma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
             if rd_candidate.selects_over(best_candidate) {
@@ -166,7 +161,10 @@ fn select_vvc_luma_mode_with_rd_refinement(
                 );
                 #[cfg(feature = "vvc-stats")]
                 stats.add_luma_rd_prediction_nanos(vvc_elapsed_nanos(prediction_start));
-                rd_cache.take_residuals(mode, selected_residuals);
+                assert!(
+                    rd_cache.take_residuals_if_present(mode, selected_residuals),
+                    "cached luma mode disappeared before residual transfer",
+                );
             }
             continue;
         }

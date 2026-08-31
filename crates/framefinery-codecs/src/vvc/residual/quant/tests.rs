@@ -74,6 +74,60 @@ fn test_intra_search_stats() -> VvcIntraSearchStats {
 }
 
 #[test]
+fn vvc_luma_rd_cache_transfers_only_present_candidate_residuals() {
+    let frame = sampled_luma_frame(8, 8, vec![128; 64]);
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
+    let policy = VvcResidualCodingPolicy::new(frame.format, VvcResidualCodingMode::Lossy);
+    let cached_mode = VvcIntraPredictionMode::Planar;
+    let cached_residuals = vec![1, -2, 3, -4];
+    let mut cache = VvcLumaModeRdCache::new();
+    cache.reset(policy, node);
+    cache.consider(cached_mode, 10, &cached_residuals);
+    let mut selected_residuals = vec![99];
+
+    assert!(cache.take_residuals_if_present(cached_mode, &mut selected_residuals));
+    assert_eq!(selected_residuals, cached_residuals);
+
+    let unchanged = selected_residuals.clone();
+    assert!(!cache
+        .take_residuals_if_present(VvcIntraPredictionMode::Horizontal, &mut selected_residuals,));
+    assert_eq!(selected_residuals, unchanged);
+}
+
+#[test]
+fn vvc_chroma_rd_cache_transfers_only_present_candidate_residuals() {
+    let frame = sampled_luma_frame(8, 8, vec![128; 64]);
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeChroma);
+    let policy = VvcResidualCodingPolicy::new(frame.format, VvcResidualCodingMode::Lossy);
+    let cached_mode = VvcChromaIntraPredictionMode::Explicit(VvcIntraPredictionMode::Planar);
+    let cached_cb_residuals = vec![1, -2, 3, -4];
+    let cached_cr_residuals = vec![-5, 6, -7, 8];
+    let mut cache = VvcChromaModeRdCache::new();
+    cache.reset(policy, node);
+    cache.consider(cached_mode, 10, &cached_cb_residuals, &cached_cr_residuals);
+    let mut selected_cb_residuals = vec![99];
+    let mut selected_cr_residuals = vec![100];
+
+    assert!(cache.take_residuals_if_present(
+        cached_mode,
+        &mut selected_cb_residuals,
+        &mut selected_cr_residuals,
+    ));
+    assert_eq!(selected_cb_residuals, cached_cb_residuals);
+    assert_eq!(selected_cr_residuals, cached_cr_residuals);
+
+    let unchanged_cb = selected_cb_residuals.clone();
+    let unchanged_cr = selected_cr_residuals.clone();
+    assert!(!cache.take_residuals_if_present(
+        VvcChromaIntraPredictionMode::Derived,
+        &mut selected_cb_residuals,
+        &mut selected_cr_residuals,
+    ));
+    assert_eq!(selected_cb_residuals, unchanged_cb);
+    assert_eq!(selected_cr_residuals, unchanged_cr);
+}
+
+#[test]
 fn vvc_luma_prediction_score_matches_materialized_residual_score() {
     let frame = sampled_luma_frame(4, 4, (0..16).map(|idx| (idx * 7) as VvcSample).collect());
     let node = VvcCodingTreeNode::root(4, 4, VvcTreeType::DualTreeLuma);

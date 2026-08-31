@@ -332,6 +332,10 @@ The following changes were behavior-preserving and independently validated:
   retain their original priority and cheap-residual acceptance gates while
   sharing finalization, reconstruction, metadata, and trace handling with all
   other selected modes.
+- VVC luma and chroma RD caches now use one checked residual-transfer operation
+  for raw-mode selection and RD winner promotion. Read-only RD scoring keeps a
+  single cache borrow, cache misses preserve the caller's scratch buffers, and
+  only the miss path materializes residuals from the selected prediction.
 - VVC SCC, temporal-hint, and finalized luma-TU metadata writes now share one
   bounded record type; temporal, exact-inter, and ordinary finalization no
   longer fan the same result out to parallel arrays through three duplicated
@@ -360,7 +364,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 485-line CTU helper, 538-line mode-selection sibling, 443/491-line luma/chroma TU selection orchestration, and 275/489-line luma/chroma search helpers | selected candidates now converge on shared finalization tails; residual materialization and cache handoff still need a focused call-graph review |
+| VVC residual quantization | 485-line CTU helper, 538-line mode-selection sibling, 441/493-line luma/chroma TU selection orchestration, and 275/489-line luma/chroma search helpers | selected candidates and cache transfers now converge; mutable prediction/residual scratch ownership across search and RD refinement still needs a focused call-graph review |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2

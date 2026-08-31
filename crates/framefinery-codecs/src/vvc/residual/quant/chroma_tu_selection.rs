@@ -178,9 +178,11 @@ impl VvcChromaTuSelectionContext<'_> {
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_mode_search_nanos(mode_search_start.elapsed().as_nanos() as u64);
 
-        if cache.get(raw_mode).is_some() {
-            cache.take_residuals(raw_mode, selected_cb_residuals, selected_cr_residuals);
-        } else {
+        if !cache.take_residuals_if_present(
+            raw_mode,
+            selected_cb_residuals,
+            selected_cr_residuals,
+        ) {
             self.materialize_residuals(
                 selected_cb_prediction,
                 selected_cr_prediction,

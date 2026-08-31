@@ -80,32 +80,27 @@ fn select_vvc_chroma_mode_with_rd_refinement(
         ) {
             continue;
         }
-        if rd_cache.get(mode).is_some() {
+        if let Some(cached) = rd_cache.get(mode) {
             #[cfg(feature = "vvc-stats")]
             stats.add_chroma_rd_cached_candidate();
             #[cfg(feature = "vvc-stats")]
             let score_start = StageStart::now();
-            let rd_candidate = {
-                let cached = rd_cache
-                    .get(mode)
-                    .expect("cached chroma candidate must exist");
-                score_vvc_chroma_mode_rd_candidate(
-                    policy,
-                    coding_decision,
-                    mode,
-                    cclm_syntax_enabled,
-                    &cached.cb_residuals,
-                    &cached.cr_residuals,
-                    chroma_width,
-                    chroma_height,
-                    source_frame.format.bit_depth,
-                    chroma_qp,
-                    chroma_ts_quant,
-                    stats,
-                    transform_scratch,
-                    reconstructed_residual,
-                )
-            };
+            let rd_candidate = score_vvc_chroma_mode_rd_candidate(
+                policy,
+                coding_decision,
+                mode,
+                cclm_syntax_enabled,
+                &cached.cb_residuals,
+                &cached.cr_residuals,
+                chroma_width,
+                chroma_height,
+                source_frame.format.bit_depth,
+                chroma_qp,
+                chroma_ts_quant,
+                stats,
+                transform_scratch,
+                reconstructed_residual,
+            );
             #[cfg(feature = "vvc-stats")]
             stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
             if rd_candidate.selects_over(best_candidate) {
@@ -132,10 +127,13 @@ fn select_vvc_chroma_mode_with_rd_refinement(
                 );
                 #[cfg(feature = "vvc-stats")]
                 stats.add_chroma_rd_prediction_nanos(vvc_elapsed_nanos(prediction_start));
-                rd_cache.take_residuals(
-                    mode,
-                    selected_cb_residuals,
-                    selected_cr_residuals,
+                assert!(
+                    rd_cache.take_residuals_if_present(
+                        mode,
+                        selected_cb_residuals,
+                        selected_cr_residuals,
+                    ),
+                    "cached chroma mode disappeared before residual transfer",
                 );
             }
             continue;
