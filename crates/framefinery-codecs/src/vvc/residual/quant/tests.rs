@@ -2380,6 +2380,51 @@ fn vvc_zero_transform_skip_residuals_keep_zero_levels() {
 }
 
 #[test]
+fn vvc_transform_skip_finalizers_preserve_component_extents_and_bdpcm_layouts() {
+    let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
+    let qp = crate::vvc::vvc_lossless_slice_qp(bit_depth);
+    let quant_table = VvcTransformSkipQuantTable::new(bit_depth, qp);
+
+    let mut tall_residuals = vec![0; 4 * 8];
+    tall_residuals[31] = 7;
+    let luma = finalize_vvc_luma_transform_skip_residual_block(&tall_residuals, 4, 8, &quant_table);
+    let chroma =
+        finalize_vvc_chroma_transform_skip_residual_block(&tall_residuals, 4, 8, &quant_table);
+    assert!(!luma.has_ac, "4x8 luma stores only its active 4x4 extent");
+    assert!(luma.ac_levels.iter().all(|&level| level == 0));
+    assert!(
+        chroma.has_ac,
+        "4x8 chroma stores its complete active extent"
+    );
+    assert_eq!(chroma.ac_levels[30], quant_table.level(7));
+
+    let bdpcm_residuals = [10, 13, 20, 27];
+    let luma_bdpcm = finalize_vvc_luma_bdpcm_transform_skip_residual_block(
+        &bdpcm_residuals,
+        2,
+        2,
+        &quant_table,
+        VvcBdpcmMode::Horizontal,
+    );
+    let chroma_bdpcm = finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
+        &bdpcm_residuals,
+        2,
+        2,
+        &quant_table,
+        VvcBdpcmMode::Horizontal,
+    );
+    let levels = bdpcm_residuals.map(|residual| quant_table.level(residual));
+    assert_eq!(luma_bdpcm.dc_level, levels[0]);
+    assert_eq!(luma_bdpcm.ac_levels[0], levels[1] - levels[0]);
+    assert_eq!(luma_bdpcm.ac_levels[1], levels[2]);
+    assert_eq!(luma_bdpcm.ac_levels[2], levels[3] - levels[2]);
+    assert_eq!(chroma_bdpcm.dc_level, levels[0]);
+    assert_eq!(chroma_bdpcm.ac_levels[0], levels[1] - levels[0]);
+    assert_eq!(chroma_bdpcm.ac_levels[3], levels[2]);
+    assert_eq!(chroma_bdpcm.ac_levels[4], levels[3] - levels[2]);
+}
+
+#[test]
 fn vvc_transform_skip_table_reconstructs_indexed_quantized_levels() {
     let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
     let quant_table = VvcTransformSkipQuantTable::new(bit_depth, 19);

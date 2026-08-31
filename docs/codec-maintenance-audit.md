@@ -70,6 +70,10 @@ The following changes were behavior-preserving and independently validated:
   format-neutral residual accounting utilities.
 - VVC luma and chroma transform-skip AC extraction now share one bounded
   level-placement and nonzero-tracking kernel.
+- VVC luma and chroma transform-skip residual construction now shares one
+  checked active-extent layout and one quantized-level finalizer. BDPCM uses
+  the same shared delta loop, with component wrappers supplying only luma's
+  packed coefficient stride or chroma's fixed four-column syntax layout.
 - VVC finalized residual-block and RD-score value types now live in the shared
   quantization types module used by luma, chroma, and CTU selection.
 - VVC finalized luma and chroma TU records now live beside the shared

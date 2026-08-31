@@ -846,33 +846,14 @@ fn finalize_vvc_luma_transform_skip_residual_block(
     height: u16,
     quant_table: &VvcTransformSkipQuantTable,
 ) -> VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU> {
-    debug_assert_eq!(residuals.len(), usize::from(width) * usize::from(height));
-    if residuals.iter().all(|&residual| residual == 0) {
-        return VvcFinalizedResidualBlock {
-            dc_level: 0,
-            ac_levels: [0; VVC_LUMA_AC_COEFFS_PER_TU],
-            has_ac: false,
-            transform_skip: true,
-            bdpcm_mode: VvcBdpcmMode::None,
-        };
-    }
-    let dc_level = residuals
-        .first()
-        .copied()
-        .map(|level| quant_table.level(level))
-        .unwrap_or(0);
-    let (ac_levels, has_ac) = transform_skip_luma_ac_levels_and_flag_with_table(
+    let width = usize::from(width);
+    let height = usize::from(height);
+    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
+    finalize_vvc_transform_skip_residual_block(
         residuals,
-        usize::from(width),
+        VvcTransformSkipResidualLayout::packed(width, height, active_width, active_height),
         quant_table,
-    );
-    VvcFinalizedResidualBlock {
-        dc_level,
-        ac_levels,
-        has_ac,
-        transform_skip: true,
-        bdpcm_mode: VvcBdpcmMode::None,
-    }
+    )
 }
 
 fn finalize_vvc_luma_bdpcm_transform_skip_residual_block(
@@ -882,48 +863,13 @@ fn finalize_vvc_luma_bdpcm_transform_skip_residual_block(
     quant_table: &VvcTransformSkipQuantTable,
     bdpcm_mode: VvcBdpcmMode,
 ) -> VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU> {
-    debug_assert!(bdpcm_mode.is_enabled());
-    debug_assert_eq!(residuals.len(), usize::from(width) * usize::from(height));
-    if residuals.iter().all(|&residual| residual == 0) {
-        return VvcFinalizedResidualBlock {
-            dc_level: 0,
-            ac_levels: [0; VVC_LUMA_AC_COEFFS_PER_TU],
-            has_ac: false,
-            transform_skip: true,
-            bdpcm_mode,
-        };
-    }
-    let (active_width, active_height) =
-        vvc_luma_transform_skip_active_extent(usize::from(width), usize::from(height));
-    let mut quantized_levels = [0i16; 64];
-    let mut ac_levels = [0; VVC_LUMA_AC_COEFFS_PER_TU];
-    let mut dc_level = 0i16;
-    let mut has_ac = false;
-    for y in 0..active_height {
-        for x in 0..active_width {
-            let level = quant_table.level(residuals[y * usize::from(width) + x]);
-            quantized_levels[y * active_width + x] = level;
-            let predictor = match bdpcm_mode {
-                VvcBdpcmMode::None => unreachable!("BDPCM block requires a direction"),
-                VvcBdpcmMode::Horizontal if x > 0 => quantized_levels[y * active_width + x - 1],
-                VvcBdpcmMode::Vertical if y > 0 => quantized_levels[(y - 1) * active_width + x],
-                VvcBdpcmMode::Horizontal | VvcBdpcmMode::Vertical => 0,
-            };
-            let coeff = (i32::from(level) - i32::from(predictor))
-                .clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
-            if x == 0 && y == 0 {
-                dc_level = coeff;
-            } else {
-                ac_levels[y * active_width + x - 1] = coeff;
-                has_ac |= coeff != 0;
-            }
-        }
-    }
-    VvcFinalizedResidualBlock {
-        dc_level,
-        ac_levels,
-        has_ac,
-        transform_skip: true,
+    let width = usize::from(width);
+    let height = usize::from(height);
+    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
+    finalize_vvc_bdpcm_transform_skip_residual_block(
+        residuals,
+        VvcTransformSkipResidualLayout::packed(width, height, active_width, active_height),
+        quant_table,
         bdpcm_mode,
-    }
+    )
 }
