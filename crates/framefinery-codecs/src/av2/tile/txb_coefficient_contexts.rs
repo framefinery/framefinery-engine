@@ -237,19 +237,30 @@ fn luma_br_context(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> usize {
 
 include!("txb_idtx_contexts.rs");
 
+#[inline(always)]
+fn tx_level_at<const SAMPLES: usize, const WIDTH: usize, const HEIGHT: usize>(
+    levels: &[u32; SAMPLES],
+    pos: usize,
+    row_delta: usize,
+    col_delta: usize,
+) -> u32 {
+    debug_assert_eq!(SAMPLES, WIDTH * HEIGHT);
+    let row = pos / WIDTH + row_delta;
+    let col = pos % WIDTH + col_delta;
+    if row < HEIGHT && col < WIDTH {
+        levels[row * WIDTH + col].min(127)
+    } else {
+        0
+    }
+}
+
 fn tx4x4_level_at(
     levels: &[u32; TX4X4_SAMPLES],
     pos: usize,
     row_delta: usize,
     col_delta: usize,
 ) -> u32 {
-    let row = pos / TX4X4_SIZE + row_delta;
-    let col = pos % TX4X4_SIZE + col_delta;
-    if row < TX4X4_SIZE && col < TX4X4_SIZE {
-        levels[row * TX4X4_SIZE + col].min(127)
-    } else {
-        0
-    }
+    tx_level_at::<TX4X4_SAMPLES, TX4X4_SIZE, TX4X4_SIZE>(levels, pos, row_delta, col_delta)
 }
 
 fn tx8x8_level_at(
@@ -258,13 +269,7 @@ fn tx8x8_level_at(
     row_delta: usize,
     col_delta: usize,
 ) -> u32 {
-    let row = pos / TX8X8_SIZE + row_delta;
-    let col = pos % TX8X8_SIZE + col_delta;
-    if row < TX8X8_SIZE && col < TX8X8_SIZE {
-        levels[row * TX8X8_SIZE + col].min(127)
-    } else {
-        0
-    }
+    tx_level_at::<TX8X8_SAMPLES, TX8X8_SIZE, TX8X8_SIZE>(levels, pos, row_delta, col_delta)
 }
 
 fn tx4x8_level_at(
@@ -273,13 +278,7 @@ fn tx4x8_level_at(
     row_delta: usize,
     col_delta: usize,
 ) -> u32 {
-    let row = pos / TX4X8_WIDTH + row_delta;
-    let col = pos % TX4X8_WIDTH + col_delta;
-    if row < TX4X8_HEIGHT && col < TX4X8_WIDTH {
-        levels[row * TX4X8_WIDTH + col].min(127)
-    } else {
-        0
-    }
+    tx_level_at::<TX4X8_SAMPLES, TX4X8_WIDTH, TX4X8_HEIGHT>(levels, pos, row_delta, col_delta)
 }
 
 fn chroma_lf_limits(pos: usize) -> bool {
@@ -317,4 +316,11 @@ fn nonzero_dc_entropy_context(negative: bool) -> u8 {
     } else {
         NONZERO_POSITIVE_DC_ENTROPY_CONTEXT
     }
+}
+
+#[cfg(test)]
+mod coefficient_context_geometry_tests {
+    use super::*;
+
+    include!("txb_coefficient_context_geometry_tests.rs");
 }
