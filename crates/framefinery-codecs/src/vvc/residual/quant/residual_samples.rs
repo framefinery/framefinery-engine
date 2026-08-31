@@ -69,9 +69,42 @@ pub(in crate::vvc) fn residual_chroma_tu_at_into(
     height: usize,
     predicted: &[VvcSample],
 ) {
-    let _ = residual_chroma_tu_at_into_impl::<false>(
-        residuals, samples, geometry, format, origin_x, origin_y, width, height, predicted,
-    );
+    debug_assert_eq!(predicted.len(), width * height);
+    let chroma_width = geometry.width / chroma_subsample_x(format.chroma_sampling);
+    let chroma_height = geometry.height / chroma_subsample_y(format.chroma_sampling);
+    let copy_width = width.min(chroma_width.saturating_sub(origin_x));
+    let copy_height = height.min(chroma_height.saturating_sub(origin_y));
+    residuals.clear();
+    residuals.reserve(predicted.len());
+    if copy_width == width && copy_height == height {
+        for y in 0..height {
+            let src = (origin_y + y) * chroma_width + origin_x;
+            let dst = y * width;
+            for (sample, predicted) in samples[src..src + width]
+                .iter()
+                .zip(&predicted[dst..dst + width])
+            {
+                residuals.push(vvc_sample_delta_i16(*sample, *predicted));
+            }
+        }
+        debug_assert_eq!(residuals.len(), predicted.len());
+        return;
+    }
+    let max_x = chroma_width - 1;
+    let max_y = chroma_height - 1;
+    for y in 0..height {
+        let src_y = (origin_y + y).min(max_y);
+        let src_row = src_y * chroma_width;
+        let dst = y * width;
+        for x in 0..width {
+            let src_x = (origin_x + x).min(max_x);
+            residuals.push(vvc_sample_delta_i16(
+                samples[src_row + src_x],
+                predicted[dst + x],
+            ));
+        }
+    }
+    debug_assert_eq!(residuals.len(), predicted.len());
 }
 
 pub(in crate::vvc) fn residual_chroma_pair_tu_at_into(
@@ -196,79 +229,4 @@ fn residual_chroma_pair_tu_at_into_impl<const TRACK_ZERO: bool>(
         }
     }
     (cb_all_zero, cr_all_zero)
-}
-
-#[cfg(any(test, feature = "bench-internals"))]
-pub(in crate::vvc) fn residual_chroma_tu_at_into_and_detect_zero(
-    residuals: &mut Vec<i16>,
-    samples: &[VvcSample],
-    geometry: VvcVideoGeometry,
-    format: VvcPictureFormat,
-    origin_x: usize,
-    origin_y: usize,
-    width: usize,
-    height: usize,
-    predicted: &[VvcSample],
-) -> bool {
-    residual_chroma_tu_at_into_impl::<true>(
-        residuals, samples, geometry, format, origin_x, origin_y, width, height, predicted,
-    )
-}
-
-fn residual_chroma_tu_at_into_impl<const TRACK_ZERO: bool>(
-    residuals: &mut Vec<i16>,
-    samples: &[VvcSample],
-    geometry: VvcVideoGeometry,
-    format: VvcPictureFormat,
-    origin_x: usize,
-    origin_y: usize,
-    width: usize,
-    height: usize,
-    predicted: &[VvcSample],
-) -> bool {
-    debug_assert_eq!(predicted.len(), width * height);
-    let chroma_width = geometry.width / chroma_subsample_x(format.chroma_sampling);
-    let chroma_height = geometry.height / chroma_subsample_y(format.chroma_sampling);
-    let copy_width = width.min(chroma_width.saturating_sub(origin_x));
-    let copy_height = height.min(chroma_height.saturating_sub(origin_y));
-    residuals.clear();
-    if copy_width == width && copy_height == height {
-        residuals.reserve(predicted.len());
-        let mut all_zero = true;
-        for y in 0..height {
-            let src = (origin_y + y) * chroma_width + origin_x;
-            let dst = y * width;
-            for (sample, predicted) in samples[src..src + width]
-                .iter()
-                .zip(&predicted[dst..dst + width])
-            {
-                let residual = vvc_sample_delta_i16(*sample, *predicted);
-                if TRACK_ZERO {
-                    all_zero &= residual == 0;
-                }
-                residuals.push(residual);
-            }
-        }
-        debug_assert_eq!(residuals.len(), predicted.len());
-        return all_zero;
-    }
-    residuals.reserve(predicted.len());
-    let max_x = chroma_width - 1;
-    let max_y = chroma_height - 1;
-    let mut all_zero = true;
-    for y in 0..height {
-        let src_y = (origin_y + y).min(max_y);
-        let src_row = src_y * chroma_width;
-        let dst = y * width;
-        for x in 0..width {
-            let src_x = (origin_x + x).min(max_x);
-            let residual = vvc_sample_delta_i16(samples[src_row + src_x], predicted[dst + x]);
-            if TRACK_ZERO {
-                all_zero &= residual == 0;
-            }
-            residuals.push(residual);
-        }
-    }
-    debug_assert_eq!(residuals.len(), predicted.len());
-    all_zero
 }

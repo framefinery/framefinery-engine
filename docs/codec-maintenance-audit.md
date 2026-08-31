@@ -305,6 +305,10 @@ The following changes were behavior-preserving and independently validated:
   dispatcher and one plane-region descriptor; luma MRL/filtering and chroma
   subsampling/4:2:2 angle mapping remain explicit only where their syntax and
   sample geometry differ.
+- Seven definition-only VVC residual test adapters were removed from sample
+  extraction, quantization, and coefficient-stream construction; single-plane
+  chroma extraction no longer carries an unreachable zero-tracking branch,
+  while the live paired Cb/Cr tracked and untracked forms remain shared.
 - The optional `vvc-stats` feature was made independently compilable instead of
   implicitly depending on benchmark-only internals.
 

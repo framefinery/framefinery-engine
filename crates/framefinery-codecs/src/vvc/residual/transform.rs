@@ -456,23 +456,6 @@ pub(in crate::vvc) fn inverse_transform_vvc_chroma_quantized_block_into_with_qp(
 
 include!("transform_inverse.rs");
 
-#[cfg(test)]
-#[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
-pub(in crate::vvc) fn quantize_vvc_chroma_residual_dc(
-    residuals: &[i16],
-    width: u16,
-    height: u16,
-    bit_depth: SampleBitDepth,
-) -> i16 {
-    quantize_vvc_chroma_residual_dc_with_qp(
-        residuals,
-        width,
-        height,
-        bit_depth,
-        VVC_DEFAULT_LOSSY_CHROMA_QP,
-    )
-}
-
 pub(in crate::vvc) fn quantize_vvc_chroma_residual_dc_with_qp(
     residuals: &[i16],
     width: u16,
@@ -507,23 +490,6 @@ pub(in crate::vvc) fn quantize_vvc_chroma_residual_dc_with_qp(
 }
 
 include!("transform_chroma_dc.rs");
-
-#[cfg(test)]
-#[cfg_attr(not(feature = "dead-code-audit"), allow(dead_code))]
-pub(in crate::vvc) fn quantize_vvc_chroma_residual_greedy(
-    residuals: &[i16],
-    width: u16,
-    height: u16,
-    bit_depth: SampleBitDepth,
-) -> VvcQuantizedChromaTransformBlock {
-    quantize_vvc_chroma_residual_greedy_with_qp(
-        residuals,
-        width,
-        height,
-        bit_depth,
-        VVC_DEFAULT_LOSSY_CHROMA_QP,
-    )
-}
 
 pub(in crate::vvc) fn quantize_vvc_chroma_residual_greedy_with_qp(
     residuals: &[i16],
