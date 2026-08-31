@@ -401,8 +401,7 @@ fn write_chroma_coefficient_level<const SAMPLES: usize, Syntax>(
     is_eob_coefficient: bool,
     coeff_ctx: usize,
     level: u32,
-)
-where
+) where
     Syntax: Av2ChromaTxbSyntax<SAMPLES>,
 {
     let limits = chroma_lf_limits(pos);
@@ -576,8 +575,7 @@ fn write_chroma_low_range<const SAMPLES: usize, Syntax>(
     pos: usize,
     base_range: u32,
     field_name: &'static str,
-)
-where
+) where
     Syntax: Av2ChromaTxbSyntax<SAMPLES>,
 {
     let br_ctx = Syntax::br_context(levels, pos);
@@ -607,64 +605,6 @@ fn write_idtx_low_range(
         4,
         false,
     );
-}
-
-fn write_luma_high_range(
-    writer: &mut Av2EntropyWriter,
-    pos: usize,
-    level: u32,
-    hr_level_avg: &mut u32,
-) {
-    let limits = luma_lf_limits(pos);
-    let threshold = if limits { 7 } else { 5 };
-    if level <= threshold {
-        return;
-    }
-    let decoded_base = threshold + 1;
-    let high_range = level.saturating_sub(decoded_base);
-    write_adaptive_high_range_with_context(
-        writer,
-        "tile.coeff.y.high_range",
-        high_range,
-        *hr_level_avg,
-    );
-    *hr_level_avg = (*hr_level_avg + high_range) >> 1;
-}
-
-fn write_idtx_high_range(writer: &mut Av2EntropyWriter, level: u32, hr_level_avg: &mut u32) {
-    if level <= 5 {
-        return;
-    }
-    let high_range = level - 6;
-    write_adaptive_high_range_with_context(
-        writer,
-        "tile.coeff.y.idtx_high_range",
-        high_range,
-        *hr_level_avg,
-    );
-    *hr_level_avg = (*hr_level_avg + high_range) >> 1;
-}
-
-fn write_chroma_high_range(
-    writer: &mut Av2EntropyWriter,
-    plane: Av2ChromaPlane,
-    pos: usize,
-    level: u32,
-    hr_level_avg: &mut u32,
-) {
-    let limits = chroma_lf_limits(pos);
-    let threshold = if limits { 4 } else { 5 };
-    if level <= threshold {
-        return;
-    }
-    let decoded_base = if limits { 5 } else { 6 };
-    let high_range = level.saturating_sub(decoded_base);
-    let name = match plane {
-        Av2ChromaPlane::U => "tile.coeff.u.high_range",
-        Av2ChromaPlane::V => "tile.coeff.v.high_range",
-    };
-    write_adaptive_high_range_with_context(writer, name, high_range, *hr_level_avg);
-    *hr_level_avg = (*hr_level_avg + high_range) >> 1;
 }
 
 include!("txb_coefficient_contexts.rs");

@@ -40,6 +40,7 @@ include!("lossy_analysis.rs");
 include!("predictor_common.rs");
 include!("prediction_edges.rs");
 include!("lossless_scoring.rs");
+include!("coefficient_high_range.rs");
 include!("coefficient_proxy.rs");
 include!("lossless_subsampled.rs");
 include!("lossless_subsampled_edges.rs");
