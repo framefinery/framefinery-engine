@@ -530,12 +530,16 @@ The following changes were behavior-preserving and independently validated:
   4x4 and 8x8 DC-only output against the full inverse at 8, 10, and 12 bits,
   including inputs beyond the intermediate clipping boundaries.
 - AV2 coefficient mode scoring and entropy emission now share one focused
-  97-line high-range policy and writer sibling. It owns the luma-transform,
+  107-line high-range policy and writer sibling. It owns the luma-transform,
   identity-transform, and chroma decoded-base gates plus the rolling context
   transition; plane-specific field naming remains at the emission wrapper. A
   focused contract pins emitted bit counts, field names, and final averages
-  against the 183-line rate proxy across LF and non-LF cases. The coefficient
-  syntax parent is consequently reduced from 672 to 612 lines.
+  against the 228-line rate proxy across LF and non-LF cases. The specialized
+  luma and chroma DC-only tails now also select their existing field names and
+  call the shared LF policy with a fresh context, rather than deriving the
+  threshold and high-range value independently. A second contract covers both
+  sides of each DC threshold through the maximum `u16` level. The coefficient
+  syntax parent remains reduced from 672 to 612 lines.
 
 All of these remain included in their original parent module scope, so the
 split does not create an alternate coding path or change name resolution.
@@ -549,7 +553,7 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | approximately 2,616 lines after removing disabled leaf-skip syntax | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 511-line parent with constants, shared luma/chroma dispatch, nested scratch ownership, and focused tests; 322/324-line CCLM derivation/sampling siblings plus a 260-line block/pair orchestrator; 205-line reference-edge, 129-line DC/planar, 209-line angular-orchestration, 187-line BDPCM, and focused reconstruction siblings | DC/planar/angular share one region-based two-edge preparation path, while BDPCM retains direction-gated single-edge collection; remaining review should focus on prediction/output buffer ownership rather than re-splitting mode dispatch |
-| AV2 tile transform syntax helpers | 247-line transform parent with focused 182-line quantization, 239-line forward-DCT, and 278-line inverse-DCT siblings; plus 612-line coefficient syntax, 97-line shared high-range policy/emission, 183-line rate proxy, 360-line chroma, 320-line context, and 677-line low-level writer siblings | transform, regular-quantization, inverse clipping/DC-only, and high-range score/emission ownership is explicit, while skip-field name/CDF/key selection is paired behind one symbol emitter; remaining DC-level or context helpers should be changed only after syntax-by-syntax equivalence review |
+| AV2 tile transform syntax helpers | 247-line transform parent with focused 182-line quantization, 239-line forward-DCT, and 278-line inverse-DCT siblings; plus 612-line coefficient syntax, 107-line shared high-range policy/emission, 228-line rate proxy with focused contracts, 360-line chroma, 320-line context, and 677-line low-level writer siblings | transform, regular-quantization, inverse clipping/DC-only, and all rolling high-range score/emission ownership is explicit, while skip-field name/CDF/key selection is paired behind one symbol emitter; remaining base-level or context helpers should be changed only after syntax-by-syntax equivalence review |
 | VVC residual quantization | 486-line CTU helper, 163-line CTU orchestrator plus a 10-line shared immutable context, focused 175/210-line luma/chroma passes, and a 107-line result assembler; 404/286-line luma/chroma TU selection orchestration plus a 119-line chroma temporal helper; 275/443-line search helpers; a 408-line luma mode helper; 325/440/290-line chroma mode/BDPCM/RD helpers; 612/422-line luma/chroma residual search plus focused 232/286-line TU finalizers; and 388/271-line transform-skip finalization/reconstruction siblings with a focused 53-line BDPCM level state | top-level traversal, shared immutable setup, transient sample-buffer lifecycle, accepted zero-residual representation, component TU finalization, transform-skip reconstruction ownership, and BDPCM predecessor semantics are explicit; remaining work should inspect lower selectors and unify only genuinely identical component primitives without hiding mode legality, syntax, or reconstruction contracts |
 
 For the next functional cleanup, prefer extracting a small shared helper with

@@ -438,21 +438,21 @@ fn write_y_dc_sign(writer: &mut Av2EntropyWriter, negative: bool, dc_sign_ctx: u
 }
 
 fn write_y_dc_high_range(writer: &mut Av2EntropyWriter, level: u16) {
-    if level > 7 {
-        write_adaptive_high_range(writer, "tile.coeff.y.dc_high_range", u32::from(level - 8));
-    }
+    write_dc_only_high_range(
+        writer,
+        "tile.coeff.y.dc_high_range",
+        Av2CoefficientCodingKind::LumaTransform,
+        u32::from(level),
+    );
 }
 
 fn write_uv_dc_high_range(writer: &mut Av2EntropyWriter, level: u16) {
-    if level > 4 {
-        write_adaptive_high_range(writer, "tile.coeff.uv.dc_high_range", u32::from(level - 5));
-    }
-}
-
-fn write_adaptive_high_range(writer: &mut Av2EntropyWriter, name: &'static str, value: u32) {
-    // AVM write_adaptive_hr() starts every TXB with hr_level_avg=0; the
-    // resulting Rice parameter is m=1, k=2, cmax=5 for this DC-only path.
-    write_adaptive_high_range_with_context(writer, name, value, 0);
+    write_dc_only_high_range(
+        writer,
+        "tile.coeff.uv.dc_high_range",
+        Av2CoefficientCodingKind::ChromaTransform,
+        u32::from(level),
+    );
 }
 
 fn write_adaptive_high_range_with_context(

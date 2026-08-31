@@ -95,3 +95,13 @@ fn write_coefficient_high_range(
     };
     write_adaptive_high_range_with_context(writer, name, symbol.value, symbol.context);
 }
+
+fn write_dc_only_high_range(
+    writer: &mut Av2EntropyWriter,
+    name: &'static str,
+    kind: Av2CoefficientCodingKind,
+    level: u32,
+) {
+    let mut level_average = 0;
+    write_coefficient_high_range(writer, name, kind, 0, level, &mut level_average);
+}

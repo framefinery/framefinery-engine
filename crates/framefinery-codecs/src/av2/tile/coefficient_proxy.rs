@@ -180,4 +180,49 @@ mod coefficient_high_range_tests {
             },
         );
     }
+
+    fn assert_dc_only_writer_matches_shared_policy(
+        write_dc_only: fn(&mut Av2EntropyWriter, u16),
+        kind: Av2CoefficientCodingKind,
+        field_name: &'static str,
+        levels: &[u16],
+    ) {
+        for &level in levels {
+            let mut dc_only_writer = Av2EntropyWriter::new();
+            write_dc_only(&mut dc_only_writer, level);
+
+            let mut shared_writer = Av2EntropyWriter::new();
+            let mut level_average = 0;
+            write_coefficient_high_range(
+                &mut shared_writer,
+                field_name,
+                kind,
+                0,
+                u32::from(level),
+                &mut level_average,
+            );
+
+            assert_eq!(
+                dc_only_writer.finish(),
+                shared_writer.finish(),
+                "DC-only high-range mismatch for {field_name}, level={level}"
+            );
+        }
+    }
+
+    #[test]
+    fn dc_only_high_range_writers_match_shared_lf_policy() {
+        assert_dc_only_writer_matches_shared_policy(
+            write_y_dc_high_range,
+            Av2CoefficientCodingKind::LumaTransform,
+            "tile.coeff.y.dc_high_range",
+            &[0, 1, 7, 8, 9, 20, u16::MAX],
+        );
+        assert_dc_only_writer_matches_shared_policy(
+            write_uv_dc_high_range,
+            Av2CoefficientCodingKind::ChromaTransform,
+            "tile.coeff.uv.dc_high_range",
+            &[0, 1, 4, 5, 6, 17, u16::MAX],
+        );
+    }
 }
