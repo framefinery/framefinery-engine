@@ -375,6 +375,10 @@ The following changes were behavior-preserving and independently validated:
   cache transfer, RD refinement, and BDPCM reuse those records directly; only
   ordinary mode search borrows their components at its deliberate prediction-
   only promotion boundary.
+- VVC CTU residual quantization now borrows every reusable scratch field
+  directly instead of taking vectors and replacing caches before restoring
+  them at the function tail. A repeated-use test proves bit-exact codec state,
+  reconstruction identity, and retention of all reusable vector capacities.
 - VVC SCC, temporal-hint, and finalized luma-TU metadata writes now share one
   bounded record type; temporal, exact-inter, and ordinary finalization no
   longer fan the same result out to parallel arrays through three duplicated
@@ -403,7 +407,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 479-line CTU helper, 542-line mode-selection sibling, 424/304-line luma/chroma TU selection orchestration plus a 123-line chroma temporal helper, 275/443-line search helpers, a 416-line luma mode helper, and 312/440/289-line chroma mode/BDPCM/RD helpers | paired chroma candidate ownership now spans inter-derived, temporal, ordinary, RD, and BDPCM selection; the CTU mode selector still manually takes, clears, and restores the luma/chroma scratch vectors around both pipelines, so its scratch lifecycle should be audited before another orchestration split |
+| VVC residual quantization | 479-line CTU helper, 523-line mode-selection sibling, 424/304-line luma/chroma TU selection orchestration plus a 123-line chroma temporal helper, 275/443-line search helpers, a 416-line luma mode helper, and 312/440/289-line chroma mode/BDPCM/RD helpers | paired chroma ownership and direct CTU scratch borrowing are complete; the mode selector still combines luma/chroma traversal, skip handling, finalization calls, and result assembly, so common finalization invariants should be mapped before extracting either traversal loop |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2

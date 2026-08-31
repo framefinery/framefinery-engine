@@ -291,6 +291,84 @@ fn vvc_chroma_inter_candidate_prepares_shared_zero_residual_state() {
 }
 
 #[test]
+fn vvc_ctu_quant_scratch_reuse_is_bit_exact_and_retains_allocations() {
+    let geometry = VvcVideoGeometry {
+        width: 16,
+        height: 16,
+    };
+    let luma = (0..geometry.luma_samples())
+        .map(|index| ((index * 37 + 11) & 0xff) as VvcSample)
+        .collect();
+    let frame = sampled_luma_frame(geometry.width, geometry.height, luma);
+    let policy = VvcResidualCodingPolicy::new(frame.format, VvcResidualCodingMode::Lossy);
+    let luma_qp = super::super::VVC_DEFAULT_LOSSY_LUMA_QP;
+    let chroma_qp = super::super::VVC_DEFAULT_LOSSY_CHROMA_QP;
+    let quant_tables = VvcTransformSkipQuantTables::new(frame.format.bit_depth, luma_qp, chroma_qp);
+    let region = VvcCtuRegion {
+        slice_address: 0,
+        origin_x: 0,
+        origin_y: 0,
+        geometry,
+    };
+    let mut scratch = VvcCtuQuantScratch::default();
+    let encode_once = |scratch: &mut VvcCtuQuantScratch| {
+        let mut reconstruction = VvcReconstructionFrame::new_neutral(geometry, frame.format);
+        let quantized = quantize_vvc_residual_ctu_into_frame_reconstruction_with_qp_and_luma_modes_and_scratch_with_mode_hints(
+            &frame,
+            &mut reconstruction,
+            region,
+            policy,
+            luma_qp,
+            chroma_qp,
+            &mut VvcLumaModeSearchState::new_for_geometry(geometry),
+            &quant_tables,
+            scratch,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        (quantized, reconstruction)
+    };
+    let capacities = |scratch: &VvcCtuQuantScratch| {
+        [
+            scratch.luma_nodes.capacity(),
+            scratch.chroma_nodes.capacity(),
+            scratch.predicted_luma.capacity(),
+            scratch.predicted_cb.capacity(),
+            scratch.predicted_cr.capacity(),
+            scratch.reconstructed_residual.capacity(),
+            scratch.luma_residuals.capacity(),
+            scratch.candidate_luma_prediction.capacity(),
+            scratch.candidate_luma_residuals.capacity(),
+            scratch.cb_residuals.capacity(),
+            scratch.cr_residuals.capacity(),
+            scratch.candidate_cb_prediction.capacity(),
+            scratch.candidate_cr_prediction.capacity(),
+            scratch.candidate_cb_residuals.capacity(),
+            scratch.candidate_cr_residuals.capacity(),
+        ]
+    };
+
+    let (mut first_quantized, first_reconstruction) = encode_once(&mut scratch);
+    let first_capacities = capacities(&scratch);
+    assert!(first_capacities.iter().any(|capacity| *capacity > 0));
+    let (mut second_quantized, second_reconstruction) = encode_once(&mut scratch);
+    #[cfg(feature = "vvc-stats")]
+    {
+        first_quantized.intra_search_stats = VvcIntraSearchStats::default();
+        second_quantized.intra_search_stats = VvcIntraSearchStats::default();
+    }
+
+    assert_eq!(second_quantized, first_quantized);
+    assert_eq!(second_reconstruction, first_reconstruction);
+    assert_eq!(capacities(&scratch), first_capacities);
+}
+
+#[test]
 fn vvc_luma_temporal_hint_candidate_preserves_cheap_residual_gate() {
     let exact_frame = sampled_luma_frame(8, 8, vec![128; 64]);
     let expensive_frame = sampled_luma_frame(8, 8, vec![200; 64]);

@@ -20,27 +20,27 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     let mut luma_tu_metadata = VvcLumaTuMetadata::new();
     let mut chroma_tu_metadata = VvcChromaTuMetadata::new();
     let mut applied_luma_inter_decisions = [None; MAX_VVC_LUMA_TUS];
-    let mut luma_nodes = std::mem::take(&mut scratch.luma_nodes);
-    let mut chroma_nodes = std::mem::take(&mut scratch.chroma_nodes);
-    let mut prediction_scratch = std::mem::take(&mut scratch.prediction_scratch);
-    let mut predicted_luma = std::mem::take(&mut scratch.predicted_luma);
-    let mut predicted_cb = std::mem::take(&mut scratch.predicted_cb);
-    let mut predicted_cr = std::mem::take(&mut scratch.predicted_cr);
-    let mut transform_scratch = std::mem::take(&mut scratch.transform_scratch);
-    let mut reconstructed_residual = std::mem::take(&mut scratch.reconstructed_residual);
-    let mut luma_residuals = std::mem::take(&mut scratch.luma_residuals);
-    let mut candidate_luma_prediction = std::mem::take(&mut scratch.candidate_luma_prediction);
-    let mut candidate_luma_residuals = std::mem::take(&mut scratch.candidate_luma_residuals);
-    let mut luma_rd_cache =
-        std::mem::replace(&mut scratch.luma_rd_cache, VvcLumaModeRdCache::new());
-    let mut cb_residuals = std::mem::take(&mut scratch.cb_residuals);
-    let mut cr_residuals = std::mem::take(&mut scratch.cr_residuals);
-    let mut candidate_cb_prediction = std::mem::take(&mut scratch.candidate_cb_prediction);
-    let mut candidate_cr_prediction = std::mem::take(&mut scratch.candidate_cr_prediction);
-    let mut candidate_cb_residuals = std::mem::take(&mut scratch.candidate_cb_residuals);
-    let mut candidate_cr_residuals = std::mem::take(&mut scratch.candidate_cr_residuals);
-    let mut chroma_rd_cache =
-        std::mem::replace(&mut scratch.chroma_rd_cache, VvcChromaModeRdCache::new());
+    let VvcCtuQuantScratch {
+        luma_nodes,
+        chroma_nodes,
+        prediction_scratch,
+        predicted_luma,
+        predicted_cb,
+        predicted_cr,
+        transform_scratch,
+        reconstructed_residual,
+        luma_residuals,
+        candidate_luma_prediction,
+        candidate_luma_residuals,
+        luma_rd_cache,
+        cb_residuals,
+        cr_residuals,
+        candidate_cb_prediction,
+        candidate_cr_prediction,
+        candidate_cb_residuals,
+        candidate_cr_residuals,
+        chroma_rd_cache,
+    } = scratch;
     predicted_luma.clear();
     predicted_cb.clear();
     predicted_cr.clear();
@@ -79,7 +79,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
 
     let mut luma_tu_count = 0usize;
     vvc_luma_transform_nodes_into_for_kind(
-        &mut luma_nodes,
+        luma_nodes,
         ctu_shape,
         luma_max_leaf_size,
         policy.luma_split_kind(),
@@ -157,15 +157,15 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             inter_reference,
         }
         .select_candidate(VvcLumaTuSelectionBuffers {
-            cache: &mut luma_rd_cache,
-            prediction_scratch: &mut prediction_scratch,
-            selected_prediction: &mut predicted_luma,
-            selected_residuals: &mut luma_residuals,
-            candidate_prediction: &mut candidate_luma_prediction,
-            candidate_residuals: &mut candidate_luma_residuals,
+            cache: &mut *luma_rd_cache,
+            prediction_scratch: &mut *prediction_scratch,
+            selected_prediction: &mut *predicted_luma,
+            selected_residuals: &mut *luma_residuals,
+            candidate_prediction: &mut *candidate_luma_prediction,
+            candidate_residuals: &mut *candidate_luma_residuals,
             stats: &mut intra_search_stats,
-            transform_scratch: &mut transform_scratch,
-            reconstructed_residual: &mut reconstructed_residual,
+            transform_scratch: &mut *transform_scratch,
+            reconstructed_residual: &mut *reconstructed_residual,
         });
         let VvcSelectedLumaTuCandidate {
             mode: luma_mode,
@@ -178,7 +178,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         }
         #[cfg(feature = "vvc-stats")]
         residual_energy_stats.add_luma_residuals(
-            &luma_residuals,
+            luma_residuals,
             usize::from(node.width),
             usize::from(node.height),
         );
@@ -189,15 +189,15 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             source_frame,
             frame_recon,
             node,
-            &predicted_luma,
-            &luma_residuals,
+            predicted_luma,
+            luma_residuals,
             luma_qp,
             luma_ts_quant,
             vvc_transform_skip_qp_reconstructs_exact(source_frame.format.bit_depth, luma_qp),
             selected_luma_residual,
             &mut intra_search_stats,
-            &mut transform_scratch,
-            &mut reconstructed_residual,
+            transform_scratch,
+            reconstructed_residual,
         );
         #[cfg(feature = "vvc-stats")]
         intra_search_stats.add_luma_finalize_nanos(luma_finalize_start.elapsed().as_nanos() as u64);
@@ -211,15 +211,15 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             node,
             luma_mode,
             luma_tu,
-            &predicted_luma,
-            &luma_residuals,
+            predicted_luma,
+            luma_residuals,
         );
         luma_tu_count += 1;
     }
 
     let mut chroma_tu_count = 0usize;
     if ctu_shape.dual_tree_intra {
-        vvc_chroma_transform_nodes_into(&mut chroma_nodes, ctu_shape);
+        vvc_chroma_transform_nodes_into(chroma_nodes, ctu_shape);
     } else {
         chroma_nodes.clear();
         chroma_nodes.extend(luma_nodes.iter().copied());
@@ -266,12 +266,12 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 reference,
                 &mut VvcChromaCandidateBuffers {
                     prediction: VvcChromaPredictionBuffers {
-                        cb: &mut predicted_cb,
-                        cr: &mut predicted_cr,
+                        cb: &mut *predicted_cb,
+                        cr: &mut *predicted_cr,
                     },
                     residuals: VvcChromaResidualBuffers {
-                        cb: &mut cb_residuals,
-                        cr: &mut cr_residuals,
+                        cb: &mut *cb_residuals,
+                        cr: &mut *cr_residuals,
                     },
                 },
                 &mut intra_search_stats,
@@ -355,31 +355,31 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 temporal_hint: temporal_chroma_hint,
             }
             .select_candidate(VvcChromaTuSelectionBuffers {
-                cache: &mut chroma_rd_cache,
-                prediction_scratch: &mut prediction_scratch,
+                cache: &mut *chroma_rd_cache,
+                prediction_scratch: &mut *prediction_scratch,
                 selected: VvcChromaCandidateBuffers {
                     prediction: VvcChromaPredictionBuffers {
-                        cb: &mut predicted_cb,
-                        cr: &mut predicted_cr,
+                        cb: &mut *predicted_cb,
+                        cr: &mut *predicted_cr,
                     },
                     residuals: VvcChromaResidualBuffers {
-                        cb: &mut cb_residuals,
-                        cr: &mut cr_residuals,
+                        cb: &mut *cb_residuals,
+                        cr: &mut *cr_residuals,
                     },
                 },
                 candidate: VvcChromaCandidateBuffers {
                     prediction: VvcChromaPredictionBuffers {
-                        cb: &mut candidate_cb_prediction,
-                        cr: &mut candidate_cr_prediction,
+                        cb: &mut *candidate_cb_prediction,
+                        cr: &mut *candidate_cr_prediction,
                     },
                     residuals: VvcChromaResidualBuffers {
-                        cb: &mut candidate_cb_residuals,
-                        cr: &mut candidate_cr_residuals,
+                        cb: &mut *candidate_cb_residuals,
+                        cr: &mut *candidate_cr_residuals,
                     },
                 },
                 stats: &mut intra_search_stats,
-                transform_scratch: &mut transform_scratch,
-                reconstructed_residual: &mut reconstructed_residual,
+                transform_scratch: &mut *transform_scratch,
+                reconstructed_residual: &mut *reconstructed_residual,
             })
         };
         let VvcSelectedChromaTuCandidate {
@@ -389,8 +389,8 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         } = selected_chroma_candidate;
         #[cfg(feature = "vvc-stats")]
         {
-            residual_energy_stats.add_chroma_residuals(&cb_residuals, chroma_width, chroma_height);
-            residual_energy_stats.add_chroma_residuals(&cr_residuals, chroma_width, chroma_height);
+            residual_energy_stats.add_chroma_residuals(cb_residuals, chroma_width, chroma_height);
+            residual_energy_stats.add_chroma_residuals(cr_residuals, chroma_width, chroma_height);
         }
         #[cfg(feature = "vvc-stats")]
         let chroma_finalize_start = StageStart::now();
@@ -399,10 +399,10 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             source_frame,
             frame_recon,
             node,
-            &predicted_cb,
-            &predicted_cr,
-            &cb_residuals,
-            &cr_residuals,
+            predicted_cb,
+            predicted_cr,
+            cb_residuals,
+            cr_residuals,
             chroma_width,
             chroma_height,
             chroma_qp,
@@ -410,8 +410,8 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             vvc_transform_skip_qp_reconstructs_exact(source_frame.format.bit_depth, chroma_qp),
             selected_chroma_residual,
             &mut intra_search_stats,
-            &mut transform_scratch,
-            &mut reconstructed_residual,
+            transform_scratch,
+            reconstructed_residual,
         );
         #[cfg(feature = "vvc-stats")]
         intra_search_stats
@@ -428,10 +428,10 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             chroma_tu,
             chroma_width,
             chroma_height,
-            &predicted_cb,
-            &predicted_cr,
-            &cb_residuals,
-            &cr_residuals,
+            predicted_cb,
+            predicted_cr,
+            cb_residuals,
+            cr_residuals,
         );
         chroma_tu_count += 1;
     }
@@ -514,25 +514,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         #[cfg(feature = "vvc-stats")]
         residual_energy_stats,
     };
-    scratch.prediction_scratch = prediction_scratch;
-    scratch.predicted_luma = predicted_luma;
-    scratch.predicted_cb = predicted_cb;
-    scratch.predicted_cr = predicted_cr;
-    scratch.transform_scratch = transform_scratch;
-    scratch.reconstructed_residual = reconstructed_residual;
-    scratch.luma_residuals = luma_residuals;
-    scratch.candidate_luma_prediction = candidate_luma_prediction;
-    scratch.candidate_luma_residuals = candidate_luma_residuals;
-    scratch.luma_rd_cache = luma_rd_cache;
-    scratch.cb_residuals = cb_residuals;
-    scratch.cr_residuals = cr_residuals;
-    scratch.candidate_cb_prediction = candidate_cb_prediction;
-    scratch.candidate_cr_prediction = candidate_cr_prediction;
-    scratch.candidate_cb_residuals = candidate_cb_residuals;
-    scratch.candidate_cr_residuals = candidate_cr_residuals;
-    scratch.chroma_rd_cache = chroma_rd_cache;
-    scratch.luma_nodes = luma_nodes;
-    scratch.chroma_nodes = chroma_nodes;
     if let Some(selected) = selected_luma_inter_decisions {
         *selected = applied_luma_inter_decisions;
     }
