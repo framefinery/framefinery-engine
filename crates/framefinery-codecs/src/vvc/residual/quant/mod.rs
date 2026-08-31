@@ -4,6 +4,7 @@ include!("chroma_tu_metadata.rs");
 include!("ctu_result.rs");
 include!("ctu.rs");
 include!("ctu_mode_selection.rs");
+include!("ctu_pass_context.rs");
 include!("ctu_luma_pass.rs");
 include!("ctu_chroma_pass.rs");
 include!("trace.rs");

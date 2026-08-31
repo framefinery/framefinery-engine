@@ -70,23 +70,26 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         chroma_sampling: source_frame.format.chroma_sampling,
         dual_tree_intra: policy.dual_tree_intra(),
     };
+    let shared_pass_context = VvcCtuSharedPassContext {
+        source_frame,
+        region,
+        policy,
+        score_metric,
+        inter_reference,
+        temporal_mode_hints,
+        ctu_shape,
+    };
 
     let VvcLumaCtuPassResult {
         metadata: luma_tu_metadata,
         applied_inter_decisions: applied_luma_inter_decisions,
         tu_count: luma_tu_count,
     } = VvcLumaCtuPassContext {
-        source_frame,
-        region,
-        policy,
-        score_metric,
+        shared: shared_pass_context,
         luma_qp,
         luma_ts_quant,
         luma_inter_decisions,
         luma_scc_decisions,
-        inter_reference,
-        temporal_mode_hints,
-        ctu_shape,
     }
     .quantize(VvcLumaCtuPassBuffers {
         frame_recon,
@@ -111,16 +114,10 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         metadata: chroma_tu_metadata,
         tu_count: chroma_tu_count,
     } = VvcChromaCtuPassContext {
-        source_frame,
-        region,
-        policy,
-        score_metric,
+        shared: shared_pass_context,
         syntax_tie_breaker_enabled: chroma_syntax_tie_breaker,
         chroma_qp,
         chroma_ts_quant,
-        inter_reference,
-        temporal_mode_hints,
-        ctu_shape,
         luma_nodes,
         luma_metadata: &luma_tu_metadata,
         applied_luma_inter_decisions: &applied_luma_inter_decisions,

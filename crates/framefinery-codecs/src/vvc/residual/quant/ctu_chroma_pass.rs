@@ -1,14 +1,8 @@
 struct VvcChromaCtuPassContext<'a> {
-    source_frame: &'a VvcSampledFrame,
-    region: VvcCtuRegion,
-    policy: VvcResidualCodingPolicy,
-    score_metric: VvcResidualScoreMetric,
+    shared: VvcCtuSharedPassContext<'a>,
     syntax_tie_breaker_enabled: bool,
     chroma_qp: i32,
     chroma_ts_quant: &'a VvcTransformSkipQuantTable,
-    inter_reference: Option<&'a VvcReconstructionFrame>,
-    temporal_mode_hints: Option<&'a VvcQuantizedColor>,
-    ctu_shape: VvcCtuPartitionShape,
     luma_nodes: &'a [VvcCodingTreeNode],
     luma_metadata: &'a VvcLumaTuMetadata,
     applied_luma_inter_decisions: &'a [Option<VvcLumaInterDecision>; MAX_VVC_LUMA_TUS],
@@ -38,12 +32,13 @@ struct VvcChromaCtuPassResult {
 
 impl VvcChromaCtuPassContext<'_> {
     fn quantize(self, mut buffers: VvcChromaCtuPassBuffers<'_>) -> VvcChromaCtuPassResult {
+        let shared = self.shared;
         #[cfg(feature = "vvc-stats")]
         let mut trace_sink = buffers.trace_sink;
         let mut metadata = VvcChromaTuMetadata::new();
         let mut tu_count = 0usize;
-        if self.ctu_shape.dual_tree_intra {
-            vvc_chroma_transform_nodes_into(buffers.nodes, self.ctu_shape);
+        if shared.ctu_shape.dual_tree_intra {
+            vvc_chroma_transform_nodes_into(buffers.nodes, shared.ctu_shape);
         } else {
             buffers.nodes.clear();
             buffers.nodes.extend(self.luma_nodes.iter().copied());
@@ -52,8 +47,8 @@ impl VvcChromaCtuPassContext<'_> {
             if tu_count >= MAX_VVC_CHROMA_TUS {
                 break;
             }
-            let node = vvc_global_ctu_node(local_node, self.region);
-            if !self.ctu_shape.dual_tree_intra
+            let node = vvc_global_ctu_node(local_node, shared.region);
+            if !shared.ctu_shape.dual_tree_intra
                 && matches!(
                     self.luma_metadata.scc_decision(tu_count),
                     Some(VvcLumaSccDecision::IbcExact(_))
@@ -62,9 +57,9 @@ impl VvcChromaCtuPassContext<'_> {
                 tu_count += 1;
                 continue;
             }
-            buffers.rd_cache.reset(self.policy, node);
-            let subsample_x = chroma_subsample_x(self.source_frame.format.chroma_sampling);
-            let subsample_y = chroma_subsample_y(self.source_frame.format.chroma_sampling);
+            buffers.rd_cache.reset(shared.policy, node);
+            let subsample_x = chroma_subsample_x(shared.source_frame.format.chroma_sampling);
+            let subsample_y = chroma_subsample_y(shared.source_frame.format.chroma_sampling);
             let chroma_x = usize::from(node.x) / subsample_x;
             let chroma_y = usize::from(node.y) / subsample_y;
             let chroma_width = usize::from(node.width) / subsample_x;
@@ -79,10 +74,10 @@ impl VvcChromaCtuPassContext<'_> {
                 .copied()
                 .flatten();
             let selected_inter_chroma_candidate =
-                match (applied_inter_decision, self.inter_reference) {
+                match (applied_inter_decision, shared.inter_reference) {
                     (Some(decision), Some(reference)) => VvcChromaInterCandidateContext {
-                        policy: self.policy,
-                        source_frame: self.source_frame,
+                        policy: shared.policy,
+                        source_frame: shared.source_frame,
                         node,
                         chroma_x,
                         chroma_y,
@@ -101,11 +96,11 @@ impl VvcChromaCtuPassContext<'_> {
                 .is_none()
                 .then(|| {
                     vvc_chroma_temporal_mode_hint(
-                        self.temporal_mode_hints,
+                        shared.temporal_mode_hints,
                         tu_count,
                         buffers.nodes.len(),
-                        self.policy,
-                        self.source_frame.geometry,
+                        shared.policy,
+                        shared.source_frame.geometry,
                         node,
                         co_located_luma_mode,
                         chroma_width,
@@ -118,9 +113,9 @@ impl VvcChromaCtuPassContext<'_> {
                 candidate
             } else {
                 VvcChromaTuSelectionContext {
-                    policy: self.policy,
-                    metric: self.score_metric,
-                    source_frame: self.source_frame,
+                    policy: shared.policy,
+                    metric: shared.score_metric,
+                    source_frame: shared.source_frame,
                     frame_recon: &*buffers.frame_recon,
                     node,
                     co_located_luma_mode,
@@ -166,7 +161,7 @@ impl VvcChromaCtuPassContext<'_> {
             let chroma_finalize_start = StageStart::now();
             let chroma_tu = finalize_vvc_chroma_tu(
                 chroma_coding_decision,
-                self.source_frame,
+                shared.source_frame,
                 buffers.frame_recon,
                 node,
                 buffers.selected.prediction.cb,
@@ -178,7 +173,7 @@ impl VvcChromaCtuPassContext<'_> {
                 self.chroma_qp,
                 self.chroma_ts_quant,
                 vvc_transform_skip_qp_reconstructs_exact(
-                    self.source_frame.format.bit_depth,
+                    shared.source_frame.format.bit_depth,
                     self.chroma_qp,
                 ),
                 selected_chroma_residual,
@@ -194,7 +189,7 @@ impl VvcChromaCtuPassContext<'_> {
             #[cfg(feature = "vvc-stats")]
             write_vvc_chroma_tu_trace(
                 trace_sink.as_deref_mut(),
-                self.region,
+                shared.region,
                 tu_count,
                 node,
                 chroma_mode,
