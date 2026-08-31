@@ -23,6 +23,7 @@ include!("directional.rs");
 include!("luma_residual.rs");
 include!("luma_tu_finalization.rs");
 include!("chroma_residual.rs");
+include!("chroma_tu_finalization.rs");
 include!("chroma_selection.rs");
 include!("prediction_bridge.rs");
 include!("transform_skip.rs");
