@@ -369,6 +369,57 @@ fn vvc_ctu_quant_scratch_reuse_is_bit_exact_and_retains_allocations() {
 }
 
 #[test]
+fn vvc_ctu_quantization_result_uses_shared_metadata_and_chroma_finalization() {
+    let mut frame = sampled_luma_frame(8, 8, vec![200; 64]);
+    frame.cb.fill(201);
+    frame.cr.fill(33);
+    let mut luma_metadata = VvcLumaTuMetadata::new();
+    luma_metadata.record_mode_hint(0, VvcIntraPredictionMode::Horizontal, VvcBdpcmMode::None);
+    let mut chroma_metadata = VvcChromaTuMetadata::new();
+    chroma_metadata.record_finalized(
+        0,
+        VvcChromaIntraPredictionMode::Derived,
+        VvcFinalizedChromaTu {
+            cb_dc_level: 0,
+            cr_dc_level: 0,
+            cb_ac_levels: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
+            cr_ac_levels: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
+            cb_has_ac: false,
+            cr_has_ac: false,
+            cb_transform_skip: true,
+            cr_transform_skip: false,
+            bdpcm_mode: VvcBdpcmMode::None,
+        },
+    );
+    let result = VvcCtuQuantizationResult {
+        luma_metadata,
+        chroma_metadata,
+        luma_tu_count: 1,
+        chroma_tu_count: 1,
+        #[cfg(feature = "vvc-stats")]
+        intra_search_stats: VvcIntraSearchStats::default(),
+        #[cfg(feature = "vvc-stats")]
+        residual_energy_stats: VvcResidualEnergyStats::default(),
+    }
+    .into_quantized_color(&frame);
+
+    assert_eq!(result.y, 200);
+    assert_eq!(result.u, 201);
+    assert_eq!(
+        result.v,
+        reconstruct_vvc_chroma(quantize_vvc_chroma_sample(33))
+    );
+    assert_eq!(result.luma_tu_count, 1);
+    assert_eq!(result.chroma_tu_count, 1);
+    assert_eq!(
+        result.luma_tu_intra_modes[0],
+        VvcIntraPredictionMode::Horizontal
+    );
+    assert!(result.cb_tu_transform_skip[0]);
+    assert!(!result.cr_tu_transform_skip[0]);
+}
+
+#[test]
 fn vvc_luma_temporal_hint_candidate_preserves_cheap_residual_gate() {
     let exact_frame = sampled_luma_frame(8, 8, vec![128; 64]);
     let expensive_frame = sampled_luma_frame(8, 8, vec![200; 64]);

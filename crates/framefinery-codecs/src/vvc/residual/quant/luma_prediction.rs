@@ -600,16 +600,3 @@ fn vvc_luma_mrl_syntax_bin_count(node: VvcCodingTreeNode, mrl_index: u8) -> u8 {
         2
     }
 }
-
-fn finalized_vvc_chroma_sample(
-    transform_skip: bool,
-    source: VvcSample,
-    quantized_remainder: u8,
-    bit_depth: SampleBitDepth,
-) -> u8 {
-    if transform_skip {
-        vvc_downshift_sample_to_u8(source, bit_depth)
-    } else {
-        reconstruct_vvc_chroma(quantized_remainder)
-    }
-}
