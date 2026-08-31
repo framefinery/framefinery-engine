@@ -154,6 +154,45 @@ fn vvc_chroma_intra_search_promotes_only_strict_winners_and_records_ties() {
 }
 
 #[test]
+fn vvc_luma_intra_search_promotes_only_strict_winners_and_records_ties() {
+    let directional = VvcIntraPredictionMode::Horizontal;
+    let mut search = VvcLumaIntraSearch::new(100);
+    let mut selected: Vec<VvcSample> = vec![1];
+    let mut candidate: Vec<VvcSample> = vec![2];
+
+    search.consider_candidate(
+        VvcIntraPredictionMode::Planar,
+        80,
+        &mut selected,
+        &mut candidate,
+    );
+    assert_eq!(search.best_mode(), VvcIntraPredictionMode::Planar);
+    assert_eq!(search.best_score(), 80);
+    assert_eq!(selected, vec![2]);
+    assert_eq!(candidate, vec![1]);
+
+    candidate[0] = 3;
+    search.consider_candidate(directional, 80, &mut selected, &mut candidate);
+    assert_eq!(search.best_mode(), VvcIntraPredictionMode::Planar);
+    assert_eq!(selected, vec![2]);
+    assert_eq!(candidate, vec![3]);
+
+    let costs: Vec<_> = search
+        .candidate_costs()
+        .iter()
+        .map(|candidate| (candidate.mode(), candidate.score()))
+        .collect();
+    assert_eq!(
+        costs,
+        vec![
+            (VvcIntraPredictionMode::Dc, 100),
+            (VvcIntraPredictionMode::Planar, 80),
+            (directional, 80),
+        ]
+    );
+}
+
+#[test]
 fn vvc_luma_tu_metadata_records_each_exit_without_cross_talk() {
     let mut metadata = VvcLumaTuMetadata::new();
     let scc_decision = VvcLumaSccDecision::IbcExact(VvcLumaIbcDecision {

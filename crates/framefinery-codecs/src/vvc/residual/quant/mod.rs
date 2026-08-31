@@ -7,6 +7,7 @@ include!("mode_selection_helpers.rs");
 include!("trace.rs");
 include!("rd_cache.rs");
 include!("luma_mode.rs");
+include!("luma_search.rs");
 include!("chroma_search.rs");
 include!("chroma_mode.rs");
 include!("luma_prediction.rs");

@@ -240,10 +240,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         }
         #[cfg(feature = "vvc-stats")]
         let luma_mode_search_start = StageStart::now();
-        let mut best_luma_mode = VvcIntraPredictionMode::Dc;
-        let mut best_luma_score = u64::MAX;
-        let mut luma_candidate_costs = VvcLumaIntraCandidateCosts::new(u64::MAX);
-        if !vvc_luma_lossless_speed_skips_dc(policy) {
+        let initial_luma_score = if !vvc_luma_lossless_speed_skips_dc(policy) {
             #[cfg(feature = "vvc-stats")]
             let prediction_start = StageStart::now();
             predict_vvc_luma_intra_block_into_with_availability(
@@ -277,11 +274,13 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             );
             #[cfg(feature = "vvc-stats")]
             intra_search_stats.add_luma_mode_score_nanos(vvc_elapsed_nanos(score_start));
-            best_luma_score = dc_score;
-            luma_candidate_costs = VvcLumaIntraCandidateCosts::new(dc_score);
             #[cfg(feature = "vvc-stats")]
             intra_search_stats.add_luma_dc();
-        }
+            dc_score
+        } else {
+            u64::MAX
+        };
+        let mut luma_search = VvcLumaIntraSearch::new(initial_luma_score);
         if policy.luma_planar_candidate_allowed(node)
             && vvc_luma_lossless_speed_evaluates_planar(policy, left_luma_mode, above_luma_mode)
         {
@@ -300,17 +299,24 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             );
             #[cfg(feature = "vvc-stats")]
             intra_search_stats.add_luma_planar();
-            luma_candidate_costs = luma_candidate_costs
-                .with_candidate(VvcIntraPredictionMode::Planar, Some(candidate_score));
-            if candidate_score < best_luma_score {
-                best_luma_score = candidate_score;
-                best_luma_mode = VvcIntraPredictionMode::Planar;
-                std::mem::swap(&mut predicted_luma, &mut candidate_luma_prediction);
-            }
+            luma_search.consider_candidate(
+                VvcIntraPredictionMode::Planar,
+                candidate_score,
+                &mut predicted_luma,
+                &mut candidate_luma_prediction,
+            );
         }
         if policy.luma_directional_candidate_allowed(node)
-            && !vvc_luma_exact_min_syntax_mode_search_done(best_luma_score)
+            && !vvc_luma_exact_min_syntax_mode_search_done(luma_search.best_score())
         {
+            let luma_search_context = VvcLumaModeSearchContext {
+                metric: score_metric,
+                source_frame,
+                frame_recon,
+                node,
+                left: left_luma_mode,
+                above: above_luma_mode,
+            };
             let mut luma_directional_candidates = vvc_luma_directional_search_candidates(
                 policy,
                 source_frame,
@@ -318,54 +324,29 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 node,
             );
             for mode in luma_directional_candidates.iter() {
-                #[cfg(feature = "vvc-stats")]
-                let prediction_start = StageStart::now();
-                predict_vvc_luma_intra_block_into_with_availability(
-                    &mut candidate_luma_prediction,
-                    &mut prediction_scratch,
-                    mode,
-                    &frame_recon.luma,
-                    frame_recon.coded_geometry(),
-                    node,
-                    source_frame.format.bit_depth,
-                    Some(frame_recon.luma_availability()),
-                );
-                #[cfg(feature = "vvc-stats")]
-                intra_search_stats.add_luma_prediction_nanos(
-                    VvcLumaPredictionStatsFamily::Directional,
-                    vvc_elapsed_nanos(prediction_start),
-                );
-                #[cfg(feature = "vvc-stats")]
-                let score_start = StageStart::now();
-                let candidate_score = score_luma_mode_candidate(
+                let candidate_score = luma_search_context
+                    .predict_and_score_directional_candidate(
                     &mut luma_rd_cache,
-                    score_metric,
                     mode,
-                    source_frame,
-                    node,
-                    &candidate_luma_prediction,
-                    left_luma_mode,
-                    above_luma_mode,
+                    &mut prediction_scratch,
+                    &mut candidate_luma_prediction,
                     &mut candidate_luma_residuals,
                     &mut intra_search_stats,
                 );
                 #[cfg(feature = "vvc-stats")]
-                intra_search_stats.add_luma_mode_score_nanos(vvc_elapsed_nanos(score_start));
-                #[cfg(feature = "vvc-stats")]
                 intra_search_stats.add_luma_directional_coarse();
-                luma_candidate_costs =
-                    luma_candidate_costs.with_candidate(mode, Some(candidate_score));
-                if candidate_score < best_luma_score {
-                    best_luma_score = candidate_score;
-                    best_luma_mode = mode;
-                    std::mem::swap(&mut predicted_luma, &mut candidate_luma_prediction);
-                }
-                if vvc_luma_exact_min_syntax_mode_search_done(best_luma_score) {
+                luma_search.consider_candidate(
+                    mode,
+                    candidate_score,
+                    &mut predicted_luma,
+                    &mut candidate_luma_prediction,
+                );
+                if vvc_luma_exact_min_syntax_mode_search_done(luma_search.best_score()) {
                     break;
                 }
             }
-            if (2..=66).contains(&best_luma_mode.luma_mode_index())
-                && !vvc_luma_exact_min_syntax_mode_search_done(best_luma_score)
+            if (2..=66).contains(&luma_search.best_mode().luma_mode_index())
+                && !vvc_luma_exact_min_syntax_mode_search_done(luma_search.best_score())
                 && !vvc_luma_lossless_speed_skips_directional_refinement(policy)
             {
                 let refinement_start = luma_directional_candidates.count();
@@ -377,60 +358,38 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                     } else {
                         policy.fast_search()
                     };
-                luma_directional_candidates
-                    .add_refinement(best_luma_mode.luma_mode_index(), refinement_fast_search);
+                luma_directional_candidates.add_refinement(
+                    luma_search.best_mode().luma_mode_index(),
+                    refinement_fast_search,
+                );
                 for mode in luma_directional_candidates.iter_from(refinement_start) {
-                    #[cfg(feature = "vvc-stats")]
-                    let prediction_start = StageStart::now();
-                    predict_vvc_luma_intra_block_into_with_availability(
-                        &mut candidate_luma_prediction,
-                        &mut prediction_scratch,
-                        mode,
-                        &frame_recon.luma,
-                        frame_recon.coded_geometry(),
-                        node,
-                        source_frame.format.bit_depth,
-                        Some(frame_recon.luma_availability()),
-                    );
-                    #[cfg(feature = "vvc-stats")]
-                    intra_search_stats.add_luma_prediction_nanos(
-                        VvcLumaPredictionStatsFamily::Directional,
-                        vvc_elapsed_nanos(prediction_start),
-                    );
-                    #[cfg(feature = "vvc-stats")]
-                    let score_start = StageStart::now();
-                    let candidate_score = score_luma_mode_candidate(
+                    let candidate_score = luma_search_context
+                        .predict_and_score_directional_candidate(
                         &mut luma_rd_cache,
-                        score_metric,
                         mode,
-                        source_frame,
-                        node,
-                        &candidate_luma_prediction,
-                        left_luma_mode,
-                        above_luma_mode,
+                        &mut prediction_scratch,
+                        &mut candidate_luma_prediction,
                         &mut candidate_luma_residuals,
                         &mut intra_search_stats,
                     );
                     #[cfg(feature = "vvc-stats")]
-                    intra_search_stats.add_luma_mode_score_nanos(vvc_elapsed_nanos(score_start));
-                    #[cfg(feature = "vvc-stats")]
                     intra_search_stats.add_luma_directional_refinement();
-                    luma_candidate_costs =
-                        luma_candidate_costs.with_candidate(mode, Some(candidate_score));
-                    if candidate_score < best_luma_score {
-                        best_luma_score = candidate_score;
-                        best_luma_mode = mode;
-                        std::mem::swap(&mut predicted_luma, &mut candidate_luma_prediction);
-                    }
-                    if vvc_luma_exact_min_syntax_mode_search_done(best_luma_score) {
+                    luma_search.consider_candidate(
+                        mode,
+                        candidate_score,
+                        &mut predicted_luma,
+                        &mut candidate_luma_prediction,
+                    );
+                    if vvc_luma_exact_min_syntax_mode_search_done(luma_search.best_score()) {
                         break;
                     }
                 }
             }
         }
+        let luma_candidate_costs = luma_search.candidate_costs();
         let raw_luma_mode = policy.select_luma_intra_mode(node, luma_candidate_costs);
-        debug_assert_eq!(raw_luma_mode, best_luma_mode);
-        let _best_luma_score = best_luma_score;
+        debug_assert_eq!(raw_luma_mode, luma_search.best_mode());
+        let _best_luma_score = luma_search.best_score();
         #[cfg(feature = "vvc-stats")]
         intra_search_stats
             .add_luma_mode_search_nanos(luma_mode_search_start.elapsed().as_nanos() as u64);

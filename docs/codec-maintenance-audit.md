@@ -64,6 +64,10 @@ The following changes were behavior-preserving and independently validated:
   quantization types module used by luma, chroma, and CTU selection.
 - VVC finalized luma and chroma TU records now live beside the shared
   quantization records used by CTU orchestration and tracing.
+- VVC planar, coarse-directional, and refined-directional luma candidates now
+  share strict-winner state and ordered cost recording; both directional passes
+  also share one prediction-and-scoring helper while their generation and
+  policy gates remain in CTU mode selection.
 - AV2 visible/coded geometry padding and cropping now lives in a dedicated
   geometry module, keeping format conversion separate from encode traversal.
 - VVC scalar residual energy, sum, and signed rounding helpers now live in a
@@ -337,7 +341,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 937-line CTU setup plus 1,292-line mode-selection sibling and focused helpers | chroma candidate evaluation and luma/chroma result recording are shared; remaining orchestration needs call-graph review |
+| VVC residual quantization | 937-line CTU setup plus 1,251-line mode-selection sibling and focused helpers | luma/chroma candidate evaluation and strict-winner recording are shared; remaining orchestration needs call-graph review |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2
