@@ -432,6 +432,65 @@ fn vvc_ctu_quantization_result_uses_shared_metadata_and_chroma_finalization() {
 }
 
 #[test]
+fn vvc_source_plane_copy_clips_destination_and_extends_source_edges() {
+    let source_geometry = VvcVideoGeometry {
+        width: 3,
+        height: 2,
+    };
+    let destination_geometry = VvcVideoGeometry {
+        width: 5,
+        height: 3,
+    };
+    let source = vec![1, 2, 3, 4, 5, 6];
+    let mut destination = vec![99; destination_geometry.luma_samples()];
+    assert!(copy_vvc_source_plane_region_with_edge_extension(
+        &mut destination,
+        destination_geometry,
+        &source,
+        source_geometry,
+        VvcPlaneRegion {
+            origin_x: 1,
+            origin_y: 0,
+            geometry: VvcVideoGeometry {
+                width: 6,
+                height: 4,
+            },
+        },
+    ));
+    assert_eq!(
+        destination,
+        vec![99, 2, 3, 3, 3, 99, 5, 6, 6, 6, 99, 5, 6, 6, 6]
+    );
+}
+
+#[test]
+fn vvc_source_plane_copy_rejects_inconsistent_plane_lengths() {
+    let geometry = VvcVideoGeometry {
+        width: 2,
+        height: 2,
+    };
+    let region = VvcPlaneRegion {
+        origin_x: 0,
+        origin_y: 0,
+        geometry,
+    };
+    assert!(!copy_vvc_source_plane_region_with_edge_extension(
+        &mut [0; 3],
+        geometry,
+        &[1; 4],
+        geometry,
+        region,
+    ));
+    assert!(!copy_vvc_source_plane_region_with_edge_extension(
+        &mut [0; 4],
+        geometry,
+        &[1; 3],
+        geometry,
+        region,
+    ));
+}
+
+#[test]
 fn vvc_luma_temporal_hint_candidate_preserves_cheap_residual_gate() {
     let exact_frame = sampled_luma_frame(8, 8, vec![128; 64]);
     let expensive_frame = sampled_luma_frame(8, 8, vec![200; 64]);

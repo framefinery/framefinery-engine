@@ -217,31 +217,25 @@ fn copy_source_luma_node_into_reconstruction(
     source_frame: &VvcSampledFrame,
     node: VvcCodingTreeNode,
 ) {
-    let start_x = usize::from(node.x);
-    let start_y = usize::from(node.y);
-    if source_frame.geometry.width == 0 || source_frame.geometry.height == 0 {
-        return;
-    }
-    let dst_width = frame_recon.luma_width();
-    let dst_height = frame_recon.luma_height();
-    if start_x >= dst_width || start_y >= dst_height {
-        return;
-    }
-    let end_x = start_x
-        .saturating_add(usize::from(node.width))
-        .min(dst_width);
-    let end_y = start_y
-        .saturating_add(usize::from(node.height))
-        .min(dst_height);
-    for y in start_y..end_y {
-        let dst_row = y * dst_width;
-        let src_y = y.min(source_frame.geometry.height - 1);
-        let src_row = src_y * source_frame.geometry.width;
-        for x in start_x..end_x {
-            let src_x = x.min(source_frame.geometry.width - 1);
-            frame_recon.luma[dst_row + x] = source_frame.luma[src_row + src_x];
-        }
-    }
+    let destination_geometry = VvcVideoGeometry {
+        width: frame_recon.luma_width(),
+        height: frame_recon.luma_height(),
+    };
+    let region = VvcPlaneRegion {
+        origin_x: usize::from(node.x),
+        origin_y: usize::from(node.y),
+        geometry: VvcVideoGeometry {
+            width: usize::from(node.width),
+            height: usize::from(node.height),
+        },
+    };
+    copy_vvc_source_plane_region_with_edge_extension(
+        &mut frame_recon.luma,
+        destination_geometry,
+        &source_frame.luma,
+        source_frame.geometry,
+        region,
+    );
 }
 
 fn refine_vvc_luma_final_mts_residual(
@@ -644,23 +638,23 @@ fn vvc_luma_residual_block_score(
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcResidualBlockScore {
-    let distortion = if vvc_luma_transform_skip_score_is_exact(residual, width, height, bit_depth, qp)
-    {
-        0
-    } else {
-        luma_reconstructed_residual_sse(
-            source_residuals,
-            width,
-            height,
-            bit_depth,
-            qp,
-            ts_quant,
-            residual,
-            mts_index,
-            transform_scratch,
-            reconstructed_residual,
-        )
-    };
+    let distortion =
+        if vvc_luma_transform_skip_score_is_exact(residual, width, height, bit_depth, qp) {
+            0
+        } else {
+            luma_reconstructed_residual_sse(
+                source_residuals,
+                width,
+                height,
+                bit_depth,
+                qp,
+                ts_quant,
+                residual,
+                mts_index,
+                transform_scratch,
+                reconstructed_residual,
+            )
+        };
     let rate_cost = u64::from(residual.dc_level != 0)
         .saturating_mul(8)
         .saturating_add(luma_ac_syntax_cost_estimate(
@@ -692,7 +686,9 @@ fn vvc_luma_transform_skip_score_is_exact(
     let width = usize::from(width);
     let height = usize::from(height);
     let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
-    active_width == width && active_height == height && vvc_transform_skip_qp_reconstructs_exact(bit_depth, qp)
+    active_width == width
+        && active_height == height
+        && vvc_transform_skip_qp_reconstructs_exact(bit_depth, qp)
 }
 
 fn vvc_transform_skip_short_circuits_transformed(score: VvcResidualBlockScore) -> bool {
@@ -865,8 +861,11 @@ fn finalize_vvc_luma_transform_skip_residual_block(
         .copied()
         .map(|level| quant_table.level(level))
         .unwrap_or(0);
-    let (ac_levels, has_ac) =
-        transform_skip_luma_ac_levels_and_flag_with_table(residuals, usize::from(width), quant_table);
+    let (ac_levels, has_ac) = transform_skip_luma_ac_levels_and_flag_with_table(
+        residuals,
+        usize::from(width),
+        quant_table,
+    );
     VvcFinalizedResidualBlock {
         dc_level,
         ac_levels,

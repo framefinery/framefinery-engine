@@ -51,6 +51,11 @@ The following changes were behavior-preserving and independently validated:
   same parameterized kernel across luma and chroma paths.
 - VVC visible luma and chroma reconstruction now share one clipped
   plane-writing loop, with subsampling handled only at the caller boundary.
+- VVC exact-transform-skip source reconstruction now shares one checked plane-
+  copy kernel across luma, Cb, and Cr. The common kernel validates plane
+  lengths, clips to coded reconstruction bounds, and extends visible source
+  edges into padding; component wrappers retain only plane geometry and chroma
+  subsampling derivation.
 - VVC visible reconstruction wrappers and their shared clipped plane writer now
   live in a dedicated reconstruction module, separate from prediction kernels.
 - VVC BDPCM prediction and residual adapters now live in a dedicated module,

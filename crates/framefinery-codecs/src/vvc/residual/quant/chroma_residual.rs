@@ -327,33 +327,29 @@ fn copy_source_chroma_node_into_reconstruction(
 ) {
     let subsample_x = chroma_subsample_x(format.chroma_sampling);
     let subsample_y = chroma_subsample_y(format.chroma_sampling);
-    let source_chroma_width = source_geometry.width / subsample_x;
-    let source_chroma_height = source_geometry.height / subsample_y;
-    if source_chroma_width == 0 || source_chroma_height == 0 {
-        return;
-    }
-    let chroma_width = dst_geometry.width / subsample_x;
-    let chroma_height = dst_geometry.height / subsample_y;
-    let start_x = usize::from(node.x) / subsample_x;
-    let start_y = usize::from(node.y) / subsample_y;
-    if start_x >= chroma_width || start_y >= chroma_height {
-        return;
-    }
-    let end_x = start_x
-        .saturating_add(usize::from(node.width) / subsample_x)
-        .min(chroma_width);
-    let end_y = start_y
-        .saturating_add(usize::from(node.height) / subsample_y)
-        .min(chroma_height);
-    for y in start_y..end_y {
-        let dst_row = y * chroma_width;
-        let src_y = y.min(source_chroma_height - 1);
-        let src_row = src_y * source_chroma_width;
-        for x in start_x..end_x {
-            let src_x = x.min(source_chroma_width - 1);
-            chroma[dst_row + x] = source[src_row + src_x];
-        }
-    }
+    let source_chroma_geometry = VvcVideoGeometry {
+        width: source_geometry.width / subsample_x,
+        height: source_geometry.height / subsample_y,
+    };
+    let destination_chroma_geometry = VvcVideoGeometry {
+        width: dst_geometry.width / subsample_x,
+        height: dst_geometry.height / subsample_y,
+    };
+    let region = VvcPlaneRegion {
+        origin_x: usize::from(node.x) / subsample_x,
+        origin_y: usize::from(node.y) / subsample_y,
+        geometry: VvcVideoGeometry {
+            width: usize::from(node.width) / subsample_x,
+            height: usize::from(node.height) / subsample_y,
+        },
+    };
+    copy_vvc_source_plane_region_with_edge_extension(
+        chroma,
+        destination_chroma_geometry,
+        source,
+        source_chroma_geometry,
+        region,
+    );
 }
 
 fn finalize_vvc_chroma_residual_block(
@@ -382,8 +378,12 @@ fn finalize_vvc_chroma_residual_block(
         VvcTuResidualCodingMode::TransformSkip => {
             #[cfg(feature = "vvc-stats")]
             let quant_start = StageStart::now();
-            let block =
-                finalize_vvc_chroma_transform_skip_residual_block(residuals, width, height, chroma_ts_quant);
+            let block = finalize_vvc_chroma_transform_skip_residual_block(
+                residuals,
+                width,
+                height,
+                chroma_ts_quant,
+            );
             #[cfg(feature = "vvc-stats")]
             stats.add_chroma_transform_skip_candidate_nanos(vvc_elapsed_nanos(quant_start));
             block
@@ -599,23 +599,22 @@ fn vvc_chroma_residual_block_score(
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcResidualBlockScore {
-    let distortion = if vvc_chroma_transform_skip_score_is_exact(
-        residual, width, height, bit_depth, qp,
-    ) {
-        0
-    } else {
-        chroma_reconstructed_residual_sse(
-            source_residuals,
-            width,
-            height,
-            bit_depth,
-            qp,
-            chroma_ts_quant,
-            residual,
-            transform_scratch,
-            reconstructed_residual,
-        )
-    };
+    let distortion =
+        if vvc_chroma_transform_skip_score_is_exact(residual, width, height, bit_depth, qp) {
+            0
+        } else {
+            chroma_reconstructed_residual_sse(
+                source_residuals,
+                width,
+                height,
+                bit_depth,
+                qp,
+                chroma_ts_quant,
+                residual,
+                transform_scratch,
+                reconstructed_residual,
+            )
+        };
     let rate_cost = u64::from(residual.dc_level != 0)
         .saturating_mul(8)
         .saturating_add(chroma_coeff_syntax_cost_estimate(width, height, residual))
