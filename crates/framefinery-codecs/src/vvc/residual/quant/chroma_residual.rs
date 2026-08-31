@@ -651,7 +651,7 @@ fn finalize_vvc_chroma_transform_skip_residual_block(
 ) -> VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU> {
     finalize_vvc_transform_skip_residual_block(
         residuals,
-        VvcTransformSkipResidualLayout::packed(width, height, width.min(8), height.min(8)),
+        vvc_chroma_transform_skip_residual_layout(width, height),
         quant_table,
     )
 }
@@ -663,12 +663,9 @@ fn finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
     quant_table: &VvcTransformSkipQuantTable,
     bdpcm_mode: VvcBdpcmMode,
 ) -> VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU> {
-    let active_width = width.min(4);
-    let active_height = height.min(4);
     finalize_vvc_bdpcm_transform_skip_residual_block(
         residuals,
-        VvcTransformSkipResidualLayout::packed(width, height, active_width, active_height)
-            .with_coefficient_stride(4),
+        vvc_chroma_bdpcm_transform_skip_residual_layout(width, height),
         quant_table,
         bdpcm_mode,
     )

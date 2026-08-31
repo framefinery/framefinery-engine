@@ -2425,6 +2425,72 @@ fn vvc_transform_skip_finalizers_preserve_component_extents_and_bdpcm_layouts() 
 }
 
 #[test]
+fn vvc_transform_skip_reconstruction_shares_component_layouts() {
+    let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
+    let qp = crate::vvc::vvc_lossless_slice_qp(bit_depth);
+    let quant_table = VvcTransformSkipQuantTable::new(bit_depth, qp);
+
+    let mut ac_levels = [0; VVC_LUMA_AC_COEFFS_PER_TU];
+    ac_levels[30] = quant_table.level(7);
+    let mut luma = Vec::new();
+    reconstruct_vvc_luma_transform_skip_residuals_into_with_qp(
+        &mut luma, 0, &ac_levels, 4, 8, bit_depth, qp,
+    );
+    let mut chroma = Vec::new();
+    reconstruct_vvc_chroma_transform_skip_residuals_into_with_qp(
+        &mut chroma,
+        0,
+        &ac_levels,
+        4,
+        8,
+        bit_depth,
+        qp,
+    );
+    assert_eq!(luma.len(), 32);
+    assert_eq!(chroma.len(), 32);
+    assert_eq!(luma[31], 0, "4x8 luma reconstructs only its 4x4 extent");
+    assert_eq!(chroma[31], quant_table.reconstructed(ac_levels[30]));
+
+    let source = [10, 13, 20, 27];
+    let luma_block = finalize_vvc_luma_bdpcm_transform_skip_residual_block(
+        &source,
+        2,
+        2,
+        &quant_table,
+        VvcBdpcmMode::Horizontal,
+    );
+    let chroma_block = finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
+        &source,
+        2,
+        2,
+        &quant_table,
+        VvcBdpcmMode::Horizontal,
+    );
+    reconstruct_vvc_luma_bdpcm_transform_skip_residuals_into_with_qp(
+        &mut luma,
+        luma_block.dc_level,
+        &luma_block.ac_levels,
+        2,
+        2,
+        bit_depth,
+        qp,
+        luma_block.bdpcm_mode,
+    );
+    reconstruct_vvc_chroma_bdpcm_transform_skip_residuals_into_with_qp(
+        &mut chroma,
+        chroma_block.dc_level,
+        &chroma_block.ac_levels,
+        2,
+        2,
+        bit_depth,
+        qp,
+        chroma_block.bdpcm_mode,
+    );
+    assert_eq!(luma, source);
+    assert_eq!(chroma, source);
+}
+
+#[test]
 fn vvc_transform_skip_table_reconstructs_indexed_quantized_levels() {
     let bit_depth = SampleBitDepth::new(8).expect("valid bit depth");
     let quant_table = VvcTransformSkipQuantTable::new(bit_depth, 19);

@@ -8,15 +8,11 @@ pub(in crate::vvc) fn reconstruct_vvc_luma_transform_skip_residuals_into(
     width: usize,
     height: usize,
 ) {
-    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
     reconstruct_vvc_transform_skip_residuals_into(
         residuals,
         dc_level,
         ac_levels,
-        width,
-        height,
-        active_width,
-        active_height,
+        vvc_luma_transform_skip_residual_layout(width, height),
         |level| level,
     );
 }
@@ -25,48 +21,64 @@ fn reconstruct_vvc_transform_skip_residuals_into<const AC_COEFFS: usize>(
     residuals: &mut Vec<i16>,
     dc_level: i16,
     ac_levels: &[i16; AC_COEFFS],
-    width: usize,
-    height: usize,
-    active_width: usize,
-    active_height: usize,
+    layout: VvcTransformSkipResidualLayout,
     reconstruct_level: impl Fn(i16) -> i16,
 ) {
+    layout.debug_assert_coefficients_fit::<AC_COEFFS>();
+    debug_assert_eq!(layout.coefficient_stride, layout.active_width);
     residuals.clear();
-    residuals.resize(width * height, 0);
+    residuals.resize(layout.source_width * layout.source_height, 0);
     if residuals.is_empty() {
         return;
     }
     residuals[0] = reconstruct_level(dc_level);
-    for y in 0..active_height {
-        for x in 0..active_width {
+    for y in 0..layout.active_height {
+        for x in 0..layout.active_width {
             if x == 0 && y == 0 {
                 continue;
             }
-            residuals[y * width + x] = reconstruct_level(ac_levels[y * active_width + x - 1]);
+            residuals[y * layout.source_width + x] =
+                reconstruct_level(ac_levels[y * layout.coefficient_stride + x - 1]);
         }
     }
 }
 
-fn reconstruct_vvc_bdpcm_transform_skip_residuals_into<const LEVELS: usize>(
+fn reconstruct_vvc_bdpcm_transform_skip_residuals_into<const AC_COEFFS: usize>(
     residuals: &mut Vec<i16>,
-    levels: &mut [i16; LEVELS],
-    width: usize,
-    height: usize,
-    active_width: usize,
-    active_height: usize,
-    inverse_width: usize,
+    dc_level: i16,
+    ac_levels: &[i16; AC_COEFFS],
+    layout: VvcTransformSkipResidualLayout,
     bdpcm_mode: VvcBdpcmMode,
     reconstruct_level: impl Fn(i16) -> i16,
 ) {
+    debug_assert!(bdpcm_mode.is_enabled());
+    layout.debug_assert_coefficients_fit::<AC_COEFFS>();
     residuals.clear();
-    residuals.resize(width * height, 0);
+    residuals.resize(layout.source_width * layout.source_height, 0);
     if residuals.is_empty() {
         return;
     }
-    inverse_bdpcm_quantized_levels_in_place(levels, inverse_width, active_height, bdpcm_mode);
-    for y in 0..active_height {
-        for x in 0..active_width {
-            residuals[y * width + x] = reconstruct_level(levels[y * inverse_width + x]);
+    let mut levels = [0i16; VVC_TRANSFORM_SKIP_MAX_SAMPLES];
+    levels[0] = dc_level;
+    for y in 0..layout.active_height {
+        for x in 0..layout.active_width {
+            if x == 0 && y == 0 {
+                continue;
+            }
+            levels[y * layout.coefficient_stride + x] =
+                ac_levels[y * layout.coefficient_stride + x - 1];
+        }
+    }
+    inverse_bdpcm_quantized_levels_in_place(
+        &mut levels,
+        layout.coefficient_stride,
+        layout.active_height,
+        bdpcm_mode,
+    );
+    for y in 0..layout.active_height {
+        for x in 0..layout.active_width {
+            residuals[y * layout.source_width + x] =
+                reconstruct_level(levels[y * layout.coefficient_stride + x]);
         }
     }
 }
@@ -81,16 +93,12 @@ pub(in crate::vvc) fn reconstruct_vvc_luma_transform_skip_residuals_into_with_qp
     bit_depth: SampleBitDepth,
     qp: i32,
 ) {
-    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
     let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
     reconstruct_vvc_transform_skip_residuals_into(
         residuals,
         dc_level,
         ac_levels,
-        width,
-        height,
-        active_width,
-        active_height,
+        vvc_luma_transform_skip_residual_layout(width, height),
         |level| reconstruct_vvc_transform_skip_level_with_params(level, scale, right_shift),
     );
 }
@@ -103,15 +111,11 @@ fn reconstruct_vvc_luma_transform_skip_residuals_into_with_table(
     height: usize,
     quant_table: &VvcTransformSkipQuantTable,
 ) {
-    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
     reconstruct_vvc_transform_skip_residuals_into(
         residuals,
         dc_level,
         ac_levels,
-        width,
-        height,
-        active_width,
-        active_height,
+        vvc_luma_transform_skip_residual_layout(width, height),
         |level| quant_table.reconstructed(level),
     );
 }
@@ -127,27 +131,12 @@ pub(in crate::vvc) fn reconstruct_vvc_luma_bdpcm_transform_skip_residuals_into_w
     qp: i32,
     bdpcm_mode: VvcBdpcmMode,
 ) {
-    debug_assert!(bdpcm_mode.is_enabled());
-    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
     let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
-    let mut levels = [0i16; 64];
-    levels[0] = dc_level;
-    for y in 0..active_height {
-        for x in 0..active_width {
-            if x == 0 && y == 0 {
-                continue;
-            }
-            levels[y * active_width + x] = ac_levels[y * active_width + x - 1];
-        }
-    }
     reconstruct_vvc_bdpcm_transform_skip_residuals_into(
         residuals,
-        &mut levels,
-        width,
-        height,
-        active_width,
-        active_height,
-        active_width,
+        dc_level,
+        ac_levels,
+        vvc_luma_transform_skip_residual_layout(width, height),
         bdpcm_mode,
         |level| reconstruct_vvc_transform_skip_level_with_params(level, scale, right_shift),
     );
@@ -162,26 +151,11 @@ fn reconstruct_vvc_luma_bdpcm_transform_skip_residuals_into_with_table(
     quant_table: &VvcTransformSkipQuantTable,
     bdpcm_mode: VvcBdpcmMode,
 ) {
-    debug_assert!(bdpcm_mode.is_enabled());
-    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
-    let mut levels = [0i16; 64];
-    levels[0] = dc_level;
-    for y in 0..active_height {
-        for x in 0..active_width {
-            if x == 0 && y == 0 {
-                continue;
-            }
-            levels[y * active_width + x] = ac_levels[y * active_width + x - 1];
-        }
-    }
     reconstruct_vvc_bdpcm_transform_skip_residuals_into(
         residuals,
-        &mut levels,
-        width,
-        height,
-        active_width,
-        active_height,
-        active_width,
+        dc_level,
+        ac_levels,
+        vvc_luma_transform_skip_residual_layout(width, height),
         bdpcm_mode,
         |level| quant_table.reconstructed(level),
     );
@@ -195,16 +169,11 @@ pub(in crate::vvc) fn reconstruct_vvc_chroma_transform_skip_residuals_into(
     width: usize,
     height: usize,
 ) {
-    let active_width = width.min(8);
-    let active_height = height.min(8);
     reconstruct_vvc_transform_skip_residuals_into(
         residuals,
         dc_level,
         ac_levels,
-        width,
-        height,
-        active_width,
-        active_height,
+        vvc_chroma_transform_skip_residual_layout(width, height),
         |level| level,
     );
 }
@@ -219,17 +188,12 @@ pub(in crate::vvc) fn reconstruct_vvc_chroma_transform_skip_residuals_into_with_
     bit_depth: SampleBitDepth,
     qp: i32,
 ) {
-    let active_width = width.min(8);
-    let active_height = height.min(8);
     let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
     reconstruct_vvc_transform_skip_residuals_into(
         residuals,
         dc_level,
         ac_levels,
-        width,
-        height,
-        active_width,
-        active_height,
+        vvc_chroma_transform_skip_residual_layout(width, height),
         |level| reconstruct_vvc_transform_skip_level_with_params(level, scale, right_shift),
     );
 }
@@ -242,16 +206,11 @@ fn reconstruct_vvc_chroma_transform_skip_residuals_into_with_table(
     height: usize,
     quant_table: &VvcTransformSkipQuantTable,
 ) {
-    let active_width = width.min(8);
-    let active_height = height.min(8);
     reconstruct_vvc_transform_skip_residuals_into(
         residuals,
         dc_level,
         ac_levels,
-        width,
-        height,
-        active_width,
-        active_height,
+        vvc_chroma_transform_skip_residual_layout(width, height),
         |level| quant_table.reconstructed(level),
     );
 }
@@ -267,25 +226,12 @@ pub(in crate::vvc) fn reconstruct_vvc_chroma_bdpcm_transform_skip_residuals_into
     qp: i32,
     bdpcm_mode: VvcBdpcmMode,
 ) {
-    debug_assert!(bdpcm_mode.is_enabled());
-    let active_width = width.min(4);
-    let active_height = height.min(4);
     let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
-    let mut levels = [0i16; 16];
-    levels[0] = dc_level;
-    for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
-        if x < active_width && y < active_height {
-            levels[y * 4 + x] = ac_levels[slot];
-        }
-    }
     reconstruct_vvc_bdpcm_transform_skip_residuals_into(
         residuals,
-        &mut levels,
-        width,
-        height,
-        active_width,
-        active_height,
-        4,
+        dc_level,
+        ac_levels,
+        vvc_chroma_bdpcm_transform_skip_residual_layout(width, height),
         bdpcm_mode,
         |level| reconstruct_vvc_transform_skip_level_with_params(level, scale, right_shift),
     );
@@ -300,24 +246,11 @@ fn reconstruct_vvc_chroma_bdpcm_transform_skip_residuals_into_with_table(
     quant_table: &VvcTransformSkipQuantTable,
     bdpcm_mode: VvcBdpcmMode,
 ) {
-    debug_assert!(bdpcm_mode.is_enabled());
-    let active_width = width.min(4);
-    let active_height = height.min(4);
-    let mut levels = [0i16; 16];
-    levels[0] = dc_level;
-    for (slot, (x, y)) in VVC_CHROMA_AC_POSITIONS_4X4.iter().copied().enumerate() {
-        if x < active_width && y < active_height {
-            levels[y * 4 + x] = ac_levels[slot];
-        }
-    }
     reconstruct_vvc_bdpcm_transform_skip_residuals_into(
         residuals,
-        &mut levels,
-        width,
-        height,
-        active_width,
-        active_height,
-        4,
+        dc_level,
+        ac_levels,
+        vvc_chroma_bdpcm_transform_skip_residual_layout(width, height),
         bdpcm_mode,
         |level| quant_table.reconstructed(level),
     );
@@ -329,8 +262,14 @@ pub(in crate::vvc) fn transform_skip_luma_ac_levels_and_flag(
     width: usize,
 ) -> ([i16; super::VVC_LUMA_AC_COEFFS_PER_TU], bool) {
     let height = residuals.len() / width;
-    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
-    transform_skip_ac_levels_and_flag(residuals, width, active_width, active_height, |level| level)
+    let layout = vvc_luma_transform_skip_residual_layout(width, height);
+    transform_skip_ac_levels_and_flag(
+        residuals,
+        layout.source_width,
+        layout.active_width,
+        layout.active_height,
+        |level| level,
+    )
 }
 
 fn transform_skip_ac_levels_and_flag<const AC_COEFFS: usize>(
@@ -388,11 +327,14 @@ impl VvcTransformSkipResidualLayout {
         self
     }
 
-    fn debug_assert_fits<const AC_COEFFS: usize>(self, residual_len: usize) {
+    fn debug_assert_source_len(self, residual_len: usize) {
         debug_assert_eq!(
             residual_len,
             self.source_width.saturating_mul(self.source_height)
         );
+    }
+
+    fn debug_assert_coefficients_fit<const AC_COEFFS: usize>(self) {
         debug_assert!(self.active_width <= self.source_width);
         debug_assert!(self.active_height <= self.source_height);
         debug_assert!(self.active_width <= self.coefficient_stride);
@@ -409,12 +351,37 @@ impl VvcTransformSkipResidualLayout {
     }
 }
 
+fn vvc_luma_transform_skip_residual_layout(
+    width: usize,
+    height: usize,
+) -> VvcTransformSkipResidualLayout {
+    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
+    VvcTransformSkipResidualLayout::packed(width, height, active_width, active_height)
+}
+
+fn vvc_chroma_transform_skip_residual_layout(
+    width: usize,
+    height: usize,
+) -> VvcTransformSkipResidualLayout {
+    VvcTransformSkipResidualLayout::packed(width, height, width.min(8), height.min(8))
+}
+
+fn vvc_chroma_bdpcm_transform_skip_residual_layout(
+    width: usize,
+    height: usize,
+) -> VvcTransformSkipResidualLayout {
+    debug_assert_eq!(VVC_CHROMA_AC_POSITIONS_4X4.len() + 1, 4 * 4);
+    VvcTransformSkipResidualLayout::packed(width, height, width.min(4), height.min(4))
+        .with_coefficient_stride(4)
+}
+
 fn finalize_vvc_transform_skip_residual_block<const AC_COEFFS: usize>(
     residuals: &[i16],
     layout: VvcTransformSkipResidualLayout,
     quant_table: &VvcTransformSkipQuantTable,
 ) -> VvcFinalizedResidualBlock<AC_COEFFS> {
-    layout.debug_assert_fits::<AC_COEFFS>(residuals.len());
+    layout.debug_assert_source_len(residuals.len());
+    layout.debug_assert_coefficients_fit::<AC_COEFFS>();
     debug_assert_eq!(layout.coefficient_stride, layout.active_width);
     if residuals.iter().all(|&residual| residual == 0) {
         return VvcFinalizedResidualBlock {
@@ -453,7 +420,8 @@ fn finalize_vvc_bdpcm_transform_skip_residual_block<const AC_COEFFS: usize>(
     bdpcm_mode: VvcBdpcmMode,
 ) -> VvcFinalizedResidualBlock<AC_COEFFS> {
     debug_assert!(bdpcm_mode.is_enabled());
-    layout.debug_assert_fits::<AC_COEFFS>(residuals.len());
+    layout.debug_assert_source_len(residuals.len());
+    layout.debug_assert_coefficients_fit::<AC_COEFFS>();
     if residuals.iter().all(|&residual| residual == 0) {
         return VvcFinalizedResidualBlock {
             dc_level: 0,
@@ -509,15 +477,21 @@ pub(in crate::vvc) fn transform_skip_luma_ac_levels_and_flag_with_qp(
 ) -> ([i16; super::VVC_LUMA_AC_COEFFS_PER_TU], bool) {
     let (scale, right_shift) = vvc_transform_skip_dequant_params(bit_depth, qp);
     let height = residuals.len() / width;
-    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
-    transform_skip_ac_levels_and_flag(residuals, width, active_width, active_height, |level| {
-        quantize_vvc_transform_skip_level_with_params(
-            level,
-            scale,
-            right_shift,
-            VVC_TRANSFORM_SKIP_LEVEL_SEARCH_RADIUS,
-        )
-    })
+    let layout = vvc_luma_transform_skip_residual_layout(width, height);
+    transform_skip_ac_levels_and_flag(
+        residuals,
+        layout.source_width,
+        layout.active_width,
+        layout.active_height,
+        |level| {
+            quantize_vvc_transform_skip_level_with_params(
+                level,
+                scale,
+                right_shift,
+                VVC_TRANSFORM_SKIP_LEVEL_SEARCH_RADIUS,
+            )
+        },
+    )
 }
 
 fn vvc_luma_transform_skip_active_extent(width: usize, height: usize) -> (usize, usize) {
@@ -568,9 +542,14 @@ pub(in crate::vvc) fn transform_skip_chroma_ac_levels_and_flag(
     width: usize,
 ) -> ([i16; VVC_CHROMA_AC_COEFFS_PER_TU], bool) {
     let height = residuals.len() / width;
-    let active_width = width.min(8);
-    let active_height = height.min(8);
-    transform_skip_ac_levels_and_flag(residuals, width, active_width, active_height, |level| level)
+    let layout = vvc_chroma_transform_skip_residual_layout(width, height);
+    transform_skip_ac_levels_and_flag(
+        residuals,
+        layout.source_width,
+        layout.active_width,
+        layout.active_height,
+        |level| level,
+    )
 }
 
 #[cfg(test)]

@@ -848,10 +848,9 @@ fn finalize_vvc_luma_transform_skip_residual_block(
 ) -> VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU> {
     let width = usize::from(width);
     let height = usize::from(height);
-    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
     finalize_vvc_transform_skip_residual_block(
         residuals,
-        VvcTransformSkipResidualLayout::packed(width, height, active_width, active_height),
+        vvc_luma_transform_skip_residual_layout(width, height),
         quant_table,
     )
 }
@@ -865,10 +864,9 @@ fn finalize_vvc_luma_bdpcm_transform_skip_residual_block(
 ) -> VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU> {
     let width = usize::from(width);
     let height = usize::from(height);
-    let (active_width, active_height) = vvc_luma_transform_skip_active_extent(width, height);
     finalize_vvc_bdpcm_transform_skip_residual_block(
         residuals,
-        VvcTransformSkipResidualLayout::packed(width, height, active_width, active_height),
+        vvc_luma_transform_skip_residual_layout(width, height),
         quant_table,
         bdpcm_mode,
     )

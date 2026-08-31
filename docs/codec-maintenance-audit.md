@@ -74,6 +74,10 @@ The following changes were behavior-preserving and independently validated:
   checked active-extent layout and one quantized-level finalizer. BDPCM uses
   the same shared delta loop, with component wrappers supplying only luma's
   packed coefficient stride or chroma's fixed four-column syntax layout.
+- Those same VVC transform-skip layouts now drive regular and BDPCM inverse
+  reconstruction. Luma/chroma and QP/table adapters supply only the legal
+  layout and scalar level reconstruction; one shared kernel stages BDPCM
+  coefficients, applies the directional inverse, and writes the active extent.
 - VVC finalized residual-block and RD-score value types now live in the shared
   quantization types module used by luma, chroma, and CTU selection.
 - VVC finalized luma and chroma TU records now live beside the shared
