@@ -392,17 +392,25 @@ fn vvc_chroma_temporal_hint_candidate_preserves_cheap_residual_gate() {
         temporal_hint: Some(hint),
     };
 
-    let selected = exact_context
-        .select_temporal_hint_candidate(
+    let selected = {
+        let mut buffers = VvcChromaCandidateBuffers {
+            prediction: VvcChromaPredictionBuffers {
+                cb: &mut predicted_cb,
+                cr: &mut predicted_cr,
+            },
+            residuals: VvcChromaResidualBuffers {
+                cb: &mut cb_residuals,
+                cr: &mut cr_residuals,
+            },
+        };
+        exact_context.select_temporal_hint_candidate(
             hint,
             &mut prediction_scratch,
-            &mut predicted_cb,
-            &mut predicted_cr,
-            &mut cb_residuals,
-            &mut cr_residuals,
+            &mut buffers,
             &mut stats,
         )
-        .expect("zero-residual chroma temporal hint should be accepted");
+    }
+    .expect("zero-residual chroma temporal hint should be accepted");
     assert_eq!(selected.mode, hint.mode);
     assert!(selected.residual.is_none());
     assert_eq!(cb_residuals, vec![0; 16]);
@@ -412,17 +420,25 @@ fn vvc_chroma_temporal_hint_candidate_preserves_cheap_residual_gate() {
         source_frame: &expensive_frame,
         ..exact_context
     };
-    assert!(expensive_context
-        .select_temporal_hint_candidate(
+    let expensive_candidate = {
+        let mut buffers = VvcChromaCandidateBuffers {
+            prediction: VvcChromaPredictionBuffers {
+                cb: &mut predicted_cb,
+                cr: &mut predicted_cr,
+            },
+            residuals: VvcChromaResidualBuffers {
+                cb: &mut cb_residuals,
+                cr: &mut cr_residuals,
+            },
+        };
+        expensive_context.select_temporal_hint_candidate(
             hint,
             &mut prediction_scratch,
-            &mut predicted_cb,
-            &mut predicted_cr,
-            &mut cb_residuals,
-            &mut cr_residuals,
+            &mut buffers,
             &mut stats,
         )
-        .is_none());
+    };
+    assert!(expensive_candidate.is_none());
     assert!(cb_residuals
         .iter()
         .chain(&cr_residuals)

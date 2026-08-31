@@ -361,6 +361,11 @@ The following changes were behavior-preserving and independently validated:
   outside selected state, and the RD cache remains the sole residual-transfer
   boundary before refinement. The composed refinement/BDPCM candidate reuses
   those pair contracts and promotes both pairs together.
+- VVC chroma temporal-hint prediction, cheap-residual acceptance, and BDPCM
+  prefinalization now live in a focused 135-line sibling. Temporal attempts use
+  the shared prediction/residual candidate buffers and still return the common
+  selected-candidate record; rejected hints fall through to ordinary search,
+  and both paths retain the shared residual materializer and finalization tail.
 - VVC SCC, temporal-hint, and finalized luma-TU metadata writes now share one
   bounded record type; temporal, exact-inter, and ordinary finalization no
   longer fan the same result out to parallel arrays through three duplicated
@@ -389,7 +394,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 479-line CTU helper, 538-line mode-selection sibling, 424/501-line luma/chroma TU selection orchestration, 275/443-line search helpers, a 416-line luma mode helper, and 312/440/289-line chroma mode/BDPCM/RD helpers | chroma mode-search, cache-transfer, refinement, and BDPCM ownership are now explicit; the chroma TU selector still combines temporal-hint materialization with normal search orchestration and should be split only around that established selected-candidate contract |
+| VVC residual quantization | 479-line CTU helper, 538-line mode-selection sibling, 424/373-line luma/chroma TU selection orchestration plus a 135-line chroma temporal helper, 275/443-line search helpers, a 416-line luma mode helper, and 312/440/289-line chroma mode/BDPCM/RD helpers | temporal and ordinary chroma selection now meet at one selected-candidate contract; inter-derived chroma selection still carries a flat four-vector buffer interface that should adopt the established paired candidate ownership before any further orchestration split |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2

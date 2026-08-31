@@ -13,6 +13,7 @@ include!("chroma_mode.rs");
 include!("chroma_bdpcm.rs");
 include!("chroma_rd.rs");
 include!("chroma_tu_selection.rs");
+include!("chroma_temporal.rs");
 include!("luma_prediction.rs");
 include!("directional.rs");
 include!("luma_residual.rs");
