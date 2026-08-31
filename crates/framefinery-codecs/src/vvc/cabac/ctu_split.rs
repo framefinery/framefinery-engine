@@ -155,48 +155,79 @@ pub(in crate::vvc) fn vvc_luma_transform_nodes_into_for_kind(
 ) {
     nodes.clear();
     let tree_type = vvc_luma_tree_type(shape);
-    append_visible_luma_transform_nodes(
-        nodes,
+    visit_visible_luma_partition(
         VvcCodingTreeNode::root(shape.root_width, shape.root_height, tree_type),
         shape.visible_width,
         shape.visible_height,
         max_leaf_size,
         split_kind,
+        &mut |event| {
+            if let VvcLumaPartitionEvent::Leaf { node, .. } = event {
+                nodes.push(node);
+            }
+        },
     );
 }
 
-fn append_visible_luma_transform_nodes(
-    nodes: &mut Vec<VvcCodingTreeNode>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VvcLumaPartitionEvent {
+    Leaf {
+        node: VvcCodingTreeNode,
+        split: VvcSplitCtxInput,
+        write_split_flag: bool,
+    },
+    QtSplit {
+        node: VvcCodingTreeNode,
+        split: VvcSplitCtxInput,
+        write_split_flag: bool,
+    },
+    BtSplit {
+        node: VvcCodingTreeNode,
+        split: VvcSplitCtxInput,
+        vertical: bool,
+        write_split_flag: bool,
+    },
+}
+
+fn visit_visible_luma_partition<F>(
     node: VvcCodingTreeNode,
     visible_width: u16,
     visible_height: u16,
     max_leaf_size: u16,
     split_kind: VvcLumaSplitAvailabilityKind,
-) {
+    emit_event: &mut F,
+) where
+    F: FnMut(VvcLumaPartitionEvent),
+{
     if !node.intersects_visible(visible_width, visible_height) {
         return;
     }
     if node.fits_visible(visible_width, visible_height)
-        && VvcCtuCabacOp::luma_leaf_allowed(node, max_leaf_size)
+        && (VvcCtuCabacOp::luma_leaf_allowed(node, max_leaf_size)
+            || VvcCtuCabacOp::luma_square_leaf_at_mtt_limit(node, max_leaf_size, split_kind))
     {
-        nodes.push(node);
-        return;
-    }
-    if node.fits_visible(visible_width, visible_height)
-        && VvcCtuCabacOp::luma_square_leaf_at_mtt_limit(node, max_leaf_size, split_kind)
-    {
-        nodes.push(node);
+        let split = VvcCtuCabacOp::luma_split_availability_for_kind(
+            node,
+            visible_width,
+            visible_height,
+            split_kind,
+        );
+        emit_event(VvcLumaPartitionEvent::Leaf {
+            node,
+            write_split_flag: split.has_mtt() || split.allow_qt,
+            split,
+        });
         return;
     }
 
     if !node.fits_visible(visible_width, visible_height) {
-        append_implicit_boundary_luma_transform_children(
-            nodes,
+        visit_implicit_boundary_luma_partition(
             node,
             visible_width,
             visible_height,
             max_leaf_size,
             split_kind,
+            emit_event,
         );
         return;
     }
@@ -208,58 +239,69 @@ fn append_visible_luma_transform_nodes(
         split_kind,
     );
     if !split.has_mtt() && !split.allow_qt {
-        nodes.push(node);
+        emit_event(VvcLumaPartitionEvent::Leaf {
+            node,
+            split,
+            write_split_flag: false,
+        });
         return;
     }
 
     debug_assert!(node.width > max_leaf_size || node.height > max_leaf_size);
-    if node.mtt_depth > 0 {
-        append_visible_luma_mtt_transform_nodes(
-            nodes,
+    if node.mtt_depth > 0 || !split.allow_qt {
+        visit_visible_luma_mtt_partition(
             node,
             visible_width,
             visible_height,
             max_leaf_size,
             split_kind,
+            emit_event,
         );
         return;
     }
-    if !split.allow_qt {
-        append_visible_luma_mtt_transform_nodes(
-            nodes,
-            node,
-            visible_width,
-            visible_height,
-            max_leaf_size,
-            split_kind,
-        );
-        return;
-    }
+    emit_event(VvcLumaPartitionEvent::QtSplit {
+        node,
+        split,
+        write_split_flag: true,
+    });
     for child_idx in 0..4 {
-        append_visible_luma_transform_nodes(
-            nodes,
+        visit_visible_luma_partition(
             node.qt_child(child_idx),
             visible_width,
             visible_height,
             max_leaf_size,
             split_kind,
+            emit_event,
         );
     }
 }
 
-fn append_visible_luma_mtt_transform_nodes(
-    nodes: &mut Vec<VvcCodingTreeNode>,
+fn visit_visible_luma_mtt_partition<F>(
     node: VvcCodingTreeNode,
     visible_width: u16,
     visible_height: u16,
     max_leaf_size: u16,
     split_kind: VvcLumaSplitAvailabilityKind,
-) {
+    emit_event: &mut F,
+) where
+    F: FnMut(VvcLumaPartitionEvent),
+{
     let vertical =
         node.width > max_leaf_size && (node.height <= max_leaf_size || node.width >= node.height);
+    let split = VvcCtuCabacOp::luma_split_availability_for_kind(
+        node,
+        visible_width,
+        visible_height,
+        split_kind,
+    );
+    emit_event(VvcLumaPartitionEvent::BtSplit {
+        node,
+        split,
+        vertical,
+        write_split_flag: true,
+    });
     for child_idx in 0..2 {
-        append_visible_luma_transform_nodes(
-            nodes,
+        visit_visible_luma_partition(
             node.mtt_child_with_boundary_depth_offset(
                 vertical,
                 child_idx,
@@ -270,18 +312,21 @@ fn append_visible_luma_mtt_transform_nodes(
             visible_height,
             max_leaf_size,
             split_kind,
+            emit_event,
         );
     }
 }
 
-fn append_implicit_boundary_luma_transform_children(
-    nodes: &mut Vec<VvcCodingTreeNode>,
+fn visit_implicit_boundary_luma_partition<F>(
     node: VvcCodingTreeNode,
     visible_width: u16,
     visible_height: u16,
     max_leaf_size: u16,
     split_kind: VvcLumaSplitAvailabilityKind,
-) {
+    emit_event: &mut F,
+) where
+    F: FnMut(VvcLumaPartitionEvent),
+{
     let bottom_left_in_pic = node.x < visible_width && node.y + node.height - 1 < visible_height;
     let top_right_in_pic = node.x + node.width - 1 < visible_width && node.y < visible_height;
     let split = VvcCtuCabacOp::luma_split_availability_for_kind(
@@ -292,33 +337,43 @@ fn append_implicit_boundary_luma_transform_children(
     );
     if !bottom_left_in_pic && !top_right_in_pic {
         for child_idx in 0..4 {
-            append_visible_luma_transform_nodes(
-                nodes,
+            visit_visible_luma_partition(
                 node.qt_child(child_idx),
                 visible_width,
                 visible_height,
                 max_leaf_size,
                 split_kind,
+                emit_event,
             );
         }
     } else if !bottom_left_in_pic
         && top_right_in_pic
         && VvcCtuCabacOp::boundary_qt_preferred(node, max_leaf_size)
     {
+        emit_event(VvcLumaPartitionEvent::QtSplit {
+            node,
+            split,
+            write_split_flag: false,
+        });
         for child_idx in 0..4 {
-            append_visible_luma_transform_nodes(
-                nodes,
+            visit_visible_luma_partition(
                 node.qt_child(child_idx),
                 visible_width,
                 visible_height,
                 max_leaf_size,
                 split_kind,
+                emit_event,
             );
         }
     } else if !bottom_left_in_pic && split.allow_bt_horizontal {
+        emit_event(VvcLumaPartitionEvent::BtSplit {
+            node,
+            split,
+            vertical: false,
+            write_split_flag: false,
+        });
         for child_idx in 0..2 {
-            append_visible_luma_transform_nodes(
-                nodes,
+            visit_visible_luma_partition(
                 node.mtt_child_with_boundary_depth_offset(
                     false,
                     child_idx,
@@ -329,12 +384,18 @@ fn append_implicit_boundary_luma_transform_children(
                 visible_height,
                 max_leaf_size,
                 split_kind,
+                emit_event,
             );
         }
     } else if !top_right_in_pic && split.allow_bt_vertical {
+        emit_event(VvcLumaPartitionEvent::BtSplit {
+            node,
+            split,
+            vertical: true,
+            write_split_flag: false,
+        });
         for child_idx in 0..2 {
-            append_visible_luma_transform_nodes(
-                nodes,
+            visit_visible_luma_partition(
                 node.mtt_child_with_boundary_depth_offset(
                     true,
                     child_idx,
@@ -345,17 +406,18 @@ fn append_implicit_boundary_luma_transform_children(
                 visible_height,
                 max_leaf_size,
                 split_kind,
+                emit_event,
             );
         }
     } else {
         for child_idx in 0..4 {
-            append_visible_luma_transform_nodes(
-                nodes,
+            visit_visible_luma_partition(
                 node.qt_child(child_idx),
                 visible_width,
                 visible_height,
                 max_leaf_size,
                 split_kind,
+                emit_event,
             );
         }
     }
@@ -1230,14 +1292,15 @@ impl VvcCtuCabacOp {
             shape.root_height,
             tree_type,
         );
-        Self::visit_visible_luma_subtree(
-            neighbours,
+        visit_visible_luma_partition(
             root,
             picture_visible_width,
             picture_visible_height,
             max_leaf_size,
             VvcLumaSplitAvailabilityKind::Intra,
-            &mut emit_op,
+            &mut |event| {
+                Self::emit_luma_partition_event(neighbours, event, &mut emit_op);
+            },
         );
         if shape.dual_tree_intra && shape.chroma_sampling != ChromaSampling::Monochrome {
             emit_op(Self::ChromaTree {
@@ -1274,329 +1337,84 @@ impl VvcCtuCabacOp {
             shape.root_height,
             tree_type,
         );
-        Self::visit_visible_luma_subtree(
-            neighbours,
+        visit_visible_luma_partition(
             root,
             picture_visible_width,
             picture_visible_height,
             max_leaf_size,
             VvcLumaSplitAvailabilityKind::Inter,
-            &mut emit_op,
+            &mut |event| {
+                Self::emit_luma_partition_event(neighbours, event, &mut emit_op);
+            },
         );
     }
 
-    fn visit_visible_luma_subtree<F>(
+    fn emit_luma_partition_event<F>(
         neighbours: &mut VvcLumaNeighbourState,
-        node: VvcCodingTreeNode,
-        visible_width: u16,
-        visible_height: u16,
-        max_leaf_size: u16,
-        split_kind: VvcLumaSplitAvailabilityKind,
+        event: VvcLumaPartitionEvent,
         emit_op: &mut F,
     ) where
         F: FnMut(Self),
     {
-        if !node.intersects_visible(visible_width, visible_height) {
-            return;
-        }
-        if node.fits_visible(visible_width, visible_height)
-            && Self::luma_leaf_allowed(node, max_leaf_size)
-        {
-            let split = Self::luma_split_availability_for_kind(
+        match event {
+            VvcLumaPartitionEvent::Leaf {
                 node,
-                visible_width,
-                visible_height,
-                split_kind,
-            );
-            let write_split_flag = split.has_mtt() || split.allow_qt;
-            emit_op(Self::LumaLeafWithSplitCtx {
-                node,
+                split,
                 write_split_flag,
-                split_ctx: if write_split_flag {
-                    Self::luma_split_ctx(node, split, neighbours)
-                } else {
-                    0
-                },
-            });
-            neighbours.mark_leaf(node);
-            return;
-        }
-        if node.fits_visible(visible_width, visible_height)
-            && Self::luma_square_leaf_at_mtt_limit(node, max_leaf_size, split_kind)
-        {
-            let split = Self::luma_split_availability_for_kind(
+            } => {
+                emit_op(Self::LumaLeafWithSplitCtx {
+                    node,
+                    write_split_flag,
+                    split_ctx: if write_split_flag {
+                        Self::luma_split_ctx(node, split, neighbours)
+                    } else {
+                        0
+                    },
+                });
+                neighbours.mark_leaf(node);
+            }
+            VvcLumaPartitionEvent::QtSplit {
                 node,
-                visible_width,
-                visible_height,
-                split_kind,
-            );
-            let write_split_flag = split.has_mtt() || split.allow_qt;
-            emit_op(Self::LumaLeafWithSplitCtx {
-                node,
+                split,
                 write_split_flag,
-                split_ctx: if write_split_flag {
-                    Self::luma_split_ctx(node, split, neighbours)
+            } => emit_op(Self::QtSplit {
+                node,
+                split_ctx: Self::luma_split_ctx(node, split, neighbours),
+                write_split_flag,
+                write_qt_flag: split.allow_qt && split.has_mtt(),
+                qt_ctx: Self::luma_qt_split_ctx(node, neighbours),
+            }),
+            VvcLumaPartitionEvent::BtSplit {
+                node,
+                split,
+                vertical,
+                write_split_flag,
+            } => {
+                let can_hor = split.allow_bt_horizontal || split.allow_tt_horizontal;
+                let can_ver = split.allow_bt_vertical || split.allow_tt_vertical;
+                let can_binary = if vertical {
+                    split.allow_bt_vertical
                 } else {
-                    0
-                },
-            });
-            neighbours.mark_leaf(node);
-            return;
-        }
-
-        if !node.fits_visible(visible_width, visible_height) {
-            Self::visit_implicit_boundary_luma_children(
-                neighbours,
-                node,
-                visible_width,
-                visible_height,
-                max_leaf_size,
-                split_kind,
-                emit_op,
-            );
-            return;
-        }
-
-        let split =
-            Self::luma_split_availability_for_kind(node, visible_width, visible_height, split_kind);
-        if !split.has_mtt() && !split.allow_qt {
-            emit_op(Self::LumaLeafWithSplitCtx {
-                node,
-                write_split_flag: false,
-                split_ctx: 0,
-            });
-            neighbours.mark_leaf(node);
-            return;
-        }
-
-        debug_assert!(node.width > max_leaf_size || node.height > max_leaf_size);
-        if node.mtt_depth > 0 {
-            Self::visit_visible_luma_mtt_subtree(
-                neighbours,
-                node,
-                visible_width,
-                visible_height,
-                max_leaf_size,
-                split_kind,
-                emit_op,
-            );
-            return;
-        }
-        if !split.allow_qt {
-            Self::visit_visible_luma_mtt_subtree(
-                neighbours,
-                node,
-                visible_width,
-                visible_height,
-                max_leaf_size,
-                split_kind,
-                emit_op,
-            );
-            return;
-        }
-        emit_op(Self::QtSplit {
-            node,
-            split_ctx: Self::luma_split_ctx(node, split, neighbours),
-            write_split_flag: true,
-            write_qt_flag: split.allow_qt && split.has_mtt(),
-            qt_ctx: Self::luma_qt_split_ctx(node, neighbours),
-        });
-        for child_idx in 0..4 {
-            Self::visit_visible_luma_subtree(
-                neighbours,
-                node.qt_child(child_idx),
-                visible_width,
-                visible_height,
-                max_leaf_size,
-                split_kind,
-                emit_op,
-            );
-        }
-    }
-
-    fn visit_visible_luma_mtt_subtree<F>(
-        neighbours: &mut VvcLumaNeighbourState,
-        node: VvcCodingTreeNode,
-        visible_width: u16,
-        visible_height: u16,
-        max_leaf_size: u16,
-        split_kind: VvcLumaSplitAvailabilityKind,
-        emit_op: &mut F,
-    ) where
-        F: FnMut(Self),
-    {
-        let vertical = node.width > max_leaf_size
-            && (node.height <= max_leaf_size || node.width >= node.height);
-        let split =
-            Self::luma_split_availability_for_kind(node, visible_width, visible_height, split_kind);
-        let can_hor = split.allow_bt_horizontal || split.allow_tt_horizontal;
-        let can_ver = split.allow_bt_vertical || split.allow_tt_vertical;
-        let can_binary = if vertical {
-            split.allow_bt_vertical
-        } else {
-            split.allow_bt_horizontal
-        };
-        let can_ternary = if vertical {
-            split.allow_tt_vertical
-        } else {
-            split.allow_tt_horizontal
-        };
-        emit_op(Self::BtSplit {
-            node,
-            vertical,
-            split_ctx: Self::luma_split_ctx(node, split, neighbours),
-            write_split_flag: true,
-            write_qt_flag: split.allow_qt && split.has_mtt(),
-            qt_ctx: Self::luma_qt_split_ctx(node, neighbours),
-            write_mtt_vertical_flag: can_hor && can_ver,
-            mtt_vertical_ctx: Self::luma_mtt_vertical_ctx(node, split, neighbours),
-            write_binary_flag: can_binary && can_ternary,
-            mtt_binary_ctx: Self::mtt_binary_ctx(vertical, node.mtt_depth),
-            mtt_binary_value: true,
-        });
-        for child_idx in 0..2 {
-            Self::visit_visible_luma_subtree(
-                neighbours,
-                node.mtt_child_with_boundary_depth_offset(
+                    split.allow_bt_horizontal
+                };
+                let can_ternary = if vertical {
+                    split.allow_tt_vertical
+                } else {
+                    split.allow_tt_horizontal
+                };
+                emit_op(Self::BtSplit {
+                    node,
                     vertical,
-                    child_idx,
-                    visible_width,
-                    visible_height,
-                ),
-                visible_width,
-                visible_height,
-                max_leaf_size,
-                split_kind,
-                emit_op,
-            );
-        }
-    }
-
-    fn visit_implicit_boundary_luma_children<F>(
-        neighbours: &mut VvcLumaNeighbourState,
-        node: VvcCodingTreeNode,
-        visible_width: u16,
-        visible_height: u16,
-        max_leaf_size: u16,
-        split_kind: VvcLumaSplitAvailabilityKind,
-        emit_op: &mut F,
-    ) where
-        F: FnMut(Self),
-    {
-        let bottom_left_in_pic =
-            node.x < visible_width && node.y + node.height - 1 < visible_height;
-        let top_right_in_pic = node.x + node.width - 1 < visible_width && node.y < visible_height;
-        let split =
-            Self::luma_split_availability_for_kind(node, visible_width, visible_height, split_kind);
-        if !bottom_left_in_pic && !top_right_in_pic {
-            for child_idx in 0..4 {
-                Self::visit_visible_luma_subtree(
-                    neighbours,
-                    node.qt_child(child_idx),
-                    visible_width,
-                    visible_height,
-                    max_leaf_size,
-                    split_kind,
-                    emit_op,
-                );
-            }
-        } else if !bottom_left_in_pic
-            && top_right_in_pic
-            && Self::boundary_qt_preferred(node, max_leaf_size)
-        {
-            emit_op(Self::QtSplit {
-                node,
-                split_ctx: Self::luma_split_ctx(node, split, neighbours),
-                write_split_flag: false,
-                write_qt_flag: split.allow_qt && split.has_mtt(),
-                qt_ctx: Self::luma_qt_split_ctx(node, neighbours),
-            });
-            for child_idx in 0..4 {
-                Self::visit_visible_luma_subtree(
-                    neighbours,
-                    node.qt_child(child_idx),
-                    visible_width,
-                    visible_height,
-                    max_leaf_size,
-                    split_kind,
-                    emit_op,
-                );
-            }
-        } else if !bottom_left_in_pic && split.allow_bt_horizontal {
-            let can_hor = split.allow_bt_horizontal || split.allow_tt_horizontal;
-            let can_ver = split.allow_bt_vertical || split.allow_tt_vertical;
-            emit_op(Self::BtSplit {
-                node,
-                vertical: false,
-                split_ctx: Self::luma_split_ctx(node, split, neighbours),
-                write_split_flag: false,
-                write_qt_flag: split.allow_qt && split.has_mtt(),
-                qt_ctx: Self::luma_qt_split_ctx(node, neighbours),
-                write_mtt_vertical_flag: can_hor && can_ver,
-                mtt_vertical_ctx: Self::luma_mtt_vertical_ctx(node, split, neighbours),
-                write_binary_flag: split.allow_bt_horizontal && split.allow_tt_horizontal,
-                mtt_binary_ctx: Self::mtt_binary_ctx(false, node.mtt_depth),
-                mtt_binary_value: true,
-            });
-            for child_idx in 0..2 {
-                Self::visit_visible_luma_subtree(
-                    neighbours,
-                    node.mtt_child_with_boundary_depth_offset(
-                        false,
-                        child_idx,
-                        visible_width,
-                        visible_height,
-                    ),
-                    visible_width,
-                    visible_height,
-                    max_leaf_size,
-                    split_kind,
-                    emit_op,
-                );
-            }
-        } else if !top_right_in_pic && split.allow_bt_vertical {
-            let can_hor = split.allow_bt_horizontal || split.allow_tt_horizontal;
-            let can_ver = split.allow_bt_vertical || split.allow_tt_vertical;
-            emit_op(Self::BtSplit {
-                node,
-                vertical: true,
-                split_ctx: Self::luma_split_ctx(node, split, neighbours),
-                write_split_flag: false,
-                write_qt_flag: split.allow_qt && split.has_mtt(),
-                qt_ctx: Self::luma_qt_split_ctx(node, neighbours),
-                write_mtt_vertical_flag: can_hor && can_ver,
-                mtt_vertical_ctx: Self::luma_mtt_vertical_ctx(node, split, neighbours),
-                write_binary_flag: split.allow_bt_vertical && split.allow_tt_vertical,
-                mtt_binary_ctx: Self::mtt_binary_ctx(true, node.mtt_depth),
-                mtt_binary_value: true,
-            });
-            for child_idx in 0..2 {
-                Self::visit_visible_luma_subtree(
-                    neighbours,
-                    node.mtt_child_with_boundary_depth_offset(
-                        true,
-                        child_idx,
-                        visible_width,
-                        visible_height,
-                    ),
-                    visible_width,
-                    visible_height,
-                    max_leaf_size,
-                    split_kind,
-                    emit_op,
-                );
-            }
-        } else {
-            for child_idx in 0..4 {
-                Self::visit_visible_luma_subtree(
-                    neighbours,
-                    node.qt_child(child_idx),
-                    visible_width,
-                    visible_height,
-                    max_leaf_size,
-                    split_kind,
-                    emit_op,
-                );
+                    split_ctx: Self::luma_split_ctx(node, split, neighbours),
+                    write_split_flag,
+                    write_qt_flag: split.allow_qt && split.has_mtt(),
+                    qt_ctx: Self::luma_qt_split_ctx(node, neighbours),
+                    write_mtt_vertical_flag: can_hor && can_ver,
+                    mtt_vertical_ctx: Self::luma_mtt_vertical_ctx(node, split, neighbours),
+                    write_binary_flag: can_binary && can_ternary,
+                    mtt_binary_ctx: Self::mtt_binary_ctx(vertical, node.mtt_depth),
+                    mtt_binary_value: true,
+                });
             }
         }
     }
