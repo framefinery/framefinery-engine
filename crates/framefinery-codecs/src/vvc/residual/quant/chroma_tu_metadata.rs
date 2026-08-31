@@ -27,17 +27,6 @@ impl VvcChromaTuMetadata {
         }
     }
 
-    fn record_mode_hint(
-        &mut self,
-        index: usize,
-        mode: VvcChromaIntraPredictionMode,
-        bdpcm_mode: VvcBdpcmMode,
-    ) {
-        self.assert_index(index);
-        self.chroma_tu_intra_modes[index] = mode;
-        self.chroma_tu_bdpcm_modes[index] = bdpcm_mode;
-    }
-
     fn record_finalized(
         &mut self,
         index: usize,

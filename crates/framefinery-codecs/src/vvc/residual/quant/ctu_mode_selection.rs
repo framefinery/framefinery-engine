@@ -9,8 +9,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     luma_mode_search_state: &mut VvcLumaModeSearchState,
     transform_skip_quant_tables: &VvcTransformSkipQuantTables,
     scratch: &mut VvcCtuQuantScratch,
-    luma_inter_skip: Option<&[bool; MAX_VVC_LUMA_TUS]>,
-    chroma_inter_skip: Option<&[bool; MAX_VVC_CHROMA_TUS]>,
     luma_inter_decisions: Option<&[Option<VvcLumaInterDecision>; MAX_VVC_LUMA_TUS]>,
     luma_scc_decisions: Option<&[Option<VvcIbcCuDecision>; MAX_VVC_LUMA_TUS]>,
     inter_reference: Option<&VvcReconstructionFrame>,
@@ -106,26 +104,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 luma_tu_count += 1;
                 continue;
             }
-        }
-        if luma_inter_skip
-            .and_then(|mask| mask.get(luma_tu_count))
-            .copied()
-            .unwrap_or(false)
-        {
-            if let Some(hint) = vvc_luma_temporal_mode_hint(
-                temporal_mode_hints,
-                luma_tu_count,
-                luma_nodes.len(),
-                policy,
-                node,
-            ) {
-                luma_tu_metadata.record_mode_hint(luma_tu_count, hint.mode, hint.bdpcm_mode);
-                luma_mode_search_state.mark_node(node, hint.mode);
-            }
-            copy_source_luma_node_into_reconstruction(frame_recon, source_frame, node);
-            frame_recon.mark_luma_node_available(node);
-            luma_tu_count += 1;
-            continue;
         }
         luma_rd_cache.reset(policy, node);
         let left_luma_mode = luma_mode_search_state.left_of(node);
@@ -278,46 +256,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             ),
             _ => None,
         };
-        if selected_inter_chroma_candidate.is_none()
-            && chroma_inter_skip
-                .and_then(|mask| mask.get(chroma_tu_count))
-                .copied()
-                .unwrap_or(false)
-        {
-            if let Some(hint) = vvc_chroma_temporal_mode_hint(
-                temporal_mode_hints,
-                chroma_tu_count,
-                chroma_nodes.len(),
-                policy,
-                source_frame.geometry,
-                node,
-                co_located_luma_mode,
-                chroma_width,
-                chroma_height,
-            ) {
-                chroma_tu_metadata.record_mode_hint(chroma_tu_count, hint.mode, hint.bdpcm_mode);
-            }
-            let coded_geometry = frame_recon.coded_geometry();
-            copy_source_chroma_node_into_reconstruction(
-                &mut frame_recon.cb,
-                &source_frame.cb,
-                source_frame.geometry,
-                coded_geometry,
-                source_frame.format,
-                node,
-            );
-            copy_source_chroma_node_into_reconstruction(
-                &mut frame_recon.cr,
-                &source_frame.cr,
-                source_frame.geometry,
-                coded_geometry,
-                source_frame.format,
-                node,
-            );
-            frame_recon.mark_chroma_node_available(node);
-            chroma_tu_count += 1;
-            continue;
-        }
         let temporal_chroma_hint = selected_inter_chroma_candidate
             .is_none()
             .then(|| {

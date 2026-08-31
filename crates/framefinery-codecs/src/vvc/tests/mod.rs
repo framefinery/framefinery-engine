@@ -2291,8 +2291,6 @@ fn vvc_predictive_exact_inter_selector_finds_chroma_safe_shifted_luma_leaves() {
         &transform_skip_quant_tables,
         &mut scratch,
         VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
-        None,
-        None,
         Some(&decisions),
         None,
         Some(&previous_reconstruction),
@@ -2405,8 +2403,6 @@ fn vvc_predictive_exact_inter_selector_accepts_chroma_safe_444_leaves() {
         &transform_skip_quant_tables,
         &mut scratch,
         VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
-        None,
-        None,
         Some(&decisions),
         None,
         Some(&previous_reconstruction),
@@ -2601,7 +2597,6 @@ fn vvc_ctu_cabac_generator_uses_one_recursive_luma_base() {
             luma_tu_dc_levels: [0; MAX_VVC_LUMA_TUS],
             luma_tu_ac_levels: [[0; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
             luma_tu_has_ac: [false; MAX_VVC_LUMA_TUS],
-            luma_tu_inter_skip: [false; MAX_VVC_LUMA_TUS],
             luma_tu_inter_decisions: [None; MAX_VVC_LUMA_TUS],
             luma_tu_scc_decisions: [VvcLumaSccDecision::RegularIntra; MAX_VVC_LUMA_TUS],
             luma_tu_transform_skip: [false; MAX_VVC_LUMA_TUS],
@@ -2617,7 +2612,6 @@ fn vvc_ctu_cabac_generator_uses_one_recursive_luma_base() {
             cr_tu_ac_levels: [[0; VVC_CHROMA_AC_COEFFS_PER_TU]; MAX_VVC_CHROMA_TUS],
             cb_tu_has_ac: [false; MAX_VVC_CHROMA_TUS],
             cr_tu_has_ac: [false; MAX_VVC_CHROMA_TUS],
-            chroma_tu_inter_skip: [false; MAX_VVC_CHROMA_TUS],
             cb_tu_transform_skip: [false; MAX_VVC_CHROMA_TUS],
             cr_tu_transform_skip: [false; MAX_VVC_CHROMA_TUS],
             chroma_tu_bdpcm_modes: [VvcBdpcmMode::None; MAX_VVC_CHROMA_TUS],
@@ -3403,7 +3397,6 @@ fn vvc_ctu_chroma_tree_uses_luma_coordinate_root() {
             luma_tu_dc_levels: [0; MAX_VVC_LUMA_TUS],
             luma_tu_ac_levels: [[0; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS],
             luma_tu_has_ac: [false; MAX_VVC_LUMA_TUS],
-            luma_tu_inter_skip: [false; MAX_VVC_LUMA_TUS],
             luma_tu_inter_decisions: [None; MAX_VVC_LUMA_TUS],
             luma_tu_scc_decisions: [VvcLumaSccDecision::RegularIntra; MAX_VVC_LUMA_TUS],
             luma_tu_transform_skip: [false; MAX_VVC_LUMA_TUS],
@@ -3419,7 +3412,6 @@ fn vvc_ctu_chroma_tree_uses_luma_coordinate_root() {
             cr_tu_ac_levels: [[0; VVC_CHROMA_AC_COEFFS_PER_TU]; MAX_VVC_CHROMA_TUS],
             cb_tu_has_ac: [false; MAX_VVC_CHROMA_TUS],
             cr_tu_has_ac: [false; MAX_VVC_CHROMA_TUS],
-            chroma_tu_inter_skip: [false; MAX_VVC_CHROMA_TUS],
             cb_tu_transform_skip: [false; MAX_VVC_CHROMA_TUS],
             cr_tu_transform_skip: [false; MAX_VVC_CHROMA_TUS],
             chroma_tu_bdpcm_modes: [VvcBdpcmMode::None; MAX_VVC_CHROMA_TUS],
@@ -3994,72 +3986,6 @@ fn vvc_predictive_skips_repeated_right_ctu_when_left_ctu_changes() {
         1,
         "mixed lossless predictive frames should carry one picture header for CTU-sliced output"
     );
-}
-
-#[test]
-fn vvc_lossless_speed_leaf_inter_skip_is_computable_but_disabled_for_release() {
-    let geometry = VvcVideoGeometry {
-        width: 64,
-        height: 64,
-    };
-    assert!(!vvc_lossless_speed_luma_leaf_inter_skip_allowed(
-        VvcPictureFormat {
-            chroma_sampling: ChromaSampling::Cs420,
-            bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
-        },
-    ));
-    assert!(!vvc_lossless_speed_luma_leaf_inter_skip_allowed(
-        VvcPictureFormat {
-            chroma_sampling: ChromaSampling::Cs420,
-            bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
-        },
-    ));
-    assert!(!vvc_lossless_speed_luma_leaf_inter_skip_allowed(
-        VvcPictureFormat {
-            chroma_sampling: ChromaSampling::Cs444,
-            bit_depth: SampleBitDepth::new(10).expect("valid bit depth"),
-        },
-    ));
-    let input = yuv420p8_two_frame_one_luma_block_changed(geometry.width, geometry.height);
-    let frame_len = Picture::expected_len(geometry.width, geometry.height, PixelFormat::Yuv420p8);
-    let layout = PlanarYuvFrameLayout::for_validated_shape(
-        geometry.width,
-        geometry.height,
-        ChromaSampling::Cs420,
-        SampleBitDepth::new(8).expect("valid bit depth"),
-    );
-    let region = VvcCtuRegion {
-        slice_address: 0,
-        origin_x: 0,
-        origin_y: 0,
-        geometry,
-    };
-
-    let mask = vvc_predictive_luma_leaf_inter_skip_mask(
-        &input[frame_len..],
-        &input[..frame_len],
-        layout,
-        region,
-        VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
-        ChromaSampling::Cs420,
-        true,
-    )
-    .expect("one changed 8x8 leaf should leave exact neighbouring leaves");
-    assert_eq!(mask.iter().filter(|&&skip| skip).count(), 63);
-
-    let predictive = vvc_yuv_encode_artifacts_from_input_with_options(
-        &input,
-        VvcEncodeParams { frames: 2 },
-        geometry,
-        PixelFormat::Yuv420p8,
-        VvcEncodeOptions {
-            lossless: true,
-            gop: crate::settings::GopMode::Infinite,
-            ..VvcEncodeOptions::default()
-        },
-    )
-    .expect("predictive VVC encode should succeed");
-    assert_eq!(predictive.reconstruction, input);
 }
 
 #[test]
@@ -5684,35 +5610,6 @@ fn yuv444p10_two_frame_right_half_repeated(width: usize, height: usize) -> Vec<u
     append_yuv444p10_split_luma_frame(&mut out, width, height, 288, 288, 512, 768);
     append_yuv444p10_split_luma_frame(&mut out, width, height, 384, 288, 512, 768);
     out
-}
-
-fn yuv420p8_two_frame_one_luma_block_changed(width: usize, height: usize) -> Vec<u8> {
-    assert_eq!(width, 64);
-    assert_eq!(height, 64);
-    let mut out =
-        Vec::with_capacity(Picture::expected_len(width, height, PixelFormat::Yuv420p8) * 2);
-    append_yuv420p8_one_luma_block_frame(&mut out, width, height, 72, 72, 128, 192);
-    append_yuv420p8_one_luma_block_frame(&mut out, width, height, 72, 96, 128, 192);
-    out
-}
-
-fn append_yuv420p8_one_luma_block_frame(
-    out: &mut Vec<u8>,
-    width: usize,
-    height: usize,
-    base_y: u8,
-    block_y: u8,
-    u: u8,
-    v: u8,
-) {
-    for y in 0..height {
-        for x in 0..width {
-            out.push(if x < 8 && y < 8 { block_y } else { base_y });
-        }
-    }
-    let chroma = width * height / 4;
-    out.extend(std::iter::repeat_n(u, chroma));
-    out.extend(std::iter::repeat_n(v, chroma));
 }
 
 fn append_yuv420p8_split_luma_frame(

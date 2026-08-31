@@ -34,15 +34,6 @@ fn vvc_predictive_ctu_dependencies_reused(
     left_reused && above_reused
 }
 
-fn vvc_lossless_speed_luma_leaf_inter_skip_allowed(format: VvcPictureFormat) -> bool {
-    let _format = format;
-    // Leaf-level predictive skip needs legal inter-slice local-separate-tree
-    // handling for small 4:2:0 intra leaves before it can share the mixed
-    // P-slice CTU path. Keep the release path reference-clean by limiting VVC
-    // predictive reuse to complete CTUs.
-    false
-}
-
 fn vvc_predictive_intra_ctu_reuse_enabled_for_mode(mode: VvcResidualCodingMode) -> bool {
     // Exact-source CTU reuse is reference-clean for lossless streams because
     // the reconstructed CTU equals the source CTU. For lossy streams, reusing
@@ -228,114 +219,6 @@ fn vvc_plane_region_sse_with_limit(
     Some(sse)
 }
 
-fn vvc_predictive_luma_leaf_inter_skip_mask(
-    current_source: &[u8],
-    previous_source: &[u8],
-    layout: PlanarYuvFrameLayout,
-    region: VvcCtuRegion,
-    luma_max_leaf_size: u16,
-    chroma_sampling: ChromaSampling,
-    dual_tree_intra: bool,
-) -> Option<[bool; MAX_VVC_LUMA_TUS]> {
-    if luma_max_leaf_size < VVC_CURRENT_MAX_LUMA_LEAF_SIZE {
-        return None;
-    }
-
-    let shape = VvcCtuPartitionShape {
-        root_width: VVC_CTU_SIZE as u16,
-        root_height: VVC_CTU_SIZE as u16,
-        visible_width: region.geometry.coded_width() as u16,
-        visible_height: region.geometry.coded_height() as u16,
-        chroma_sampling,
-        dual_tree_intra,
-    };
-    let nodes = vvc_luma_transform_nodes_for_kind(
-        shape,
-        luma_max_leaf_size,
-        VvcLumaSplitAvailabilityKind::Inter,
-    );
-    if nodes.is_empty() || nodes.len() > MAX_VVC_LUMA_TUS {
-        return None;
-    }
-
-    let mut mask = [false; MAX_VVC_LUMA_TUS];
-    let mut skipped = 0usize;
-    for (idx, node) in nodes.into_iter().enumerate() {
-        let origin_x = region.origin_x + usize::from(node.x);
-        let origin_y = region.origin_y + usize::from(node.y);
-        let width = usize::from(node.width).min(region.geometry.width.saturating_sub(node.x as usize));
-        let height =
-            usize::from(node.height).min(region.geometry.height.saturating_sub(node.y as usize));
-        if width != 0
-            && height != 0
-            && layout.luma_regions_equal_between(
-                current_source,
-                origin_x,
-                origin_y,
-                previous_source,
-                origin_x,
-                origin_y,
-                width,
-                height,
-            )
-        {
-            mask[idx] = true;
-            skipped += 1;
-        }
-    }
-    (skipped > 0).then_some(mask)
-}
-
-fn vvc_predictive_chroma_leaf_inter_skip_mask(
-    current_source: &[u8],
-    previous_source: &[u8],
-    layout: PlanarYuvFrameLayout,
-    region: VvcCtuRegion,
-    chroma_sampling: ChromaSampling,
-    dual_tree_intra: bool,
-) -> Option<[bool; MAX_VVC_CHROMA_TUS]> {
-    let shape = VvcCtuPartitionShape {
-        root_width: VVC_CTU_SIZE as u16,
-        root_height: VVC_CTU_SIZE as u16,
-        visible_width: region.geometry.coded_width() as u16,
-        visible_height: region.geometry.coded_height() as u16,
-        chroma_sampling,
-        dual_tree_intra,
-    };
-    let nodes = vvc_chroma_transform_nodes(shape);
-    if nodes.is_empty() || nodes.len() > MAX_VVC_CHROMA_TUS {
-        return None;
-    }
-
-    let mut mask = [false; MAX_VVC_CHROMA_TUS];
-    let mut skipped = 0usize;
-    for (idx, node) in nodes.into_iter().enumerate() {
-        let origin_x = region.origin_x + usize::from(node.x);
-        let origin_y = region.origin_y + usize::from(node.y);
-        let width =
-            usize::from(node.width).min(region.geometry.width.saturating_sub(node.x as usize));
-        let height =
-            usize::from(node.height).min(region.geometry.height.saturating_sub(node.y as usize));
-        if width != 0
-            && height != 0
-            && layout.chroma_regions_equal_between(
-                current_source,
-                origin_x,
-                origin_y,
-                previous_source,
-                origin_x,
-                origin_y,
-                width,
-                height,
-            )
-        {
-            mask[idx] = true;
-            skipped += 1;
-        }
-    }
-    (skipped > 0).then_some(mask)
-}
-
 fn vvc_predictive_inter_skip_region(region: VvcCtuRegion) -> bool {
     let coded_width = region.geometry.coded_width();
     let coded_height = region.geometry.coded_height();
@@ -387,4 +270,3 @@ fn vvc_predictive_lossy_region_sse_if_within_reconstruction_delta(
     )?;
     Some(sse)
 }
-

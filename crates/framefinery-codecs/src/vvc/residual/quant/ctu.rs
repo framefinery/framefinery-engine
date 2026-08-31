@@ -192,8 +192,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         None,
         None,
         None,
-        None,
-        None,
     )
 }
 

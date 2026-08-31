@@ -39,9 +39,6 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                 split_ctx,
             } => {
                 self.emit_luma_leaf_split_with_ctx(cabac, node, write_split_flag, split_ctx);
-                if self.emit_luma_inter_skip_leaf(cabac, node) {
-                    return;
-                }
                 match self.emit_luma_explicit_inter_leaf(cabac, node, luma_mode_neighbours) {
                     VvcExplicitInterLeafSyntax::NotInter => {}
                     VvcExplicitInterLeafSyntax::NoResidual => return,

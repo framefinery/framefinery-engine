@@ -328,8 +328,6 @@ fn vvc_ctu_quant_scratch_reuse_is_bit_exact_and_retains_allocations() {
             None,
             None,
             None,
-            None,
-            None,
         );
         (quantized, reconstruction)
     };
@@ -374,7 +372,21 @@ fn vvc_ctu_quantization_result_uses_shared_metadata_and_chroma_finalization() {
     frame.cb.fill(201);
     frame.cr.fill(33);
     let mut luma_metadata = VvcLumaTuMetadata::new();
-    luma_metadata.record_mode_hint(0, VvcIntraPredictionMode::Horizontal, VvcBdpcmMode::None);
+    luma_metadata.record_finalized(
+        0,
+        VvcIntraPredictionMode::Horizontal,
+        VvcFinalizedLumaTu {
+            abs_remainder: 0,
+            negative: false,
+            dc_level: 0,
+            ac_levels: [0; VVC_LUMA_AC_COEFFS_PER_TU],
+            has_ac: false,
+            transform_skip: false,
+            bdpcm_mode: VvcBdpcmMode::None,
+            mrl_index: 0,
+            mts_index: 0,
+        },
+    );
     let mut chroma_metadata = VvcChromaTuMetadata::new();
     chroma_metadata.record_finalized(
         0,
@@ -1025,7 +1037,7 @@ fn vvc_luma_candidate_evaluator_shares_dc_planar_and_directional_scoring() {
 }
 
 #[test]
-fn vvc_luma_tu_metadata_records_each_exit_without_cross_talk() {
+fn vvc_luma_tu_metadata_records_scc_and_finalized_without_cross_talk() {
     let mut metadata = VvcLumaTuMetadata::new();
     let scc_decision = VvcLumaSccDecision::IbcExact(VvcLumaIbcDecision {
         mvd_x: -8,
@@ -1033,11 +1045,6 @@ fn vvc_luma_tu_metadata_records_each_exit_without_cross_talk() {
         pred_mode_ibc_ctx: 2,
     });
     metadata.record_scc_decision(0, scc_decision);
-    metadata.record_mode_hint(
-        1,
-        VvcIntraPredictionMode::Angular(23),
-        VvcBdpcmMode::Vertical,
-    );
 
     let mut ac_levels = [0; VVC_LUMA_AC_COEFFS_PER_TU];
     ac_levels[0] = -7;
@@ -1060,11 +1067,8 @@ fn vvc_luma_tu_metadata_records_each_exit_without_cross_talk() {
         metadata.luma_tu_scc_decisions[1],
         VvcLumaSccDecision::RegularIntra
     );
-    assert_eq!(
-        metadata.luma_tu_intra_modes[1],
-        VvcIntraPredictionMode::Angular(23)
-    );
-    assert_eq!(metadata.luma_tu_bdpcm_modes[1], VvcBdpcmMode::Vertical);
+    assert_eq!(metadata.luma_tu_intra_modes[1], VvcIntraPredictionMode::Dc);
+    assert_eq!(metadata.luma_tu_bdpcm_modes[1], VvcBdpcmMode::None);
     assert_eq!(metadata.luma_tu_remainders[1], 0);
     assert_eq!(metadata.luma_tu_dc_levels[1], 0);
     assert!(!metadata.luma_tu_has_ac[1]);
@@ -1089,10 +1093,8 @@ fn vvc_luma_tu_metadata_records_each_exit_without_cross_talk() {
 }
 
 #[test]
-fn vvc_chroma_tu_metadata_records_each_exit_without_cross_talk() {
+fn vvc_chroma_tu_metadata_records_finalized_without_cross_talk() {
     let mut metadata = VvcChromaTuMetadata::new();
-    let hinted_mode = VvcChromaIntraPredictionMode::Explicit(VvcIntraPredictionMode::Vertical);
-    metadata.record_mode_hint(1, hinted_mode, VvcBdpcmMode::Vertical);
 
     let mut cb_ac_levels = [0; VVC_CHROMA_AC_COEFFS_PER_TU];
     let mut cr_ac_levels = [0; VVC_CHROMA_AC_COEFFS_PER_TU];
@@ -1119,8 +1121,11 @@ fn vvc_chroma_tu_metadata_records_each_exit_without_cross_talk() {
     assert_eq!(metadata.cb_tu_dc_levels[0], 0);
     assert_eq!(metadata.chroma_tu_bdpcm_modes[0], VvcBdpcmMode::None);
 
-    assert_eq!(metadata.chroma_tu_intra_modes[1], hinted_mode);
-    assert_eq!(metadata.chroma_tu_bdpcm_modes[1], VvcBdpcmMode::Vertical);
+    assert_eq!(
+        metadata.chroma_tu_intra_modes[1],
+        VvcChromaIntraPredictionMode::Derived
+    );
+    assert_eq!(metadata.chroma_tu_bdpcm_modes[1], VvcBdpcmMode::None);
     assert_eq!(metadata.cb_tu_dc_levels[1], 0);
     assert_eq!(metadata.cr_tu_dc_levels[1], 0);
     assert!(!metadata.cb_tu_has_ac[1]);

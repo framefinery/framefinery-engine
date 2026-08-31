@@ -119,8 +119,6 @@ fn vvc_lossless_single_tree_444_quantization_reconstructs_arbitrary_8x8_leaf() {
         None,
         None,
         None,
-        None,
-        None,
     );
 
     assert_eq!(reconstruction.luma, luma);
@@ -205,8 +203,6 @@ fn vvc_quantizer_preserves_exact_ibc_reconstruction_and_skips_matching_chroma_le
         &mut VvcLumaModeSearchState::new_for_geometry(geometry),
         &quant_tables,
         &mut VvcCtuQuantScratch::default(),
-        None,
-        None,
         None,
         Some(&scc_decisions),
         None,

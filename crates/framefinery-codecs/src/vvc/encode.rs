@@ -723,8 +723,6 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 region,
                                 decision,
                                 slice_config,
-                                None,
-                                None,
                                 predictive_frame && !residual_mode.is_lossless(),
                             )?
                         }
@@ -756,45 +754,6 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 luma_qp,
                             )
                         };
-                        let luma_inter_skip_mask = if frame_ctu_decisions.is_some()
-                            && predictive_frame
-                            && residual_mode.is_lossless()
-                            && options.fast_search == VvcFastSearch::LosslessSpeed
-                            && vvc_lossless_speed_luma_leaf_inter_skip_allowed(stream_format)
-                        {
-                            previous_predictive_cache.as_ref().and_then(|cache| {
-                                vvc_predictive_luma_leaf_inter_skip_mask(
-                                    &frame_buf,
-                                    &cache.source,
-                                    stream_frame_layout,
-                                    region,
-                                    luma_max_leaf_size,
-                                    stream_format.chroma_sampling,
-                                    ctu_residual_policy.dual_tree_intra(),
-                                )
-                            })
-                        } else {
-                            None
-                        };
-                        let chroma_inter_skip_mask = if frame_ctu_decisions.is_some()
-                            && predictive_frame
-                            && residual_mode.is_lossless()
-                            && options.fast_search == VvcFastSearch::LosslessSpeed
-                            && vvc_lossless_speed_luma_leaf_inter_skip_allowed(stream_format)
-                        {
-                            previous_predictive_cache.as_ref().and_then(|cache| {
-                                vvc_predictive_chroma_leaf_inter_skip_mask(
-                                    &frame_buf,
-                                    &cache.source,
-                                    stream_frame_layout,
-                                    region,
-                                    stream_format.chroma_sampling,
-                                    ctu_residual_policy.dual_tree_intra(),
-                                )
-                            })
-                        } else {
-                            None
-                        };
                         let explicit_luma_inter_decisions =
                             if explicit_inter_frame && luma_max_leaf_size == VVC_CURRENT_MAX_LUMA_LEAF_SIZE {
                                 explicit_luma_inter_decisions_by_ctu
@@ -820,27 +779,11 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                             &transform_skip_quant_tables,
                             &mut ctu_quant_scratch,
                             luma_max_leaf_size,
-                            luma_inter_skip_mask.as_ref(),
-                            chroma_inter_skip_mask.as_ref(),
                             explicit_luma_inter_decisions,
                             luma_scc_decisions.as_ref(),
                             explicit_inter_reference,
                             temporal_mode_hint,
                         );
-                        #[cfg(feature = "vvc-stats")]
-                        if let Some(mask) = luma_inter_skip_mask.as_ref() {
-                            frame_stats.add_counter(
-                                "predictive_luma_leaf_inter_skip_count",
-                                mask.iter().filter(|&&skip| skip).count() as u64,
-                            );
-                        }
-                        #[cfg(feature = "vvc-stats")]
-                        if let Some(mask) = chroma_inter_skip_mask.as_ref() {
-                            frame_stats.add_counter(
-                                "predictive_chroma_leaf_inter_skip_count",
-                                mask.iter().filter(|&&skip| skip).count() as u64,
-                            );
-                        }
                         #[cfg(feature = "vvc-stats")]
                         {
                             let explicit_count =
@@ -885,8 +828,6 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 region,
                                 &decision,
                                 slice_config,
-                                luma_inter_skip_mask.as_ref(),
-                                chroma_inter_skip_mask.as_ref(),
                                 mixed_single_p_slice_frame,
                             )?;
                             if let Some((cached, skip_distortion)) = cached_lossy_skip_ctu {
@@ -923,8 +864,6 @@ pub fn vvc_yuv_encode_stream_with_limits_and_options_and_frame_metrics<
                                 quantized,
                                 luma_max_leaf_size,
                                 slice_config,
-                                luma_inter_skip_mask.as_ref(),
-                                chroma_inter_skip_mask.as_ref(),
                                 inter_slice_partition,
                             )?
                         }
@@ -1140,8 +1079,6 @@ fn vvc_intra_ctu_payload_from_decision(
     region: VvcCtuRegion,
     decision: &VvcQuantizedCtuLeafDecision,
     slice_config: VvcSliceSyntaxConfig,
-    luma_inter_skip: Option<&[bool; MAX_VVC_LUMA_TUS]>,
-    chroma_inter_skip: Option<&[bool; MAX_VVC_CHROMA_TUS]>,
     inter_slice_partition: bool,
 ) -> Result<VvcQuantizedCtuPayload, String> {
     let mut payload = vvc_intra_ctu_payload_from_quantized(
@@ -1149,8 +1086,6 @@ fn vvc_intra_ctu_payload_from_decision(
         decision.quantized.clone(),
         decision.luma_max_leaf_size,
         slice_config,
-        luma_inter_skip,
-        chroma_inter_skip,
         inter_slice_partition,
     )?;
     if let VvcQuantizedCtuPayload::Intra(params) = &mut payload {
@@ -1164,11 +1099,9 @@ fn vvc_intra_ctu_payload_from_quantized(
     quantized: VvcQuantizedColor,
     luma_max_leaf_size: u16,
     slice_config: VvcSliceSyntaxConfig,
-    luma_inter_skip: Option<&[bool; MAX_VVC_LUMA_TUS]>,
-    chroma_inter_skip: Option<&[bool; MAX_VVC_CHROMA_TUS]>,
     inter_slice_partition: bool,
 ) -> Result<VvcQuantizedCtuPayload, String> {
-    let Some(mut params) = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma_for_kind(
+    let Some(params) = vvc_ctu_partition_params_with_luma_max_leaf_size_and_chroma_for_kind(
         region.geometry,
         quantized,
         luma_max_leaf_size,
@@ -1187,11 +1120,5 @@ fn vvc_intra_ctu_payload_from_quantized(
             region.geometry.coded_height()
         ));
     };
-    if let Some(luma_inter_skip) = luma_inter_skip {
-        params.luma_tu_inter_skip = *luma_inter_skip;
-    }
-    if let Some(chroma_inter_skip) = chroma_inter_skip {
-        params.chroma_tu_inter_skip = *chroma_inter_skip;
-    }
     Ok(VvcQuantizedCtuPayload::Intra(Box::new(params)))
 }

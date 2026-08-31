@@ -202,8 +202,6 @@ The following changes were behavior-preserving and independently validated:
   extension, separate from recursive chroma partition traversal.
 - VVC visible chroma QT/MTT recursion now lives in a dedicated traversal
   extension, separate from tree entry setup and leaf syntax.
-- VVC chroma inter-skip subtree selection and leaf counting now live in a
-  dedicated mode-selection extension, preserving the deepest-level gate.
 - VVC implicit chroma boundary-child emission now lives in a dedicated
   geometry/traversal extension, separate from visible-tree recursion.
 - VVC chroma QT/MTT split-flag syntax now lives in a dedicated syntax
@@ -398,6 +396,13 @@ The following changes were behavior-preserving and independently validated:
   while the live paired Cb/Cr tracked and untracked forms remain shared.
 - The optional `vvc-stats` feature was made independently compilable instead of
   implicitly depending on benchmark-only internals.
+- The hard-disabled VVC leaf-level inter-skip experiment was removed end to
+  end: source-equality masks, quantizer reconstruction bypasses, payload mask
+  fields, and luma/chroma CABAC branches no longer form an unvalidated coding
+  path. Full-frame and CTU-level `InterSkip` plus explicit inter selection stay
+  on their live predictive paths. Exact SCC IBC remains a deliberate syntax-
+  specific exit because one accepted 4:4:4 decision copies all three planes
+  and emits IBC syntax rather than residual prediction syntax.
 
 All of these remain included in their original parent module scope, so the
 split does not create an alternate coding path or change name resolution.
@@ -409,10 +414,10 @@ current call graph rather than by line count alone:
 
 | Area | Approximate size | Current concern |
 | --- | ---: | --- |
-| VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
+| VVC CABAC CTU generation | approximately 2,616 lines after removing disabled leaf-skip syntax | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 479-line CTU helper, 456-line mode-selection sibling plus a 107-line result assembler, 424/304-line luma/chroma TU selection orchestration plus a 123-line chroma temporal helper, 275/443-line search helpers, a 416-line luma mode helper, and 312/440/289-line chroma mode/BDPCM/RD helpers | paired ownership, direct scratch borrowing, and common result assembly are established; the remaining mode selector still combines luma/chroma traversal, skip handling, and per-TU finalization calls, so each loop's immutable context and mutable state should be mapped before extraction |
+| VVC residual quantization | 479-line CTU helper, 394-line mode-selection sibling plus a 107-line result assembler, 424/304-line luma/chroma TU selection orchestration plus a 123-line chroma temporal helper, 275/443-line search helpers, a 416-line luma mode helper, and 312/440/289-line chroma mode/BDPCM/RD helpers | paired ownership, direct scratch borrowing, and common result assembly are established; the remaining mode selector still combines luma/chroma traversal, exact SCC IBC handling, and per-TU finalization calls, so each loop's immutable context and mutable state should be mapped before extraction |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2

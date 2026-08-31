@@ -29,19 +29,6 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             self.params.dual_tree_intra,
             self.inter_slice,
         );
-        if self.inter_slice && self.chroma_inter_skip_active {
-            let chroma_inter_skip = self.params.chroma_tu_inter_skip[tu_idx];
-            let skip_ctx = self.inter_skip_ctx_for_node(node);
-            self.contexts
-                .encode_cu_skip_flag(cabac, skip_ctx, chroma_inter_skip);
-            if chroma_inter_skip {
-                if let Some(neighbours) = self.inter_skip_neighbours.as_mut() {
-                    neighbours.mark_leaf(node);
-                }
-                self.chroma_tu_index += 1;
-                return;
-            }
-        }
         let chroma_bdpcm_mode = self.params.chroma_tu_bdpcm_modes[tu_idx];
         if !self.emit_chroma_bdpcm_mode(cabac, node, chroma_bdpcm_mode) {
             self.emit_chroma_intra_prediction_mode(cabac, node, tu_idx, luma_mode_neighbours);

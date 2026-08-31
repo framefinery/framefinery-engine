@@ -49,25 +49,6 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             visible_height,
             self.params.chroma_sampling,
         );
-        if self.inter_slice
-            && self.params.chroma_sampling != ChromaSampling::Cs420
-            && self
-                .params
-                .chroma_tu_inter_skip
-                .get(self.chroma_tu_index)
-                .copied()
-                .unwrap_or(false)
-            && self.emit_chroma_inter_skip_subtree_if_all_skipped(
-                cabac,
-                node,
-                visible_width,
-                visible_height,
-                split,
-                neighbours,
-            )
-        {
-            return;
-        }
         if split.allow_qt {
             self.emit_chroma_visible_qt_split(cabac, node, split, neighbours);
             for child_idx in 0..4 {

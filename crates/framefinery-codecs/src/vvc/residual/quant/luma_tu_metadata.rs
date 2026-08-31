@@ -34,17 +34,6 @@ impl VvcLumaTuMetadata {
         self.luma_tu_scc_decisions[index] = decision;
     }
 
-    fn record_mode_hint(
-        &mut self,
-        index: usize,
-        mode: VvcIntraPredictionMode,
-        bdpcm_mode: VvcBdpcmMode,
-    ) {
-        self.assert_index(index);
-        self.luma_tu_intra_modes[index] = mode;
-        self.luma_tu_bdpcm_modes[index] = bdpcm_mode;
-    }
-
     fn record_finalized(
         &mut self,
         index: usize,

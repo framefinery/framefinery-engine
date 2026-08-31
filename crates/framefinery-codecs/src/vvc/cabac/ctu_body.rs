@@ -39,7 +39,6 @@ include!("ctu_single_tree_prediction.rs");
 include!("ctu_single_tree_residual.rs");
 include!("ctu_chroma_tree_entry.rs");
 include!("ctu_chroma_tree_traversal.rs");
-include!("ctu_chroma_skip.rs");
 include!("ctu_chroma_boundary.rs");
 include!("ctu_chroma_split_syntax.rs");
 include!("ctu_neighbours.rs");
@@ -110,7 +109,6 @@ pub(in crate::vvc) struct VvcCtuCabacGenerator<'a, 'p> {
     params: &'p VvcCtuPartitionParams,
     luma_tu_index: usize,
     chroma_tu_index: usize,
-    chroma_inter_skip_active: bool,
     slice_config: VvcSliceSyntaxConfig,
     inter_slice: bool,
     inter_skip_ctx: u8,
@@ -129,10 +127,6 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             params,
             luma_tu_index: 0,
             chroma_tu_index: 0,
-            chroma_inter_skip_active: vvc_chroma_inter_skip_active(
-                &params.chroma_tu_inter_skip,
-                params.chroma_tu_count,
-            ),
             slice_config,
             inter_slice: false,
             inter_skip_ctx: 0,
@@ -171,23 +165,9 @@ fn vvc_scc_palette_luma_node_allowed(node: VvcCodingTreeNode) -> bool {
     node.width <= 64 && node.height <= 64 && u32::from(node.width) * u32::from(node.height) > 16
 }
 
-fn vvc_chroma_inter_skip_active(chroma_tu_inter_skip: &[bool], chroma_tu_count: usize) -> bool {
-    chroma_tu_inter_skip[..chroma_tu_count.min(chroma_tu_inter_skip.len())]
-        .iter()
-        .any(|&skip| skip)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{vvc_chroma_inter_skip_active, vvc_explicit_inter_mvp_choice, VvcInterMotionInfo};
-
-    #[test]
-    fn chroma_inter_skip_active_ignores_inactive_tail() {
-        assert!(!vvc_chroma_inter_skip_active(&[false, true], 1));
-        assert!(vvc_chroma_inter_skip_active(&[false, true], 2));
-        assert!(!vvc_chroma_inter_skip_active(&[false], 4));
-        assert!(!vvc_chroma_inter_skip_active(&[], 4));
-    }
+    use super::{vvc_explicit_inter_mvp_choice, VvcInterMotionInfo};
 
     #[test]
     fn explicit_inter_mvp_choice_uses_mvd_syntax_cost() {

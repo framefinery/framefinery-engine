@@ -46,10 +46,6 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             "explicit inter leaf requires single-tree P-slice syntax"
         );
         assert!(
-            !self.params.luma_tu_inter_skip[self.luma_tu_index],
-            "explicit inter and inter-skip are mutually exclusive for one luma TU"
-        );
-        assert!(
             !self.slice_config.tools.ibc_enabled && !self.slice_config.tools.palette_enabled,
             "P-slice SCC inter-mode ordering is not wired for explicit inter leaves"
         );
@@ -134,26 +130,6 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
             VvcCabacContext::PredModeFlag(pred_mode_ctx),
             pred_mode_intra,
         );
-    }
-
-    fn emit_luma_inter_skip_leaf(
-        &mut self,
-        cabac: &mut VvcCabacEncoder,
-        node: VvcCodingTreeNode,
-    ) -> bool {
-        if !self.inter_slice
-            || self.luma_tu_index >= self.params.luma_tu_count
-            || !self.params.luma_tu_inter_skip[self.luma_tu_index]
-        {
-            return false;
-        }
-        let skip_ctx = self.inter_skip_ctx_for_node(node);
-        self.contexts.encode_cu_skip_flag(cabac, skip_ctx, true);
-        if let Some(neighbours) = self.inter_skip_neighbours.as_mut() {
-            neighbours.mark_leaf(node);
-        }
-        self.luma_tu_index += 1;
-        true
     }
 
     fn inter_skip_ctx_for_node(&self, node: VvcCodingTreeNode) -> u8 {
