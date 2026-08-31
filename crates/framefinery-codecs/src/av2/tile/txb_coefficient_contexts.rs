@@ -1,49 +1,18 @@
-fn chroma_nz_map_context(
-    levels: &[u32; TX4X4_SAMPLES],
+fn chroma_nz_map_context<const SAMPLES: usize, Syntax>(
+    levels: &[u32; SAMPLES],
     pos: usize,
     scan_index: usize,
     is_eob_coefficient: bool,
     plane: Av2ChromaPlane,
-) -> usize {
+) -> usize
+where
+    Syntax: Av2ChromaTxbSyntax<SAMPLES>,
+{
     if is_eob_coefficient {
-        return get_lower_levels_ctx_eob(scan_index);
+        return get_lower_levels_ctx_eob_for_txb(scan_index, SAMPLES);
     }
-    if chroma_lf_limits(pos) {
-        return chroma_lower_levels_lf_context(levels, pos, plane);
-    }
-    chroma_lower_levels_context(levels, pos, plane)
-}
-
-fn chroma_tx8x8_nz_map_context(
-    levels: &[u32; TX8X8_SAMPLES],
-    pos: usize,
-    scan_index: usize,
-    is_eob_coefficient: bool,
-    plane: Av2ChromaPlane,
-) -> usize {
-    if is_eob_coefficient {
-        return get_lower_levels_ctx_eob_for_txb(scan_index, TX8X8_SAMPLES);
-    }
-    if chroma_lf_limits(pos) {
-        return chroma_tx8x8_lower_levels_lf_context(levels, pos, plane);
-    }
-    chroma_tx8x8_lower_levels_context(levels, pos, plane)
-}
-
-fn chroma_tx4x8_nz_map_context(
-    levels: &[u32; TX4X8_SAMPLES],
-    pos: usize,
-    scan_index: usize,
-    is_eob_coefficient: bool,
-    plane: Av2ChromaPlane,
-) -> usize {
-    if is_eob_coefficient {
-        return get_lower_levels_ctx_eob_for_txb(scan_index, TX4X8_SAMPLES);
-    }
-    if chroma_lf_limits(pos) {
-        return chroma_tx4x8_lower_levels_lf_context(levels, pos, plane);
-    }
-    chroma_tx4x8_lower_levels_context(levels, pos, plane)
+    let neighbour_limit = if chroma_lf_limits(pos) { 5 } else { 3 };
+    chroma_lower_levels_context::<SAMPLES, Syntax>(levels, pos, neighbour_limit, plane)
 }
 
 fn luma_nz_map_context(
@@ -116,74 +85,18 @@ fn luma_lower_levels_context(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> usize
     }
 }
 
-fn chroma_lower_levels_lf_context(
-    levels: &[u32; TX4X4_SAMPLES],
+fn chroma_lower_levels_context<const SAMPLES: usize, Syntax>(
+    levels: &[u32; SAMPLES],
     pos: usize,
+    neighbour_limit: u32,
     plane: Av2ChromaPlane,
-) -> usize {
-    let mag = tx4x4_level_at(levels, pos, 0, 1).min(5)
-        + tx4x4_level_at(levels, pos, 1, 0).min(5)
-        + tx4x4_level_at(levels, pos, 1, 1).min(5);
-    let ctx = ((mag + 1) >> 1).min(3) as usize;
-    chroma_context_with_plane_offset(ctx, plane)
-}
-
-fn chroma_lower_levels_context(
-    levels: &[u32; TX4X4_SAMPLES],
-    pos: usize,
-    plane: Av2ChromaPlane,
-) -> usize {
-    let mag = tx4x4_level_at(levels, pos, 0, 1).min(3)
-        + tx4x4_level_at(levels, pos, 1, 0).min(3)
-        + tx4x4_level_at(levels, pos, 1, 1).min(3);
-    let ctx = ((mag + 1) >> 1).min(3) as usize;
-    chroma_context_with_plane_offset(ctx, plane)
-}
-
-fn chroma_tx8x8_lower_levels_lf_context(
-    levels: &[u32; TX8X8_SAMPLES],
-    pos: usize,
-    plane: Av2ChromaPlane,
-) -> usize {
-    let mag = tx8x8_level_at(levels, pos, 0, 1).min(5)
-        + tx8x8_level_at(levels, pos, 1, 0).min(5)
-        + tx8x8_level_at(levels, pos, 1, 1).min(5);
-    let ctx = ((mag + 1) >> 1).min(3) as usize;
-    chroma_context_with_plane_offset(ctx, plane)
-}
-
-fn chroma_tx8x8_lower_levels_context(
-    levels: &[u32; TX8X8_SAMPLES],
-    pos: usize,
-    plane: Av2ChromaPlane,
-) -> usize {
-    let mag = tx8x8_level_at(levels, pos, 0, 1).min(3)
-        + tx8x8_level_at(levels, pos, 1, 0).min(3)
-        + tx8x8_level_at(levels, pos, 1, 1).min(3);
-    let ctx = ((mag + 1) >> 1).min(3) as usize;
-    chroma_context_with_plane_offset(ctx, plane)
-}
-
-fn chroma_tx4x8_lower_levels_lf_context(
-    levels: &[u32; TX4X8_SAMPLES],
-    pos: usize,
-    plane: Av2ChromaPlane,
-) -> usize {
-    let mag = tx4x8_level_at(levels, pos, 0, 1).min(5)
-        + tx4x8_level_at(levels, pos, 1, 0).min(5)
-        + tx4x8_level_at(levels, pos, 1, 1).min(5);
-    let ctx = ((mag + 1) >> 1).min(3) as usize;
-    chroma_context_with_plane_offset(ctx, plane)
-}
-
-fn chroma_tx4x8_lower_levels_context(
-    levels: &[u32; TX4X8_SAMPLES],
-    pos: usize,
-    plane: Av2ChromaPlane,
-) -> usize {
-    let mag = tx4x8_level_at(levels, pos, 0, 1).min(3)
-        + tx4x8_level_at(levels, pos, 1, 0).min(3)
-        + tx4x8_level_at(levels, pos, 1, 1).min(3);
+) -> usize
+where
+    Syntax: Av2ChromaTxbSyntax<SAMPLES>,
+{
+    let mag = Syntax::level_at(levels, pos, 0, 1).min(neighbour_limit)
+        + Syntax::level_at(levels, pos, 1, 0).min(neighbour_limit)
+        + Syntax::level_at(levels, pos, 1, 1).min(neighbour_limit);
     let ctx = ((mag + 1) >> 1).min(3) as usize;
     chroma_context_with_plane_offset(ctx, plane)
 }
@@ -195,24 +108,13 @@ fn chroma_context_with_plane_offset(ctx: usize, plane: Av2ChromaPlane) -> usize 
     }
 }
 
-fn chroma_br_context(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> usize {
-    let mag = tx4x4_level_at(levels, pos, 0, 1)
-        + tx4x4_level_at(levels, pos, 1, 0)
-        + tx4x4_level_at(levels, pos, 1, 1);
-    ((mag + 1) >> 1).min(3) as usize
-}
-
-fn chroma_tx8x8_br_context(levels: &[u32; TX8X8_SAMPLES], pos: usize) -> usize {
-    let mag = tx8x8_level_at(levels, pos, 0, 1)
-        + tx8x8_level_at(levels, pos, 1, 0)
-        + tx8x8_level_at(levels, pos, 1, 1);
-    ((mag + 1) >> 1).min(3) as usize
-}
-
-fn chroma_tx4x8_br_context(levels: &[u32; TX4X8_SAMPLES], pos: usize) -> usize {
-    let mag = tx4x8_level_at(levels, pos, 0, 1)
-        + tx4x8_level_at(levels, pos, 1, 0)
-        + tx4x8_level_at(levels, pos, 1, 1);
+fn chroma_br_context<const SAMPLES: usize, Syntax>(levels: &[u32; SAMPLES], pos: usize) -> usize
+where
+    Syntax: Av2ChromaTxbSyntax<SAMPLES>,
+{
+    let mag = Syntax::level_at(levels, pos, 0, 1)
+        + Syntax::level_at(levels, pos, 1, 0)
+        + Syntax::level_at(levels, pos, 1, 1);
     ((mag + 1) >> 1).min(3) as usize
 }
 

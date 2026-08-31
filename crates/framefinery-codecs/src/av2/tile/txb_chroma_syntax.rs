@@ -7,7 +7,7 @@ struct Av2ChromaCoefficientFields {
     low_range: &'static str,
 }
 
-trait Av2ChromaTxbSyntax<const SAMPLES: usize> {
+trait Av2ChromaTxbSyntax<const SAMPLES: usize>: Sized {
     const SCAN: &'static [usize; SAMPLES];
     const SCALING_INVARIANT: &'static str;
     const COEFFICIENT_FIELDS: Av2ChromaCoefficientFields;
@@ -19,15 +19,22 @@ trait Av2ChromaTxbSyntax<const SAMPLES: usize> {
         all_zero: bool,
     );
     fn write_eob(writer: &mut Av2EntropyWriter, eob: usize);
+    fn level_at(levels: &[u32; SAMPLES], pos: usize, row_delta: usize, col_delta: usize) -> u32;
+    fn sign_field(plane: Av2ChromaPlane, dc: bool) -> &'static str;
+
     fn nz_map_context(
         levels: &[u32; SAMPLES],
         pos: usize,
         scan_index: usize,
         is_eob_coefficient: bool,
         plane: Av2ChromaPlane,
-    ) -> usize;
-    fn sign_field(plane: Av2ChromaPlane, dc: bool) -> &'static str;
-    fn br_context(levels: &[u32; SAMPLES], pos: usize) -> usize;
+    ) -> usize {
+        chroma_nz_map_context::<SAMPLES, Self>(levels, pos, scan_index, is_eob_coefficient, plane)
+    }
+
+    fn br_context(levels: &[u32; SAMPLES], pos: usize) -> usize {
+        chroma_br_context::<SAMPLES, Self>(levels, pos)
+    }
 
     fn write_skip(
         writer: &mut Av2EntropyWriter,
@@ -37,9 +44,7 @@ trait Av2ChromaTxbSyntax<const SAMPLES: usize> {
         all_zero: bool,
     ) {
         match plane {
-            Av2ChromaPlane::U => {
-                Self::write_u_skip(writer, skip_ctx, syntax_context, all_zero)
-            }
+            Av2ChromaPlane::U => Self::write_u_skip(writer, skip_ctx, syntax_context, all_zero),
             Av2ChromaPlane::V if all_zero => write_v_txb_all_zero(writer, skip_ctx),
             Av2ChromaPlane::V => write_v_txb_nonzero(writer, skip_ctx),
         }
@@ -62,12 +67,7 @@ impl Av2ChromaTxbSyntax<TX4X4_SAMPLES> for Av2ChromaTx4x4Syntax {
         low_range: "tile.coeff.uv.low_range",
     };
 
-    fn write_u_skip(
-        writer: &mut Av2EntropyWriter,
-        skip_ctx: u8,
-        use_fsc: bool,
-        all_zero: bool,
-    ) {
+    fn write_u_skip(writer: &mut Av2EntropyWriter, skip_ctx: u8, use_fsc: bool, all_zero: bool) {
         if all_zero {
             write_u_txb_all_zero(writer, skip_ctx, use_fsc);
         } else {
@@ -79,14 +79,13 @@ impl Av2ChromaTxbSyntax<TX4X4_SAMPLES> for Av2ChromaTx4x4Syntax {
         write_eob_uv(writer, eob);
     }
 
-    fn nz_map_context(
+    fn level_at(
         levels: &[u32; TX4X4_SAMPLES],
         pos: usize,
-        scan_index: usize,
-        is_eob_coefficient: bool,
-        plane: Av2ChromaPlane,
-    ) -> usize {
-        chroma_nz_map_context(levels, pos, scan_index, is_eob_coefficient, plane)
+        row_delta: usize,
+        col_delta: usize,
+    ) -> u32 {
+        tx4x4_level_at(levels, pos, row_delta, col_delta)
     }
 
     fn sign_field(plane: Av2ChromaPlane, dc: bool) -> &'static str {
@@ -96,10 +95,6 @@ impl Av2ChromaTxbSyntax<TX4X4_SAMPLES> for Av2ChromaTx4x4Syntax {
             (Av2ChromaPlane::U, false) => "tile.coeff.u.ac_sign_negative",
             (Av2ChromaPlane::V, false) => "tile.coeff.v.ac_sign_negative",
         }
-    }
-
-    fn br_context(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> usize {
-        chroma_br_context(levels, pos)
     }
 }
 
@@ -132,14 +127,13 @@ impl Av2ChromaTxbSyntax<TX8X8_SAMPLES> for Av2ChromaTx8x8Syntax {
         write_eob_uv_tx8x8(writer, eob);
     }
 
-    fn nz_map_context(
+    fn level_at(
         levels: &[u32; TX8X8_SAMPLES],
         pos: usize,
-        scan_index: usize,
-        is_eob_coefficient: bool,
-        plane: Av2ChromaPlane,
-    ) -> usize {
-        chroma_tx8x8_nz_map_context(levels, pos, scan_index, is_eob_coefficient, plane)
+        row_delta: usize,
+        col_delta: usize,
+    ) -> u32 {
+        tx8x8_level_at(levels, pos, row_delta, col_delta)
     }
 
     fn sign_field(plane: Av2ChromaPlane, dc: bool) -> &'static str {
@@ -149,10 +143,6 @@ impl Av2ChromaTxbSyntax<TX8X8_SAMPLES> for Av2ChromaTx8x8Syntax {
             (Av2ChromaPlane::U, false) => "tile.coeff.u.ac_sign_negative_tx8x8",
             (Av2ChromaPlane::V, false) => "tile.coeff.v.ac_sign_negative_tx8x8",
         }
-    }
-
-    fn br_context(levels: &[u32; TX8X8_SAMPLES], pos: usize) -> usize {
-        chroma_tx8x8_br_context(levels, pos)
     }
 }
 
@@ -185,14 +175,13 @@ impl Av2ChromaTxbSyntax<TX4X8_SAMPLES> for Av2ChromaTx4x8Syntax {
         write_eob_uv_tx4x8(writer, eob);
     }
 
-    fn nz_map_context(
+    fn level_at(
         levels: &[u32; TX4X8_SAMPLES],
         pos: usize,
-        scan_index: usize,
-        is_eob_coefficient: bool,
-        plane: Av2ChromaPlane,
-    ) -> usize {
-        chroma_tx4x8_nz_map_context(levels, pos, scan_index, is_eob_coefficient, plane)
+        row_delta: usize,
+        col_delta: usize,
+    ) -> u32 {
+        tx4x8_level_at(levels, pos, row_delta, col_delta)
     }
 
     fn sign_field(plane: Av2ChromaPlane, dc: bool) -> &'static str {
@@ -202,10 +191,6 @@ impl Av2ChromaTxbSyntax<TX4X8_SAMPLES> for Av2ChromaTx4x8Syntax {
             (Av2ChromaPlane::U, false) => "tile.coeff.u.ac_sign_negative_tx4x8",
             (Av2ChromaPlane::V, false) => "tile.coeff.v.ac_sign_negative_tx4x8",
         }
-    }
-
-    fn br_context(levels: &[u32; TX4X8_SAMPLES], pos: usize) -> usize {
-        chroma_tx4x8_br_context(levels, pos)
     }
 }
 
@@ -302,11 +287,8 @@ fn write_chroma_txb<const SAMPLES: usize, Syntax>(
 where
     Syntax: Av2ChromaTxbSyntax<SAMPLES>,
 {
-    let (levels, bounds) = coefficient_levels_and_bounds(
-        coefficients,
-        Syntax::SCAN,
-        Syntax::SCALING_INVARIANT,
-    );
+    let (levels, bounds) =
+        coefficient_levels_and_bounds(coefficients, Syntax::SCAN, Syntax::SCALING_INVARIANT);
     let Some((_, eob)) = bounds else {
         Syntax::write_skip(writer, plane, skip_ctx, syntax_context, true);
         return (0, false);
@@ -319,13 +301,7 @@ where
         let pos = Syntax::SCAN[scan_index];
         let level = levels[pos];
         let is_eob_coefficient = scan_index + 1 == eob;
-        let coeff_ctx = Syntax::nz_map_context(
-            &levels,
-            pos,
-            scan_index,
-            is_eob_coefficient,
-            plane,
-        );
+        let coeff_ctx = Syntax::nz_map_context(&levels, pos, scan_index, is_eob_coefficient, plane);
         write_chroma_coefficient_level::<SAMPLES, Syntax>(
             writer,
             &levels,
