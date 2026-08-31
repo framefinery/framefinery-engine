@@ -187,229 +187,41 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 continue;
             }
         }
-        if let Some(decision) = luma_inter_decisions
+        let inter_decision = luma_inter_decisions
             .and_then(|decisions| decisions.get(luma_tu_count))
             .copied()
-            .flatten()
-        {
-            if let Some(reference) = inter_reference {
-                #[cfg(feature = "vvc-stats")]
-                let luma_finalize_start = StageStart::now();
-                if let Some(luma_tu) = finalize_vvc_luma_exact_explicit_inter_candidate(
-                    decision,
-                    policy,
-                    source_frame,
-                    reference,
-                    frame_recon,
-                    node,
-                    luma_qp,
-                    luma_ts_quant,
-                    &mut candidate_luma_prediction,
-                    &mut candidate_luma_residuals,
-                    &mut intra_search_stats,
-                    &mut transform_scratch,
-                    &mut reconstructed_residual,
-                ) {
-                    #[cfg(feature = "vvc-stats")]
-                    intra_search_stats
-                        .add_luma_finalize_nanos(luma_finalize_start.elapsed().as_nanos() as u64);
-                    let luma_mode = VvcIntraPredictionMode::Dc;
-                    #[cfg(feature = "vvc-stats")]
-                    residual_energy_stats.add_luma_residuals(
-                        &candidate_luma_residuals,
-                        usize::from(node.width),
-                        usize::from(node.height),
-                    );
-                    luma_tu_metadata.record_finalized(luma_tu_count, luma_mode, luma_tu);
-                    applied_luma_inter_decisions[luma_tu_count] = Some(decision);
-                    #[cfg(feature = "vvc-stats")]
-                    write_vvc_luma_tu_trace(
-                        tu_trace_sink.as_mut(),
-                        region,
-                        luma_tu_count,
-                        node,
-                        luma_mode,
-                        luma_tu,
-                        &candidate_luma_prediction,
-                        &candidate_luma_residuals,
-                    );
-                    luma_tu_count += 1;
-                    continue;
-                }
-            }
-        }
-        #[cfg(feature = "vvc-stats")]
-        let luma_mode_search_start = StageStart::now();
-        let VvcLumaModeSearchResult {
-            mode: raw_luma_mode,
-            candidate_costs: luma_candidate_costs,
-        } = {
-            let search_context = VvcLumaModeSearchContext {
-                policy,
-                metric: score_metric,
-                source_frame,
-                frame_recon,
-                mode_search_state: luma_mode_search_state,
-                node,
-                left: left_luma_mode,
-                above: above_luma_mode,
-            };
-            search_context.select_intra_mode(VvcLumaModeSearchBuffers {
-                cache: &mut luma_rd_cache,
-                prediction_scratch: &mut prediction_scratch,
-                selected_prediction: &mut predicted_luma,
-                candidate_prediction: &mut candidate_luma_prediction,
-                candidate_residuals: &mut candidate_luma_residuals,
-                stats: &mut intra_search_stats,
-            })
-        };
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats
-            .add_luma_mode_search_nanos(luma_mode_search_start.elapsed().as_nanos() as u64);
-        if luma_rd_cache.get(raw_luma_mode).is_some() {
-            luma_rd_cache.take_residuals(raw_luma_mode, &mut luma_residuals);
-        } else {
-            #[cfg(feature = "vvc-stats")]
-            let residual_start = StageStart::now();
-            residual_luma_tu_at_into(
-                &mut luma_residuals,
-                source_frame,
-                usize::from(node.x),
-                usize::from(node.y),
-                usize::from(node.width),
-                usize::from(node.height),
-                &predicted_luma,
-            );
-            #[cfg(feature = "vvc-stats")]
-            intra_search_stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-        }
-        #[cfg(feature = "vvc-stats")]
-        let luma_rd_start = StageStart::now();
-        let selected_luma_mode = select_vvc_luma_mode_with_rd_refinement(
+            .flatten();
+        let selected_luma_candidate = VvcLumaTuSelectionContext {
             policy,
-            node,
-            raw_luma_mode,
-            luma_candidate_costs,
-            &mut luma_rd_cache,
-            &mut intra_search_stats,
-            left_luma_mode,
-            above_luma_mode,
+            metric: score_metric,
             source_frame,
-            frame_recon,
+            frame_recon: &*frame_recon,
+            mode_search_state: &*luma_mode_search_state,
+            node,
+            left: left_luma_mode,
+            above: above_luma_mode,
             luma_qp,
             luma_ts_quant,
-            &mut prediction_scratch,
-            &mut predicted_luma,
-            &mut luma_residuals,
-            &mut candidate_luma_prediction,
-            &mut candidate_luma_residuals,
-            &mut transform_scratch,
-            &mut reconstructed_residual,
-        );
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats.add_luma_rd_refinement_nanos(luma_rd_start.elapsed().as_nanos() as u64);
-        #[cfg(feature = "vvc-stats")]
-        if selected_luma_mode.residual.is_some() {
-            intra_search_stats.add_luma_rd_refinement_attempt();
-            if selected_luma_mode.mode != raw_luma_mode {
-                intra_search_stats.add_luma_rd_refinement_switch();
-            }
+            inter_decision,
+            inter_reference,
         }
-        let mut luma_mode = selected_luma_mode.mode;
-        let mut luma_coding_decision = policy.select_luma_tu_coding_decision(node, luma_mode);
-        #[cfg(feature = "vvc-stats")]
-        let luma_mrl_start = StageStart::now();
-        let selected_luma_mrl = select_vvc_luma_mrl_prediction(
-            policy,
-            luma_coding_decision.residual_coding,
-            luma_coding_decision.mts_index,
-            node,
-            luma_mode,
-            left_luma_mode,
-            above_luma_mode,
-            luma_qp,
-            luma_ts_quant,
-            selected_luma_mode.residual,
-            &mut intra_search_stats,
-            frame_recon,
-            source_frame,
-            &mut prediction_scratch,
-            &mut predicted_luma,
-            &mut luma_residuals,
-            &mut candidate_luma_prediction,
-            &mut candidate_luma_residuals,
-            &mut transform_scratch,
-            &mut reconstructed_residual,
-        );
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats.add_luma_mrl_nanos(luma_mrl_start.elapsed().as_nanos() as u64);
-        luma_coding_decision.mrl_index = selected_luma_mrl.mrl_index;
-        let mut selected_luma_residual = selected_luma_mrl.residual;
-        #[cfg(feature = "vvc-stats")]
-        let luma_bdpcm_start = StageStart::now();
-        if let Some(selected_bdpcm) = select_vvc_luma_bdpcm_prediction(
-            policy,
-            node,
-            luma_mode,
-            luma_coding_decision,
-            left_luma_mode,
-            above_luma_mode,
-            luma_qp,
-            luma_ts_quant,
-            selected_luma_residual,
-            &mut intra_search_stats,
-            frame_recon,
-            source_frame,
-            &mut prediction_scratch,
-            &mut predicted_luma,
-            &mut luma_residuals,
-            &mut candidate_luma_prediction,
-            &mut candidate_luma_residuals,
-            &mut transform_scratch,
-            &mut reconstructed_residual,
-        ) {
-            luma_mode = selected_bdpcm.mode;
-            luma_coding_decision = selected_bdpcm.coding_decision;
-            selected_luma_residual = Some(selected_bdpcm.residual);
-        }
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats.add_luma_bdpcm_nanos(luma_bdpcm_start.elapsed().as_nanos() as u64);
-        let mut selected_luma_inter_decision = None;
-        if let Some(decision) = luma_inter_decisions
-            .and_then(|decisions| decisions.get(luma_tu_count))
-            .copied()
-            .flatten()
-        {
-            if let Some(reference) = inter_reference {
-                if let Some(inter_residual) = select_vvc_luma_explicit_inter_candidate(
-                    decision,
-                    luma_mode,
-                    luma_coding_decision,
-                    selected_luma_residual,
-                    left_luma_mode,
-                    above_luma_mode,
-                    policy,
-                    source_frame,
-                    reference,
-                    node,
-                    luma_qp,
-                    luma_ts_quant,
-                    &mut candidate_luma_prediction,
-                    &mut candidate_luma_residuals,
-                    &mut intra_search_stats,
-                    &mut transform_scratch,
-                    &mut reconstructed_residual,
-                ) {
-                    luma_mode = VvcIntraPredictionMode::Dc;
-                    luma_coding_decision =
-                        policy.select_luma_tu_coding_decision(node, luma_mode);
-                    selected_luma_residual = Some(inter_residual);
-                    selected_luma_inter_decision = Some(decision);
-                    std::mem::swap(&mut predicted_luma, &mut candidate_luma_prediction);
-                    std::mem::swap(&mut luma_residuals, &mut candidate_luma_residuals);
-                }
-            }
-        }
+        .select_candidate(VvcLumaTuSelectionBuffers {
+            cache: &mut luma_rd_cache,
+            prediction_scratch: &mut prediction_scratch,
+            selected_prediction: &mut predicted_luma,
+            selected_residuals: &mut luma_residuals,
+            candidate_prediction: &mut candidate_luma_prediction,
+            candidate_residuals: &mut candidate_luma_residuals,
+            stats: &mut intra_search_stats,
+            transform_scratch: &mut transform_scratch,
+            reconstructed_residual: &mut reconstructed_residual,
+        });
+        let VvcSelectedLumaTuCandidate {
+            mode: luma_mode,
+            coding_decision: luma_coding_decision,
+            residual: selected_luma_residual,
+            inter_decision: selected_luma_inter_decision,
+        } = selected_luma_candidate;
         if selected_luma_inter_decision.is_none() {
             luma_mode_search_state.mark_node(node, luma_mode);
         }

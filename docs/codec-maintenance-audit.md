@@ -317,6 +317,11 @@ The following changes were behavior-preserving and independently validated:
   state. Their complete candidate loop and deepest legality/fast-search gates
   live in the focused chroma-search module; the unscored derived-only shortcut
   remains an explicit mode-selection result feeding the common RD path.
+- VVC exact-inter, regular intra, RD-refined, MRL, BDPCM, and scored-inter luma
+  selection now returns one selected-candidate record from a focused
+  orchestration module. The exact-inter shortcut still bypasses unnecessary
+  search, but it now feeds the same residual finalization, reconstruction,
+  metadata, and trace tail as every other selected luma mode.
 - VVC SCC, temporal-hint, and finalized luma-TU metadata writes now share one
   bounded record type; temporal, exact-inter, and ordinary finalization no
   longer fan the same result out to parallel arrays through three duplicated
@@ -345,7 +350,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 937-line CTU setup plus 1,003-line mode-selection sibling and 275/489-line luma/chroma search helpers | luma/chroma candidate evaluation and deepest search gates are cohesive; RD/finalization orchestration still needs call-graph review |
+| VVC residual quantization | 869-line CTU helper, 815-line mode-selection sibling, 295-line luma-selection orchestration, and 275/489-line luma/chroma search helpers | luma candidate selection and finalization now converge; chroma RD, tool replacement, and early finalization still need call-graph review |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2

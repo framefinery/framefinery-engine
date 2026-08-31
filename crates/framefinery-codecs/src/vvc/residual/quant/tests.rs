@@ -37,6 +37,88 @@ fn vvc_luma_prediction_score_matches_materialized_residual_score() {
 }
 
 #[test]
+fn vvc_luma_exact_inter_candidate_prepares_shared_zero_residual_state() {
+    let geometry = VvcVideoGeometry {
+        width: 16,
+        height: 8,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let plane_len = geometry.luma_samples();
+    let previous_luma: Vec<_> = (0..plane_len)
+        .map(|index| ((index * 13 + 7) & 0xff) as VvcSample)
+        .collect();
+    let mut current_luma = vec![0; plane_len];
+    for row in 0..geometry.height {
+        let previous_start = row * geometry.width + 8;
+        let current_start = row * geometry.width;
+        current_luma[current_start..current_start + 8]
+            .copy_from_slice(&previous_luma[previous_start..previous_start + 8]);
+    }
+    let source_frame = VvcSampledFrame {
+        geometry,
+        format,
+        luma: current_luma,
+        cb: vec![128; plane_len],
+        cr: vec![128; plane_len],
+        chroma_len: plane_len,
+    };
+    let mut reference = VvcReconstructionFrame::new_neutral(geometry, format);
+    reference.luma.clone_from(&previous_luma);
+    let frame_recon = VvcReconstructionFrame::new_neutral(geometry, format);
+    let mode_search_state = VvcLumaModeSearchState::new_for_geometry(geometry);
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
+    let policy = VvcResidualCodingPolicy::new(format, VvcResidualCodingMode::Lossy);
+    let luma_qp = super::super::VVC_DEFAULT_LOSSY_LUMA_QP;
+    let luma_ts_quant = VvcTransformSkipQuantTable::new(format.bit_depth, luma_qp);
+    let context = VvcLumaTuSelectionContext {
+        policy,
+        metric: policy.score_metric(),
+        source_frame: &source_frame,
+        frame_recon: &frame_recon,
+        mode_search_state: &mode_search_state,
+        node,
+        left: None,
+        above: None,
+        luma_qp,
+        luma_ts_quant: &luma_ts_quant,
+        inter_decision: None,
+        inter_reference: None,
+    };
+    let decision = VvcLumaInterDecision { mv_x: 8, mv_y: 0 };
+    let mut prediction = Vec::new();
+    let mut residuals = Vec::new();
+
+    let selected = context
+        .select_exact_inter_candidate(decision, &reference, &mut prediction, &mut residuals)
+        .expect("exact 4:4:4 inter prediction should be selected");
+
+    assert_eq!(selected.mode, VvcIntraPredictionMode::Dc);
+    assert_eq!(selected.inter_decision, Some(decision));
+    let expected_prediction: Vec<_> = source_frame
+        .luma
+        .chunks_exact(geometry.width)
+        .flat_map(|row| row[..8].iter().copied())
+        .collect();
+    assert_eq!(prediction, expected_prediction);
+    assert_eq!(residuals, vec![0; 64]);
+    let selected_residual = selected.residual.expect("zero residual is preselected");
+    assert_eq!(selected_residual.score.distortion, 0);
+    assert_eq!(selected_residual.score.rate_cost, 0);
+    assert!(selected_residual.residual.block.transform_skip);
+    assert_eq!(selected_residual.residual.block.dc_level, 0);
+    assert!(!selected_residual.residual.block.has_ac);
+    assert!(selected_residual
+        .residual
+        .block
+        .ac_levels
+        .iter()
+        .all(|level| *level == 0));
+}
+
+#[test]
 fn vvc_chroma_prediction_score_matches_materialized_residual_score() {
     let mut frame = sampled_luma_frame(4, 4, vec![0; 16]);
     frame.cb = vec![100, 112, 124, 136];
