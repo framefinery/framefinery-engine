@@ -476,6 +476,12 @@ The following changes were behavior-preserving and independently validated:
   both directions, while profile, format, lossless/lossy, and candidate mode
   gates remain in their existing deepest selectors. The transform-skip core
   and reconstruction siblings are now 388 and 271 lines respectively.
+- VVC CCLM reference availability, chroma sampling, luma downsampling, and
+  coordinate clamping now live in a focused 324-line sampling sibling. The
+  322-line CCLM core retains template construction, luma/chroma selection, and
+  parameter derivation, while the existing pair orchestrator remains the only
+  production prediction entry path. All three stay in the same module and
+  retain the same availability and reconstruction contracts.
 
 All of these remain included in their original parent module scope, so the
 split does not create an alternate coding path or change name resolution.
@@ -488,7 +494,7 @@ current call graph rather than by line count alone:
 | Area | Approximate size | Current concern |
 | --- | ---: | --- |
 | VVC CABAC CTU generation | approximately 2,616 lines after removing disabled leaf-skip syntax | tightly coupled partition traversal, neighbour state, and syntax emission |
-| VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
+| VVC residual prediction | 454-line parent with constants, shared luma/chroma dispatch, scratch ownership, and focused tests; 322/324-line CCLM derivation/sampling siblings plus a 260-line pair orchestrator; focused DC/planar, angular, BDPCM, and reconstruction siblings | regular luma/chroma dispatch and CCLM sampling ownership are explicit; composite angular/reference/CCLM scratch ownership still needs call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
 | VVC residual quantization | 486-line CTU helper, 163-line CTU orchestrator plus a 10-line shared immutable context, focused 175/210-line luma/chroma passes, and a 107-line result assembler; 404/286-line luma/chroma TU selection orchestration plus a 119-line chroma temporal helper; 275/443-line search helpers; a 408-line luma mode helper; 325/440/290-line chroma mode/BDPCM/RD helpers; 612/422-line luma/chroma residual search plus focused 232/286-line TU finalizers; and 388/271-line transform-skip finalization/reconstruction siblings with a focused 53-line BDPCM level state | top-level traversal, shared immutable setup, transient sample-buffer lifecycle, accepted zero-residual representation, component TU finalization, transform-skip reconstruction ownership, and BDPCM predecessor semantics are explicit; remaining work should inspect lower selectors and unify only genuinely identical component primitives without hiding mode legality, syntax, or reconstruction contracts |
 

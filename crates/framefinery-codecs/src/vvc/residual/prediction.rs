@@ -265,6 +265,7 @@ pub(in crate::vvc) struct VvcDcPredictionScratch {
 }
 
 include!("prediction_cclm.rs");
+include!("prediction_cclm_sampling.rs");
 include!("prediction_cclm_orchestration.rs");
 include!("prediction_chroma_mode.rs");
 
