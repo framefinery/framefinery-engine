@@ -515,10 +515,14 @@ The following changes were behavior-preserving and independently validated:
   focused contract test, run against both the duplicated and unified forms,
   pins DC/AC handling and output arrays for all three transform geometries.
 - That unified AV2 regular-quantization subsystem now lives in a focused
-  182-line included sibling with its contract test. The 741-line transform core
-  retains WHT, forward/inverse DCT, benchmark composition, and inverse-transform
-  tests; callers still resolve the quantization types and functions in the same
-  module scope, so the extraction creates no parallel coding path.
+  182-line included sibling with its contract test. Callers still resolve the
+  quantization types and functions in the same module scope, so the extraction
+  creates no parallel coding path.
+- AV2 forward and inverse DCT kernels now live in focused 239- and 255-line
+  included siblings. Inverse DC-only equivalence tests stay beside the inverse
+  kernels; the 247-line parent retains shared transform constants, WHT, common
+  rounding, and benchmark composition. Transform-size and coding-mode callers
+  continue using the same private functions in one module scope.
 
 All of these remain included in their original parent module scope, so the
 split does not create an alternate coding path or change name resolution.
@@ -532,7 +536,7 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | approximately 2,616 lines after removing disabled leaf-skip syntax | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 511-line parent with constants, shared luma/chroma dispatch, nested scratch ownership, and focused tests; 322/324-line CCLM derivation/sampling siblings plus a 260-line block/pair orchestrator; 205-line reference-edge, 129-line DC/planar, 209-line angular-orchestration, 187-line BDPCM, and focused reconstruction siblings | DC/planar/angular share one region-based two-edge preparation path, while BDPCM retains direction-gated single-edge collection; remaining review should focus on prediction/output buffer ownership rather than re-splitting mode dispatch |
-| AV2 tile transform syntax helpers | 741-line transform core plus a focused 182-line regular-quantization sibling, 672-line coefficient syntax, 360-line chroma, 320-line context, and 677-line low-level writer siblings | regular quantization has one owned subsystem and skip-field name/CDF/key selection is paired behind one symbol emitter; remaining transform-kernel ownership and high-range, DC-level, or context helpers should be changed only after syntax-by-syntax equivalence review |
+| AV2 tile transform syntax helpers | 247-line transform parent with focused 182-line quantization, 239-line forward-DCT, and 255-line inverse-DCT siblings; plus 672-line coefficient syntax, 360-line chroma, 320-line context, and 677-line low-level writer siblings | transform and regular-quantization ownership is explicit and skip-field name/CDF/key selection is paired behind one symbol emitter; remaining high-range, DC-level, or context helpers should be changed only after syntax-by-syntax equivalence review |
 | VVC residual quantization | 486-line CTU helper, 163-line CTU orchestrator plus a 10-line shared immutable context, focused 175/210-line luma/chroma passes, and a 107-line result assembler; 404/286-line luma/chroma TU selection orchestration plus a 119-line chroma temporal helper; 275/443-line search helpers; a 408-line luma mode helper; 325/440/290-line chroma mode/BDPCM/RD helpers; 612/422-line luma/chroma residual search plus focused 232/286-line TU finalizers; and 388/271-line transform-skip finalization/reconstruction siblings with a focused 53-line BDPCM level state | top-level traversal, shared immutable setup, transient sample-buffer lifecycle, accepted zero-residual representation, component TU finalization, transform-skip reconstruction ownership, and BDPCM predecessor semantics are explicit; remaining work should inspect lower selectors and unify only genuinely identical component primitives without hiding mode legality, syntax, or reconstruction contracts |
 
 For the next functional cleanup, prefer extracting a small shared helper with
