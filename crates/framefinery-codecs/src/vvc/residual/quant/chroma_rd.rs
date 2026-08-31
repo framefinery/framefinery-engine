@@ -59,8 +59,8 @@ fn score_vvc_chroma_mode_rd_candidate(
         reconstructed_residual,
     );
     let residual = VvcSelectedChromaResidual {
-        cb: cb.block,
-        cr: cr.block,
+        cb: cb.residual,
+        cr: cr.residual,
     };
     let rd_score = VvcResidualBlockScore {
         distortion: cb.score.distortion.saturating_add(cr.score.distortion),
@@ -271,8 +271,7 @@ impl VvcChromaModeRdShortlist {
     }
 
     fn admits_lossless_speed_rd(self, candidate: VvcChromaIntraCandidateCost) -> bool {
-        self.count <= 1
-            || candidate.score() <= self.candidates[0].score().saturating_mul(2)
+        self.count <= 1 || candidate.score() <= self.candidates[0].score().saturating_mul(2)
     }
 }
 
@@ -280,7 +279,9 @@ fn vvc_chroma_mode_rd_shortlist_limit(policy: VvcResidualCodingPolicy) -> usize 
     match policy.residual_mode() {
         VvcResidualCodingMode::Lossless => VVC_CHROMA_INTRA_CANDIDATE_CAPACITY,
         VvcResidualCodingMode::Lossy => match policy.fast_search() {
-            VvcFastSearch::Off | VvcFastSearch::Conservative => VVC_LOSSY_CHROMA_RD_WINNER_CANDIDATES,
+            VvcFastSearch::Off | VvcFastSearch::Conservative => {
+                VVC_LOSSY_CHROMA_RD_WINNER_CANDIDATES
+            }
             VvcFastSearch::LosslessSpeed => 3,
             VvcFastSearch::Moderate => 3,
             VvcFastSearch::Aggressive => 2,

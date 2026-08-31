@@ -80,6 +80,10 @@ The following changes were behavior-preserving and independently validated:
   coefficients, applies the directional inverse, and writes the active extent.
 - VVC finalized residual-block and RD-score value types now live in the shared
   quantization types module used by luma, chroma, and CTU selection.
+- VVC luma and chroma residual candidates now share one generic scored-residual
+  ownership record. Luma quantization returns its selected block/MTS payload
+  directly through that record, removing the duplicate scored-block type and
+  conversion path while chroma retains only its component-specific payloads.
 - VVC finalized luma and chroma TU records now live beside the shared
   quantization records used by CTU orchestration and tracing.
 - VVC DC, planar, coarse-directional, and refined-directional luma candidates

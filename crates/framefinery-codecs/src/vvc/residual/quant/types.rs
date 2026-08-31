@@ -1,5 +1,7 @@
 use crate::picture::{ChromaSampling, SampleBitDepth};
 
+#[cfg(any(test, feature = "bench-internals"))]
+use super::super::VvcSampledColor;
 #[cfg(test)]
 use super::super::VvcTreeType;
 use super::super::{
@@ -11,21 +13,19 @@ use super::super::{
     vvc_residual_chroma_explicit_candidate_allowed, VvcBdpcmMode, VvcChromaCclmMode,
     VvcChromaIntraCandidateCost, VvcChromaIntraCandidateCosts, VvcChromaIntraPredictionMode,
     VvcChromaTuCodingDecision, VvcCodingTreeNode, VvcCtuPartitionShape, VvcCtuRegion,
-    VvcFastSearch, VvcIntraPredictionMode, VvcLumaIntraCandidateCost, VvcLumaIntraCandidateCosts,
-    VvcLumaInterDecision, VvcLumaSccDecision, VvcLumaTuCodingDecision, VvcPictureFormat,
-    VvcIbcCuDecision, VvcReconstructionFrame, VvcResidualCodingMode, VvcResidualCodingPolicy,
-    VvcResidualScoreMetric, VvcSample, VvcSampledFrame,
+    VvcFastSearch, VvcIbcCuDecision, VvcIntraPredictionMode, VvcLumaInterDecision,
+    VvcLumaIntraCandidateCost, VvcLumaIntraCandidateCosts, VvcLumaSccDecision,
+    VvcLumaTuCodingDecision, VvcPictureFormat, VvcReconstructionFrame, VvcResidualCodingMode,
+    VvcResidualCodingPolicy, VvcResidualScoreMetric, VvcSample, VvcSampledFrame,
     VvcTuResidualCodingMode, VvcVideoGeometry, VVC_CHROMA_INTRA_CANDIDATE_CAPACITY, VVC_CTU_SIZE,
     VVC_LUMA_INTRA_CANDIDATE_CAPACITY,
 };
-#[cfg(any(test, feature = "bench-internals"))]
-use super::super::VvcSampledColor;
+use super::sample_math::vvc_sample_delta_i16;
 use super::transform::{
     luma_ac_syntax_cost_estimate, luma_reconstructed_residual_sse_with_mts_into,
     quantize_vvc_luma_residual_fast_with_qp_and_mts_into,
     quantize_vvc_luma_residual_greedy_with_qp_and_mts_into, transformed_dc_only_residual_sse,
 };
-use super::sample_math::vvc_sample_delta_i16;
 use super::{
     fill_visible_chroma_node, fill_visible_luma_node,
     inverse_transform_vvc_chroma_quantized_block_into_with_qp,
@@ -38,9 +38,9 @@ use super::{
     predict_vvc_luma_intra_block_into_with_mrl_and_availability,
     quantize_vvc_chroma_residual_greedy_with_qp, quantize_vvc_chroma_sample,
     reconstruct_vvc_chroma, residual_vvc_luma_bdpcm_block_into_with_availability,
-    VvcDcPredictionScratch, VvcInverseTransformScratch, VvcQuantizedColor,
-    MAX_VVC_CHROMA_TUS, MAX_VVC_LUMA_TUS, VVC_CHROMA_AC_COEFFS_PER_TU,
-    VVC_CHROMA_AC_POSITIONS_4X4, VVC_LUMA_AC_COEFFS_PER_TU,
+    VvcDcPredictionScratch, VvcInverseTransformScratch, VvcQuantizedColor, MAX_VVC_CHROMA_TUS,
+    MAX_VVC_LUMA_TUS, VVC_CHROMA_AC_COEFFS_PER_TU, VVC_CHROMA_AC_POSITIONS_4X4,
+    VVC_LUMA_AC_COEFFS_PER_TU,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -76,6 +76,18 @@ impl VvcResidualBlockScore {
             best.distortion,
             best.rate_cost,
         )
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct VvcScoredResidual<T> {
+    residual: T,
+    score: VvcResidualBlockScore,
+}
+
+impl<T> VvcScoredResidual<T> {
+    fn selects_over(self, best: Self) -> bool {
+        self.score.selects_over(best.score)
     }
 }
 

@@ -286,12 +286,11 @@ fn score_vvc_luma_mode_rd_candidate(
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
 ) -> VvcLumaModeRdCandidate {
-    let quantization_search =
-        if vvc_luma_fast_search_prefers_transform_skip_candidate(policy) {
-            VvcLumaResidualQuantizationSearch::TransformSkipFirstModeDecision
-        } else {
-            VvcLumaResidualQuantizationSearch::FastModeDecision
-        };
+    let quantization_search = if vvc_luma_fast_search_prefers_transform_skip_candidate(policy) {
+        VvcLumaResidualQuantizationSearch::TransformSkipFirstModeDecision
+    } else {
+        VvcLumaResidualQuantizationSearch::FastModeDecision
+    };
     let scored_residual = select_vvc_scored_luma_residual_block_with_mts(
         coding_decision.residual_coding,
         coding_decision.mts_index,
@@ -307,18 +306,15 @@ fn score_vvc_luma_mode_rd_candidate(
         transform_scratch,
         reconstructed_residual,
     );
-    let residual = VvcScoredSelectedLumaResidual::from_scored_block(scored_residual);
     let mode_cost = u64::from(vvc_luma_intra_mode_syntax_bin_count(mode, left, above));
     VvcLumaModeRdCandidate {
         distortion: scored_residual.score.distortion,
         rate_cost: scored_residual.score.rate_cost.saturating_add(mode_cost),
-        residual,
+        residual: scored_residual,
     }
 }
 
-fn vvc_luma_fast_search_prefers_transform_skip_candidate(
-    policy: VvcResidualCodingPolicy,
-) -> bool {
+fn vvc_luma_fast_search_prefers_transform_skip_candidate(policy: VvcResidualCodingPolicy) -> bool {
     policy.residual_mode() == VvcResidualCodingMode::Lossy
         && policy.fast_search() == VvcFastSearch::LosslessSpeed
 }
@@ -387,11 +383,7 @@ impl VvcLumaModeRdShortlist {
     }
 
     fn admits_lossless_speed_rd(self, candidate: VvcLumaIntraCandidateCost) -> bool {
-        self.count <= 1
-            || candidate.score()
-                <= self.candidates[0]
-                    .score()
-                    .saturating_mul(2)
+        self.count <= 1 || candidate.score() <= self.candidates[0].score().saturating_mul(2)
     }
 }
 

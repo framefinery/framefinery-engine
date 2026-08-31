@@ -174,7 +174,7 @@ fn select_vvc_luma_bdpcm_prediction(
         );
         #[cfg(feature = "vvc-stats")]
         stats.add_luma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
-        VvcScoredSelectedLumaResidual::from_scored_block(scored_residual)
+        scored_residual
     });
     let mut best_score = vvc_scored_luma_quantized_residual_score(
         baseline_residual,
@@ -475,11 +475,10 @@ fn score_vvc_luma_mrl_candidate(
             reconstructed_residual,
         );
         let mrl_cost = u64::from(vvc_luma_mrl_syntax_bin_count(node, mrl_index));
-        let selected_residual = VvcScoredSelectedLumaResidual::from_scored_block(scored_residual);
         return VvcLumaMrlCandidate {
             distortion: scored_residual.score.distortion,
             rate_cost: scored_residual.score.rate_cost.saturating_add(mrl_cost),
-            residual: Some(selected_residual),
+            residual: Some(scored_residual),
         };
     }
     VvcLumaMrlCandidate {

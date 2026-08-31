@@ -4,11 +4,7 @@ struct VvcSelectedLumaResidual {
     mts_index: u8,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct VvcScoredSelectedLumaResidual {
-    residual: VvcSelectedLumaResidual,
-    score: VvcResidualBlockScore,
-}
+type VvcScoredSelectedLumaResidual = VvcScoredResidual<VvcSelectedLumaResidual>;
 
 impl VvcScoredSelectedLumaResidual {
     fn new(
@@ -36,13 +32,33 @@ impl VvcScoredSelectedLumaResidual {
         Self { residual, score }
     }
 
-    fn from_scored_block(scored: VvcScoredLumaResidualBlock) -> Self {
+    fn from_block(
+        source_residuals: &[i16],
+        width: u16,
+        height: u16,
+        bit_depth: SampleBitDepth,
+        luma_qp: i32,
+        luma_ts_quant: &VvcTransformSkipQuantTable,
+        block: VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU>,
+        mts_index: u8,
+        transform_scratch: &mut VvcInverseTransformScratch,
+        reconstructed_residual: &mut Vec<i16>,
+    ) -> Self {
+        let score = vvc_luma_residual_block_score(
+            source_residuals,
+            width,
+            height,
+            bit_depth,
+            luma_qp,
+            luma_ts_quant,
+            block,
+            mts_index,
+            transform_scratch,
+            reconstructed_residual,
+        );
         Self {
-            residual: VvcSelectedLumaResidual {
-                block: scored.block,
-                mts_index: scored.mts_index,
-            },
-            score: scored.score,
+            residual: VvcSelectedLumaResidual { block, mts_index },
+            score,
         }
     }
 }
@@ -310,7 +326,7 @@ fn select_vvc_luma_residual_block_with_mts(
         transform_scratch,
         reconstructed_residual,
     );
-    (best.block, best.mts_index)
+    (best.residual.block, best.residual.mts_index)
 }
 
 fn select_vvc_scored_luma_residual_block_with_mts(
@@ -327,7 +343,7 @@ fn select_vvc_scored_luma_residual_block_with_mts(
     stats: &mut VvcIntraSearchStats,
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
-) -> VvcScoredLumaResidualBlock {
+) -> VvcScoredSelectedLumaResidual {
     if matches!(residual_coding, VvcTuResidualCodingMode::TransformSkip) {
         let block = finalize_vvc_luma_residual_block(
             residual_coding,
@@ -343,7 +359,7 @@ fn select_vvc_scored_luma_residual_block_with_mts(
             transform_scratch,
             reconstructed_residual,
         );
-        return VvcScoredLumaResidualBlock::new(
+        return VvcScoredSelectedLumaResidual::from_block(
             residuals,
             width,
             height,
@@ -395,7 +411,7 @@ fn select_vvc_scored_luma_residual_block_with_mts(
         transform_scratch,
         reconstructed_residual,
     );
-    let mut best = VvcScoredLumaResidualBlock::new(
+    let mut best = VvcScoredSelectedLumaResidual::from_block(
         residuals,
         width,
         height,
@@ -442,7 +458,7 @@ fn select_vvc_scored_luma_residual_block_with_mts(
             if !vvc_luma_explicit_mts_candidate_is_signalable(candidate) {
                 return best;
             }
-            let candidate = VvcScoredLumaResidualBlock::new(
+            let candidate = VvcScoredSelectedLumaResidual::from_block(
                 residuals,
                 width,
                 height,
@@ -476,7 +492,7 @@ fn select_vvc_scored_luma_residual_block_with_mts(
                 if !vvc_luma_explicit_mts_candidate_is_signalable(candidate) {
                     continue;
                 }
-                let candidate = VvcScoredLumaResidualBlock::new(
+                let candidate = VvcScoredSelectedLumaResidual::from_block(
                     residuals,
                     width,
                     height,
@@ -508,50 +524,6 @@ fn vvc_luma_explicit_mts_candidate_is_signalable(
     candidate.has_ac
 }
 
-#[derive(Debug, Clone, Copy)]
-struct VvcScoredLumaResidualBlock {
-    block: VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU>,
-    mts_index: u8,
-    score: VvcResidualBlockScore,
-}
-
-impl VvcScoredLumaResidualBlock {
-    fn new(
-        residuals: &[i16],
-        width: u16,
-        height: u16,
-        bit_depth: SampleBitDepth,
-        luma_qp: i32,
-        luma_ts_quant: &VvcTransformSkipQuantTable,
-        block: VvcFinalizedResidualBlock<VVC_LUMA_AC_COEFFS_PER_TU>,
-        mts_index: u8,
-        transform_scratch: &mut VvcInverseTransformScratch,
-        reconstructed_residual: &mut Vec<i16>,
-    ) -> Self {
-        let score = vvc_luma_residual_block_score(
-            residuals,
-            width,
-            height,
-            bit_depth,
-            luma_qp,
-            luma_ts_quant,
-            block,
-            mts_index,
-            transform_scratch,
-            reconstructed_residual,
-        );
-        Self {
-            block,
-            mts_index,
-            score,
-        }
-    }
-
-    fn selects_over(self, best: Self) -> bool {
-        self.score.selects_over(best.score)
-    }
-}
-
 fn vvc_luma_mts_selection_allowed(
     residual_coding: VvcTuResidualCodingMode,
     requested_mts_index: u8,
@@ -581,7 +553,7 @@ fn select_vvc_scored_luma_transform_skip_candidate(
     stats: &mut VvcIntraSearchStats,
     transform_scratch: &mut VvcInverseTransformScratch,
     reconstructed_residual: &mut Vec<i16>,
-) -> Option<VvcScoredLumaResidualBlock> {
+) -> Option<VvcScoredSelectedLumaResidual> {
     #[cfg(not(feature = "vvc-stats"))]
     let _ = stats;
     if !vvc_luma_lossy_transform_skip_selection_allowed(residual_coding, width, height, luma_qp) {
@@ -598,7 +570,7 @@ fn select_vvc_scored_luma_transform_skip_candidate(
         return None;
     }
 
-    let transform_skip = VvcScoredLumaResidualBlock::new(
+    let transform_skip = VvcScoredSelectedLumaResidual::from_block(
         residuals,
         width,
         height,

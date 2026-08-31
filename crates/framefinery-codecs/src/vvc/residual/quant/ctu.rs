@@ -332,9 +332,7 @@ fn vvc_temporal_mode_hint_max_avg_abs_residual_8bit(
         return None;
     }
     match policy.residual_mode() {
-        VvcResidualCodingMode::Lossless => {
-            Some(VVC_TEMPORAL_MODE_HINT_MAX_AVG_ABS_RESIDUAL_8BIT)
-        }
+        VvcResidualCodingMode::Lossless => Some(VVC_TEMPORAL_MODE_HINT_MAX_AVG_ABS_RESIDUAL_8BIT),
         VvcResidualCodingMode::Lossy => {
             Some(VVC_LOSSY_TEMPORAL_MODE_HINT_MAX_AVG_ABS_RESIDUAL_8BIT)
         }
@@ -398,13 +396,7 @@ fn select_vvc_luma_explicit_inter_candidate(
     ) {
         return None;
     }
-    materialize_vvc_luma_tu_residuals(
-        inter_residuals,
-        source_frame,
-        node,
-        inter_prediction,
-        stats,
-    );
+    materialize_vvc_luma_tu_residuals(inter_residuals, source_frame, node, inter_prediction, stats);
 
     let inter_coding_decision =
         policy.select_luma_tu_coding_decision(node, VvcIntraPredictionMode::Dc);
@@ -427,7 +419,6 @@ fn select_vvc_luma_explicit_inter_candidate(
     );
     #[cfg(feature = "vvc-stats")]
     stats.add_luma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
-    let inter_residual = VvcScoredSelectedLumaResidual::from_scored_block(inter_residual);
     let intra_score = vvc_scored_luma_quantized_residual_score(
         intra_residual,
         vvc_luma_regular_prediction_syntax_cost(

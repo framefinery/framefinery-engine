@@ -2748,29 +2748,33 @@ fn residual_sse_for_test(source: &[i16], reconstructed: &[i16]) -> u64 {
 
 #[test]
 fn vvc_luma_residual_tool_selection_is_rate_aware() {
-    let best = VvcScoredLumaResidualBlock {
-        block: VvcFinalizedResidualBlock {
-            dc_level: 0,
-            ac_levels: [0; VVC_LUMA_AC_COEFFS_PER_TU],
-            has_ac: false,
-            transform_skip: false,
-            bdpcm_mode: VvcBdpcmMode::None,
+    let best = VvcScoredSelectedLumaResidual {
+        residual: VvcSelectedLumaResidual {
+            block: VvcFinalizedResidualBlock {
+                dc_level: 0,
+                ac_levels: [0; VVC_LUMA_AC_COEFFS_PER_TU],
+                has_ac: false,
+                transform_skip: false,
+                bdpcm_mode: VvcBdpcmMode::None,
+            },
+            mts_index: 0,
         },
-        mts_index: 0,
         score: VvcResidualBlockScore {
             distortion: 1_000,
             rate_cost: 0,
         },
     };
-    let candidate = VvcScoredLumaResidualBlock {
-        block: VvcFinalizedResidualBlock {
-            dc_level: 1,
-            ac_levels: [0; VVC_LUMA_AC_COEFFS_PER_TU],
-            has_ac: false,
-            transform_skip: false,
-            bdpcm_mode: VvcBdpcmMode::None,
+    let candidate = VvcScoredSelectedLumaResidual {
+        residual: VvcSelectedLumaResidual {
+            block: VvcFinalizedResidualBlock {
+                dc_level: 1,
+                ac_levels: [0; VVC_LUMA_AC_COEFFS_PER_TU],
+                has_ac: false,
+                transform_skip: false,
+                bdpcm_mode: VvcBdpcmMode::None,
+            },
+            mts_index: 2,
         },
-        mts_index: 2,
         score: VvcResidualBlockScore {
             distortion: 700,
             rate_cost: 1_000,
@@ -2778,7 +2782,7 @@ fn vvc_luma_residual_tool_selection_is_rate_aware() {
     };
 
     assert!(!candidate.selects_over(best));
-    assert!(VvcScoredLumaResidualBlock {
+    assert!(VvcScoredSelectedLumaResidual {
         score: VvcResidualBlockScore {
             distortion: 700,
             rate_cost: 20,
@@ -2786,7 +2790,7 @@ fn vvc_luma_residual_tool_selection_is_rate_aware() {
         ..candidate
     }
     .selects_over(best));
-    assert!(VvcScoredLumaResidualBlock {
+    assert!(VvcScoredSelectedLumaResidual {
         score: VvcResidualBlockScore {
             distortion: 0,
             rate_cost: 1_000,
@@ -2794,21 +2798,21 @@ fn vvc_luma_residual_tool_selection_is_rate_aware() {
         ..candidate
     }
     .selects_over(best));
-    assert!(!VvcScoredLumaResidualBlock {
+    assert!(!VvcScoredSelectedLumaResidual {
         score: VvcResidualBlockScore {
             distortion: 1,
             rate_cost: 0,
         },
         ..candidate
     }
-    .selects_over(VvcScoredLumaResidualBlock {
+    .selects_over(VvcScoredSelectedLumaResidual {
         score: VvcResidualBlockScore {
             distortion: 0,
             rate_cost: 1_000,
         },
         ..best
     }));
-    assert!(!VvcScoredLumaResidualBlock {
+    assert!(!VvcScoredSelectedLumaResidual {
         score: VvcResidualBlockScore {
             distortion: 1_100,
             rate_cost: 0,
@@ -2935,7 +2939,7 @@ fn vvc_luma_mts_selection_rejects_dc_only_explicit_candidate() {
         &mut scratch,
         &mut reconstructed,
     );
-    assert_eq!(selected.mts_index, 0);
+    assert_eq!(selected.residual.mts_index, 0);
 }
 
 #[test]

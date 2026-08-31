@@ -4,11 +4,7 @@ struct VvcSelectedChromaResidual {
     cr: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct VvcScoredSelectedChromaResidual {
-    residual: VvcSelectedChromaResidual,
-    score: VvcResidualBlockScore,
-}
+type VvcScoredSelectedChromaResidual = VvcScoredResidual<VvcSelectedChromaResidual>;
 
 impl VvcScoredSelectedChromaResidual {
     pub(super) fn from_scored_blocks(
@@ -429,11 +425,8 @@ fn finalize_vvc_chroma_residual_block(
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct VvcScoredChromaResidualBlock {
-    block: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
-    score: VvcResidualBlockScore,
-}
+type VvcScoredChromaResidualBlock =
+    VvcScoredResidual<VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>>;
 
 impl VvcScoredChromaResidualBlock {
     fn new(
@@ -458,11 +451,10 @@ impl VvcScoredChromaResidualBlock {
             transform_scratch,
             reconstructed_residual,
         );
-        Self { block, score }
-    }
-
-    fn selects_over(self, best: Self) -> bool {
-        self.score.selects_over(best.score)
+        Self {
+            residual: block,
+            score,
+        }
     }
 }
 
