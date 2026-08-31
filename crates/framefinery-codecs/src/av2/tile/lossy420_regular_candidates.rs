@@ -72,7 +72,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         }
         let coefficients = av2_fdct4x4(&analysis.residual);
         let (mut qcoeff, _) =
-            av2_regular_quantize_dct4x4_with_params(&coefficients, self.regular_quant_params);
+            av2_regular_quantize_with_params(&coefficients, self.regular_quant_params);
         prune_regular_dct_ac_levels(
             &mut qcoeff,
             self.base_qindex,
@@ -149,10 +149,7 @@ impl<'a> Av2LossySubsampledTileState<'a> {
             qcoeff,
             av2_regular_dequant_qtx(self.base_qindex, self.bit_depth),
         );
-        let residual = if dqcoeff[1..]
-            .iter()
-            .all(|&coefficient| coefficient == 0)
-        {
+        let residual = if dqcoeff[1..].iter().all(|&coefficient| coefficient == 0) {
             av2_idct4x4_dc_only(&dqcoeff, self.bit_depth)
         } else {
             av2_idct4x4(&dqcoeff, self.bit_depth)

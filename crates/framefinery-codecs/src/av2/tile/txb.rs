@@ -212,8 +212,8 @@ const AV2_DCT8_KERNEL: [[i32; TX8X8_SIZE]; TX8X8_SIZE] = [
     [18, -50, 75, -89, 89, -75, 50, -18],
 ];
 const AV2_QLOOKUP_QTX: [i32; 25] = [
-    64, 40, 41, 43, 44, 45, 47, 48, 49, 51, 52, 54, 55, 57, 59, 60, 62, 64, 66,
-    68, 70, 72, 74, 76, 78,
+    64, 40, 41, 43, 44, 45, 47, 48, 49, 51, 52, 54, 55, 57, 59, 60, 62, 64, 66, 68, 70, 72, 74, 76,
+    78,
 ];
 
 fn av2_qlookup_qtx(qindex: u16, bit_depth: SampleBitDepth) -> i32 {
@@ -268,59 +268,15 @@ fn av2_regular_quantize_dct4x4(
     bit_depth: SampleBitDepth,
 ) -> ([i32; TX4X4_SAMPLES], [i32; TX4X4_SAMPLES]) {
     let params = Av2RegularQuantParams::new(qindex, bit_depth);
-    av2_regular_quantize_dct4x4_with_params(coefficients, params)
+    av2_regular_quantize_with_params(coefficients, params)
 }
 
-fn av2_regular_quantize_dct4x4_with_params(
-    coefficients: &[i32; TX4X4_SAMPLES],
+fn av2_regular_quantize_with_params<const SAMPLES: usize>(
+    coefficients: &[i32; SAMPLES],
     params: Av2RegularQuantParams,
-) -> ([i32; TX4X4_SAMPLES], [i32; TX4X4_SAMPLES]) {
-    let mut qcoeff = [0i32; TX4X4_SAMPLES];
-    for pos in 0..TX4X4_SAMPLES {
-        qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], params, pos != 0);
-    }
-    let dqcoeff = av2_regular_dequantize(&qcoeff, params.dequant);
-    (qcoeff, dqcoeff)
-}
-
-#[cfg(any(test, feature = "bench-internals"))]
-fn av2_regular_quantize_dct8x8(
-    coefficients: &[i32; TX8X8_SAMPLES],
-    qindex: u16,
-    bit_depth: SampleBitDepth,
-) -> ([i32; TX8X8_SAMPLES], [i32; TX8X8_SAMPLES]) {
-    let params = Av2RegularQuantParams::new(qindex, bit_depth);
-    av2_regular_quantize_dct8x8_with_params(coefficients, params)
-}
-
-fn av2_regular_quantize_dct8x8_with_params(
-    coefficients: &[i32; TX8X8_SAMPLES],
-    params: Av2RegularQuantParams,
-) -> ([i32; TX8X8_SAMPLES], [i32; TX8X8_SAMPLES]) {
-    let mut qcoeff = [0i32; TX8X8_SAMPLES];
-    for pos in 0..TX8X8_SAMPLES {
-        qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], params, pos != 0);
-    }
-    let dqcoeff = av2_regular_dequantize(&qcoeff, params.dequant);
-    (qcoeff, dqcoeff)
-}
-
-#[cfg(any(test, feature = "bench-internals"))]
-fn av2_regular_quantize_dct4x8(
-    coefficients: &[i32; TX4X8_SAMPLES],
-    qindex: u16,
-    bit_depth: SampleBitDepth,
-) -> ([i32; TX4X8_SAMPLES], [i32; TX4X8_SAMPLES]) {
-    let params = Av2RegularQuantParams::new(qindex, bit_depth);
-    av2_regular_quantize_dct4x8_with_params(coefficients, params)
-}
-
-fn av2_regular_quantize_dct4x8_with_params(
-    coefficients: &[i32; TX4X8_SAMPLES],
-    params: Av2RegularQuantParams,
-) -> ([i32; TX4X8_SAMPLES], [i32; TX4X8_SAMPLES]) {
-    let mut qcoeff = [0i32; TX4X8_SAMPLES];
-    for pos in 0..TX4X8_SAMPLES {
+) -> ([i32; SAMPLES], [i32; SAMPLES]) {
+    let mut qcoeff = [0i32; SAMPLES];
+    for pos in 0..SAMPLES {
         qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], params, pos != 0);
     }
     let dqcoeff = av2_regular_dequantize(&qcoeff, params.dequant);
@@ -339,8 +295,7 @@ fn av2_regular_quantize_coefficient(
     if (abs_coeff << (1 + AV2_QUANT_TABLE_BITS)) < i64::from(params.dequant[rc01]) {
         return 0;
     }
-    let abs_qcoeff =
-        ((abs_coeff + params.round_fp[rc01]) * params.quant_fp[rc01]) >> shift;
+    let abs_qcoeff = ((abs_coeff + params.round_fp[rc01]) * params.quant_fp[rc01]) >> shift;
     (abs_qcoeff as i32) * sign
 }
 
@@ -360,30 +315,10 @@ fn av2_regular_dequantize<const SAMPLES: usize>(
     dqcoeff
 }
 
-fn av2_regular_quantized_level_coefficients(
-    qcoeff: &[i32; TX4X4_SAMPLES],
-) -> [i32; TX4X4_SAMPLES] {
-    let mut coefficients = [0i32; TX4X4_SAMPLES];
-    for (dst, &level) in coefficients.iter_mut().zip(qcoeff.iter()) {
-        *dst = level * 8;
-    }
-    coefficients
-}
-
-fn av2_regular_quantized_level_coefficients_tx8x8(
-    qcoeff: &[i32; TX8X8_SAMPLES],
-) -> [i32; TX8X8_SAMPLES] {
-    let mut coefficients = [0i32; TX8X8_SAMPLES];
-    for (dst, &level) in coefficients.iter_mut().zip(qcoeff.iter()) {
-        *dst = level * 8;
-    }
-    coefficients
-}
-
-fn av2_regular_quantized_level_coefficients_tx4x8(
-    qcoeff: &[i32; TX4X8_SAMPLES],
-) -> [i32; TX4X8_SAMPLES] {
-    let mut coefficients = [0i32; TX4X8_SAMPLES];
+fn av2_regular_quantized_level_coefficients<const SAMPLES: usize>(
+    qcoeff: &[i32; SAMPLES],
+) -> [i32; SAMPLES] {
+    let mut coefficients = [0i32; SAMPLES];
     for (dst, &level) in coefficients.iter_mut().zip(qcoeff.iter()) {
         *dst = level * 8;
     }
@@ -402,7 +337,10 @@ fn av2_fdct4x4(input: &[i32; TX4X4_SAMPLES]) -> [i32; TX4X4_SAMPLES] {
         if col == 0 && in_high[0] != 0 {
             in_high[0] += 1;
         }
-        fdct4x4_pass(&in_high, &mut intermediate[col * TX4X4_SIZE..][..TX4X4_SIZE]);
+        fdct4x4_pass(
+            &in_high,
+            &mut intermediate[col * TX4X4_SIZE..][..TX4X4_SIZE],
+        );
     }
 
     let mut output = [0i32; TX4X4_SAMPLES];
@@ -578,13 +516,11 @@ fn fdct8x8_pass(input: &[i32; TX8X8_SIZE], output: &mut [i32]) {
     let x3 = s0 - s3;
     output[0] = fdct_round_shift(i64::from(x0 + x1) * i64::from(AV2_COSPI_16_64));
     output[2] = fdct_round_shift(
-        i64::from(x2) * i64::from(AV2_COSPI_24_64)
-            + i64::from(x3) * i64::from(AV2_COSPI_8_64),
+        i64::from(x2) * i64::from(AV2_COSPI_24_64) + i64::from(x3) * i64::from(AV2_COSPI_8_64),
     );
     output[4] = fdct_round_shift(i64::from(x0 - x1) * i64::from(AV2_COSPI_16_64));
     output[6] = fdct_round_shift(
-        -i64::from(x2) * i64::from(AV2_COSPI_8_64)
-            + i64::from(x3) * i64::from(AV2_COSPI_24_64),
+        -i64::from(x2) * i64::from(AV2_COSPI_8_64) + i64::from(x3) * i64::from(AV2_COSPI_24_64),
     );
 
     let t0 = fdct_round_shift(i64::from(s6 - s5) * i64::from(AV2_COSPI_16_64));
@@ -594,20 +530,16 @@ fn fdct8x8_pass(input: &[i32; TX8X8_SIZE], output: &mut [i32]) {
     let x2 = s7 - t1;
     let x3 = s7 + t1;
     output[1] = fdct_round_shift(
-        i64::from(x0) * i64::from(AV2_COSPI_28_64)
-            + i64::from(x3) * i64::from(AV2_COSPI_4_64),
+        i64::from(x0) * i64::from(AV2_COSPI_28_64) + i64::from(x3) * i64::from(AV2_COSPI_4_64),
     );
     output[3] = fdct_round_shift(
-        i64::from(x2) * i64::from(AV2_COSPI_12_64)
-            - i64::from(x1) * i64::from(AV2_COSPI_20_64),
+        i64::from(x2) * i64::from(AV2_COSPI_12_64) - i64::from(x1) * i64::from(AV2_COSPI_20_64),
     );
     output[5] = fdct_round_shift(
-        i64::from(x1) * i64::from(AV2_COSPI_12_64)
-            + i64::from(x2) * i64::from(AV2_COSPI_20_64),
+        i64::from(x1) * i64::from(AV2_COSPI_12_64) + i64::from(x2) * i64::from(AV2_COSPI_20_64),
     );
     output[7] = fdct_round_shift(
-        i64::from(x3) * i64::from(AV2_COSPI_28_64)
-            - i64::from(x0) * i64::from(AV2_COSPI_4_64),
+        i64::from(x3) * i64::from(AV2_COSPI_28_64) - i64::from(x0) * i64::from(AV2_COSPI_4_64),
     );
 }
 
@@ -653,17 +585,19 @@ fn av2_idct4x4(input: &[i32; TX4X4_SAMPLES], bit_depth: SampleBitDepth) -> [i32;
 // A DC-only transform produces a constant block.  Keep the two rounded and
 // clipped stages identical to av2_idct4x4(), but avoid running the full
 // separable transform when the regular-DCT candidate has no AC coefficients.
-fn av2_idct4x4_dc_only(input: &[i32; TX4X4_SAMPLES], bit_depth: SampleBitDepth) -> [i32; TX4X4_SAMPLES] {
+fn av2_idct4x4_dc_only(
+    input: &[i32; TX4X4_SAMPLES],
+    bit_depth: SampleBitDepth,
+) -> [i32; TX4X4_SAMPLES] {
     debug_assert!(input[1..].iter().all(|&coefficient| coefficient == 0));
     let intermediate_bitdepth = i32::from(bit_depth.bits()) + 8;
     let rng_min = -(1 << (intermediate_bitdepth - 1));
     let rng_max = (1 << (intermediate_bitdepth - 1)) - 1;
     let col_rng_min = -(1 << bit_depth.bits());
     let col_rng_max = (1 << bit_depth.bits()) - 1;
-    let first_stage = ((AV2_DCT4_KERNEL[0][0] * input[0] + (1 << 6)) >> 7)
-        .clamp(rng_min, rng_max);
-    let sample = ((AV2_DCT4_KERNEL[0][0] * first_stage + (1 << 9)) >> 10)
-        .clamp(col_rng_min, col_rng_max);
+    let first_stage = ((AV2_DCT4_KERNEL[0][0] * input[0] + (1 << 6)) >> 7).clamp(rng_min, rng_max);
+    let sample =
+        ((AV2_DCT4_KERNEL[0][0] * first_stage + (1 << 9)) >> 10).clamp(col_rng_min, col_rng_max);
     [sample; TX4X4_SAMPLES]
 }
 
@@ -685,17 +619,19 @@ fn av2_idct8x8(input: &[i32; TX8X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32;
 
 // The 8x8 DC-only inverse has the same separable structure as the full
 // inverse, but only the first horizontal and vertical outputs can be nonzero.
-fn av2_idct8x8_dc_only(input: &[i32; TX8X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32; TX8X8_SAMPLES] {
+fn av2_idct8x8_dc_only(
+    input: &[i32; TX8X8_SAMPLES],
+    bit_depth: SampleBitDepth,
+) -> [i32; TX8X8_SAMPLES] {
     debug_assert!(input[1..].iter().all(|&coefficient| coefficient == 0));
     let intermediate_bitdepth = i32::from(bit_depth.bits()) + 8;
     let rng_min = -(1 << (intermediate_bitdepth - 1));
     let rng_max = (1 << (intermediate_bitdepth - 1)) - 1;
     let col_rng_min = -(1 << bit_depth.bits());
     let col_rng_max = (1 << bit_depth.bits()) - 1;
-    let first_stage = ((AV2_DCT8_KERNEL[0][0] * input[0] + (1 << 6)) >> 7)
-        .clamp(rng_min, rng_max);
-    let sample = ((AV2_DCT8_KERNEL[0][0] * first_stage + (1 << 10)) >> 11)
-        .clamp(col_rng_min, col_rng_max);
+    let first_stage = ((AV2_DCT8_KERNEL[0][0] * input[0] + (1 << 6)) >> 7).clamp(rng_min, rng_max);
+    let sample =
+        ((AV2_DCT8_KERNEL[0][0] * first_stage + (1 << 10)) >> 11).clamp(col_rng_min, col_rng_max);
     [sample; TX8X8_SAMPLES]
 }
 
@@ -749,12 +685,7 @@ fn av2_idct4x8(input: &[i32; TX4X8_SAMPLES], bit_depth: SampleBitDepth) -> [i32;
     output
 }
 
-fn inv_dct4_shifted(
-    input: &[i32; TX4X4_SIZE],
-    shift: u8,
-    min: i32,
-    max: i32,
-) -> [i32; TX4X4_SIZE] {
+fn inv_dct4_shifted(input: &[i32; TX4X4_SIZE], shift: u8, min: i32, max: i32) -> [i32; TX4X4_SIZE] {
     let add = 1 << (shift - 1);
     let b0 = AV2_DCT4_KERNEL[1][0] * input[1] + AV2_DCT4_KERNEL[3][0] * input[3];
     let b1 = AV2_DCT4_KERNEL[1][1] * input[1] + AV2_DCT4_KERNEL[3][1] * input[3];
@@ -768,12 +699,7 @@ fn inv_dct4_shifted(
     ]
 }
 
-fn inv_dct8_shifted(
-    input: &[i32; TX8X8_SIZE],
-    shift: u8,
-    min: i32,
-    max: i32,
-) -> [i32; TX8X8_SIZE] {
+fn inv_dct8_shifted(input: &[i32; TX8X8_SIZE], shift: u8, min: i32, max: i32) -> [i32; TX8X8_SIZE] {
     let add = 1 << (shift - 1);
     let mut b = [0i32; 4];
     for k in 0..4 {
@@ -824,26 +750,26 @@ fn inv_dct8_pass(
         let a = [c0 + d0, c1 + d1, c1 - d1, c0 - d0];
         for k in 0..4 {
             output[k * line + j] = ((a[k] + b[k] + add) >> shift).clamp(min, max);
-            output[(k + 4) * line + j] =
-                ((a[3 - k] - b[3 - k] + add) >> shift).clamp(min, max);
+            output[(k + 4) * line + j] = ((a[3 - k] - b[3 - k] + add) >> shift).clamp(min, max);
         }
     }
     output
 }
 
-fn inv_dct4_pass(input: &[i32; TX4X4_SAMPLES], shift: u8, min: i32, max: i32) -> [i32; TX4X4_SAMPLES] {
+fn inv_dct4_pass(
+    input: &[i32; TX4X4_SAMPLES],
+    shift: u8,
+    min: i32,
+    max: i32,
+) -> [i32; TX4X4_SAMPLES] {
     let mut output = [0i32; TX4X4_SAMPLES];
     let add = 1 << (shift - 1);
     for j in 0..TX4X4_SIZE {
         let src = j * TX4X4_SIZE;
-        let b0 = AV2_DCT4_KERNEL[1][0] * input[src + 1]
-            + AV2_DCT4_KERNEL[3][0] * input[src + 3];
-        let b1 = AV2_DCT4_KERNEL[1][1] * input[src + 1]
-            + AV2_DCT4_KERNEL[3][1] * input[src + 3];
-        let a0 = AV2_DCT4_KERNEL[0][0] * input[src]
-            + AV2_DCT4_KERNEL[2][0] * input[src + 2];
-        let a1 = AV2_DCT4_KERNEL[0][1] * input[src]
-            + AV2_DCT4_KERNEL[2][1] * input[src + 2];
+        let b0 = AV2_DCT4_KERNEL[1][0] * input[src + 1] + AV2_DCT4_KERNEL[3][0] * input[src + 3];
+        let b1 = AV2_DCT4_KERNEL[1][1] * input[src + 1] + AV2_DCT4_KERNEL[3][1] * input[src + 3];
+        let a0 = AV2_DCT4_KERNEL[0][0] * input[src] + AV2_DCT4_KERNEL[2][0] * input[src + 2];
+        let a1 = AV2_DCT4_KERNEL[0][1] * input[src] + AV2_DCT4_KERNEL[2][1] * input[src + 2];
         output[j] = ((a0 + b0 + add) >> shift).clamp(min, max);
         output[TX4X4_SIZE + j] = ((a1 + b1 + add) >> shift).clamp(min, max);
         output[2 * TX4X4_SIZE + j] = ((a1 - b1 + add) >> shift).clamp(min, max);
@@ -878,15 +804,78 @@ pub(crate) fn bench_transform_quant_roundtrip_checksum(
             .chain(dqcoeff.iter())
             .chain(recon.iter())
         {
-            checksum = checksum.rotate_left(5) ^ (*value as i64 as u64).wrapping_mul(0x100_0000_01b3);
+            checksum =
+                checksum.rotate_left(5) ^ (*value as i64 as u64).wrapping_mul(0x100_0000_01b3);
         }
     }
     checksum
 }
 
 #[cfg(test)]
-mod dc_only_tests {
+mod transform_tests {
     use super::*;
+
+    fn expected_regular_quantization<const SAMPLES: usize>(
+        coefficients: &[i32; SAMPLES],
+        params: Av2RegularQuantParams,
+    ) -> ([i32; SAMPLES], [i32; SAMPLES]) {
+        let mut qcoeff = [0; SAMPLES];
+        for pos in 0..SAMPLES {
+            qcoeff[pos] = av2_regular_quantize_coefficient(coefficients[pos], params, pos != 0);
+        }
+        let dqcoeff = av2_regular_dequantize(&qcoeff, params.dequant);
+        (qcoeff, dqcoeff)
+    }
+
+    fn expected_quantized_levels<const SAMPLES: usize>(qcoeff: &[i32; SAMPLES]) -> [i32; SAMPLES] {
+        let mut coefficients = [0; SAMPLES];
+        for (dst, &level) in coefficients.iter_mut().zip(qcoeff) {
+            *dst = level * 8;
+        }
+        coefficients
+    }
+
+    #[test]
+    fn regular_quantization_contract_matches_all_transform_sizes() {
+        let bit_depth = SampleBitDepth::new(10).unwrap();
+        let params = Av2RegularQuantParams::new(91, bit_depth);
+
+        let coefficients_4x4: [i32; TX4X4_SAMPLES] =
+            std::array::from_fn(|pos| pos as i32 * 97 - 511);
+        let expected_4x4 = expected_regular_quantization(&coefficients_4x4, params);
+        assert_eq!(
+            av2_regular_quantize_with_params(&coefficients_4x4, params),
+            expected_4x4
+        );
+        assert_eq!(
+            av2_regular_quantized_level_coefficients(&expected_4x4.0),
+            expected_quantized_levels(&expected_4x4.0)
+        );
+
+        let coefficients_8x8: [i32; TX8X8_SAMPLES] =
+            std::array::from_fn(|pos| pos as i32 * 43 - 997);
+        let expected_8x8 = expected_regular_quantization(&coefficients_8x8, params);
+        assert_eq!(
+            av2_regular_quantize_with_params(&coefficients_8x8, params),
+            expected_8x8
+        );
+        assert_eq!(
+            av2_regular_quantized_level_coefficients(&expected_8x8.0),
+            expected_quantized_levels(&expected_8x8.0)
+        );
+
+        let coefficients_4x8: [i32; TX4X8_SAMPLES] =
+            std::array::from_fn(|pos| pos as i32 * 61 - 733);
+        let expected_4x8 = expected_regular_quantization(&coefficients_4x8, params);
+        assert_eq!(
+            av2_regular_quantize_with_params(&coefficients_4x8, params),
+            expected_4x8
+        );
+        assert_eq!(
+            av2_regular_quantized_level_coefficients(&expected_4x8.0),
+            expected_quantized_levels(&expected_4x8.0)
+        );
+    }
 
     #[test]
     fn dc_only_inverse_matches_full_inverse() {

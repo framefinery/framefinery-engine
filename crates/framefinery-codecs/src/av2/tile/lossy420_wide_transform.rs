@@ -14,17 +14,14 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         }
         let coefficients = av2_fdct8x8(&analysis.residual);
         let (qcoeff, dqcoeff) =
-            av2_regular_quantize_dct8x8_with_params(&coefficients, self.regular_quant_params);
-        let residual = if dqcoeff[1..]
-            .iter()
-            .all(|&coefficient| coefficient == 0)
-        {
+            av2_regular_quantize_with_params(&coefficients, self.regular_quant_params);
+        let residual = if dqcoeff[1..].iter().all(|&coefficient| coefficient == 0) {
             av2_idct8x8_dc_only(&dqcoeff, self.bit_depth)
         } else {
             av2_idct8x8(&dqcoeff, self.bit_depth)
         };
         Av2LossyTx8x8QuantizedResidualCandidate {
-            coefficients: av2_regular_quantized_level_coefficients_tx8x8(&qcoeff),
+            coefficients: av2_regular_quantized_level_coefficients(&qcoeff),
             residual,
         }
     }
@@ -52,9 +49,9 @@ impl<'a> Av2LossySubsampledTileState<'a> {
         }
         let coefficients = av2_fdct4x8(&residual);
         let (qcoeff, dqcoeff) =
-            av2_regular_quantize_dct4x8_with_params(&coefficients, self.regular_quant_params);
+            av2_regular_quantize_with_params(&coefficients, self.regular_quant_params);
         Av2LossyTx4x8QuantizedResidualCandidate {
-            coefficients: av2_regular_quantized_level_coefficients_tx4x8(&qcoeff),
+            coefficients: av2_regular_quantized_level_coefficients(&qcoeff),
             residual: av2_idct4x8(&dqcoeff, self.bit_depth),
         }
     }
