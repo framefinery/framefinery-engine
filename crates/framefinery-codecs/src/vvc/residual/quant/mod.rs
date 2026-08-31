@@ -1,4 +1,5 @@
 include!("types.rs");
+include!("luma_tu_metadata.rs");
 include!("ctu.rs");
 include!("ctu_mode_selection.rs");
 include!("mode_selection_helpers.rs");

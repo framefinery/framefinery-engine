@@ -1,4 +1,5 @@
 use super::*;
+use crate::vvc::VvcLumaIbcDecision;
 
 fn sampled_luma_frame(width: usize, height: usize, luma: Vec<VvcSample>) -> VvcSampledFrame {
     assert_eq!(luma.len(), width * height);
@@ -150,6 +151,70 @@ fn vvc_chroma_intra_search_promotes_only_strict_winners_and_records_ties() {
             (cclm, 80),
         ]
     );
+}
+
+#[test]
+fn vvc_luma_tu_metadata_records_each_exit_without_cross_talk() {
+    let mut metadata = VvcLumaTuMetadata::new();
+    let scc_decision = VvcLumaSccDecision::IbcExact(VvcLumaIbcDecision {
+        mvd_x: -8,
+        mvd_y: 4,
+        pred_mode_ibc_ctx: 2,
+    });
+    metadata.record_scc_decision(0, scc_decision);
+    metadata.record_mode_hint(
+        1,
+        VvcIntraPredictionMode::Angular(23),
+        VvcBdpcmMode::Vertical,
+    );
+
+    let mut ac_levels = [0; VVC_LUMA_AC_COEFFS_PER_TU];
+    ac_levels[0] = -7;
+    ac_levels[VVC_LUMA_AC_COEFFS_PER_TU - 1] = 11;
+    let finalized = VvcFinalizedLumaTu {
+        abs_remainder: 4,
+        negative: true,
+        dc_level: -4,
+        ac_levels,
+        has_ac: true,
+        transform_skip: true,
+        bdpcm_mode: VvcBdpcmMode::Horizontal,
+        mrl_index: 2,
+        mts_index: 3,
+    };
+    metadata.record_finalized(2, VvcIntraPredictionMode::Planar, finalized);
+
+    assert_eq!(metadata.scc_decision(0), Some(scc_decision));
+    assert_eq!(
+        metadata.luma_tu_scc_decisions[1],
+        VvcLumaSccDecision::RegularIntra
+    );
+    assert_eq!(
+        metadata.luma_tu_intra_modes[1],
+        VvcIntraPredictionMode::Angular(23)
+    );
+    assert_eq!(metadata.luma_tu_bdpcm_modes[1], VvcBdpcmMode::Vertical);
+    assert_eq!(metadata.luma_tu_remainders[1], 0);
+    assert_eq!(metadata.luma_tu_dc_levels[1], 0);
+    assert!(!metadata.luma_tu_has_ac[1]);
+
+    assert_eq!(
+        metadata.luma_tu_intra_modes[2],
+        VvcIntraPredictionMode::Planar
+    );
+    assert_eq!(metadata.luma_tu_remainders[2], finalized.abs_remainder);
+    assert_eq!(metadata.luma_tu_negative[2], finalized.negative);
+    assert_eq!(metadata.luma_tu_dc_levels[2], finalized.dc_level);
+    assert_eq!(metadata.luma_tu_ac_levels[2], finalized.ac_levels);
+    assert_eq!(metadata.luma_tu_has_ac[2], finalized.has_ac);
+    assert_eq!(metadata.luma_tu_transform_skip[2], finalized.transform_skip);
+    assert_eq!(metadata.luma_tu_bdpcm_modes[2], finalized.bdpcm_mode);
+    assert_eq!(metadata.luma_tu_mrl_index[2], finalized.mrl_index);
+    assert_eq!(metadata.luma_tu_mts_index[2], finalized.mts_index);
+
+    assert_eq!(metadata.luma_tu_intra_modes[3], VvcIntraPredictionMode::Dc);
+    assert_eq!(metadata.luma_tu_remainders[3], 0);
+    assert_eq!(metadata.luma_tu_bdpcm_modes[3], VvcBdpcmMode::None);
 }
 
 #[test]

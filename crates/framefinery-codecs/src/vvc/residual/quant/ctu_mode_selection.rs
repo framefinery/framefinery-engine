@@ -17,17 +17,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     selected_luma_inter_decisions: Option<&mut [Option<VvcLumaInterDecision>; MAX_VVC_LUMA_TUS]>,
     temporal_mode_hints: Option<&VvcQuantizedColor>,
 ) -> VvcQuantizedColor {
-    let mut luma_tu_remainders = [0; MAX_VVC_LUMA_TUS];
-    let mut luma_tu_negative = [false; MAX_VVC_LUMA_TUS];
-    let mut luma_tu_dc_levels = [0; MAX_VVC_LUMA_TUS];
-    let mut luma_tu_intra_modes = [VvcIntraPredictionMode::Dc; MAX_VVC_LUMA_TUS];
-    let mut luma_tu_ac_levels = [[0; VVC_LUMA_AC_COEFFS_PER_TU]; MAX_VVC_LUMA_TUS];
-    let mut luma_tu_has_ac = [false; MAX_VVC_LUMA_TUS];
-    let mut luma_tu_scc_decisions = [VvcLumaSccDecision::RegularIntra; MAX_VVC_LUMA_TUS];
-    let mut luma_tu_transform_skip = [false; MAX_VVC_LUMA_TUS];
-    let mut luma_tu_bdpcm_modes = [VvcBdpcmMode::None; MAX_VVC_LUMA_TUS];
-    let mut luma_tu_mrl_index = [0; MAX_VVC_LUMA_TUS];
-    let mut luma_tu_mts_index = [0; MAX_VVC_LUMA_TUS];
+    let mut luma_tu_metadata = VvcLumaTuMetadata::new();
     let mut cb_tu_dc_levels = [0; MAX_VVC_CHROMA_TUS];
     let mut cr_tu_dc_levels = [0; MAX_VVC_CHROMA_TUS];
     let mut cb_tu_ac_levels = [[0; VVC_CHROMA_AC_COEFFS_PER_TU]; MAX_VVC_CHROMA_TUS];
@@ -122,7 +112,8 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 && node.height == 8
                 && frame_recon.copy_ibc_444_8x8(decision)
             {
-                luma_tu_scc_decisions[luma_tu_count] = decision.into_luma_scc_decision();
+                luma_tu_metadata
+                    .record_scc_decision(luma_tu_count, decision.into_luma_scc_decision());
                 luma_tu_count += 1;
                 continue;
             }
@@ -139,8 +130,11 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 policy,
                 node,
             ) {
-                luma_tu_intra_modes[luma_tu_count] = hint.mode;
-                luma_tu_bdpcm_modes[luma_tu_count] = hint.bdpcm_mode;
+                luma_tu_metadata.record_mode_hint(
+                    luma_tu_count,
+                    hint.mode,
+                    hint.bdpcm_mode,
+                );
                 luma_mode_search_state.mark_node(node, hint.mode);
             }
             copy_source_luma_node_into_reconstruction(frame_recon, source_frame, node);
@@ -179,7 +173,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 #[cfg(feature = "vvc-stats")]
                 intra_search_stats
                     .add_luma_finalize_nanos(luma_finalize_start.elapsed().as_nanos() as u64);
-                luma_tu_intra_modes[luma_tu_count] = luma_mode;
                 luma_mode_search_state.mark_node(node, luma_mode);
                 #[cfg(feature = "vvc-stats")]
                 residual_energy_stats.add_luma_residuals(
@@ -187,15 +180,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                     usize::from(node.width),
                     usize::from(node.height),
                 );
-                luma_tu_remainders[luma_tu_count] = luma_tu.abs_remainder;
-                luma_tu_negative[luma_tu_count] = luma_tu.negative;
-                luma_tu_dc_levels[luma_tu_count] = luma_tu.dc_level;
-                luma_tu_ac_levels[luma_tu_count] = luma_tu.ac_levels;
-                luma_tu_has_ac[luma_tu_count] = luma_tu.has_ac;
-                luma_tu_transform_skip[luma_tu_count] = luma_tu.transform_skip;
-                luma_tu_bdpcm_modes[luma_tu_count] = luma_tu.bdpcm_mode;
-                luma_tu_mrl_index[luma_tu_count] = luma_tu.mrl_index;
-                luma_tu_mts_index[luma_tu_count] = luma_tu.mts_index;
+                luma_tu_metadata.record_finalized(luma_tu_count, luma_mode, luma_tu);
                 #[cfg(feature = "vvc-stats")]
                 write_vvc_luma_tu_trace(
                     tu_trace_sink.as_mut(),
@@ -238,22 +223,13 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                     intra_search_stats
                         .add_luma_finalize_nanos(luma_finalize_start.elapsed().as_nanos() as u64);
                     let luma_mode = VvcIntraPredictionMode::Dc;
-                    luma_tu_intra_modes[luma_tu_count] = luma_mode;
                     #[cfg(feature = "vvc-stats")]
                     residual_energy_stats.add_luma_residuals(
                         &candidate_luma_residuals,
                         usize::from(node.width),
                         usize::from(node.height),
                     );
-                    luma_tu_remainders[luma_tu_count] = luma_tu.abs_remainder;
-                    luma_tu_negative[luma_tu_count] = luma_tu.negative;
-                    luma_tu_dc_levels[luma_tu_count] = luma_tu.dc_level;
-                    luma_tu_ac_levels[luma_tu_count] = luma_tu.ac_levels;
-                    luma_tu_has_ac[luma_tu_count] = luma_tu.has_ac;
-                    luma_tu_transform_skip[luma_tu_count] = luma_tu.transform_skip;
-                    luma_tu_bdpcm_modes[luma_tu_count] = luma_tu.bdpcm_mode;
-                    luma_tu_mrl_index[luma_tu_count] = luma_tu.mrl_index;
-                    luma_tu_mts_index[luma_tu_count] = luma_tu.mts_index;
+                    luma_tu_metadata.record_finalized(luma_tu_count, luma_mode, luma_tu);
                     applied_luma_inter_decisions[luma_tu_count] = Some(decision);
                     #[cfg(feature = "vvc-stats")]
                     write_vvc_luma_tu_trace(
@@ -611,7 +587,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 }
             }
         }
-        luma_tu_intra_modes[luma_tu_count] = luma_mode;
         if selected_luma_inter_decision.is_none() {
             luma_mode_search_state.mark_node(node, luma_mode);
         }
@@ -640,15 +615,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         );
         #[cfg(feature = "vvc-stats")]
         intra_search_stats.add_luma_finalize_nanos(luma_finalize_start.elapsed().as_nanos() as u64);
-        luma_tu_remainders[luma_tu_count] = luma_tu.abs_remainder;
-        luma_tu_negative[luma_tu_count] = luma_tu.negative;
-        luma_tu_dc_levels[luma_tu_count] = luma_tu.dc_level;
-        luma_tu_ac_levels[luma_tu_count] = luma_tu.ac_levels;
-        luma_tu_has_ac[luma_tu_count] = luma_tu.has_ac;
-        luma_tu_transform_skip[luma_tu_count] = luma_tu.transform_skip;
-        luma_tu_bdpcm_modes[luma_tu_count] = luma_tu.bdpcm_mode;
-        luma_tu_mrl_index[luma_tu_count] = luma_tu.mrl_index;
-        luma_tu_mts_index[luma_tu_count] = luma_tu.mts_index;
+        luma_tu_metadata.record_finalized(luma_tu_count, luma_mode, luma_tu);
         applied_luma_inter_decisions[luma_tu_count] = selected_luma_inter_decision;
         #[cfg(feature = "vvc-stats")]
         write_vvc_luma_tu_trace(
@@ -678,7 +645,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         let node = vvc_global_ctu_node(local_node, region);
         if !ctu_shape.dual_tree_intra
             && matches!(
-                luma_tu_scc_decisions.get(chroma_tu_count),
+                luma_tu_metadata.scc_decision(chroma_tu_count),
                 Some(VvcLumaSccDecision::IbcExact(_))
             )
         {
@@ -1256,6 +1223,19 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         color.v,
         source_frame.format.bit_depth,
     ));
+    let VvcLumaTuMetadata {
+        luma_tu_intra_modes,
+        luma_tu_remainders,
+        luma_tu_negative,
+        luma_tu_dc_levels,
+        luma_tu_ac_levels,
+        luma_tu_has_ac,
+        luma_tu_scc_decisions,
+        luma_tu_transform_skip,
+        luma_tu_bdpcm_modes,
+        luma_tu_mrl_index,
+        luma_tu_mts_index,
+    } = luma_tu_metadata;
     let quantized = VvcQuantizedColor {
         y: vvc_downshift_sample_to_u8(color.y, source_frame.format.bit_depth),
         u: finalized_vvc_chroma_sample(
