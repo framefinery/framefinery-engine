@@ -62,15 +62,7 @@ fn expected_chroma_nz_map_context(
     plane: Av2ChromaPlane,
 ) -> usize {
     if is_eob_coefficient {
-        return if scan_index == 0 {
-            0
-        } else if scan_index <= levels.len() / 8 {
-            1
-        } else if scan_index <= levels.len() / 4 {
-            2
-        } else {
-            3
-        };
+        return expected_eob_context(scan_index, levels.len());
     }
 
     let neighbour_limit = if pos == 0 { 5 } else { 3 };
@@ -83,6 +75,18 @@ fn expected_chroma_nz_map_context(
             Av2ChromaPlane::U => 0,
             Av2ChromaPlane::V => 4,
         }
+}
+
+fn expected_eob_context(scan_index: usize, samples: usize) -> usize {
+    if scan_index == 0 {
+        0
+    } else if scan_index <= samples / 8 {
+        1
+    } else if scan_index <= samples / 4 {
+        2
+    } else {
+        3
+    }
 }
 
 fn expected_chroma_br_context(levels: &[u32], width: usize, height: usize, pos: usize) -> usize {
@@ -141,4 +145,130 @@ fn chroma_contexts_preserve_all_geometry_and_plane_formulas() {
         TX4X8_WIDTH,
         TX4X8_HEIGHT,
     );
+}
+
+fn expected_luma_lower_levels_context(
+    levels: &[u32; TX4X4_SAMPLES],
+    pos: usize,
+    low_frequency: bool,
+) -> usize {
+    if !low_frequency && pos == 0 {
+        return 0;
+    }
+
+    let neighbour_limit = if low_frequency { 5 } else { 3 };
+    let magnitude = expected_level_at(levels, TX4X4_SIZE, TX4X4_SIZE, pos, 0, 1)
+        .min(neighbour_limit)
+        + expected_level_at(levels, TX4X4_SIZE, TX4X4_SIZE, pos, 1, 0).min(neighbour_limit)
+        + expected_level_at(levels, TX4X4_SIZE, TX4X4_SIZE, pos, 1, 1).min(neighbour_limit)
+        + expected_level_at(levels, TX4X4_SIZE, TX4X4_SIZE, pos, 0, 2).min(neighbour_limit)
+        + expected_level_at(levels, TX4X4_SIZE, TX4X4_SIZE, pos, 2, 0).min(neighbour_limit);
+    let row_col_sum = pos / TX4X4_SIZE + pos % TX4X4_SIZE;
+    let context = (magnitude + 1) >> 1;
+
+    if low_frequency {
+        if pos == 0 {
+            context.min(8) as usize
+        } else if row_col_sum < 2 {
+            context.min(6) as usize + 9
+        } else {
+            context.min(4) as usize + 16
+        }
+    } else {
+        let context = context.min(4) as usize;
+        if row_col_sum < 6 {
+            context
+        } else if row_col_sum < 8 {
+            context + 5
+        } else {
+            context + 10
+        }
+    }
+}
+
+fn expected_luma_nz_map_context(
+    levels: &[u32; TX4X4_SAMPLES],
+    pos: usize,
+    scan_index: usize,
+    is_eob_coefficient: bool,
+) -> usize {
+    if is_eob_coefficient {
+        return expected_eob_context(scan_index, TX4X4_SAMPLES);
+    }
+    let low_frequency = pos / TX4X4_SIZE + pos % TX4X4_SIZE < 4;
+    expected_luma_lower_levels_context(levels, pos, low_frequency)
+}
+
+fn expected_luma_br_context(
+    levels: &[u32; TX4X4_SAMPLES],
+    pos: usize,
+    low_frequency: bool,
+) -> usize {
+    let magnitude = expected_level_at(levels, TX4X4_SIZE, TX4X4_SIZE, pos, 0, 1).min(5)
+        + expected_level_at(levels, TX4X4_SIZE, TX4X4_SIZE, pos, 1, 0).min(5)
+        + expected_level_at(levels, TX4X4_SIZE, TX4X4_SIZE, pos, 1, 1).min(5);
+    let context = ((magnitude + 1) >> 1).min(6) as usize;
+    if low_frequency && pos != 0 {
+        context + 7
+    } else {
+        context
+    }
+}
+
+fn assert_luma_contexts_for_levels(levels: &[u32; TX4X4_SAMPLES]) {
+    for pos in 0..TX4X4_SAMPLES {
+        assert_eq!(
+            luma_lower_levels_context(levels, pos, true),
+            expected_luma_lower_levels_context(levels, pos, true),
+            "LF lower-level context mismatch: pos={pos}, levels={levels:?}"
+        );
+        assert_eq!(
+            luma_lower_levels_context(levels, pos, false),
+            expected_luma_lower_levels_context(levels, pos, false),
+            "non-LF lower-level context mismatch: pos={pos}, levels={levels:?}"
+        );
+        assert_eq!(
+            luma_br_context(levels, pos, true),
+            expected_luma_br_context(levels, pos, true),
+            "LF BR context mismatch: pos={pos}, levels={levels:?}"
+        );
+        assert_eq!(
+            luma_br_context(levels, pos, false),
+            expected_luma_br_context(levels, pos, false),
+            "non-LF BR context mismatch: pos={pos}, levels={levels:?}"
+        );
+        for scan_index in 0..TX4X4_SAMPLES {
+            for is_eob_coefficient in [false, true] {
+                assert_eq!(
+                    luma_nz_map_context(levels, pos, scan_index, is_eob_coefficient),
+                    expected_luma_nz_map_context(
+                        levels,
+                        pos,
+                        scan_index,
+                        is_eob_coefficient,
+                    ),
+                    "luma NZ-map mismatch: pos={pos}, scan={scan_index}, eob={is_eob_coefficient}, levels={levels:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn luma_contexts_preserve_lf_non_lf_and_clamping_formulas() {
+    for levels in [
+        [0; TX4X4_SAMPLES],
+        core::array::from_fn(|index| (index % 7) as u32),
+        core::array::from_fn(|index| ((index * 71 + 17) % 211) as u32),
+    ] {
+        assert_luma_contexts_for_levels(&levels);
+    }
+
+    for source_pos in 0..TX4X4_SAMPLES {
+        for level in [1, 2, 3, 4, 5, 6, 7, 126, 127, 128, 211] {
+            let mut levels = [0; TX4X4_SAMPLES];
+            levels[source_pos] = level;
+            assert_luma_contexts_for_levels(&levels);
+        }
+    }
 }

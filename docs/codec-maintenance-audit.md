@@ -549,6 +549,12 @@ The following changes were behavior-preserving and independently validated:
   its geometry sampler. A focused 144-line test independently and exhaustively
   covers every coefficient position, edge delta, plane, scan index, and EOB
   state for all three geometries.
+- AV2 luma LF/non-LF lower-level and base-range contexts now share one
+  neighbour-magnitude implementation. The frequency gate supplies only the
+  legal clamp, bucket, and context-offset policy at the context-selection
+  boundary. The coefficient-context contract is now 274 lines and also covers
+  every luma position, scan/EOB state, both frequency policies, sparse
+  neighbours, mixed levels, and the 127-level clamp boundary.
 
 All of these remain included in their original parent module scope, so the
 split does not create an alternate coding path or change name resolution.
@@ -562,7 +568,7 @@ current call graph rather than by line count alone:
 | --- | ---: | --- |
 | VVC CABAC CTU generation | approximately 2,616 lines after removing disabled leaf-skip syntax | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 511-line parent with constants, shared luma/chroma dispatch, nested scratch ownership, and focused tests; 322/324-line CCLM derivation/sampling siblings plus a 260-line block/pair orchestrator; 205-line reference-edge, 129-line DC/planar, 209-line angular-orchestration, 187-line BDPCM, and focused reconstruction siblings | DC/planar/angular share one region-based two-edge preparation path, while BDPCM retains direction-gated single-edge collection; remaining review should focus on prediction/output buffer ownership rather than re-splitting mode dispatch |
-| AV2 tile transform syntax helpers | 247-line transform parent with focused 182-line quantization, 239-line forward-DCT, and 278-line inverse-DCT siblings; plus 612-line coefficient syntax, 107-line shared high-range policy/emission, 228-line rate proxy with focused contracts, 336-line chroma, 228-line context with a 144-line geometry/context contract sibling, and 677-line low-level writer siblings | transform, regular-quantization, inverse clipping/DC-only, rolling high-range score/emission, coefficient-neighbour sampling, and all chroma context formulas have explicit shared ownership, while skip-field name/CDF/key selection is paired behind one symbol emitter; remaining luma context formulas should be changed only after syntax-by-syntax equivalence review |
+| AV2 tile transform syntax helpers | 247-line transform parent with focused 182-line quantization, 239-line forward-DCT, and 278-line inverse-DCT siblings; plus 612-line coefficient syntax, 107-line shared high-range policy/emission, 228-line rate proxy with focused contracts, 336-line chroma, 232-line context with a 274-line geometry/context contract sibling, and 677-line low-level writer siblings | transform, regular-quantization, inverse clipping/DC-only, rolling high-range score/emission, coefficient-neighbour sampling, and luma/chroma context formulas have explicit shared ownership, while skip-field name/CDF/key selection is paired behind one symbol emitter; remaining identity-transform context helpers should be changed only after syntax-by-syntax equivalence review |
 | VVC residual quantization | 486-line CTU helper, 163-line CTU orchestrator plus a 10-line shared immutable context, focused 175/210-line luma/chroma passes, and a 107-line result assembler; 404/286-line luma/chroma TU selection orchestration plus a 119-line chroma temporal helper; 275/443-line search helpers; a 408-line luma mode helper; 325/440/290-line chroma mode/BDPCM/RD helpers; 612/422-line luma/chroma residual search plus focused 232/286-line TU finalizers; and 388/271-line transform-skip finalization/reconstruction siblings with a focused 53-line BDPCM level state | top-level traversal, shared immutable setup, transient sample-buffer lifecycle, accepted zero-residual representation, component TU finalization, transform-skip reconstruction ownership, and BDPCM predecessor semantics are explicit; remaining work should inspect lower selectors and unify only genuinely identical component primitives without hiding mode legality, syntax, or reconstruction contracts |
 
 For the next functional cleanup, prefer extracting a small shared helper with

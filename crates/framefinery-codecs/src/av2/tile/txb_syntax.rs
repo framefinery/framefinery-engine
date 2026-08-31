@@ -544,8 +544,8 @@ fn write_luma_low_range(
     lf: bool,
     base_range: u32,
 ) {
+    let br_ctx = luma_br_context(levels, pos, lf);
     if lf {
-        let br_ctx = luma_br_lf_context(levels, pos);
         let mut cdf = DEFAULT_COEFF_BR_LF_Y_CDFS[br_ctx];
         writer.write_symbol_with_static_cdf_key(
             "tile.coeff.y.low_range_lf",
@@ -556,7 +556,6 @@ fn write_luma_low_range(
             false,
         );
     } else {
-        let br_ctx = luma_br_context(levels, pos);
         let mut cdf = DEFAULT_COEFF_BR_Y_CDFS[br_ctx];
         writer.write_symbol_with_static_cdf_key(
             "tile.coeff.y.low_range",

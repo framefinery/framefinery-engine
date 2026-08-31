@@ -24,10 +24,7 @@ fn luma_nz_map_context(
     if is_eob_coefficient {
         return get_lower_levels_ctx_eob(scan_index);
     }
-    if luma_lf_limits(pos) {
-        return luma_lower_levels_lf_context(levels, pos);
-    }
-    luma_lower_levels_context(levels, pos)
+    luma_lower_levels_context(levels, pos, luma_lf_limits(pos))
 }
 
 fn get_lower_levels_ctx_eob(scan_index: usize) -> usize {
@@ -46,42 +43,38 @@ fn get_lower_levels_ctx_eob_for_txb(scan_index: usize, samples: usize) -> usize 
     }
 }
 
-fn luma_lower_levels_lf_context(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> usize {
-    let mag = tx4x4_level_at(levels, pos, 0, 1).min(5)
-        + tx4x4_level_at(levels, pos, 1, 0).min(5)
-        + tx4x4_level_at(levels, pos, 1, 1).min(5)
-        + tx4x4_level_at(levels, pos, 0, 2).min(5)
-        + tx4x4_level_at(levels, pos, 2, 0).min(5);
+fn luma_lower_levels_context(
+    levels: &[u32; TX4X4_SAMPLES],
+    pos: usize,
+    low_frequency: bool,
+) -> usize {
+    if !low_frequency && pos == 0 {
+        return 0;
+    }
+
+    let neighbour_limit = if low_frequency { 5 } else { 3 };
+    let mag = luma_lower_levels_neighbour_magnitude(levels, pos, neighbour_limit);
     let row = pos / TX4X4_SIZE;
     let col = pos % TX4X4_SIZE;
     let ctx = (mag + 1) >> 1;
-    if pos == 0 {
-        return ctx.min(8) as usize;
-    }
-    if row + col < 2 {
-        return ctx.min(6) as usize + 9;
-    }
-    ctx.min(4) as usize + 16
-}
 
-fn luma_lower_levels_context(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> usize {
-    if pos == 0 {
-        return 0;
-    }
-    let mag = tx4x4_level_at(levels, pos, 0, 1).min(3)
-        + tx4x4_level_at(levels, pos, 1, 0).min(3)
-        + tx4x4_level_at(levels, pos, 1, 1).min(3)
-        + tx4x4_level_at(levels, pos, 0, 2).min(3)
-        + tx4x4_level_at(levels, pos, 2, 0).min(3);
-    let row = pos / TX4X4_SIZE;
-    let col = pos % TX4X4_SIZE;
-    let ctx = ((mag + 1) >> 1).min(4) as usize;
-    if row + col < 6 {
-        ctx
-    } else if row + col < 8 {
-        ctx + 5
+    if low_frequency {
+        if pos == 0 {
+            ctx.min(8) as usize
+        } else if row + col < 2 {
+            ctx.min(6) as usize + 9
+        } else {
+            ctx.min(4) as usize + 16
+        }
     } else {
-        ctx + 10
+        let ctx = ctx.min(4) as usize;
+        if row + col < 6 {
+            ctx
+        } else if row + col < 8 {
+            ctx + 5
+        } else {
+            ctx + 10
+        }
     }
 }
 
@@ -118,23 +111,34 @@ where
     ((mag + 1) >> 1).min(3) as usize
 }
 
-fn luma_br_lf_context(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> usize {
-    let mag = tx4x4_level_at(levels, pos, 0, 1).min(5)
-        + tx4x4_level_at(levels, pos, 1, 0).min(5)
-        + tx4x4_level_at(levels, pos, 1, 1).min(5);
-    let mag = ((mag + 1) >> 1).min(6) as usize;
-    if pos == 0 {
-        mag
+fn luma_br_context(levels: &[u32; TX4X4_SAMPLES], pos: usize, low_frequency: bool) -> usize {
+    let mag = luma_neighbour_magnitude(levels, pos, 5);
+    let ctx = ((mag + 1) >> 1).min(6) as usize;
+    if low_frequency && pos != 0 {
+        ctx + 7
     } else {
-        mag + 7
+        ctx
     }
 }
 
-fn luma_br_context(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> usize {
-    let mag = tx4x4_level_at(levels, pos, 0, 1).min(5)
-        + tx4x4_level_at(levels, pos, 1, 0).min(5)
-        + tx4x4_level_at(levels, pos, 1, 1).min(5);
-    ((mag + 1) >> 1).min(6) as usize
+fn luma_lower_levels_neighbour_magnitude(
+    levels: &[u32; TX4X4_SAMPLES],
+    pos: usize,
+    neighbour_limit: u32,
+) -> u32 {
+    luma_neighbour_magnitude(levels, pos, neighbour_limit)
+        + tx4x4_level_at(levels, pos, 0, 2).min(neighbour_limit)
+        + tx4x4_level_at(levels, pos, 2, 0).min(neighbour_limit)
+}
+
+fn luma_neighbour_magnitude(
+    levels: &[u32; TX4X4_SAMPLES],
+    pos: usize,
+    neighbour_limit: u32,
+) -> u32 {
+    tx4x4_level_at(levels, pos, 0, 1).min(neighbour_limit)
+        + tx4x4_level_at(levels, pos, 1, 0).min(neighbour_limit)
+        + tx4x4_level_at(levels, pos, 1, 1).min(neighbour_limit)
 }
 
 include!("txb_idtx_contexts.rs");
