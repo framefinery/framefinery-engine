@@ -372,31 +372,6 @@ fn vvc_luma_prediction_matches_source(
     true
 }
 
-fn vvc_zero_chroma_preselected_residual() -> VvcScoredSelectedChromaResidual {
-    VvcScoredSelectedChromaResidual {
-        residual: VvcSelectedChromaResidual {
-            cb: VvcFinalizedResidualBlock {
-                dc_level: 0,
-                ac_levels: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
-                has_ac: false,
-                transform_skip: true,
-                bdpcm_mode: VvcBdpcmMode::None,
-            },
-            cr: VvcFinalizedResidualBlock {
-                dc_level: 0,
-                ac_levels: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
-                has_ac: false,
-                transform_skip: true,
-                bdpcm_mode: VvcBdpcmMode::None,
-            },
-        },
-        score: VvcResidualBlockScore {
-            distortion: 0,
-            rate_cost: 0,
-        },
-    }
-}
-
 fn select_vvc_luma_explicit_inter_candidate(
     decision: VvcLumaInterDecision,
     intra_mode: VvcIntraPredictionMode,

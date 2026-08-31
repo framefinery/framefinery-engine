@@ -296,102 +296,39 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         let chroma_height = usize::from(node.height) / subsample_y;
         let co_located_luma_mode = luma_mode_search_state.co_located_mode_for_chroma_node(node);
         let cclm_syntax_enabled = vvc_chroma_cclm_node_allowed(node);
-        if let Some(decision) = applied_luma_inter_decisions
+        let applied_inter_decision = applied_luma_inter_decisions
             .get(chroma_tu_count)
             .copied()
-            .flatten()
-        {
-            if let Some(reference) = inter_reference {
-                if VvcReconstructionFrame::predict_chroma_node_from_inter_motion_into(
-                    reference,
-                    &mut predicted_cb,
-                    &mut predicted_cr,
+            .flatten();
+        let selected_inter_chroma_candidate =
+            match (applied_inter_decision, inter_reference) {
+                (Some(decision), Some(reference)) => VvcChromaInterCandidateContext {
+                    policy,
+                    source_frame,
                     node,
-                    decision,
-                ) {
-                    #[cfg(feature = "vvc-stats")]
-                    let residual_start = StageStart::now();
-                    let (cb_residuals_all_zero, cr_residuals_all_zero) =
-                        residual_chroma_pair_tu_at_into_and_detect_zero(
-                        &mut cb_residuals,
-                        &mut cr_residuals,
-                        &source_frame.cb,
-                        &source_frame.cr,
-                        source_frame.geometry,
-                        source_frame.format,
-                        chroma_x,
-                        chroma_y,
-                        chroma_width,
-                        chroma_height,
-                        &predicted_cb,
-                        &predicted_cr,
-                    );
-                    #[cfg(feature = "vvc-stats")]
-                    intra_search_stats
-                        .add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-                    let preselected_residual = if cb_residuals_all_zero && cr_residuals_all_zero {
-                        Some(vvc_zero_chroma_preselected_residual())
-                    } else {
-                        None
-                    };
-                    let chroma_coding_decision = policy.select_chroma_tu_coding_decision(
-                        node,
-                        VvcChromaIntraPredictionMode::Derived,
-                    );
-                    #[cfg(feature = "vvc-stats")]
-                    residual_energy_stats.add_chroma_residuals(
-                        &cb_residuals,
-                        chroma_width,
-                        chroma_height,
-                    );
-                    #[cfg(feature = "vvc-stats")]
-                    residual_energy_stats.add_chroma_residuals(
-                        &cr_residuals,
-                        chroma_width,
-                        chroma_height,
-                    );
-                    #[cfg(feature = "vvc-stats")]
-                    let chroma_finalize_start = StageStart::now();
-                    let chroma_tu = finalize_vvc_chroma_tu(
-                        chroma_coding_decision,
-                        source_frame,
-                        frame_recon,
-                        node,
-                        &predicted_cb,
-                        &predicted_cr,
-                        &cb_residuals,
-                        &cr_residuals,
-                        chroma_width,
-                        chroma_height,
-                        chroma_qp,
-                        chroma_ts_quant,
-                        vvc_transform_skip_qp_reconstructs_exact(
-                            source_frame.format.bit_depth,
-                            chroma_qp,
-                        ),
-                        preselected_residual,
-                        &mut intra_search_stats,
-                        &mut transform_scratch,
-                        &mut reconstructed_residual,
-                    );
-                    #[cfg(feature = "vvc-stats")]
-                    intra_search_stats.add_chroma_finalize_nanos(
-                        chroma_finalize_start.elapsed().as_nanos() as u64,
-                    );
-                    chroma_tu_metadata.record_finalized(
-                        chroma_tu_count,
-                        VvcChromaIntraPredictionMode::Derived,
-                        chroma_tu,
-                    );
-                    chroma_tu_count += 1;
-                    continue;
+                    chroma_x,
+                    chroma_y,
+                    chroma_width,
+                    chroma_height,
                 }
-            }
-        }
-        if chroma_inter_skip
-            .and_then(|mask| mask.get(chroma_tu_count))
-            .copied()
-            .unwrap_or(false)
+                .select_candidate(
+                    decision,
+                    reference,
+                    VvcChromaInterCandidateBuffers {
+                        cb_prediction: &mut predicted_cb,
+                        cr_prediction: &mut predicted_cr,
+                        cb_residuals: &mut cb_residuals,
+                        cr_residuals: &mut cr_residuals,
+                        stats: &mut intra_search_stats,
+                    },
+                ),
+                _ => None,
+            };
+        if selected_inter_chroma_candidate.is_none()
+            && chroma_inter_skip
+                .and_then(|mask| mask.get(chroma_tu_count))
+                .copied()
+                .unwrap_or(false)
         {
             if let Some(hint) = vvc_chroma_temporal_mode_hint(
                 temporal_mode_hints,
@@ -431,17 +368,23 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             chroma_tu_count += 1;
             continue;
         }
-        if let Some(hint) = vvc_chroma_temporal_mode_hint(
-            temporal_mode_hints,
-            chroma_tu_count,
-            chroma_nodes.len(),
-            policy,
-            source_frame.geometry,
-            node,
-            co_located_luma_mode,
-            chroma_width,
-            chroma_height,
-        ) {
+        let temporal_chroma_hint = selected_inter_chroma_candidate
+            .is_none()
+            .then(|| {
+                vvc_chroma_temporal_mode_hint(
+                    temporal_mode_hints,
+                    chroma_tu_count,
+                    chroma_nodes.len(),
+                    policy,
+                    source_frame.geometry,
+                    node,
+                    co_located_luma_mode,
+                    chroma_width,
+                    chroma_height,
+                )
+            })
+            .flatten();
+        if let Some(hint) = temporal_chroma_hint {
             #[cfg(feature = "vvc-stats")]
             let chroma_finalize_start = StageStart::now();
             if let Some(chroma_tu) = finalize_vvc_chroma_tu_with_temporal_mode_hint(
@@ -501,165 +444,47 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 continue;
             }
         }
-        let chroma_mode_search_context = VvcChromaModeSearchContext {
-            policy,
-            metric: score_metric,
-            source_frame,
-            frame_recon,
-            node,
-            co_located_luma_mode,
-            chroma_x,
-            chroma_y,
-            chroma_width,
-            chroma_height,
-            cclm_enabled: cclm_syntax_enabled,
-            syntax_tie_breaker_enabled: chroma_syntax_tie_breaker,
-        };
-        #[cfg(feature = "vvc-stats")]
-        let chroma_mode_search_start = StageStart::now();
-        let VvcChromaModeSearchResult {
-            mode: raw_chroma_mode,
-            candidate_costs: chroma_candidate_costs,
-        } = chroma_mode_search_context.select_intra_mode(VvcChromaModeSearchBuffers {
-            cache: &mut chroma_rd_cache,
-            prediction_scratch: &mut prediction_scratch,
-            selected_cb_prediction: &mut predicted_cb,
-            selected_cr_prediction: &mut predicted_cr,
-            candidate_cb_prediction: &mut candidate_cb_prediction,
-            candidate_cr_prediction: &mut candidate_cr_prediction,
-            candidate_cb_residuals: &mut candidate_cb_residuals,
-            candidate_cr_residuals: &mut candidate_cr_residuals,
-            stats: &mut intra_search_stats,
-        });
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats
-            .add_chroma_mode_search_nanos(chroma_mode_search_start.elapsed().as_nanos() as u64);
-        if chroma_rd_cache.get(raw_chroma_mode).is_some() {
-            chroma_rd_cache.take_residuals(
-                raw_chroma_mode,
-                &mut cb_residuals,
-                &mut cr_residuals,
-            );
-        } else {
-            #[cfg(feature = "vvc-stats")]
-            let residual_start = StageStart::now();
-            residual_chroma_tu_at_into(
-                &mut cb_residuals,
-                &source_frame.cb,
-                source_frame.geometry,
-                source_frame.format,
-                chroma_x,
-                chroma_y,
-                chroma_width,
-                chroma_height,
-                &predicted_cb,
-            );
-            #[cfg(feature = "vvc-stats")]
-            intra_search_stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-            #[cfg(feature = "vvc-stats")]
-            let residual_start = StageStart::now();
-            residual_chroma_tu_at_into(
-                &mut cr_residuals,
-                &source_frame.cr,
-                source_frame.geometry,
-                source_frame.format,
-                chroma_x,
-                chroma_y,
-                chroma_width,
-                chroma_height,
-                &predicted_cr,
-            );
-            #[cfg(feature = "vvc-stats")]
-            intra_search_stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
-        }
-        #[cfg(feature = "vvc-stats")]
-        let chroma_rd_start = StageStart::now();
-        let selected_chroma_mode = if vvc_chroma_lossy_speed_direct_bdpcm_candidates_allowed(
-            policy,
-            source_frame.format.chroma_sampling,
-            source_frame.format.bit_depth,
-            raw_chroma_mode,
-        )
-        {
-            VvcSelectedChromaMode {
-                mode: raw_chroma_mode,
-                residual: None,
-            }
-        } else {
-            select_vvc_chroma_mode_with_rd_refinement(
-                policy,
-                node,
-                raw_chroma_mode,
-                chroma_candidate_costs,
-                &mut chroma_rd_cache,
-                &mut intra_search_stats,
-                co_located_luma_mode,
-                cclm_syntax_enabled,
-                source_frame,
-                frame_recon,
-                chroma_width,
-                chroma_height,
-                chroma_qp,
-                chroma_ts_quant,
-                &mut prediction_scratch,
-                &mut predicted_cb,
-                &mut predicted_cr,
-                &mut cb_residuals,
-                &mut cr_residuals,
-                &mut candidate_cb_prediction,
-                &mut candidate_cr_prediction,
-                &mut candidate_cb_residuals,
-                &mut candidate_cr_residuals,
-                &mut transform_scratch,
-                &mut reconstructed_residual,
-            )
-        };
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats
-            .add_chroma_rd_refinement_nanos(chroma_rd_start.elapsed().as_nanos() as u64);
-        #[cfg(feature = "vvc-stats")]
-        if selected_chroma_mode.residual.is_some() {
-            intra_search_stats.add_chroma_rd_refinement_attempt();
-            if selected_chroma_mode.mode != raw_chroma_mode {
-                intra_search_stats.add_chroma_rd_refinement_switch();
-            }
-        }
-        let mut chroma_mode = selected_chroma_mode.mode;
-        let mut selected_chroma_residual = selected_chroma_mode.residual;
-        #[cfg(feature = "vvc-stats")]
-        let chroma_bdpcm_start = StageStart::now();
-        if let Some(selected_bdpcm) = select_vvc_chroma_bdpcm_prediction(
-            policy,
-            node,
-            chroma_mode,
-            co_located_luma_mode,
-            cclm_syntax_enabled,
-            source_frame,
-            frame_recon,
-            chroma_width,
-            chroma_height,
-            chroma_qp,
-            chroma_ts_quant,
-            selected_chroma_residual,
-            &mut intra_search_stats,
-            &mut prediction_scratch,
-            &mut predicted_cb,
-            &mut predicted_cr,
-            &mut cb_residuals,
-            &mut cr_residuals,
-            &mut candidate_cb_prediction,
-            &mut candidate_cr_prediction,
-            &mut candidate_cb_residuals,
-            &mut candidate_cr_residuals,
-            &mut transform_scratch,
-            &mut reconstructed_residual,
-        ) {
-            chroma_mode = selected_bdpcm.mode;
-            selected_chroma_residual = Some(selected_bdpcm.residual);
-        }
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats.add_chroma_bdpcm_nanos(chroma_bdpcm_start.elapsed().as_nanos() as u64);
-        let chroma_coding_decision = policy.select_chroma_tu_coding_decision(node, chroma_mode);
+        let selected_chroma_candidate =
+            if let Some(candidate) = selected_inter_chroma_candidate {
+                candidate
+            } else {
+                VvcChromaTuSelectionContext {
+                    policy,
+                    metric: score_metric,
+                    source_frame,
+                    frame_recon: &*frame_recon,
+                    node,
+                    co_located_luma_mode,
+                    chroma_x,
+                    chroma_y,
+                    chroma_width,
+                    chroma_height,
+                    cclm_enabled: cclm_syntax_enabled,
+                    syntax_tie_breaker_enabled: chroma_syntax_tie_breaker,
+                    chroma_qp,
+                    chroma_ts_quant,
+                }
+                .select_candidate(VvcChromaTuSelectionBuffers {
+                    cache: &mut chroma_rd_cache,
+                    prediction_scratch: &mut prediction_scratch,
+                    selected_cb_prediction: &mut predicted_cb,
+                    selected_cr_prediction: &mut predicted_cr,
+                    selected_cb_residuals: &mut cb_residuals,
+                    selected_cr_residuals: &mut cr_residuals,
+                    candidate_cb_prediction: &mut candidate_cb_prediction,
+                    candidate_cr_prediction: &mut candidate_cr_prediction,
+                    candidate_cb_residuals: &mut candidate_cb_residuals,
+                    candidate_cr_residuals: &mut candidate_cr_residuals,
+                    stats: &mut intra_search_stats,
+                    transform_scratch: &mut transform_scratch,
+                    reconstructed_residual: &mut reconstructed_residual,
+                })
+            };
+        let VvcSelectedChromaTuCandidate {
+            mode: chroma_mode,
+            coding_decision: chroma_coding_decision,
+            residual: selected_chroma_residual,
+        } = selected_chroma_candidate;
         #[cfg(feature = "vvc-stats")]
         {
             residual_energy_stats.add_chroma_residuals(&cb_residuals, chroma_width, chroma_height);

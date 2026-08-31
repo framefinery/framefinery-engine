@@ -18,6 +18,50 @@ fn sampled_luma_frame(width: usize, height: usize, luma: Vec<VvcSample>) -> VvcS
     }
 }
 
+fn shifted_444_frame_and_reference() -> (VvcSampledFrame, VvcReconstructionFrame) {
+    let geometry = VvcVideoGeometry {
+        width: 16,
+        height: 8,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs444,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let plane_len = geometry.luma_samples();
+    let previous_luma: Vec<_> = (0..plane_len)
+        .map(|index| ((index * 13 + 7) & 0xff) as VvcSample)
+        .collect();
+    let previous_cb: Vec<_> = (0..plane_len)
+        .map(|index| ((index * 17 + 19) & 0xff) as VvcSample)
+        .collect();
+    let previous_cr: Vec<_> = (0..plane_len)
+        .map(|index| ((index * 23 + 31) & 0xff) as VvcSample)
+        .collect();
+    let shifted_left_half = |previous: &[VvcSample]| {
+        let mut current = vec![0; plane_len];
+        for row in 0..geometry.height {
+            let previous_start = row * geometry.width + 8;
+            let current_start = row * geometry.width;
+            current[current_start..current_start + 8]
+                .copy_from_slice(&previous[previous_start..previous_start + 8]);
+        }
+        current
+    };
+    let source_frame = VvcSampledFrame {
+        geometry,
+        format,
+        luma: shifted_left_half(&previous_luma),
+        cb: shifted_left_half(&previous_cb),
+        cr: shifted_left_half(&previous_cr),
+        chroma_len: plane_len,
+    };
+    let mut reference = VvcReconstructionFrame::new_neutral(geometry, format);
+    reference.luma = previous_luma;
+    reference.cb = previous_cb;
+    reference.cr = previous_cr;
+    (source_frame, reference)
+}
+
 #[test]
 fn vvc_luma_prediction_score_matches_materialized_residual_score() {
     let frame = sampled_luma_frame(4, 4, (0..16).map(|idx| (idx * 7) as VvcSample).collect());
@@ -38,35 +82,9 @@ fn vvc_luma_prediction_score_matches_materialized_residual_score() {
 
 #[test]
 fn vvc_luma_exact_inter_candidate_prepares_shared_zero_residual_state() {
-    let geometry = VvcVideoGeometry {
-        width: 16,
-        height: 8,
-    };
-    let format = VvcPictureFormat {
-        chroma_sampling: ChromaSampling::Cs444,
-        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
-    };
-    let plane_len = geometry.luma_samples();
-    let previous_luma: Vec<_> = (0..plane_len)
-        .map(|index| ((index * 13 + 7) & 0xff) as VvcSample)
-        .collect();
-    let mut current_luma = vec![0; plane_len];
-    for row in 0..geometry.height {
-        let previous_start = row * geometry.width + 8;
-        let current_start = row * geometry.width;
-        current_luma[current_start..current_start + 8]
-            .copy_from_slice(&previous_luma[previous_start..previous_start + 8]);
-    }
-    let source_frame = VvcSampledFrame {
-        geometry,
-        format,
-        luma: current_luma,
-        cb: vec![128; plane_len],
-        cr: vec![128; plane_len],
-        chroma_len: plane_len,
-    };
-    let mut reference = VvcReconstructionFrame::new_neutral(geometry, format);
-    reference.luma.clone_from(&previous_luma);
+    let (source_frame, reference) = shifted_444_frame_and_reference();
+    let geometry = source_frame.geometry;
+    let format = source_frame.format;
     let frame_recon = VvcReconstructionFrame::new_neutral(geometry, format);
     let mode_search_state = VvcLumaModeSearchState::new_for_geometry(geometry);
     let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
@@ -116,6 +134,70 @@ fn vvc_luma_exact_inter_candidate_prepares_shared_zero_residual_state() {
         .ac_levels
         .iter()
         .all(|level| *level == 0));
+}
+
+#[test]
+fn vvc_chroma_inter_candidate_prepares_shared_zero_residual_state() {
+    let (source_frame, reference) = shifted_444_frame_and_reference();
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeChroma);
+    let policy = VvcResidualCodingPolicy::new(source_frame.format, VvcResidualCodingMode::Lossy);
+    let context = VvcChromaInterCandidateContext {
+        policy,
+        source_frame: &source_frame,
+        node,
+        chroma_x: 0,
+        chroma_y: 0,
+        chroma_width: 8,
+        chroma_height: 8,
+    };
+    let decision = VvcLumaInterDecision { mv_x: 8, mv_y: 0 };
+    let mut cb_prediction = Vec::new();
+    let mut cr_prediction = Vec::new();
+    let mut cb_residuals = Vec::new();
+    let mut cr_residuals = Vec::new();
+    #[cfg(feature = "vvc-stats")]
+    let mut stats = VvcIntraSearchStats::default();
+    #[cfg(not(feature = "vvc-stats"))]
+    let mut stats = VvcIntraSearchStats;
+
+    let selected = context
+        .select_candidate(
+            decision,
+            &reference,
+            VvcChromaInterCandidateBuffers {
+                cb_prediction: &mut cb_prediction,
+                cr_prediction: &mut cr_prediction,
+                cb_residuals: &mut cb_residuals,
+                cr_residuals: &mut cr_residuals,
+                stats: &mut stats,
+            },
+        )
+        .expect("valid inter motion should prepare a chroma candidate");
+
+    assert_eq!(selected.mode, VvcChromaIntraPredictionMode::Derived);
+    let expected_cb: Vec<_> = source_frame
+        .cb
+        .chunks_exact(source_frame.geometry.width)
+        .flat_map(|row| row[..8].iter().copied())
+        .collect();
+    let expected_cr: Vec<_> = source_frame
+        .cr
+        .chunks_exact(source_frame.geometry.width)
+        .flat_map(|row| row[..8].iter().copied())
+        .collect();
+    assert_eq!(cb_prediction, expected_cb);
+    assert_eq!(cr_prediction, expected_cr);
+    assert_eq!(cb_residuals, vec![0; 64]);
+    assert_eq!(cr_residuals, vec![0; 64]);
+    let selected_residual = selected.residual.expect("zero residual is preselected");
+    assert_eq!(selected_residual.score.distortion, 0);
+    assert_eq!(selected_residual.score.rate_cost, 0);
+    for block in [selected_residual.residual.cb, selected_residual.residual.cr] {
+        assert!(block.transform_skip);
+        assert_eq!(block.dc_level, 0);
+        assert!(!block.has_ac);
+        assert!(block.ac_levels.iter().all(|level| *level == 0));
+    }
 }
 
 #[test]

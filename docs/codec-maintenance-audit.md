@@ -322,6 +322,11 @@ The following changes were behavior-preserving and independently validated:
   orchestration module. The exact-inter shortcut still bypasses unnecessary
   search, but it now feeds the same residual finalization, reconstruction,
   metadata, and trace tail as every other selected luma mode.
+- VVC inter-derived, regular intra, RD-refined, and BDPCM chroma selection now
+  returns one selected-candidate record from a focused orchestration module.
+  Inter-derived prediction still bypasses unnecessary intra search, but now
+  enters the same residual finalization, reconstruction, metadata, and trace
+  tail as ordinary selected chroma modes.
 - VVC SCC, temporal-hint, and finalized luma-TU metadata writes now share one
   bounded record type; temporal, exact-inter, and ordinary finalization no
   longer fan the same result out to parallel arrays through three duplicated
@@ -350,7 +355,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 869-line CTU helper, 815-line mode-selection sibling, 295-line luma-selection orchestration, and 275/489-line luma/chroma search helpers | luma candidate selection and finalization now converge; chroma RD, tool replacement, and early finalization still need call-graph review |
+| VVC residual quantization | 844-line CTU helper, 640-line mode-selection sibling, 295/339-line luma/chroma TU selection orchestration, and 275/489-line luma/chroma search helpers | ordinary and inter-derived candidate finalization now converge; temporal-hint acceptance/finalization still needs a focused contract review |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2
