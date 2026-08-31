@@ -21,6 +21,7 @@ include!("chroma_temporal.rs");
 include!("luma_prediction.rs");
 include!("directional.rs");
 include!("luma_residual.rs");
+include!("luma_tu_finalization.rs");
 include!("chroma_residual.rs");
 include!("chroma_selection.rs");
 include!("prediction_bridge.rs");
