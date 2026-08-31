@@ -11,7 +11,7 @@ struct VvcLumaModeSearchContext<'a> {
 
 struct VvcLumaModeSearchBuffers<'a> {
     cache: &'a mut VvcLumaModeRdCache,
-    prediction_scratch: &'a mut VvcDcPredictionScratch,
+    prediction_scratch: &'a mut VvcIntraPredictionScratch,
     selected_prediction: &'a mut Vec<VvcSample>,
     candidate_prediction: &'a mut Vec<VvcSample>,
     candidate_residuals: &'a mut Vec<i16>,
@@ -25,10 +25,7 @@ struct VvcLumaModeSearchResult {
 }
 
 impl VvcLumaModeSearchContext<'_> {
-    fn select_intra_mode(
-        &self,
-        buffers: VvcLumaModeSearchBuffers<'_>,
-    ) -> VvcLumaModeSearchResult {
+    fn select_intra_mode(&self, buffers: VvcLumaModeSearchBuffers<'_>) -> VvcLumaModeSearchResult {
         let VvcLumaModeSearchBuffers {
             cache,
             prediction_scratch,
@@ -54,11 +51,7 @@ impl VvcLumaModeSearchContext<'_> {
         };
         let mut search = VvcLumaIntraSearch::new(initial_score);
         if self.policy.luma_planar_candidate_allowed(self.node)
-            && vvc_luma_lossless_speed_evaluates_planar(
-                self.policy,
-                self.left,
-                self.above,
-            )
+            && vvc_luma_lossless_speed_evaluates_planar(self.policy, self.left, self.above)
         {
             let score = self.predict_and_score_candidate(
                 cache,
@@ -97,12 +90,7 @@ impl VvcLumaModeSearchContext<'_> {
                 );
                 #[cfg(feature = "vvc-stats")]
                 stats.add_luma_directional_coarse();
-                search.consider_candidate(
-                    mode,
-                    score,
-                    selected_prediction,
-                    candidate_prediction,
-                );
+                search.consider_candidate(mode, score, selected_prediction, candidate_prediction);
                 if vvc_luma_exact_min_syntax_mode_search_done(search.best_score()) {
                     break;
                 }
@@ -120,10 +108,8 @@ impl VvcLumaModeSearchContext<'_> {
                 } else {
                     self.policy.fast_search()
                 };
-                directional_candidates.add_refinement(
-                    search.best_mode().luma_mode_index(),
-                    refinement_fast_search,
-                );
+                directional_candidates
+                    .add_refinement(search.best_mode().luma_mode_index(), refinement_fast_search);
                 for mode in directional_candidates.iter_from(refinement_start) {
                     let score = self.predict_and_score_candidate(
                         cache,
@@ -163,7 +149,7 @@ impl VvcLumaModeSearchContext<'_> {
         &self,
         cache: &mut VvcLumaModeRdCache,
         mode: VvcIntraPredictionMode,
-        prediction_scratch: &mut VvcDcPredictionScratch,
+        prediction_scratch: &mut VvcIntraPredictionScratch,
         predicted: &mut Vec<VvcSample>,
         residuals: &mut Vec<i16>,
         stats: &mut VvcIntraSearchStats,
@@ -248,9 +234,7 @@ impl VvcLumaIntraSearch {
     }
 }
 
-fn vvc_luma_lossless_speed_skips_directional_refinement(
-    policy: VvcResidualCodingPolicy,
-) -> bool {
+fn vvc_luma_lossless_speed_skips_directional_refinement(policy: VvcResidualCodingPolicy) -> bool {
     policy.fast_search() == VvcFastSearch::LosslessSpeed
 }
 

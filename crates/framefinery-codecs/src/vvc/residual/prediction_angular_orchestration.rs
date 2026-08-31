@@ -1,6 +1,6 @@
 fn predict_vvc_angular_block_into(
     prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     plane: &[VvcSample],
     plane_width: usize,
     plane_height: usize,
@@ -152,7 +152,7 @@ fn predict_vvc_angular_block_into(
 
 fn predict_vvc_zero_angle_angular_block_into(
     prediction: &mut Vec<VvcSample>,
-    scratch: &VvcDcPredictionScratch,
+    scratch: &VvcIntraPredictionScratch,
     width: usize,
     height: usize,
     is_vertical: bool,

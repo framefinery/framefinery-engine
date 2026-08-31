@@ -7,7 +7,7 @@ fn vvc_global_ctu_node(mut node: VvcCodingTreeNode, region: VvcCtuRegion) -> Vvc
 fn predict_vvc_chroma_mode_pair_blocks_into_with_availability(
     cb_prediction: &mut Vec<VvcSample>,
     cr_prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     mode: VvcChromaIntraPredictionMode,
     co_located_luma_mode: VvcIntraPredictionMode,
     cb: &[VvcSample],

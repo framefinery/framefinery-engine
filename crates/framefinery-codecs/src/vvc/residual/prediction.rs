@@ -78,7 +78,7 @@ include!("prediction_bdpcm.rs");
 
 pub(in crate::vvc) fn predict_vvc_luma_intra_block_into_with_availability(
     prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     mode: VvcIntraPredictionMode,
     luma: &[VvcSample],
     geometry: VvcVideoGeometry,
@@ -101,7 +101,7 @@ pub(in crate::vvc) fn predict_vvc_luma_intra_block_into_with_availability(
 
 pub(in crate::vvc) fn predict_vvc_luma_intra_block_into_with_mrl_and_availability(
     prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     mode: VvcIntraPredictionMode,
     luma: &[VvcSample],
     geometry: VvcVideoGeometry,
@@ -172,7 +172,7 @@ impl VvcIntraPredictionRegion {
 
 fn predict_vvc_intra_block_into(
     prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     mode: VvcIntraPredictionMode,
     mode_index: u8,
     plane: &[VvcSample],
@@ -233,7 +233,7 @@ fn predict_vvc_intra_block_into(
 
 fn predict_vvc_chroma_intra_block_into_with_availability(
     prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     mode: VvcIntraPredictionMode,
     chroma: &[VvcSample],
     geometry: VvcVideoGeometry,
@@ -261,7 +261,11 @@ struct VvcCclmPredictionScratch {
     inner_luma: Vec<i32>,
 }
 
-pub(in crate::vvc) struct VvcDcPredictionScratch {
+/// Reusable buffers shared by every VVC intra-prediction mode.
+///
+/// The fixed arrays serve reference-based prediction, while CCLM owns its
+/// variable-size downsampled-luma buffer through the nested scratch object.
+pub(in crate::vvc) struct VvcIntraPredictionScratch {
     top: [VvcSample; VVC_ANGULAR_REFERENCE_CAPACITY],
     left: [VvcSample; VVC_ANGULAR_REFERENCE_CAPACITY],
     top_work: [i32; VVC_CTU_SIZE],
@@ -286,7 +290,7 @@ fn vvc_chroma_prediction_mode_index(
     }
 }
 
-impl Default for VvcDcPredictionScratch {
+impl Default for VvcIntraPredictionScratch {
     fn default() -> Self {
         Self {
             top: [0; VVC_ANGULAR_REFERENCE_CAPACITY],
@@ -480,7 +484,7 @@ mod tests {
         let luma = vec![64; geometry.width * geometry.height];
         let chroma = vec![128; geometry.width * geometry.height];
         let mut prediction = Vec::new();
-        let mut scratch = VvcDcPredictionScratch::default();
+        let mut scratch = VvcIntraPredictionScratch::default();
 
         predict_vvc_chroma_mode_block_into_with_availability(
             &mut prediction,

@@ -29,7 +29,7 @@ fn predict_vvc_chroma_cclm_block_into_with_availability(
 pub(in crate::vvc) fn predict_vvc_chroma_cclm_pair_into_with_availability(
     cb_prediction: &mut Vec<VvcSample>,
     cr_prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     mode: VvcChromaCclmMode,
     cb: &[VvcSample],
     cr: &[VvcSample],

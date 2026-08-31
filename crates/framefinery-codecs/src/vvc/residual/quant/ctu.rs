@@ -89,7 +89,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
 pub(in crate::vvc) struct VvcCtuQuantScratch {
     luma_nodes: Vec<VvcCodingTreeNode>,
     chroma_nodes: Vec<VvcCodingTreeNode>,
-    prediction_scratch: VvcDcPredictionScratch,
+    prediction_scratch: VvcIntraPredictionScratch,
     predicted_luma: Vec<VvcSample>,
     predicted_cb: Vec<VvcSample>,
     predicted_cr: Vec<VvcSample>,
@@ -113,7 +113,7 @@ impl Default for VvcCtuQuantScratch {
         Self {
             luma_nodes: Vec::new(),
             chroma_nodes: Vec::new(),
-            prediction_scratch: VvcDcPredictionScratch::default(),
+            prediction_scratch: VvcIntraPredictionScratch::default(),
             predicted_luma: Vec::new(),
             predicted_cb: Vec::new(),
             predicted_cr: Vec::new(),

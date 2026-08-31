@@ -43,7 +43,7 @@ fn select_vvc_luma_mode_with_rd_refinement(
     frame_recon: &VvcReconstructionFrame,
     luma_qp: i32,
     luma_ts_quant: &VvcTransformSkipQuantTable,
-    prediction_scratch: &mut VvcDcPredictionScratch,
+    prediction_scratch: &mut VvcIntraPredictionScratch,
     selected_prediction: &mut Vec<VvcSample>,
     selected_residuals: &mut Vec<i16>,
     candidate_prediction: &mut Vec<VvcSample>,

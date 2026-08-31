@@ -183,7 +183,7 @@ fn build_vvc_chroma_bdpcm_candidate(
     context: &VvcChromaRefinementContext<'_>,
     bdpcm_mode: VvcBdpcmMode,
     stats: &mut VvcIntraSearchStats,
-    prediction_scratch: &mut VvcDcPredictionScratch,
+    prediction_scratch: &mut VvcIntraPredictionScratch,
     candidate: &mut VvcChromaCandidateBuffers<'_>,
 ) {
     #[cfg(not(feature = "vvc-stats"))]

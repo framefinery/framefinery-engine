@@ -1,6 +1,6 @@
 fn predict_vvc_dc_block_into(
     prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     plane: &[VvcSample],
     plane_width: usize,
     plane_height: usize,
@@ -67,7 +67,7 @@ fn predict_vvc_dc_block_into(
 
 fn predict_vvc_planar_block_into(
     prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     plane: &[VvcSample],
     plane_width: usize,
     plane_height: usize,

@@ -18,7 +18,7 @@ use super::{
     predict_vvc_chroma_bdpcm_block_into_with_availability,
     predict_vvc_chroma_mode_block_into_with_availability,
     predict_vvc_luma_bdpcm_block_into_with_availability,
-    predict_vvc_luma_intra_block_into_with_mrl_and_availability, VvcDcPredictionScratch,
+    predict_vvc_luma_intra_block_into_with_mrl_and_availability, VvcIntraPredictionScratch,
     VvcInverseTransformScratch, VvcPlaneAvailability, VvcQuantizedColor, MAX_VVC_LUMA_TUS,
     VVC_DEFAULT_LOSSY_CHROMA_QP, VVC_DEFAULT_LOSSY_LUMA_QP,
 };
@@ -78,7 +78,7 @@ fn reconstruct_vvc_residual_frame_planar(
     let mut luma = vec![neutral; layout.luma_samples()];
     let mut luma_available = vec![false; layout.luma_samples()];
     let mut tu_idx = 0;
-    let mut prediction_scratch = VvcDcPredictionScratch::default();
+    let mut prediction_scratch = VvcIntraPredictionScratch::default();
     let mut predicted_luma = Vec::new();
     let mut transform_scratch = VvcInverseTransformScratch::default();
     let mut residuals = Vec::new();

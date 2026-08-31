@@ -15,7 +15,7 @@ struct VvcChromaModeSearchContext<'a> {
 
 struct VvcChromaModeSearchBuffers<'a> {
     cache: &'a mut VvcChromaModeRdCache,
-    prediction_scratch: &'a mut VvcDcPredictionScratch,
+    prediction_scratch: &'a mut VvcIntraPredictionScratch,
     selected_prediction: VvcChromaPredictionBuffers<'a>,
     candidate_prediction: VvcChromaPredictionBuffers<'a>,
     candidate_residuals: VvcChromaResidualBuffers<'a>,
@@ -156,7 +156,7 @@ impl VvcChromaModeSearchContext<'_> {
         &self,
         cache: &mut VvcChromaModeRdCache,
         mode: VvcChromaIntraPredictionMode,
-        prediction_scratch: &mut VvcDcPredictionScratch,
+        prediction_scratch: &mut VvcIntraPredictionScratch,
         prediction: &mut VvcChromaPredictionBuffers<'_>,
         residuals: &mut VvcChromaResidualBuffers<'_>,
         stats: &mut VvcIntraSearchStats,
@@ -168,7 +168,7 @@ impl VvcChromaModeSearchContext<'_> {
     fn predict_candidate(
         &self,
         mode: VvcChromaIntraPredictionMode,
-        prediction_scratch: &mut VvcDcPredictionScratch,
+        prediction_scratch: &mut VvcIntraPredictionScratch,
         prediction: &mut VvcChromaPredictionBuffers<'_>,
         stats: &mut VvcIntraSearchStats,
     ) {

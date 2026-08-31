@@ -12,7 +12,7 @@ struct VvcChromaCtuPassContext<'a> {
 struct VvcChromaCtuPassBuffers<'a> {
     frame_recon: &'a mut VvcReconstructionFrame,
     nodes: &'a mut Vec<VvcCodingTreeNode>,
-    prediction_scratch: &'a mut VvcDcPredictionScratch,
+    prediction_scratch: &'a mut VvcIntraPredictionScratch,
     selected: VvcChromaCandidateBuffers<'a>,
     candidate: VvcChromaCandidateBuffers<'a>,
     rd_cache: &'a mut VvcChromaModeRdCache,

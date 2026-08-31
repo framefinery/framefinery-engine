@@ -1,6 +1,6 @@
 pub(in crate::vvc) fn predict_vvc_chroma_mode_block_into_with_availability(
     prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     mode: VvcChromaIntraPredictionMode,
     co_located_luma_mode: VvcIntraPredictionMode,
     chroma: &[VvcSample],

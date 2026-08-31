@@ -24,7 +24,7 @@ struct VvcLumaTuSelectionContext<'a> {
 
 struct VvcLumaTuSelectionBuffers<'a> {
     cache: &'a mut VvcLumaModeRdCache,
-    prediction_scratch: &'a mut VvcDcPredictionScratch,
+    prediction_scratch: &'a mut VvcIntraPredictionScratch,
     selected_prediction: &'a mut Vec<VvcSample>,
     selected_residuals: &'a mut Vec<i16>,
     candidate_prediction: &'a mut Vec<VvcSample>,
@@ -243,7 +243,7 @@ impl VvcLumaTuSelectionContext<'_> {
     fn select_temporal_hint_candidate(
         &self,
         hint: VvcLumaTemporalModeHint,
-        prediction_scratch: &mut VvcDcPredictionScratch,
+        prediction_scratch: &mut VvcIntraPredictionScratch,
         predicted_luma: &mut Vec<VvcSample>,
         luma_residuals: &mut Vec<i16>,
         stats: &mut VvcIntraSearchStats,

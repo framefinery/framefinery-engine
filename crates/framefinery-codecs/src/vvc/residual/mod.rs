@@ -40,7 +40,7 @@ pub(super) use prediction::{
     predict_vvc_luma_bdpcm_block_into_with_availability,
     predict_vvc_luma_intra_block_into_with_availability,
     predict_vvc_luma_intra_block_into_with_mrl_and_availability,
-    residual_vvc_luma_bdpcm_block_into_with_availability, VvcDcPredictionScratch,
+    residual_vvc_luma_bdpcm_block_into_with_availability, VvcIntraPredictionScratch,
     VvcPlaneAvailability,
 };
 #[cfg(test)]

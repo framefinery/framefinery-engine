@@ -372,7 +372,7 @@ fn vvc_positive_angular_luma_prediction_replicates_formal_main_extension() {
     }
 
     let mut prediction = Vec::new();
-    let mut scratch = VvcDcPredictionScratch::default();
+    let mut scratch = VvcIntraPredictionScratch::default();
     prediction::predict_vvc_luma_intra_block_into_with_availability(
         &mut prediction,
         &mut scratch,
@@ -417,7 +417,7 @@ fn vvc_luma_mrl_prediction_uses_shifted_reference_line() {
 
     let mut nearest = Vec::new();
     let mut shifted = Vec::new();
-    let mut scratch = VvcDcPredictionScratch::default();
+    let mut scratch = VvcIntraPredictionScratch::default();
     prediction::predict_vvc_luma_intra_block_into_with_availability(
         &mut nearest,
         &mut scratch,
@@ -489,7 +489,7 @@ fn vvc_luma_mrl_angular_prediction_uses_vtm_dct_interpolation() {
     }
 
     let mut prediction = Vec::new();
-    let mut scratch = VvcDcPredictionScratch::default();
+    let mut scratch = VvcIntraPredictionScratch::default();
     prediction::predict_vvc_luma_intra_block_into_with_mrl_and_availability(
         &mut prediction,
         &mut scratch,

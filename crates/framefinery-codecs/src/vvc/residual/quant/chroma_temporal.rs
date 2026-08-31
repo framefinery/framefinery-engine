@@ -2,7 +2,7 @@ impl VvcChromaTuSelectionContext<'_> {
     fn select_temporal_hint_candidate(
         &self,
         hint: VvcChromaTemporalModeHint,
-        prediction_scratch: &mut VvcDcPredictionScratch,
+        prediction_scratch: &mut VvcIntraPredictionScratch,
         buffers: &mut VvcChromaCandidateBuffers<'_>,
         stats: &mut VvcIntraSearchStats,
     ) -> Option<VvcSelectedChromaTuCandidate> {

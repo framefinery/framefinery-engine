@@ -650,7 +650,7 @@ fn vvc_luma_temporal_hint_candidate_preserves_cheap_residual_gate() {
         mode: VvcIntraPredictionMode::Dc,
         bdpcm_mode: VvcBdpcmMode::None,
     };
-    let mut prediction_scratch = VvcDcPredictionScratch::default();
+    let mut prediction_scratch = VvcIntraPredictionScratch::default();
     let mut prediction = Vec::new();
     let mut residuals = Vec::new();
     let mut stats = test_intra_search_stats();
@@ -717,7 +717,7 @@ fn vvc_chroma_temporal_hint_candidate_preserves_cheap_residual_gate() {
         mode: VvcChromaIntraPredictionMode::Derived,
         bdpcm_mode: VvcBdpcmMode::None,
     };
-    let mut prediction_scratch = VvcDcPredictionScratch::default();
+    let mut prediction_scratch = VvcIntraPredictionScratch::default();
     let mut predicted_cb = Vec::new();
     let mut predicted_cr = Vec::new();
     let mut cb_residuals = Vec::new();
@@ -953,7 +953,7 @@ fn vvc_chroma_candidate_evaluator_shares_derived_explicit_and_cclm_scoring() {
     ] {
         let mut cache = VvcChromaModeRdCache::new();
         cache.reset(policy, node);
-        let mut prediction_scratch = VvcDcPredictionScratch::default();
+        let mut prediction_scratch = VvcIntraPredictionScratch::default();
         let mut predicted_cb = Vec::new();
         let mut predicted_cr = Vec::new();
         let mut cb_residuals = Vec::new();
@@ -1030,7 +1030,7 @@ fn vvc_chroma_search_preserves_unscored_derived_only_fast_path() {
     };
     let mut cache = VvcChromaModeRdCache::new();
     cache.reset(policy, node);
-    let mut prediction_scratch = VvcDcPredictionScratch::default();
+    let mut prediction_scratch = VvcIntraPredictionScratch::default();
     let mut selected_cb = Vec::new();
     let mut selected_cr = Vec::new();
     let mut candidate_cb = Vec::new();
@@ -1087,7 +1087,7 @@ fn vvc_chroma_refinement_promotes_prediction_and_residual_pair_as_one_unit() {
     let mut candidate_cr_prediction = vec![12];
     let mut candidate_cb_residuals = vec![13];
     let mut candidate_cr_residuals = vec![14];
-    let mut prediction_scratch = VvcDcPredictionScratch::default();
+    let mut prediction_scratch = VvcIntraPredictionScratch::default();
     #[cfg(feature = "vvc-stats")]
     let mut stats = VvcIntraSearchStats::default();
     #[cfg(not(feature = "vvc-stats"))]
@@ -1206,7 +1206,7 @@ fn vvc_luma_candidate_evaluator_shares_dc_planar_and_directional_scoring() {
     ] {
         let mut cache = VvcLumaModeRdCache::new();
         cache.reset(policy, node);
-        let mut prediction_scratch = VvcDcPredictionScratch::default();
+        let mut prediction_scratch = VvcIntraPredictionScratch::default();
         let mut predicted = Vec::new();
         let mut residuals = Vec::new();
         #[cfg(feature = "vvc-stats")]

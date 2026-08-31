@@ -1,6 +1,6 @@
 pub(in crate::vvc) fn predict_vvc_luma_bdpcm_block_into_with_availability(
     prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     mode: VvcBdpcmMode,
     luma: &[VvcSample],
     geometry: VvcVideoGeometry,
@@ -26,7 +26,7 @@ pub(in crate::vvc) fn predict_vvc_luma_bdpcm_block_into_with_availability(
 
 pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
     residuals: &mut Vec<i16>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     mode: VvcBdpcmMode,
     source_luma: &[VvcSample],
     reference_luma: &[VvcSample],
@@ -101,7 +101,7 @@ pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
 
 pub(in crate::vvc) fn predict_vvc_chroma_bdpcm_block_into_with_availability(
     prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     mode: VvcBdpcmMode,
     chroma: &[VvcSample],
     geometry: VvcVideoGeometry,
@@ -130,7 +130,7 @@ pub(in crate::vvc) fn predict_vvc_chroma_bdpcm_block_into_with_availability(
 
 fn predict_vvc_bdpcm_block_into(
     prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
+    scratch: &mut VvcIntraPredictionScratch,
     mode: VvcBdpcmMode,
     plane: &[VvcSample],
     plane_width: usize,

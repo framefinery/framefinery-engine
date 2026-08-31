@@ -84,7 +84,7 @@ struct VvcChromaTuSelectionContext<'a> {
 
 struct VvcChromaTuSelectionBuffers<'a> {
     cache: &'a mut VvcChromaModeRdCache,
-    prediction_scratch: &'a mut VvcDcPredictionScratch,
+    prediction_scratch: &'a mut VvcIntraPredictionScratch,
     selected: VvcChromaCandidateBuffers<'a>,
     candidate: VvcChromaCandidateBuffers<'a>,
     stats: &'a mut VvcIntraSearchStats,

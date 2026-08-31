@@ -63,7 +63,7 @@ impl VvcChromaCandidateBuffers<'_> {
 }
 
 struct VvcChromaRefinementBuffers<'a> {
-    prediction_scratch: &'a mut VvcDcPredictionScratch,
+    prediction_scratch: &'a mut VvcIntraPredictionScratch,
     selected: VvcChromaCandidateBuffers<'a>,
     candidate: VvcChromaCandidateBuffers<'a>,
     stats: &'a mut VvcIntraSearchStats,

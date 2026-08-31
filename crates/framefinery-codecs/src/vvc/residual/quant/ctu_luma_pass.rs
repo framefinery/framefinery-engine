@@ -10,7 +10,7 @@ struct VvcLumaCtuPassBuffers<'a> {
     frame_recon: &'a mut VvcReconstructionFrame,
     mode_search_state: &'a mut VvcLumaModeSearchState,
     nodes: &'a mut Vec<VvcCodingTreeNode>,
-    prediction_scratch: &'a mut VvcDcPredictionScratch,
+    prediction_scratch: &'a mut VvcIntraPredictionScratch,
     selected_prediction: &'a mut Vec<VvcSample>,
     selected_residuals: &'a mut Vec<i16>,
     candidate_prediction: &'a mut Vec<VvcSample>,
