@@ -24,7 +24,7 @@ impl VvcChromaRefinementContext<'_> {
             let residual = VvcSelectedChromaResidual {
                 cb: finalize_vvc_chroma_residual_block(
                     baseline_decision.residual_coding,
-                    buffers.selected.cb_residuals,
+                    buffers.selected.residuals.cb,
                     self.chroma_width,
                     self.chroma_height,
                     self.source_frame.format.bit_depth,
@@ -36,7 +36,7 @@ impl VvcChromaRefinementContext<'_> {
                 ),
                 cr: finalize_vvc_chroma_residual_block(
                     baseline_decision.residual_coding,
-                    buffers.selected.cr_residuals,
+                    buffers.selected.residuals.cr,
                     self.chroma_width,
                     self.chroma_height,
                     self.source_frame.format.bit_depth,
@@ -48,8 +48,8 @@ impl VvcChromaRefinementContext<'_> {
                 ),
             };
             let residual = VvcScoredSelectedChromaResidual::new(
-                buffers.selected.cb_residuals,
-                buffers.selected.cr_residuals,
+                buffers.selected.residuals.cb,
+                buffers.selected.residuals.cr,
                 self.chroma_width,
                 self.chroma_height,
                 self.source_frame.format.bit_depth,
@@ -95,10 +95,10 @@ impl VvcChromaRefinementContext<'_> {
                 &mut buffers.candidate,
             );
             let direct_bdpcm_safe = vvc_chroma_direct_bdpcm_residual_is_safe(
-                buffers.selected.cb_residuals,
-                buffers.selected.cr_residuals,
-                buffers.candidate.cb_residuals,
-                buffers.candidate.cr_residuals,
+                buffers.selected.residuals.cb,
+                buffers.selected.residuals.cr,
+                buffers.candidate.residuals.cb,
+                buffers.candidate.residuals.cr,
             );
             #[cfg(feature = "vvc-stats")]
             if direct_bdpcm_safe {
@@ -115,8 +115,8 @@ impl VvcChromaRefinementContext<'_> {
                 self.chroma_ts_quant,
                 self.source_frame.format.bit_depth,
                 buffers.stats,
-                buffers.candidate.cb_residuals,
-                buffers.candidate.cr_residuals,
+                buffers.candidate.residuals.cb,
+                buffers.candidate.residuals.cr,
                 buffers.transform_scratch,
                 buffers.reconstructed_residual,
             );
@@ -156,8 +156,8 @@ impl VvcChromaRefinementContext<'_> {
                 self.chroma_ts_quant,
                 self.source_frame.format.bit_depth,
                 buffers.stats,
-                buffers.candidate.cb_residuals,
-                buffers.candidate.cr_residuals,
+                buffers.candidate.residuals.cb,
+                buffers.candidate.residuals.cr,
                 buffers.transform_scratch,
                 buffers.reconstructed_residual,
             );
@@ -191,7 +191,7 @@ fn build_vvc_chroma_bdpcm_candidate(
     #[cfg(feature = "vvc-stats")]
     let prediction_start = StageStart::now();
     predict_vvc_chroma_bdpcm_block_into_with_availability(
-        candidate.cb_prediction,
+        candidate.prediction.cb,
         prediction_scratch,
         bdpcm_mode,
         &context.frame_recon.cb,
@@ -202,7 +202,7 @@ fn build_vvc_chroma_bdpcm_candidate(
         Some(context.frame_recon.cb_availability()),
     );
     predict_vvc_chroma_bdpcm_block_into_with_availability(
-        candidate.cr_prediction,
+        candidate.prediction.cr,
         prediction_scratch,
         bdpcm_mode,
         &context.frame_recon.cr,
@@ -221,8 +221,8 @@ fn build_vvc_chroma_bdpcm_candidate(
     #[cfg(feature = "vvc-stats")]
     let residual_start = StageStart::now();
     residual_chroma_pair_tu_at_into(
-        candidate.cb_residuals,
-        candidate.cr_residuals,
+        candidate.residuals.cb,
+        candidate.residuals.cr,
         &context.source_frame.cb,
         &context.source_frame.cr,
         context.source_frame.geometry,
@@ -231,8 +231,8 @@ fn build_vvc_chroma_bdpcm_candidate(
         context.chroma_y,
         context.chroma_width,
         context.chroma_height,
-        candidate.cb_prediction,
-        candidate.cr_prediction,
+        candidate.prediction.cb,
+        candidate.prediction.cr,
     );
     #[cfg(feature = "vvc-stats")]
     stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));

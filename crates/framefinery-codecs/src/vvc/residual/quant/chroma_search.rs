@@ -16,12 +16,9 @@ struct VvcChromaModeSearchContext<'a> {
 struct VvcChromaModeSearchBuffers<'a> {
     cache: &'a mut VvcChromaModeRdCache,
     prediction_scratch: &'a mut VvcDcPredictionScratch,
-    selected_cb_prediction: &'a mut Vec<VvcSample>,
-    selected_cr_prediction: &'a mut Vec<VvcSample>,
-    candidate_cb_prediction: &'a mut Vec<VvcSample>,
-    candidate_cr_prediction: &'a mut Vec<VvcSample>,
-    candidate_cb_residuals: &'a mut Vec<i16>,
-    candidate_cr_residuals: &'a mut Vec<i16>,
+    selected_prediction: VvcChromaPredictionBuffers<'a>,
+    candidate_prediction: VvcChromaPredictionBuffers<'a>,
+    candidate_residuals: VvcChromaResidualBuffers<'a>,
     stats: &'a mut VvcIntraSearchStats,
 }
 
@@ -39,20 +36,16 @@ impl VvcChromaModeSearchContext<'_> {
         let VvcChromaModeSearchBuffers {
             cache,
             prediction_scratch,
-            selected_cb_prediction,
-            selected_cr_prediction,
-            candidate_cb_prediction,
-            candidate_cr_prediction,
-            candidate_cb_residuals,
-            candidate_cr_residuals,
+            mut selected_prediction,
+            mut candidate_prediction,
+            mut candidate_residuals,
             stats,
         } = buffers;
         let initial_mode = VvcChromaIntraPredictionMode::Derived;
         self.predict_candidate(
             initial_mode,
             prediction_scratch,
-            selected_cb_prediction,
-            selected_cr_prediction,
+            &mut selected_prediction,
             stats,
         );
         #[cfg(feature = "vvc-stats")]
@@ -67,10 +60,8 @@ impl VvcChromaModeSearchContext<'_> {
         let initial_score = self.score_prediction(
             cache,
             initial_mode,
-            selected_cb_prediction,
-            selected_cr_prediction,
-            candidate_cb_residuals,
-            candidate_cr_residuals,
+            &selected_prediction,
+            &mut candidate_residuals,
             stats,
         );
         let mut search = VvcChromaIntraSearch::new(initial_score);
@@ -92,10 +83,8 @@ impl VvcChromaModeSearchContext<'_> {
                     cache,
                     mode,
                     prediction_scratch,
-                    candidate_cb_prediction,
-                    candidate_cr_prediction,
-                    candidate_cb_residuals,
-                    candidate_cr_residuals,
+                    &mut candidate_prediction,
+                    &mut candidate_residuals,
                     stats,
                 );
                 #[cfg(feature = "vvc-stats")]
@@ -103,10 +92,8 @@ impl VvcChromaModeSearchContext<'_> {
                 search.consider_candidate(
                     mode,
                     score,
-                    selected_cb_prediction,
-                    selected_cr_prediction,
-                    candidate_cb_prediction,
-                    candidate_cr_prediction,
+                    &mut selected_prediction,
+                    &mut candidate_prediction,
                 );
                 if vvc_chroma_lossy_exact_mode_search_done(
                     self.syntax_tie_breaker_enabled,
@@ -140,10 +127,8 @@ impl VvcChromaModeSearchContext<'_> {
                     cache,
                     mode,
                     prediction_scratch,
-                    candidate_cb_prediction,
-                    candidate_cr_prediction,
-                    candidate_cb_residuals,
-                    candidate_cr_residuals,
+                    &mut candidate_prediction,
+                    &mut candidate_residuals,
                     stats,
                 );
                 #[cfg(feature = "vvc-stats")]
@@ -151,10 +136,8 @@ impl VvcChromaModeSearchContext<'_> {
                 search.consider_candidate(
                     mode,
                     score,
-                    selected_cb_prediction,
-                    selected_cr_prediction,
-                    candidate_cb_prediction,
-                    candidate_cr_prediction,
+                    &mut selected_prediction,
+                    &mut candidate_prediction,
                 );
             }
         }
@@ -169,42 +152,24 @@ impl VvcChromaModeSearchContext<'_> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn predict_and_score_candidate(
         &self,
         cache: &mut VvcChromaModeRdCache,
         mode: VvcChromaIntraPredictionMode,
         prediction_scratch: &mut VvcDcPredictionScratch,
-        predicted_cb: &mut Vec<VvcSample>,
-        predicted_cr: &mut Vec<VvcSample>,
-        cb_residuals: &mut Vec<i16>,
-        cr_residuals: &mut Vec<i16>,
+        prediction: &mut VvcChromaPredictionBuffers<'_>,
+        residuals: &mut VvcChromaResidualBuffers<'_>,
         stats: &mut VvcIntraSearchStats,
     ) -> u64 {
-        self.predict_candidate(
-            mode,
-            prediction_scratch,
-            predicted_cb,
-            predicted_cr,
-            stats,
-        );
-        self.score_prediction(
-            cache,
-            mode,
-            predicted_cb,
-            predicted_cr,
-            cb_residuals,
-            cr_residuals,
-            stats,
-        )
+        self.predict_candidate(mode, prediction_scratch, prediction, stats);
+        self.score_prediction(cache, mode, prediction, residuals, stats)
     }
 
     fn predict_candidate(
         &self,
         mode: VvcChromaIntraPredictionMode,
         prediction_scratch: &mut VvcDcPredictionScratch,
-        predicted_cb: &mut Vec<VvcSample>,
-        predicted_cr: &mut Vec<VvcSample>,
+        prediction: &mut VvcChromaPredictionBuffers<'_>,
         stats: &mut VvcIntraSearchStats,
     ) {
         #[cfg(not(feature = "vvc-stats"))]
@@ -212,8 +177,8 @@ impl VvcChromaModeSearchContext<'_> {
         #[cfg(feature = "vvc-stats")]
         let prediction_start = StageStart::now();
         predict_vvc_chroma_mode_pair_blocks_into_with_availability(
-            predicted_cb,
-            predicted_cr,
+            prediction.cb,
+            prediction.cr,
             prediction_scratch,
             mode,
             self.co_located_luma_mode,
@@ -235,15 +200,12 @@ impl VvcChromaModeSearchContext<'_> {
         );
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn score_prediction(
         &self,
         cache: &mut VvcChromaModeRdCache,
         mode: VvcChromaIntraPredictionMode,
-        predicted_cb: &[VvcSample],
-        predicted_cr: &[VvcSample],
-        cb_residuals: &mut Vec<i16>,
-        cr_residuals: &mut Vec<i16>,
+        prediction: &VvcChromaPredictionBuffers<'_>,
+        residuals: &mut VvcChromaResidualBuffers<'_>,
         stats: &mut VvcIntraSearchStats,
     ) -> u64 {
         #[cfg(feature = "vvc-stats")]
@@ -257,12 +219,10 @@ impl VvcChromaModeSearchContext<'_> {
             self.chroma_y,
             self.chroma_width,
             self.chroma_height,
-            predicted_cb,
-            predicted_cr,
+            prediction,
             self.cclm_enabled,
             self.syntax_tie_breaker_enabled,
-            cb_residuals,
-            cr_residuals,
+            residuals,
             stats,
         );
         #[cfg(feature = "vvc-stats")]
@@ -298,22 +258,18 @@ impl VvcChromaIntraSearch {
         self.candidate_costs
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn consider_candidate(
         &mut self,
         mode: VvcChromaIntraPredictionMode,
         score: u64,
-        selected_cb_prediction: &mut Vec<VvcSample>,
-        selected_cr_prediction: &mut Vec<VvcSample>,
-        candidate_cb_prediction: &mut Vec<VvcSample>,
-        candidate_cr_prediction: &mut Vec<VvcSample>,
+        selected_prediction: &mut VvcChromaPredictionBuffers<'_>,
+        candidate_prediction: &mut VvcChromaPredictionBuffers<'_>,
     ) {
         self.candidate_costs = self.candidate_costs.with_candidate(mode, Some(score));
         if score < self.best_score {
             self.best_mode = mode;
             self.best_score = score;
-            std::mem::swap(selected_cb_prediction, candidate_cb_prediction);
-            std::mem::swap(selected_cr_prediction, candidate_cr_prediction);
+            selected_prediction.swap_with(candidate_prediction);
         }
     }
 }
@@ -328,12 +284,10 @@ fn score_chroma_mode_candidate(
     chroma_y: usize,
     chroma_width: usize,
     chroma_height: usize,
-    predicted_cb: &[VvcSample],
-    predicted_cr: &[VvcSample],
+    prediction: &VvcChromaPredictionBuffers<'_>,
     cclm_enabled: bool,
     syntax_tie_breaker_enabled: bool,
-    cb_residuals: &mut Vec<i16>,
-    cr_residuals: &mut Vec<i16>,
+    residuals: &mut VvcChromaResidualBuffers<'_>,
     stats: &mut VvcIntraSearchStats,
 ) -> u64 {
     #[cfg(not(feature = "vvc-stats"))]
@@ -342,8 +296,8 @@ fn score_chroma_mode_candidate(
         #[cfg(feature = "vvc-stats")]
         let residual_start = StageStart::now();
         residual_chroma_pair_tu_at_into(
-            cb_residuals,
-            cr_residuals,
+            residuals.cb,
+            residuals.cr,
             &source_frame.cb,
             &source_frame.cr,
             source_frame.geometry,
@@ -352,20 +306,20 @@ fn score_chroma_mode_candidate(
             chroma_y,
             chroma_width,
             chroma_height,
-            predicted_cb,
-            predicted_cr,
+            prediction.cb,
+            prediction.cr,
         );
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
         let score = chroma_residual_mode_selection_score(
             metric,
-            cb_residuals,
-            cr_residuals,
+            residuals.cb,
+            residuals.cr,
             mode,
             cclm_enabled,
             syntax_tie_breaker_enabled,
         );
-        cache.consider(mode, score, cb_residuals, cr_residuals);
+        cache.consider(mode, score, residuals.cb, residuals.cr);
         score
     } else {
         chroma_prediction_mode_selection_score(
@@ -375,8 +329,8 @@ fn score_chroma_mode_candidate(
             chroma_y,
             chroma_width,
             chroma_height,
-            predicted_cb,
-            predicted_cr,
+            prediction.cb,
+            prediction.cr,
             mode,
             cclm_enabled,
             syntax_tie_breaker_enabled,
@@ -392,7 +346,8 @@ fn vvc_chroma_lossless_speed_skips_near_exact_explicit_search(
 ) -> bool {
     policy.residual_mode() == VvcResidualCodingMode::Lossless
         && policy.fast_search() == VvcFastSearch::LosslessSpeed
-        && best_score <= vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
+        && best_score
+            <= vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
 }
 
 fn vvc_chroma_fast_search_uses_derived_only(policy: VvcResidualCodingPolicy) -> bool {
@@ -484,6 +439,5 @@ fn vvc_chroma_fast_search_low_residual_score(
     chroma_width: usize,
     chroma_height: usize,
 ) -> u64 {
-    vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height)
-        .saturating_mul(4)
+    vvc_chroma_fast_search_near_exact_score(policy, chroma_width, chroma_height).saturating_mul(4)
 }

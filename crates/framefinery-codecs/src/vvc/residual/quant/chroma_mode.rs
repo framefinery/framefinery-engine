@@ -13,11 +13,40 @@ struct VvcChromaRefinementContext<'a> {
     chroma_ts_quant: &'a VvcTransformSkipQuantTable,
 }
 
+struct VvcChromaPredictionBuffers<'a> {
+    cb: &'a mut Vec<VvcSample>,
+    cr: &'a mut Vec<VvcSample>,
+}
+
+impl VvcChromaPredictionBuffers<'_> {
+    fn swap_with(&mut self, other: &mut VvcChromaPredictionBuffers<'_>) {
+        std::mem::swap(self.cb, other.cb);
+        std::mem::swap(self.cr, other.cr);
+    }
+}
+
+struct VvcChromaResidualBuffers<'a> {
+    cb: &'a mut Vec<i16>,
+    cr: &'a mut Vec<i16>,
+}
+
+impl VvcChromaResidualBuffers<'_> {
+    fn swap_with(&mut self, other: &mut VvcChromaResidualBuffers<'_>) {
+        std::mem::swap(self.cb, other.cb);
+        std::mem::swap(self.cr, other.cr);
+    }
+}
+
 struct VvcChromaCandidateBuffers<'a> {
-    cb_prediction: &'a mut Vec<VvcSample>,
-    cr_prediction: &'a mut Vec<VvcSample>,
-    cb_residuals: &'a mut Vec<i16>,
-    cr_residuals: &'a mut Vec<i16>,
+    prediction: VvcChromaPredictionBuffers<'a>,
+    residuals: VvcChromaResidualBuffers<'a>,
+}
+
+impl VvcChromaCandidateBuffers<'_> {
+    fn swap_with(&mut self, other: &mut VvcChromaCandidateBuffers<'_>) {
+        self.prediction.swap_with(&mut other.prediction);
+        self.residuals.swap_with(&mut other.residuals);
+    }
 }
 
 struct VvcChromaRefinementBuffers<'a> {
@@ -31,10 +60,7 @@ struct VvcChromaRefinementBuffers<'a> {
 
 impl VvcChromaRefinementBuffers<'_> {
     fn promote_candidate(&mut self) {
-        std::mem::swap(self.selected.cb_prediction, self.candidate.cb_prediction);
-        std::mem::swap(self.selected.cr_prediction, self.candidate.cr_prediction);
-        std::mem::swap(self.selected.cb_residuals, self.candidate.cb_residuals);
-        std::mem::swap(self.selected.cr_residuals, self.candidate.cr_residuals);
+        self.selected.swap_with(&mut self.candidate);
     }
 }
 
@@ -56,8 +82,8 @@ impl VvcChromaRefinementContext<'_> {
             };
         }
         if vvc_chroma_exact_prediction_skips_rd(
-            buffers.selected.cb_residuals,
-            buffers.selected.cr_residuals,
+            buffers.selected.residuals.cb,
+            buffers.selected.residuals.cr,
         ) {
             return VvcSelectedChromaMode {
                 mode: raw_mode,
@@ -73,8 +99,8 @@ impl VvcChromaRefinementContext<'_> {
             raw_decision,
             raw_mode,
             self.cclm_syntax_enabled,
-            buffers.selected.cb_residuals,
-            buffers.selected.cr_residuals,
+            buffers.selected.residuals.cb,
+            buffers.selected.residuals.cr,
             self.chroma_width,
             self.chroma_height,
             self.source_frame.format.bit_depth,
@@ -142,8 +168,8 @@ impl VvcChromaRefinementContext<'_> {
                     #[cfg(feature = "vvc-stats")]
                     let prediction_start = StageStart::now();
                     predict_vvc_chroma_mode_pair_blocks_into_with_availability(
-                        buffers.selected.cb_prediction,
-                        buffers.selected.cr_prediction,
+                        buffers.selected.prediction.cb,
+                        buffers.selected.prediction.cr,
                         buffers.prediction_scratch,
                         mode,
                         self.co_located_luma_mode,
@@ -165,8 +191,8 @@ impl VvcChromaRefinementContext<'_> {
                     assert!(
                         rd_cache.take_residuals_if_present(
                             mode,
-                            buffers.selected.cb_residuals,
-                            buffers.selected.cr_residuals,
+                            buffers.selected.residuals.cb,
+                            buffers.selected.residuals.cr,
                         ),
                         "cached chroma mode disappeared before residual transfer",
                     );
@@ -178,8 +204,8 @@ impl VvcChromaRefinementContext<'_> {
             #[cfg(feature = "vvc-stats")]
             let prediction_start = StageStart::now();
             predict_vvc_chroma_mode_pair_blocks_into_with_availability(
-                buffers.candidate.cb_prediction,
-                buffers.candidate.cr_prediction,
+                buffers.candidate.prediction.cb,
+                buffers.candidate.prediction.cr,
                 buffers.prediction_scratch,
                 mode,
                 self.co_located_luma_mode,
@@ -205,8 +231,8 @@ impl VvcChromaRefinementContext<'_> {
             #[cfg(feature = "vvc-stats")]
             let residual_start = StageStart::now();
             residual_chroma_pair_tu_at_into(
-                buffers.candidate.cb_residuals,
-                buffers.candidate.cr_residuals,
+                buffers.candidate.residuals.cb,
+                buffers.candidate.residuals.cr,
                 &self.source_frame.cb,
                 &self.source_frame.cr,
                 self.source_frame.geometry,
@@ -215,8 +241,8 @@ impl VvcChromaRefinementContext<'_> {
                 self.chroma_y,
                 self.chroma_width,
                 self.chroma_height,
-                buffers.candidate.cb_prediction,
-                buffers.candidate.cr_prediction,
+                buffers.candidate.prediction.cb,
+                buffers.candidate.prediction.cr,
             );
             #[cfg(feature = "vvc-stats")]
             {
@@ -231,8 +257,8 @@ impl VvcChromaRefinementContext<'_> {
                 coding_decision,
                 mode,
                 self.cclm_syntax_enabled,
-                buffers.candidate.cb_residuals,
-                buffers.candidate.cr_residuals,
+                buffers.candidate.residuals.cb,
+                buffers.candidate.residuals.cr,
                 self.chroma_width,
                 self.chroma_height,
                 self.source_frame.format.bit_depth,

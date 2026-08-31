@@ -167,12 +167,18 @@ impl VvcChromaTuSelectionContext<'_> {
         } = mode_search_context.select_intra_mode(VvcChromaModeSearchBuffers {
             cache,
             prediction_scratch,
-            selected_cb_prediction,
-            selected_cr_prediction,
-            candidate_cb_prediction,
-            candidate_cr_prediction,
-            candidate_cb_residuals,
-            candidate_cr_residuals,
+            selected_prediction: VvcChromaPredictionBuffers {
+                cb: selected_cb_prediction,
+                cr: selected_cr_prediction,
+            },
+            candidate_prediction: VvcChromaPredictionBuffers {
+                cb: candidate_cb_prediction,
+                cr: candidate_cr_prediction,
+            },
+            candidate_residuals: VvcChromaResidualBuffers {
+                cb: candidate_cb_residuals,
+                cr: candidate_cr_residuals,
+            },
             stats,
         });
         #[cfg(feature = "vvc-stats")]
@@ -206,16 +212,24 @@ impl VvcChromaTuSelectionContext<'_> {
         let mut refinement_buffers = VvcChromaRefinementBuffers {
             prediction_scratch,
             selected: VvcChromaCandidateBuffers {
-                cb_prediction: selected_cb_prediction,
-                cr_prediction: selected_cr_prediction,
-                cb_residuals: selected_cb_residuals,
-                cr_residuals: selected_cr_residuals,
+                prediction: VvcChromaPredictionBuffers {
+                    cb: selected_cb_prediction,
+                    cr: selected_cr_prediction,
+                },
+                residuals: VvcChromaResidualBuffers {
+                    cb: selected_cb_residuals,
+                    cr: selected_cr_residuals,
+                },
             },
             candidate: VvcChromaCandidateBuffers {
-                cb_prediction: candidate_cb_prediction,
-                cr_prediction: candidate_cr_prediction,
-                cb_residuals: candidate_cb_residuals,
-                cr_residuals: candidate_cr_residuals,
+                prediction: VvcChromaPredictionBuffers {
+                    cb: candidate_cb_prediction,
+                    cr: candidate_cr_prediction,
+                },
+                residuals: VvcChromaResidualBuffers {
+                    cb: candidate_cb_residuals,
+                    cr: candidate_cr_residuals,
+                },
             },
             stats,
             transform_scratch,

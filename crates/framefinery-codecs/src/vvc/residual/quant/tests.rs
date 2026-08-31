@@ -499,37 +499,41 @@ fn vvc_chroma_intra_search_promotes_only_strict_winners_and_records_ties() {
     let mut selected_cr: Vec<VvcSample> = vec![10];
     let mut candidate_cb: Vec<VvcSample> = vec![2];
     let mut candidate_cr: Vec<VvcSample> = vec![20];
+    let mut selected_prediction = VvcChromaPredictionBuffers {
+        cb: &mut selected_cb,
+        cr: &mut selected_cr,
+    };
+    let mut candidate_prediction = VvcChromaPredictionBuffers {
+        cb: &mut candidate_cb,
+        cr: &mut candidate_cr,
+    };
 
     search.consider_candidate(
         explicit,
         80,
-        &mut selected_cb,
-        &mut selected_cr,
-        &mut candidate_cb,
-        &mut candidate_cr,
+        &mut selected_prediction,
+        &mut candidate_prediction,
     );
     assert_eq!(search.best_mode(), explicit);
     assert_eq!(search.best_score(), 80);
-    assert_eq!(selected_cb, vec![2]);
-    assert_eq!(selected_cr, vec![20]);
-    assert_eq!(candidate_cb, vec![1]);
-    assert_eq!(candidate_cr, vec![10]);
+    assert_eq!(*selected_prediction.cb, vec![2]);
+    assert_eq!(*selected_prediction.cr, vec![20]);
+    assert_eq!(*candidate_prediction.cb, vec![1]);
+    assert_eq!(*candidate_prediction.cr, vec![10]);
 
-    candidate_cb[0] = 3;
-    candidate_cr[0] = 30;
+    candidate_prediction.cb[0] = 3;
+    candidate_prediction.cr[0] = 30;
     search.consider_candidate(
         cclm,
         80,
-        &mut selected_cb,
-        &mut selected_cr,
-        &mut candidate_cb,
-        &mut candidate_cr,
+        &mut selected_prediction,
+        &mut candidate_prediction,
     );
     assert_eq!(search.best_mode(), explicit);
-    assert_eq!(selected_cb, vec![2]);
-    assert_eq!(selected_cr, vec![20]);
-    assert_eq!(candidate_cb, vec![3]);
-    assert_eq!(candidate_cr, vec![30]);
+    assert_eq!(*selected_prediction.cb, vec![2]);
+    assert_eq!(*selected_prediction.cr, vec![20]);
+    assert_eq!(*candidate_prediction.cb, vec![3]);
+    assert_eq!(*candidate_prediction.cr, vec![30]);
 
     let costs: Vec<_> = search
         .candidate_costs()
@@ -594,16 +598,24 @@ fn vvc_chroma_candidate_evaluator_shares_derived_explicit_and_cclm_scoring() {
         #[cfg(not(feature = "vvc-stats"))]
         let mut stats = VvcIntraSearchStats;
 
-        let score = context.predict_and_score_candidate(
-            &mut cache,
-            mode,
-            &mut prediction_scratch,
-            &mut predicted_cb,
-            &mut predicted_cr,
-            &mut cb_residuals,
-            &mut cr_residuals,
-            &mut stats,
-        );
+        let score = {
+            let mut prediction = VvcChromaPredictionBuffers {
+                cb: &mut predicted_cb,
+                cr: &mut predicted_cr,
+            };
+            let mut residuals = VvcChromaResidualBuffers {
+                cb: &mut cb_residuals,
+                cr: &mut cr_residuals,
+            };
+            context.predict_and_score_candidate(
+                &mut cache,
+                mode,
+                &mut prediction_scratch,
+                &mut prediction,
+                &mut residuals,
+                &mut stats,
+            )
+        };
         assert_eq!(
             score,
             chroma_prediction_mode_selection_score(
@@ -668,12 +680,18 @@ fn vvc_chroma_search_preserves_unscored_derived_only_fast_path() {
     let result = context.select_intra_mode(VvcChromaModeSearchBuffers {
         cache: &mut cache,
         prediction_scratch: &mut prediction_scratch,
-        selected_cb_prediction: &mut selected_cb,
-        selected_cr_prediction: &mut selected_cr,
-        candidate_cb_prediction: &mut candidate_cb,
-        candidate_cr_prediction: &mut candidate_cr,
-        candidate_cb_residuals: &mut candidate_cb_residuals,
-        candidate_cr_residuals: &mut candidate_cr_residuals,
+        selected_prediction: VvcChromaPredictionBuffers {
+            cb: &mut selected_cb,
+            cr: &mut selected_cr,
+        },
+        candidate_prediction: VvcChromaPredictionBuffers {
+            cb: &mut candidate_cb,
+            cr: &mut candidate_cr,
+        },
+        candidate_residuals: VvcChromaResidualBuffers {
+            cb: &mut candidate_cb_residuals,
+            cr: &mut candidate_cr_residuals,
+        },
         stats: &mut stats,
     });
 
@@ -716,16 +734,24 @@ fn vvc_chroma_refinement_promotes_prediction_and_residual_pair_as_one_unit() {
         let mut buffers = VvcChromaRefinementBuffers {
             prediction_scratch: &mut prediction_scratch,
             selected: VvcChromaCandidateBuffers {
-                cb_prediction: &mut selected_cb_prediction,
-                cr_prediction: &mut selected_cr_prediction,
-                cb_residuals: &mut selected_cb_residuals,
-                cr_residuals: &mut selected_cr_residuals,
+                prediction: VvcChromaPredictionBuffers {
+                    cb: &mut selected_cb_prediction,
+                    cr: &mut selected_cr_prediction,
+                },
+                residuals: VvcChromaResidualBuffers {
+                    cb: &mut selected_cb_residuals,
+                    cr: &mut selected_cr_residuals,
+                },
             },
             candidate: VvcChromaCandidateBuffers {
-                cb_prediction: &mut candidate_cb_prediction,
-                cr_prediction: &mut candidate_cr_prediction,
-                cb_residuals: &mut candidate_cb_residuals,
-                cr_residuals: &mut candidate_cr_residuals,
+                prediction: VvcChromaPredictionBuffers {
+                    cb: &mut candidate_cb_prediction,
+                    cr: &mut candidate_cr_prediction,
+                },
+                residuals: VvcChromaResidualBuffers {
+                    cb: &mut candidate_cb_residuals,
+                    cr: &mut candidate_cr_residuals,
+                },
             },
             stats: &mut stats,
             transform_scratch: &mut transform_scratch,
