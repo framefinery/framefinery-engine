@@ -218,6 +218,69 @@ fn vvc_luma_tu_metadata_records_each_exit_without_cross_talk() {
 }
 
 #[test]
+fn vvc_chroma_tu_metadata_records_each_exit_without_cross_talk() {
+    let mut metadata = VvcChromaTuMetadata::new();
+    let hinted_mode = VvcChromaIntraPredictionMode::Explicit(VvcIntraPredictionMode::Vertical);
+    metadata.record_mode_hint(1, hinted_mode, VvcBdpcmMode::Vertical);
+
+    let mut cb_ac_levels = [0; VVC_CHROMA_AC_COEFFS_PER_TU];
+    let mut cr_ac_levels = [0; VVC_CHROMA_AC_COEFFS_PER_TU];
+    cb_ac_levels[0] = -5;
+    cr_ac_levels[VVC_CHROMA_AC_COEFFS_PER_TU - 1] = 9;
+    let finalized = VvcFinalizedChromaTu {
+        cb_dc_level: -3,
+        cr_dc_level: 4,
+        cb_ac_levels,
+        cr_ac_levels,
+        cb_has_ac: true,
+        cr_has_ac: true,
+        cb_transform_skip: true,
+        cr_transform_skip: false,
+        bdpcm_mode: VvcBdpcmMode::Horizontal,
+    };
+    let finalized_mode = VvcChromaIntraPredictionMode::Cclm(VvcChromaCclmMode::MdlmTop);
+    metadata.record_finalized(2, finalized_mode, finalized);
+
+    assert_eq!(
+        metadata.chroma_tu_intra_modes[0],
+        VvcChromaIntraPredictionMode::Derived
+    );
+    assert_eq!(metadata.cb_tu_dc_levels[0], 0);
+    assert_eq!(metadata.chroma_tu_bdpcm_modes[0], VvcBdpcmMode::None);
+
+    assert_eq!(metadata.chroma_tu_intra_modes[1], hinted_mode);
+    assert_eq!(metadata.chroma_tu_bdpcm_modes[1], VvcBdpcmMode::Vertical);
+    assert_eq!(metadata.cb_tu_dc_levels[1], 0);
+    assert_eq!(metadata.cr_tu_dc_levels[1], 0);
+    assert!(!metadata.cb_tu_has_ac[1]);
+    assert!(!metadata.cr_tu_has_ac[1]);
+
+    assert_eq!(metadata.chroma_tu_intra_modes[2], finalized_mode);
+    assert_eq!(metadata.cb_tu_dc_levels[2], finalized.cb_dc_level);
+    assert_eq!(metadata.cr_tu_dc_levels[2], finalized.cr_dc_level);
+    assert_eq!(metadata.cb_tu_ac_levels[2], finalized.cb_ac_levels);
+    assert_eq!(metadata.cr_tu_ac_levels[2], finalized.cr_ac_levels);
+    assert_eq!(metadata.cb_tu_has_ac[2], finalized.cb_has_ac);
+    assert_eq!(metadata.cr_tu_has_ac[2], finalized.cr_has_ac);
+    assert_eq!(
+        metadata.cb_tu_transform_skip[2],
+        finalized.cb_transform_skip
+    );
+    assert_eq!(
+        metadata.cr_tu_transform_skip[2],
+        finalized.cr_transform_skip
+    );
+    assert_eq!(metadata.chroma_tu_bdpcm_modes[2], finalized.bdpcm_mode);
+
+    assert_eq!(
+        metadata.chroma_tu_intra_modes[3],
+        VvcChromaIntraPredictionMode::Derived
+    );
+    assert_eq!(metadata.cb_tu_dc_levels[3], 0);
+    assert_eq!(metadata.cr_tu_dc_levels[3], 0);
+}
+
+#[test]
 fn vvc_source_luma_directional_seed_maps_integer_gradients() {
     let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
     let flat = sampled_luma_frame(8, 8, vec![64; 64]);

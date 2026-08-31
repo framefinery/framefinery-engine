@@ -313,6 +313,10 @@ The following changes were behavior-preserving and independently validated:
   bounded record type; temporal, exact-inter, and ordinary finalization no
   longer fan the same result out to parallel arrays through three duplicated
   write paths.
+- VVC temporal-hint and finalized chroma-TU metadata writes now share the same
+  bounded-record contract; inter-derived, temporal, and ordinary finalization
+  explicitly record their selected mode and no longer duplicate the Cb/Cr
+  result-array fan-out.
 - Seven definition-only VVC residual test adapters were removed from sample
   extraction, quantization, and coefficient-stream construction; single-plane
   chroma extraction no longer carries an unreachable zero-tracking branch,
@@ -333,7 +337,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 937-line CTU setup plus 1,308-line mode-selection sibling and focused helpers | chroma candidate evaluation and luma result recording are shared; chroma result bookkeeping and remaining orchestration need call-graph review |
+| VVC residual quantization | 937-line CTU setup plus 1,292-line mode-selection sibling and focused helpers | chroma candidate evaluation and luma/chroma result recording are shared; remaining orchestration needs call-graph review |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2

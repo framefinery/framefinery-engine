@@ -18,16 +18,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     temporal_mode_hints: Option<&VvcQuantizedColor>,
 ) -> VvcQuantizedColor {
     let mut luma_tu_metadata = VvcLumaTuMetadata::new();
-    let mut cb_tu_dc_levels = [0; MAX_VVC_CHROMA_TUS];
-    let mut cr_tu_dc_levels = [0; MAX_VVC_CHROMA_TUS];
-    let mut cb_tu_ac_levels = [[0; VVC_CHROMA_AC_COEFFS_PER_TU]; MAX_VVC_CHROMA_TUS];
-    let mut cr_tu_ac_levels = [[0; VVC_CHROMA_AC_COEFFS_PER_TU]; MAX_VVC_CHROMA_TUS];
-    let mut cb_tu_has_ac = [false; MAX_VVC_CHROMA_TUS];
-    let mut cr_tu_has_ac = [false; MAX_VVC_CHROMA_TUS];
-    let mut cb_tu_transform_skip = [false; MAX_VVC_CHROMA_TUS];
-    let mut cr_tu_transform_skip = [false; MAX_VVC_CHROMA_TUS];
-    let mut chroma_tu_bdpcm_modes = [VvcBdpcmMode::None; MAX_VVC_CHROMA_TUS];
-    let mut chroma_tu_intra_modes = [VvcChromaIntraPredictionMode::Derived; MAX_VVC_CHROMA_TUS];
+    let mut chroma_tu_metadata = VvcChromaTuMetadata::new();
     let mut applied_luma_inter_decisions = [None; MAX_VVC_LUMA_TUS];
     let mut luma_nodes = std::mem::take(&mut scratch.luma_nodes);
     let mut chroma_nodes = std::mem::take(&mut scratch.chroma_nodes);
@@ -743,15 +734,11 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                     intra_search_stats.add_chroma_finalize_nanos(
                         chroma_finalize_start.elapsed().as_nanos() as u64,
                     );
-                    cb_tu_dc_levels[chroma_tu_count] = chroma_tu.cb_dc_level;
-                    cr_tu_dc_levels[chroma_tu_count] = chroma_tu.cr_dc_level;
-                    cb_tu_ac_levels[chroma_tu_count] = chroma_tu.cb_ac_levels;
-                    cr_tu_ac_levels[chroma_tu_count] = chroma_tu.cr_ac_levels;
-                    cb_tu_has_ac[chroma_tu_count] = chroma_tu.cb_has_ac;
-                    cr_tu_has_ac[chroma_tu_count] = chroma_tu.cr_has_ac;
-                    cb_tu_transform_skip[chroma_tu_count] = chroma_tu.cb_transform_skip;
-                    cr_tu_transform_skip[chroma_tu_count] = chroma_tu.cr_transform_skip;
-                    chroma_tu_bdpcm_modes[chroma_tu_count] = chroma_tu.bdpcm_mode;
+                    chroma_tu_metadata.record_finalized(
+                        chroma_tu_count,
+                        VvcChromaIntraPredictionMode::Derived,
+                        chroma_tu,
+                    );
                     chroma_tu_count += 1;
                     continue;
                 }
@@ -773,8 +760,11 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 chroma_width,
                 chroma_height,
             ) {
-                chroma_tu_intra_modes[chroma_tu_count] = hint.mode;
-                chroma_tu_bdpcm_modes[chroma_tu_count] = hint.bdpcm_mode;
+                chroma_tu_metadata.record_mode_hint(
+                    chroma_tu_count,
+                    hint.mode,
+                    hint.bdpcm_mode,
+                );
             }
             let coded_geometry = frame_recon.coded_geometry();
             copy_source_chroma_node_into_reconstruction(
@@ -833,7 +823,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 #[cfg(feature = "vvc-stats")]
                 intra_search_stats
                     .add_chroma_finalize_nanos(chroma_finalize_start.elapsed().as_nanos() as u64);
-                chroma_tu_intra_modes[chroma_tu_count] = hint.mode;
                 #[cfg(feature = "vvc-stats")]
                 {
                     residual_energy_stats.add_chroma_residuals(
@@ -847,15 +836,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                         chroma_height,
                     );
                 }
-                cb_tu_dc_levels[chroma_tu_count] = chroma_tu.cb_dc_level;
-                cr_tu_dc_levels[chroma_tu_count] = chroma_tu.cr_dc_level;
-                cb_tu_ac_levels[chroma_tu_count] = chroma_tu.cb_ac_levels;
-                cr_tu_ac_levels[chroma_tu_count] = chroma_tu.cr_ac_levels;
-                cb_tu_has_ac[chroma_tu_count] = chroma_tu.cb_has_ac;
-                cr_tu_has_ac[chroma_tu_count] = chroma_tu.cr_has_ac;
-                cb_tu_transform_skip[chroma_tu_count] = chroma_tu.cb_transform_skip;
-                cr_tu_transform_skip[chroma_tu_count] = chroma_tu.cr_transform_skip;
-                chroma_tu_bdpcm_modes[chroma_tu_count] = chroma_tu.bdpcm_mode;
+                chroma_tu_metadata.record_finalized(chroma_tu_count, hint.mode, chroma_tu);
                 #[cfg(feature = "vvc-stats")]
                 write_vvc_chroma_tu_trace(
                     tu_trace_sink.as_mut(),
@@ -1155,7 +1136,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         }
         #[cfg(feature = "vvc-stats")]
         intra_search_stats.add_chroma_bdpcm_nanos(chroma_bdpcm_start.elapsed().as_nanos() as u64);
-        chroma_tu_intra_modes[chroma_tu_count] = chroma_mode;
         let chroma_coding_decision = policy.select_chroma_tu_coding_decision(node, chroma_mode);
         #[cfg(feature = "vvc-stats")]
         {
@@ -1186,15 +1166,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         #[cfg(feature = "vvc-stats")]
         intra_search_stats
             .add_chroma_finalize_nanos(chroma_finalize_start.elapsed().as_nanos() as u64);
-        cb_tu_dc_levels[chroma_tu_count] = chroma_tu.cb_dc_level;
-        cr_tu_dc_levels[chroma_tu_count] = chroma_tu.cr_dc_level;
-        cb_tu_ac_levels[chroma_tu_count] = chroma_tu.cb_ac_levels;
-        cr_tu_ac_levels[chroma_tu_count] = chroma_tu.cr_ac_levels;
-        cb_tu_has_ac[chroma_tu_count] = chroma_tu.cb_has_ac;
-        cr_tu_has_ac[chroma_tu_count] = chroma_tu.cr_has_ac;
-        cb_tu_transform_skip[chroma_tu_count] = chroma_tu.cb_transform_skip;
-        cr_tu_transform_skip[chroma_tu_count] = chroma_tu.cr_transform_skip;
-        chroma_tu_bdpcm_modes[chroma_tu_count] = chroma_tu.bdpcm_mode;
+        chroma_tu_metadata.record_finalized(chroma_tu_count, chroma_mode, chroma_tu);
         #[cfg(feature = "vvc-stats")]
         write_vvc_chroma_tu_trace(
             tu_trace_sink.as_mut(),
@@ -1236,6 +1208,18 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         luma_tu_mrl_index,
         luma_tu_mts_index,
     } = luma_tu_metadata;
+    let VvcChromaTuMetadata {
+        chroma_tu_intra_modes,
+        cb_tu_dc_levels,
+        cr_tu_dc_levels,
+        cb_tu_ac_levels,
+        cr_tu_ac_levels,
+        cb_tu_has_ac,
+        cr_tu_has_ac,
+        cb_tu_transform_skip,
+        cr_tu_transform_skip,
+        chroma_tu_bdpcm_modes,
+    } = chroma_tu_metadata;
     let quantized = VvcQuantizedColor {
         y: vvc_downshift_sample_to_u8(color.y, source_frame.format.bit_depth),
         u: finalized_vvc_chroma_sample(
