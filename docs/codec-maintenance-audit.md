@@ -301,6 +301,10 @@ The following changes were behavior-preserving and independently validated:
   a dedicated subsystem shared by residual candidate selection paths.
 - AV2 lossless and lossy horizontal, vertical, and above-left predictor
   selection now share common edge-policy kernels.
+- VVC luma and chroma regular intra prediction now share one Planar/DC/Angular
+  dispatcher and one plane-region descriptor; luma MRL/filtering and chroma
+  subsampling/4:2:2 angle mapping remain explicit only where their syntax and
+  sample geometry differ.
 - The optional `vvc-stats` feature was made independently compilable instead of
   implicitly depending on benchmark-only internals.
 
@@ -315,7 +319,7 @@ current call graph rather than by line count alone:
 | Area | Approximate size | Current concern |
 | --- | ---: | --- |
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
-| VVC residual prediction | 491-line orchestration plus focused prediction siblings | plane-level luma/chroma dispatch and scratch ownership still need call-graph review |
+| VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
 | VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
 

@@ -111,152 +111,124 @@ pub(in crate::vvc) fn predict_vvc_luma_intra_block_into_with_mrl_and_availabilit
     availability: Option<VvcPlaneAvailability<'_>>,
 ) {
     let reference_line = usize::from(mrl_index.min(VVC_MAX_MULTI_REF_LINE_IDX as u8));
+    let region = VvcIntraPredictionRegion::luma(geometry, node, reference_line);
+    predict_vvc_intra_block_into(
+        prediction,
+        scratch,
+        mode,
+        mode.luma_mode_index(),
+        luma,
+        region,
+        bit_depth,
+        availability,
+    );
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct VvcIntraPredictionRegion {
+    plane_width: usize,
+    plane_height: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    is_luma: bool,
+    reference_line: usize,
+}
+
+impl VvcIntraPredictionRegion {
+    fn luma(geometry: VvcVideoGeometry, node: VvcCodingTreeNode, reference_line: usize) -> Self {
+        Self {
+            plane_width: geometry.width,
+            plane_height: geometry.height,
+            x: usize::from(node.x),
+            y: usize::from(node.y),
+            width: usize::from(node.width),
+            height: usize::from(node.height),
+            is_luma: true,
+            reference_line,
+        }
+    }
+
+    fn chroma(
+        geometry: VvcVideoGeometry,
+        node: VvcCodingTreeNode,
+        chroma_sampling: ChromaSampling,
+    ) -> Self {
+        let subsample_x = chroma_subsample_x(chroma_sampling);
+        let subsample_y = chroma_subsample_y(chroma_sampling);
+        Self {
+            plane_width: geometry.width / subsample_x,
+            plane_height: geometry.height / subsample_y,
+            x: usize::from(node.x) / subsample_x,
+            y: usize::from(node.y) / subsample_y,
+            width: usize::from(node.width) / subsample_x,
+            height: usize::from(node.height) / subsample_y,
+            is_luma: false,
+            reference_line: 0,
+        }
+    }
+}
+
+fn predict_vvc_intra_block_into(
+    prediction: &mut Vec<VvcSample>,
+    scratch: &mut VvcDcPredictionScratch,
+    mode: VvcIntraPredictionMode,
+    mode_index: u8,
+    plane: &[VvcSample],
+    region: VvcIntraPredictionRegion,
+    bit_depth: SampleBitDepth,
+    availability: Option<VvcPlaneAvailability<'_>>,
+) {
     match mode {
-        VvcIntraPredictionMode::Planar => predict_vvc_luma_planar_block_into(
+        VvcIntraPredictionMode::Planar => predict_vvc_planar_block_into(
             prediction,
             scratch,
-            luma,
-            geometry,
-            node,
+            plane,
+            region.plane_width,
+            region.plane_height,
+            region.x,
+            region.y,
+            region.width,
+            region.height,
             bit_depth,
-            reference_line,
+            region.is_luma,
+            region.reference_line,
             availability,
         ),
-        VvcIntraPredictionMode::Dc => predict_vvc_luma_dc_block_into(
+        VvcIntraPredictionMode::Dc => predict_vvc_dc_block_into(
             prediction,
             scratch,
-            luma,
-            geometry,
-            node,
+            plane,
+            region.plane_width,
+            region.plane_height,
+            region.x,
+            region.y,
+            region.width,
+            region.height,
             bit_depth,
-            reference_line,
+            region.reference_line,
             availability,
         ),
         VvcIntraPredictionMode::Horizontal
         | VvcIntraPredictionMode::Vertical
-        | VvcIntraPredictionMode::Angular(_) => predict_vvc_luma_angular_block_into(
+        | VvcIntraPredictionMode::Angular(_) => predict_vvc_angular_block_into(
             prediction,
             scratch,
-            mode,
-            luma,
-            geometry,
-            node,
+            plane,
+            region.plane_width,
+            region.plane_height,
+            region.x,
+            region.y,
+            region.width,
+            region.height,
+            mode_index,
             bit_depth,
-            reference_line,
+            region.is_luma,
+            region.reference_line,
             availability,
         ),
     }
-}
-
-pub(in crate::vvc) fn predict_vvc_luma_dc_block_into(
-    prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
-    luma: &[VvcSample],
-    geometry: VvcVideoGeometry,
-    node: VvcCodingTreeNode,
-    bit_depth: SampleBitDepth,
-    reference_line: usize,
-    availability: Option<VvcPlaneAvailability<'_>>,
-) {
-    predict_vvc_dc_block_into(
-        prediction,
-        scratch,
-        luma,
-        geometry.width,
-        geometry.height,
-        usize::from(node.x),
-        usize::from(node.y),
-        usize::from(node.width),
-        usize::from(node.height),
-        bit_depth,
-        reference_line,
-        availability,
-    );
-}
-
-pub(in crate::vvc) fn predict_vvc_luma_planar_block_into(
-    prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
-    luma: &[VvcSample],
-    geometry: VvcVideoGeometry,
-    node: VvcCodingTreeNode,
-    bit_depth: SampleBitDepth,
-    reference_line: usize,
-    availability: Option<VvcPlaneAvailability<'_>>,
-) {
-    predict_vvc_planar_block_into(
-        prediction,
-        scratch,
-        luma,
-        geometry.width,
-        geometry.height,
-        usize::from(node.x),
-        usize::from(node.y),
-        usize::from(node.width),
-        usize::from(node.height),
-        bit_depth,
-        true,
-        reference_line,
-        availability,
-    );
-}
-
-fn predict_vvc_luma_angular_block_into(
-    prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
-    mode: VvcIntraPredictionMode,
-    luma: &[VvcSample],
-    geometry: VvcVideoGeometry,
-    node: VvcCodingTreeNode,
-    bit_depth: SampleBitDepth,
-    reference_line: usize,
-    availability: Option<VvcPlaneAvailability<'_>>,
-) {
-    let mode_index = mode.luma_mode_index();
-    predict_vvc_angular_block_into(
-        prediction,
-        scratch,
-        luma,
-        geometry.width,
-        geometry.height,
-        usize::from(node.x),
-        usize::from(node.y),
-        usize::from(node.width),
-        usize::from(node.height),
-        mode_index,
-        bit_depth,
-        true,
-        reference_line,
-        availability,
-    );
-}
-
-fn predict_vvc_chroma_dc_block_into_with_availability(
-    prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
-    chroma: &[VvcSample],
-    geometry: VvcVideoGeometry,
-    node: VvcCodingTreeNode,
-    chroma_sampling: ChromaSampling,
-    bit_depth: SampleBitDepth,
-    availability: Option<VvcPlaneAvailability<'_>>,
-) {
-    let subsample_x = chroma_subsample_x(chroma_sampling);
-    let subsample_y = chroma_subsample_y(chroma_sampling);
-    predict_vvc_dc_block_into(
-        prediction,
-        scratch,
-        chroma,
-        geometry.width / subsample_x,
-        geometry.height / subsample_y,
-        usize::from(node.x) / subsample_x,
-        usize::from(node.y) / subsample_y,
-        usize::from(node.width) / subsample_x,
-        usize::from(node.height) / subsample_y,
-        bit_depth,
-        0,
-        availability,
-    );
 }
 
 fn predict_vvc_chroma_intra_block_into_with_availability(
@@ -270,41 +242,18 @@ fn predict_vvc_chroma_intra_block_into_with_availability(
     bit_depth: SampleBitDepth,
     availability: Option<VvcPlaneAvailability<'_>>,
 ) {
-    match mode {
-        VvcIntraPredictionMode::Planar => predict_vvc_chroma_planar_block_into(
-            prediction,
-            scratch,
-            chroma,
-            geometry,
-            node,
-            chroma_sampling,
-            bit_depth,
-            availability,
-        ),
-        VvcIntraPredictionMode::Dc => predict_vvc_chroma_dc_block_into_with_availability(
-            prediction,
-            scratch,
-            chroma,
-            geometry,
-            node,
-            chroma_sampling,
-            bit_depth,
-            availability,
-        ),
-        VvcIntraPredictionMode::Horizontal
-        | VvcIntraPredictionMode::Vertical
-        | VvcIntraPredictionMode::Angular(_) => predict_vvc_chroma_angular_block_into(
-            prediction,
-            scratch,
-            mode,
-            chroma,
-            geometry,
-            node,
-            chroma_sampling,
-            bit_depth,
-            availability,
-        ),
-    }
+    let region = VvcIntraPredictionRegion::chroma(geometry, node, chroma_sampling);
+    let mode_index = vvc_chroma_prediction_mode_index(mode, chroma_sampling);
+    predict_vvc_intra_block_into(
+        prediction,
+        scratch,
+        mode,
+        mode_index,
+        chroma,
+        region,
+        bit_depth,
+        availability,
+    );
 }
 
 pub(in crate::vvc) struct VvcDcPredictionScratch {
@@ -318,67 +267,6 @@ pub(in crate::vvc) struct VvcDcPredictionScratch {
 include!("prediction_cclm.rs");
 include!("prediction_cclm_orchestration.rs");
 include!("prediction_chroma_mode.rs");
-
-fn predict_vvc_chroma_planar_block_into(
-    prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
-    chroma: &[VvcSample],
-    geometry: VvcVideoGeometry,
-    node: VvcCodingTreeNode,
-    chroma_sampling: ChromaSampling,
-    bit_depth: SampleBitDepth,
-    availability: Option<VvcPlaneAvailability<'_>>,
-) {
-    let subsample_x = chroma_subsample_x(chroma_sampling);
-    let subsample_y = chroma_subsample_y(chroma_sampling);
-    predict_vvc_planar_block_into(
-        prediction,
-        scratch,
-        chroma,
-        geometry.width / subsample_x,
-        geometry.height / subsample_y,
-        usize::from(node.x) / subsample_x,
-        usize::from(node.y) / subsample_y,
-        usize::from(node.width) / subsample_x,
-        usize::from(node.height) / subsample_y,
-        bit_depth,
-        false,
-        0,
-        availability,
-    );
-}
-
-fn predict_vvc_chroma_angular_block_into(
-    prediction: &mut Vec<VvcSample>,
-    scratch: &mut VvcDcPredictionScratch,
-    mode: VvcIntraPredictionMode,
-    chroma: &[VvcSample],
-    geometry: VvcVideoGeometry,
-    node: VvcCodingTreeNode,
-    chroma_sampling: ChromaSampling,
-    bit_depth: SampleBitDepth,
-    availability: Option<VvcPlaneAvailability<'_>>,
-) {
-    let subsample_x = chroma_subsample_x(chroma_sampling);
-    let subsample_y = chroma_subsample_y(chroma_sampling);
-    let mode_index = vvc_chroma_prediction_mode_index(mode, chroma_sampling);
-    predict_vvc_angular_block_into(
-        prediction,
-        scratch,
-        chroma,
-        geometry.width / subsample_x,
-        geometry.height / subsample_y,
-        usize::from(node.x) / subsample_x,
-        usize::from(node.y) / subsample_y,
-        usize::from(node.width) / subsample_x,
-        usize::from(node.height) / subsample_y,
-        mode_index,
-        bit_depth,
-        false,
-        0,
-        availability,
-    );
-}
 
 fn vvc_chroma_prediction_mode_index(
     mode: VvcIntraPredictionMode,
@@ -408,6 +296,80 @@ impl Default for VvcDcPredictionScratch {
 mod tests {
     use super::*;
     use crate::vvc::{VvcPartSplit, VvcTreeType};
+
+    #[test]
+    fn intra_prediction_regions_share_plane_coordinate_mapping() {
+        let geometry = VvcVideoGeometry {
+            width: 24,
+            height: 24,
+        };
+        let node = VvcCodingTreeNode {
+            x: 8,
+            y: 8,
+            width: 8,
+            height: 8,
+            cqt_depth: 2,
+            mtt_depth: 0,
+            depth_offset: 0,
+            part_idx: 0,
+            parent_split: VvcPartSplit::Quad,
+            tree_type: VvcTreeType::SingleTree,
+            split_history: [VvcPartSplit::Quad; 2],
+        };
+
+        assert_eq!(
+            VvcIntraPredictionRegion::luma(geometry, node, 2),
+            VvcIntraPredictionRegion {
+                plane_width: 24,
+                plane_height: 24,
+                x: 8,
+                y: 8,
+                width: 8,
+                height: 8,
+                is_luma: true,
+                reference_line: 2,
+            }
+        );
+        assert_eq!(
+            VvcIntraPredictionRegion::chroma(geometry, node, ChromaSampling::Cs444),
+            VvcIntraPredictionRegion {
+                plane_width: 24,
+                plane_height: 24,
+                x: 8,
+                y: 8,
+                width: 8,
+                height: 8,
+                is_luma: false,
+                reference_line: 0,
+            }
+        );
+        assert_eq!(
+            VvcIntraPredictionRegion::chroma(geometry, node, ChromaSampling::Cs422),
+            VvcIntraPredictionRegion {
+                plane_width: 12,
+                plane_height: 24,
+                x: 4,
+                y: 8,
+                width: 4,
+                height: 8,
+                is_luma: false,
+                reference_line: 0,
+            }
+        );
+        assert_eq!(
+            VvcIntraPredictionRegion::chroma(geometry, node, ChromaSampling::Cs420),
+            VvcIntraPredictionRegion {
+                plane_width: 12,
+                plane_height: 12,
+                x: 4,
+                y: 4,
+                width: 4,
+                height: 4,
+                is_luma: false,
+                reference_line: 0,
+            }
+        );
+    }
 
     #[test]
     fn mdlm_top_preserves_actual_left_availability_for_downsampling_padding() {
