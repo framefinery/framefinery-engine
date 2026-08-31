@@ -43,6 +43,19 @@ struct VvcChromaCandidateBuffers<'a> {
 }
 
 impl VvcChromaCandidateBuffers<'_> {
+    fn reborrow(&mut self) -> VvcChromaCandidateBuffers<'_> {
+        VvcChromaCandidateBuffers {
+            prediction: VvcChromaPredictionBuffers {
+                cb: &mut *self.prediction.cb,
+                cr: &mut *self.prediction.cr,
+            },
+            residuals: VvcChromaResidualBuffers {
+                cb: &mut *self.residuals.cb,
+                cr: &mut *self.residuals.cr,
+            },
+        }
+    }
+
     fn swap_with(&mut self, other: &mut VvcChromaCandidateBuffers<'_>) {
         self.prediction.swap_with(&mut other.prediction);
         self.residuals.swap_with(&mut other.residuals);
