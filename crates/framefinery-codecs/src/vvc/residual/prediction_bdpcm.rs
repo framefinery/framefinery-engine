@@ -49,7 +49,7 @@ pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
         VvcBdpcmMode::None => unreachable!("BDPCM residual requires an enabled direction"),
         VvcBdpcmMode::Horizontal => {
             left_references_into(
-                &mut scratch.left[..height],
+                &mut scratch.references.left[..height],
                 reference_luma,
                 reference_geometry.width,
                 reference_geometry.height,
@@ -61,7 +61,7 @@ pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
                 availability,
             );
             for y in 0..height {
-                let predictor = scratch.left[y];
+                let predictor = scratch.references.left[y];
                 let dst = y * width;
                 let src_y = (start_y + y).min(max_source_y);
                 let src_row = src_y * source_geometry.width;
@@ -74,7 +74,7 @@ pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
         }
         VvcBdpcmMode::Vertical => {
             top_references_into(
-                &mut scratch.top[..width],
+                &mut scratch.references.top[..width],
                 reference_luma,
                 reference_geometry.width,
                 reference_geometry.height,
@@ -91,8 +91,10 @@ pub(in crate::vvc) fn residual_vvc_luma_bdpcm_block_into_with_availability(
                 let src_row = src_y * source_geometry.width;
                 for x in 0..width {
                     let src_x = (start_x + x).min(max_source_x);
-                    residuals[dst + x] =
-                        vvc_sample_delta_i16(source_luma[src_row + src_x], scratch.top[x]);
+                    residuals[dst + x] = vvc_sample_delta_i16(
+                        source_luma[src_row + src_x],
+                        scratch.references.top[x],
+                    );
                 }
             }
         }
@@ -149,7 +151,7 @@ fn predict_vvc_bdpcm_block_into(
         VvcBdpcmMode::None => unreachable!("BDPCM predictor requires an enabled direction"),
         VvcBdpcmMode::Horizontal => {
             left_references_into(
-                &mut scratch.left[..height],
+                &mut scratch.references.left[..height],
                 plane,
                 plane_width,
                 plane_height,
@@ -161,12 +163,12 @@ fn predict_vvc_bdpcm_block_into(
                 availability,
             );
             for y in 0..height {
-                prediction[y * width..(y + 1) * width].fill(scratch.left[y]);
+                prediction[y * width..(y + 1) * width].fill(scratch.references.left[y]);
             }
         }
         VvcBdpcmMode::Vertical => {
             top_references_into(
-                &mut scratch.top[..width],
+                &mut scratch.references.top[..width],
                 plane,
                 plane_width,
                 plane_height,
@@ -178,7 +180,7 @@ fn predict_vvc_bdpcm_block_into(
                 availability,
             );
             for row in prediction.chunks_exact_mut(width) {
-                row.copy_from_slice(&scratch.top[..width]);
+                row.copy_from_slice(&scratch.references.top[..width]);
             }
         }
     }

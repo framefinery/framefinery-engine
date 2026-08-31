@@ -492,6 +492,16 @@ The following changes were behavior-preserving and independently validated:
   use a mode-neutral name. DC, planar, angular, BDPCM, and CCLM still traverse
   the same prediction dispatch and reuse the same object; this accountability
   rename changes neither scratch layout nor mode selection.
+- VVC DC, planar, and angular prediction now pass one plane-region object from
+  the shared dispatcher into one two-edge reference-preparation helper. Each
+  mode still chooses its exact top/left extent and performs its own legal
+  filtering afterward, but duplicated coordinate, MRL, availability, and edge
+  collector plumbing has been removed.
+- The shared intra scratch now has focused reference, planar, and CCLM owners.
+  BDPCM deliberately keeps individual top/left collection inside its deepest
+  horizontal/vertical mode gate. Focused tests pin both multi-reference-line
+  edge preparation and the invariant that BDPCM does not touch the unselected
+  edge.
 
 All of these remain included in their original parent module scope, so the
 split does not create an alternate coding path or change name resolution.
@@ -504,7 +514,7 @@ current call graph rather than by line count alone:
 | Area | Approximate size | Current concern |
 | --- | ---: | --- |
 | VVC CABAC CTU generation | approximately 2,616 lines after removing disabled leaf-skip syntax | tightly coupled partition traversal, neighbour state, and syntax emission |
-| VVC residual prediction | 524-line parent with constants, shared luma/chroma dispatch, scratch ownership, and focused tests; 322/324-line CCLM derivation/sampling siblings plus a 260-line block/pair orchestrator; focused DC/planar, angular, BDPCM, and reconstruction siblings | regular luma/chroma dispatch, CCLM sampling, and reusable allocation ownership are explicit under one mode-neutral scratch API; fixed reference arrays remain shared across DC/planar/angular/BDPCM and should only be split after their common lifetimes are proven |
+| VVC residual prediction | 511-line parent with constants, shared luma/chroma dispatch, nested scratch ownership, and focused tests; 322/324-line CCLM derivation/sampling siblings plus a 260-line block/pair orchestrator; 205-line reference-edge, 129-line DC/planar, 209-line angular-orchestration, 187-line BDPCM, and focused reconstruction siblings | DC/planar/angular share one region-based two-edge preparation path, while BDPCM retains direction-gated single-edge collection; remaining review should focus on prediction/output buffer ownership rather than re-splitting mode dispatch |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
 | VVC residual quantization | 486-line CTU helper, 163-line CTU orchestrator plus a 10-line shared immutable context, focused 175/210-line luma/chroma passes, and a 107-line result assembler; 404/286-line luma/chroma TU selection orchestration plus a 119-line chroma temporal helper; 275/443-line search helpers; a 408-line luma mode helper; 325/440/290-line chroma mode/BDPCM/RD helpers; 612/422-line luma/chroma residual search plus focused 232/286-line TU finalizers; and 388/271-line transform-skip finalization/reconstruction siblings with a focused 53-line BDPCM level state | top-level traversal, shared immutable setup, transient sample-buffer lifecycle, accepted zero-residual representation, component TU finalization, transform-skip reconstruction ownership, and BDPCM predecessor semantics are explicit; remaining work should inspect lower selectors and unify only genuinely identical component primitives without hiding mode legality, syntax, or reconstruction contracts |
 

@@ -185,47 +185,22 @@ fn predict_vvc_intra_block_into(
             prediction,
             scratch,
             plane,
-            region.plane_width,
-            region.plane_height,
-            region.x,
-            region.y,
-            region.width,
-            region.height,
+            region,
             bit_depth,
-            region.is_luma,
-            region.reference_line,
             availability,
         ),
-        VvcIntraPredictionMode::Dc => predict_vvc_dc_block_into(
-            prediction,
-            scratch,
-            plane,
-            region.plane_width,
-            region.plane_height,
-            region.x,
-            region.y,
-            region.width,
-            region.height,
-            bit_depth,
-            region.reference_line,
-            availability,
-        ),
+        VvcIntraPredictionMode::Dc => {
+            predict_vvc_dc_block_into(prediction, scratch, plane, region, bit_depth, availability)
+        }
         VvcIntraPredictionMode::Horizontal
         | VvcIntraPredictionMode::Vertical
         | VvcIntraPredictionMode::Angular(_) => predict_vvc_angular_block_into(
             prediction,
             scratch,
             plane,
-            region.plane_width,
-            region.plane_height,
-            region.x,
-            region.y,
-            region.width,
-            region.height,
+            region,
             mode_index,
             bit_depth,
-            region.is_luma,
-            region.reference_line,
             availability,
         ),
     }
@@ -261,15 +236,23 @@ struct VvcCclmPredictionScratch {
     inner_luma: Vec<i32>,
 }
 
-/// Reusable buffers shared by every VVC intra-prediction mode.
-///
-/// The fixed arrays serve reference-based prediction, while CCLM owns its
-/// variable-size downsampled-luma buffer through the nested scratch object.
-pub(in crate::vvc) struct VvcIntraPredictionScratch {
+struct VvcIntraReferenceScratch {
     top: [VvcSample; VVC_ANGULAR_REFERENCE_CAPACITY],
     left: [VvcSample; VVC_ANGULAR_REFERENCE_CAPACITY],
+}
+
+struct VvcPlanarPredictionScratch {
     top_work: [i32; VVC_CTU_SIZE],
     bottom_delta: [i32; VVC_CTU_SIZE],
+}
+
+/// Reusable buffers shared by every VVC intra-prediction mode.
+///
+/// Reference, planar, and CCLM workspaces remain separately owned while the
+/// unified mode dispatcher reuses this outer object for every candidate.
+pub(in crate::vvc) struct VvcIntraPredictionScratch {
+    references: VvcIntraReferenceScratch,
+    planar: VvcPlanarPredictionScratch,
     cclm: VvcCclmPredictionScratch,
 }
 
@@ -293,10 +276,14 @@ fn vvc_chroma_prediction_mode_index(
 impl Default for VvcIntraPredictionScratch {
     fn default() -> Self {
         Self {
-            top: [0; VVC_ANGULAR_REFERENCE_CAPACITY],
-            left: [0; VVC_ANGULAR_REFERENCE_CAPACITY],
-            top_work: [0; VVC_CTU_SIZE],
-            bottom_delta: [0; VVC_CTU_SIZE],
+            references: VvcIntraReferenceScratch {
+                top: [0; VVC_ANGULAR_REFERENCE_CAPACITY],
+                left: [0; VVC_ANGULAR_REFERENCE_CAPACITY],
+            },
+            planar: VvcPlanarPredictionScratch {
+                top_work: [0; VVC_CTU_SIZE],
+                bottom_delta: [0; VVC_CTU_SIZE],
+            },
             cclm: VvcCclmPredictionScratch::default(),
         }
     }

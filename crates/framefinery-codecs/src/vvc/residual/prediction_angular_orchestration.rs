@@ -2,65 +2,45 @@ fn predict_vvc_angular_block_into(
     prediction: &mut Vec<VvcSample>,
     scratch: &mut VvcIntraPredictionScratch,
     plane: &[VvcSample],
-    plane_width: usize,
-    plane_height: usize,
-    start_x: usize,
-    start_y: usize,
-    width: usize,
-    height: usize,
+    region: VvcIntraPredictionRegion,
     mode_index: u8,
     bit_depth: SampleBitDepth,
-    is_luma: bool,
-    reference_line: usize,
     availability: Option<VvcPlaneAvailability<'_>>,
 ) {
+    let width = region.width;
+    let height = region.height;
     debug_assert!(width <= VVC_CTU_SIZE);
     debug_assert!(height <= VVC_CTU_SIZE);
     debug_assert!((2..=66).contains(&mode_index));
     let reference_len = ((width.max(height)) << 1) + 4;
-    top_references_into(
-        &mut scratch.top,
+    prepare_vvc_intra_reference_edges(
+        &mut scratch.references,
         plane,
-        plane_width,
-        plane_height,
-        start_x,
-        start_y,
+        region,
+        reference_len,
         reference_len,
         bit_depth,
-        reference_line,
         availability,
     );
-    left_references_into(
-        &mut scratch.left,
-        plane,
-        plane_width,
-        plane_height,
-        start_x,
-        start_y,
-        reference_len,
-        bit_depth,
-        reference_line,
-        availability,
-    );
-    let mut params = vvc_angular_prediction_params(width, height, mode_index, is_luma);
-    if is_luma && reference_line != 0 {
+    let mut params = vvc_angular_prediction_params(width, height, mode_index, region.is_luma);
+    if region.is_luma && region.reference_line != 0 {
         params.interpolation = VvcAngularInterpolation::FourTapDct;
         params.filter_luma_references = false;
     }
-    if params.angle == 0 && reference_line == 0 {
+    if params.angle == 0 && region.reference_line == 0 {
         let top_left = top_left_reference(
             plane,
-            plane_width,
-            plane_height,
-            start_x,
-            start_y,
+            region.plane_width,
+            region.plane_height,
+            region.x,
+            region.y,
             bit_depth,
-            reference_line,
+            region.reference_line,
             availability,
         );
         predict_vvc_zero_angle_angular_block_into(
             prediction,
-            scratch,
+            &scratch.references,
             width,
             height,
             params.is_vertical,
@@ -73,31 +53,31 @@ fn predict_vvc_angular_block_into(
     }
     let mut top_left = angular_main_zero_reference(
         plane,
-        plane_width,
-        plane_height,
-        start_x,
-        start_y,
+        region.plane_width,
+        region.plane_height,
+        region.x,
+        region.y,
         bit_depth,
-        reference_line,
+        region.reference_line,
         params.is_vertical,
         availability,
     );
     let mut angular_refs = angular_shifted_reference_samples(
         plane,
-        plane_width,
-        plane_height,
-        start_x,
-        start_y,
+        region.plane_width,
+        region.plane_height,
+        region.x,
+        region.y,
         bit_depth,
-        reference_line,
+        region.reference_line,
         params.is_vertical,
         top_left,
         availability,
     );
-    if reference_line == 0 && params.filter_luma_references {
+    if region.reference_line == 0 && params.filter_luma_references {
         top_left = filter_vvc_angular_references_in_place(
-            &mut scratch.top,
-            &mut scratch.left,
+            &mut scratch.references.top,
+            &mut scratch.references.left,
             top_left,
             width << 1,
             height << 1,
@@ -107,9 +87,12 @@ fn predict_vvc_angular_block_into(
     }
     if params.angle >= 0 {
         if params.is_vertical {
-            replicate_vvc_positive_angular_main_extension(&mut scratch.top, width << 1);
+            replicate_vvc_positive_angular_main_extension(&mut scratch.references.top, width << 1);
         } else {
-            replicate_vvc_positive_angular_main_extension(&mut scratch.left, height << 1);
+            replicate_vvc_positive_angular_main_extension(
+                &mut scratch.references.left,
+                height << 1,
+            );
         }
     }
 
@@ -118,33 +101,37 @@ fn predict_vvc_angular_block_into(
     if params.is_vertical {
         predict_vvc_vertical_oriented_angular_block(
             prediction,
-            &scratch.top[..reference_len],
-            &scratch.left[..reference_len],
+            &scratch.references.top[..reference_len],
+            &scratch.references.left[..reference_len],
             top_left,
             width,
             height,
             params.angle,
             params.abs_inv_angle,
             params.interpolation,
-            reference_line,
+            region.reference_line,
             angular_refs,
-            (reference_line == 0).then_some(params.pdpc_scale).flatten(),
+            (region.reference_line == 0)
+                .then_some(params.pdpc_scale)
+                .flatten(),
             bit_depth,
         );
     } else {
         predict_vvc_horizontal_oriented_angular_block(
             prediction,
-            &scratch.left[..reference_len],
-            &scratch.top[..reference_len],
+            &scratch.references.left[..reference_len],
+            &scratch.references.top[..reference_len],
             top_left,
             width,
             height,
             params.angle,
             params.abs_inv_angle,
             params.interpolation,
-            reference_line,
+            region.reference_line,
             angular_refs,
-            (reference_line == 0).then_some(params.pdpc_scale).flatten(),
+            (region.reference_line == 0)
+                .then_some(params.pdpc_scale)
+                .flatten(),
             bit_depth,
         );
     }
@@ -152,7 +139,7 @@ fn predict_vvc_angular_block_into(
 
 fn predict_vvc_zero_angle_angular_block_into(
     prediction: &mut Vec<VvcSample>,
-    scratch: &VvcIntraPredictionScratch,
+    scratch: &VvcIntraReferenceScratch,
     width: usize,
     height: usize,
     is_vertical: bool,
