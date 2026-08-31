@@ -56,6 +56,11 @@ The following changes were behavior-preserving and independently validated:
   lengths, clips to coded reconstruction bounds, and extends visible source
   edges into padding; component wrappers retain only plane geometry and chroma
   subsampling derivation.
+- VVC Cb and Cr finalization now shares one plane-reconstruction context for
+  exact source copy, transform-skip fill, inverse-transform reconstruction,
+  visible-plane fill, and timing accounting. Component calls supply only their
+  source, prediction, residual, and destination buffers, while mutable
+  transform/timing scratch is owned by one paired finalization record.
 - VVC visible reconstruction wrappers and their shared clipped plane writer now
   live in a dedicated reconstruction module, separate from prediction kernels.
 - VVC BDPCM prediction and residual adapters now live in a dedicated module,

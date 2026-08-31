@@ -491,6 +491,82 @@ fn vvc_source_plane_copy_rejects_inconsistent_plane_lengths() {
 }
 
 #[test]
+fn vvc_chroma_plane_reconstruction_shares_exact_and_transform_skip_paths() {
+    let source_geometry = VvcVideoGeometry {
+        width: 4,
+        height: 4,
+    };
+    let coded_geometry = VvcVideoGeometry {
+        width: 8,
+        height: 8,
+    };
+    let format = VvcPictureFormat {
+        chroma_sampling: ChromaSampling::Cs420,
+        bit_depth: SampleBitDepth::new(8).expect("valid bit depth"),
+    };
+    let chroma_qp = 0;
+    let chroma_ts_quant = VvcTransformSkipQuantTable::new(format.bit_depth, chroma_qp);
+    let context = VvcChromaPlaneReconstructionContext {
+        source_geometry,
+        coded_geometry,
+        format,
+        node: VvcCodingTreeNode::root(8, 8, VvcTreeType::SingleTree),
+        chroma_width: 4,
+        chroma_height: 4,
+        chroma_qp,
+        chroma_ts_quant: &chroma_ts_quant,
+        exact_transform_skip_qp: true,
+    };
+    let transform_skip = VvcFinalizedResidualBlock {
+        dc_level: 1,
+        ac_levels: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
+        has_ac: false,
+        transform_skip: true,
+        bdpcm_mode: VvcBdpcmMode::None,
+    };
+    #[cfg(feature = "vvc-stats")]
+    let mut stats = VvcIntraSearchStats::default();
+    let mut transform_scratch = VvcInverseTransformScratch::default();
+    let mut reconstructed_residual = Vec::new();
+    let mut scratch = VvcChromaPlaneReconstructionScratch {
+        #[cfg(feature = "vvc-stats")]
+        stats: &mut stats,
+        transform_scratch: &mut transform_scratch,
+        reconstructed_residual: &mut reconstructed_residual,
+    };
+
+    let mut exact_destination = vec![99; 16];
+    context.reconstruct_plane(
+        &mut exact_destination,
+        &[1, 2, 3, 4],
+        &[10; 16],
+        transform_skip,
+        &mut scratch,
+    );
+    assert_eq!(
+        exact_destination,
+        vec![1, 2, 2, 2, 3, 4, 4, 4, 3, 4, 4, 4, 3, 4, 4, 4]
+    );
+
+    let mut transform_skip_destination = vec![99; 16];
+    VvcChromaPlaneReconstructionContext {
+        exact_transform_skip_qp: false,
+        ..context
+    }
+    .reconstruct_plane(
+        &mut transform_skip_destination,
+        &[5; 4],
+        &[10; 16],
+        transform_skip,
+        &mut scratch,
+    );
+    let reconstructed_dc = (10 + i32::from(chroma_ts_quant.reconstructed(1))) as VvcSample;
+    let mut expected = vec![10; 16];
+    expected[0] = reconstructed_dc;
+    assert_eq!(transform_skip_destination, expected);
+}
+
+#[test]
 fn vvc_luma_temporal_hint_candidate_preserves_cheap_residual_gate() {
     let exact_frame = sampled_luma_frame(8, 8, vec![128; 64]);
     let expensive_frame = sampled_luma_frame(8, 8, vec![200; 64]);

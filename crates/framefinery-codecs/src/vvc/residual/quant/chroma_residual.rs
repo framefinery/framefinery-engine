@@ -123,137 +123,37 @@ fn finalize_vvc_chroma_tu(
     stats.add_chroma_rd_scoring_nanos(vvc_elapsed_nanos(score_start));
     let cb_residual = selected_residual.cb;
     let cr_residual = selected_residual.cr;
-    let coded_geometry = frame_recon.coded_geometry();
-    if exact_transform_skip_qp
-        && vvc_chroma_transform_skip_score_is_exact(
-            cb_residual,
-            chroma_width,
-            chroma_height,
-            source_frame.format.bit_depth,
-            chroma_qp,
-        )
-    {
+    let reconstruction = VvcChromaPlaneReconstructionContext {
+        source_geometry: source_frame.geometry,
+        coded_geometry: frame_recon.coded_geometry(),
+        format: source_frame.format,
+        node,
+        chroma_width,
+        chroma_height,
+        chroma_qp,
+        chroma_ts_quant,
+        exact_transform_skip_qp,
+    };
+    let mut reconstruction_scratch = VvcChromaPlaneReconstructionScratch {
         #[cfg(feature = "vvc-stats")]
-        let fill_start = StageStart::now();
-        copy_source_chroma_node_into_reconstruction(
-            &mut frame_recon.cb,
-            &source_frame.cb,
-            source_frame.geometry,
-            coded_geometry,
-            source_frame.format,
-            node,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
-    } else if cb_residual.transform_skip {
-        #[cfg(feature = "vvc-stats")]
-        let fill_start = StageStart::now();
-        fill_visible_chroma_transform_skip_node(
-            &mut frame_recon.cb,
-            coded_geometry,
-            node,
-            source_frame.format.chroma_sampling,
-            predicted_cb,
-            cb_residual,
-            source_frame.format.bit_depth,
-            chroma_ts_quant,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
-    } else {
-        #[cfg(feature = "vvc-stats")]
-        let recon_start = StageStart::now();
-        reconstruct_vvc_chroma_residual_block_into(
-            cb_residual,
-            reconstructed_residual,
-            transform_scratch,
-            chroma_width,
-            chroma_height,
-            source_frame.format.bit_depth,
-            chroma_qp,
-            chroma_ts_quant,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
-        #[cfg(feature = "vvc-stats")]
-        let fill_start = StageStart::now();
-        fill_visible_chroma_node(
-            &mut frame_recon.cb,
-            coded_geometry,
-            node,
-            source_frame.format.chroma_sampling,
-            predicted_cb,
-            reconstructed_residual,
-            source_frame.format.bit_depth,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
-    }
-    if exact_transform_skip_qp
-        && vvc_chroma_transform_skip_score_is_exact(
-            cr_residual,
-            chroma_width,
-            chroma_height,
-            source_frame.format.bit_depth,
-            chroma_qp,
-        )
-    {
-        #[cfg(feature = "vvc-stats")]
-        let fill_start = StageStart::now();
-        copy_source_chroma_node_into_reconstruction(
-            &mut frame_recon.cr,
-            &source_frame.cr,
-            source_frame.geometry,
-            coded_geometry,
-            source_frame.format,
-            node,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
-    } else if cr_residual.transform_skip {
-        #[cfg(feature = "vvc-stats")]
-        let fill_start = StageStart::now();
-        fill_visible_chroma_transform_skip_node(
-            &mut frame_recon.cr,
-            coded_geometry,
-            node,
-            source_frame.format.chroma_sampling,
-            predicted_cr,
-            cr_residual,
-            source_frame.format.bit_depth,
-            chroma_ts_quant,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
-    } else {
-        #[cfg(feature = "vvc-stats")]
-        let recon_start = StageStart::now();
-        reconstruct_vvc_chroma_residual_block_into(
-            cr_residual,
-            reconstructed_residual,
-            transform_scratch,
-            chroma_width,
-            chroma_height,
-            source_frame.format.bit_depth,
-            chroma_qp,
-            chroma_ts_quant,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
-        #[cfg(feature = "vvc-stats")]
-        let fill_start = StageStart::now();
-        fill_visible_chroma_node(
-            &mut frame_recon.cr,
-            coded_geometry,
-            node,
-            source_frame.format.chroma_sampling,
-            predicted_cr,
-            reconstructed_residual,
-            source_frame.format.bit_depth,
-        );
-        #[cfg(feature = "vvc-stats")]
-        stats.add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
-    }
+        stats,
+        transform_scratch,
+        reconstructed_residual,
+    };
+    reconstruction.reconstruct_plane(
+        &mut frame_recon.cb,
+        &source_frame.cb,
+        predicted_cb,
+        cb_residual,
+        &mut reconstruction_scratch,
+    );
+    reconstruction.reconstruct_plane(
+        &mut frame_recon.cr,
+        &source_frame.cr,
+        predicted_cr,
+        cr_residual,
+        &mut reconstruction_scratch,
+    );
     let finalized = VvcFinalizedChromaTu {
         cb_dc_level: cb_residual.dc_level,
         cr_dc_level: cr_residual.dc_level,
@@ -271,6 +171,111 @@ fn finalize_vvc_chroma_tu(
     };
     frame_recon.mark_chroma_node_available(node);
     finalized
+}
+
+#[derive(Debug, Clone, Copy)]
+struct VvcChromaPlaneReconstructionContext<'a> {
+    source_geometry: VvcVideoGeometry,
+    coded_geometry: VvcVideoGeometry,
+    format: VvcPictureFormat,
+    node: VvcCodingTreeNode,
+    chroma_width: usize,
+    chroma_height: usize,
+    chroma_qp: i32,
+    chroma_ts_quant: &'a VvcTransformSkipQuantTable,
+    exact_transform_skip_qp: bool,
+}
+
+struct VvcChromaPlaneReconstructionScratch<'a> {
+    #[cfg(feature = "vvc-stats")]
+    stats: &'a mut VvcIntraSearchStats,
+    transform_scratch: &'a mut VvcInverseTransformScratch,
+    reconstructed_residual: &'a mut Vec<i16>,
+}
+
+impl VvcChromaPlaneReconstructionContext<'_> {
+    fn reconstruct_plane(
+        self,
+        destination: &mut [VvcSample],
+        source: &[VvcSample],
+        predicted: &[VvcSample],
+        residual: VvcFinalizedResidualBlock<VVC_CHROMA_AC_COEFFS_PER_TU>,
+        scratch: &mut VvcChromaPlaneReconstructionScratch<'_>,
+    ) {
+        if self.exact_transform_skip_qp
+            && vvc_chroma_transform_skip_score_is_exact(
+                residual,
+                self.chroma_width,
+                self.chroma_height,
+                self.format.bit_depth,
+                self.chroma_qp,
+            )
+        {
+            #[cfg(feature = "vvc-stats")]
+            let fill_start = StageStart::now();
+            copy_source_chroma_node_into_reconstruction(
+                destination,
+                source,
+                self.source_geometry,
+                self.coded_geometry,
+                self.format,
+                self.node,
+            );
+            #[cfg(feature = "vvc-stats")]
+            scratch
+                .stats
+                .add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
+        } else if residual.transform_skip {
+            #[cfg(feature = "vvc-stats")]
+            let fill_start = StageStart::now();
+            fill_visible_chroma_transform_skip_node(
+                destination,
+                self.coded_geometry,
+                self.node,
+                self.format.chroma_sampling,
+                predicted,
+                residual,
+                self.format.bit_depth,
+                self.chroma_ts_quant,
+            );
+            #[cfg(feature = "vvc-stats")]
+            scratch
+                .stats
+                .add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
+        } else {
+            #[cfg(feature = "vvc-stats")]
+            let recon_start = StageStart::now();
+            reconstruct_vvc_chroma_residual_block_into(
+                residual,
+                scratch.reconstructed_residual,
+                scratch.transform_scratch,
+                self.chroma_width,
+                self.chroma_height,
+                self.format.bit_depth,
+                self.chroma_qp,
+                self.chroma_ts_quant,
+            );
+            #[cfg(feature = "vvc-stats")]
+            scratch
+                .stats
+                .add_chroma_residual_recon_nanos(vvc_elapsed_nanos(recon_start));
+            #[cfg(feature = "vvc-stats")]
+            let fill_start = StageStart::now();
+            fill_visible_chroma_node(
+                destination,
+                self.coded_geometry,
+                self.node,
+                self.format.chroma_sampling,
+                predicted,
+                scratch.reconstructed_residual,
+                self.format.bit_depth,
+            );
+            #[cfg(feature = "vvc-stats")]
+            scratch
+                .stats
+                .add_chroma_fill_nanos(vvc_elapsed_nanos(fill_start));
+        }
+    }
 }
 
 fn fill_visible_chroma_transform_skip_node(
