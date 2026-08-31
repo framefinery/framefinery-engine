@@ -250,13 +250,17 @@ fn vvc_chroma_inter_candidate_prepares_shared_zero_residual_state() {
         .select_candidate(
             decision,
             &reference,
-            VvcChromaInterCandidateBuffers {
-                cb_prediction: &mut cb_prediction,
-                cr_prediction: &mut cr_prediction,
-                cb_residuals: &mut cb_residuals,
-                cr_residuals: &mut cr_residuals,
-                stats: &mut stats,
+            &mut VvcChromaCandidateBuffers {
+                prediction: VvcChromaPredictionBuffers {
+                    cb: &mut cb_prediction,
+                    cr: &mut cr_prediction,
+                },
+                residuals: VvcChromaResidualBuffers {
+                    cb: &mut cb_residuals,
+                    cr: &mut cr_residuals,
+                },
             },
+            &mut stats,
         )
         .expect("valid inter motion should prepare a chroma candidate");
 

@@ -89,13 +89,11 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             break;
         }
         let node = vvc_global_ctu_node(local_node, region);
-        let scc_candidate = luma_scc_decisions
-            .and_then(|decisions| {
-                decisions.iter().copied().flatten().find(|decision| {
-                    decision.origin_x == usize::from(node.x)
-                        && decision.origin_y == usize::from(node.y)
-                })
-            });
+        let scc_candidate = luma_scc_decisions.and_then(|decisions| {
+            decisions.iter().copied().flatten().find(|decision| {
+                decision.origin_x == usize::from(node.x) && decision.origin_y == usize::from(node.y)
+            })
+        });
         if let Some(decision) = scc_candidate {
             if !ctu_shape.dual_tree_intra
                 && source_frame.format.chroma_sampling == ChromaSampling::Cs444
@@ -121,11 +119,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 policy,
                 node,
             ) {
-                luma_tu_metadata.record_mode_hint(
-                    luma_tu_count,
-                    hint.mode,
-                    hint.bdpcm_mode,
-                );
+                luma_tu_metadata.record_mode_hint(luma_tu_count, hint.mode, hint.bdpcm_mode);
                 luma_mode_search_state.mark_node(node, hint.mode);
             }
             copy_source_luma_node_into_reconstruction(frame_recon, source_frame, node);
@@ -257,30 +251,33 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             .get(chroma_tu_count)
             .copied()
             .flatten();
-        let selected_inter_chroma_candidate =
-            match (applied_inter_decision, inter_reference) {
-                (Some(decision), Some(reference)) => VvcChromaInterCandidateContext {
-                    policy,
-                    source_frame,
-                    node,
-                    chroma_x,
-                    chroma_y,
-                    chroma_width,
-                    chroma_height,
-                }
-                .select_candidate(
-                    decision,
-                    reference,
-                    VvcChromaInterCandidateBuffers {
-                        cb_prediction: &mut predicted_cb,
-                        cr_prediction: &mut predicted_cr,
-                        cb_residuals: &mut cb_residuals,
-                        cr_residuals: &mut cr_residuals,
-                        stats: &mut intra_search_stats,
+        let selected_inter_chroma_candidate = match (applied_inter_decision, inter_reference) {
+            (Some(decision), Some(reference)) => VvcChromaInterCandidateContext {
+                policy,
+                source_frame,
+                node,
+                chroma_x,
+                chroma_y,
+                chroma_width,
+                chroma_height,
+            }
+            .select_candidate(
+                decision,
+                reference,
+                &mut VvcChromaCandidateBuffers {
+                    prediction: VvcChromaPredictionBuffers {
+                        cb: &mut predicted_cb,
+                        cr: &mut predicted_cr,
                     },
-                ),
-                _ => None,
-            };
+                    residuals: VvcChromaResidualBuffers {
+                        cb: &mut cb_residuals,
+                        cr: &mut cr_residuals,
+                    },
+                },
+                &mut intra_search_stats,
+            ),
+            _ => None,
+        };
         if selected_inter_chroma_candidate.is_none()
             && chroma_inter_skip
                 .and_then(|mask| mask.get(chroma_tu_count))
@@ -298,11 +295,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 chroma_width,
                 chroma_height,
             ) {
-                chroma_tu_metadata.record_mode_hint(
-                    chroma_tu_count,
-                    hint.mode,
-                    hint.bdpcm_mode,
-                );
+                chroma_tu_metadata.record_mode_hint(chroma_tu_count, hint.mode, hint.bdpcm_mode);
             }
             let coded_geometry = frame_recon.coded_geometry();
             copy_source_chroma_node_into_reconstruction(
@@ -341,43 +334,42 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 )
             })
             .flatten();
-        let selected_chroma_candidate =
-            if let Some(candidate) = selected_inter_chroma_candidate {
-                candidate
-            } else {
-                VvcChromaTuSelectionContext {
-                    policy,
-                    metric: score_metric,
-                    source_frame,
-                    frame_recon: &*frame_recon,
-                    node,
-                    co_located_luma_mode,
-                    chroma_x,
-                    chroma_y,
-                    chroma_width,
-                    chroma_height,
-                    cclm_enabled: cclm_syntax_enabled,
-                    syntax_tie_breaker_enabled: chroma_syntax_tie_breaker,
-                    chroma_qp,
-                    chroma_ts_quant,
-                    temporal_hint: temporal_chroma_hint,
-                }
-                .select_candidate(VvcChromaTuSelectionBuffers {
-                    cache: &mut chroma_rd_cache,
-                    prediction_scratch: &mut prediction_scratch,
-                    selected_cb_prediction: &mut predicted_cb,
-                    selected_cr_prediction: &mut predicted_cr,
-                    selected_cb_residuals: &mut cb_residuals,
-                    selected_cr_residuals: &mut cr_residuals,
-                    candidate_cb_prediction: &mut candidate_cb_prediction,
-                    candidate_cr_prediction: &mut candidate_cr_prediction,
-                    candidate_cb_residuals: &mut candidate_cb_residuals,
-                    candidate_cr_residuals: &mut candidate_cr_residuals,
-                    stats: &mut intra_search_stats,
-                    transform_scratch: &mut transform_scratch,
-                    reconstructed_residual: &mut reconstructed_residual,
-                })
-            };
+        let selected_chroma_candidate = if let Some(candidate) = selected_inter_chroma_candidate {
+            candidate
+        } else {
+            VvcChromaTuSelectionContext {
+                policy,
+                metric: score_metric,
+                source_frame,
+                frame_recon: &*frame_recon,
+                node,
+                co_located_luma_mode,
+                chroma_x,
+                chroma_y,
+                chroma_width,
+                chroma_height,
+                cclm_enabled: cclm_syntax_enabled,
+                syntax_tie_breaker_enabled: chroma_syntax_tie_breaker,
+                chroma_qp,
+                chroma_ts_quant,
+                temporal_hint: temporal_chroma_hint,
+            }
+            .select_candidate(VvcChromaTuSelectionBuffers {
+                cache: &mut chroma_rd_cache,
+                prediction_scratch: &mut prediction_scratch,
+                selected_cb_prediction: &mut predicted_cb,
+                selected_cr_prediction: &mut predicted_cr,
+                selected_cb_residuals: &mut cb_residuals,
+                selected_cr_residuals: &mut cr_residuals,
+                candidate_cb_prediction: &mut candidate_cb_prediction,
+                candidate_cr_prediction: &mut candidate_cr_prediction,
+                candidate_cb_residuals: &mut candidate_cb_residuals,
+                candidate_cr_residuals: &mut candidate_cr_residuals,
+                stats: &mut intra_search_stats,
+                transform_scratch: &mut transform_scratch,
+                reconstructed_residual: &mut reconstructed_residual,
+            })
+        };
         let VvcSelectedChromaTuCandidate {
             mode: chroma_mode,
             coding_decision: chroma_coding_decision,

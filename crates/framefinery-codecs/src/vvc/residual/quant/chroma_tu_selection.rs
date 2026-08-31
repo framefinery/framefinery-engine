@@ -15,32 +15,18 @@ struct VvcChromaInterCandidateContext<'a> {
     chroma_height: usize,
 }
 
-struct VvcChromaInterCandidateBuffers<'a> {
-    cb_prediction: &'a mut Vec<VvcSample>,
-    cr_prediction: &'a mut Vec<VvcSample>,
-    cb_residuals: &'a mut Vec<i16>,
-    cr_residuals: &'a mut Vec<i16>,
-    stats: &'a mut VvcIntraSearchStats,
-}
-
 impl VvcChromaInterCandidateContext<'_> {
     fn select_candidate(
         &self,
         decision: VvcLumaInterDecision,
         reference: &VvcReconstructionFrame,
-        buffers: VvcChromaInterCandidateBuffers<'_>,
+        buffers: &mut VvcChromaCandidateBuffers<'_>,
+        stats: &mut VvcIntraSearchStats,
     ) -> Option<VvcSelectedChromaTuCandidate> {
-        let VvcChromaInterCandidateBuffers {
-            cb_prediction,
-            cr_prediction,
-            cb_residuals,
-            cr_residuals,
-            stats,
-        } = buffers;
         if !VvcReconstructionFrame::predict_chroma_node_from_inter_motion_into(
             reference,
-            cb_prediction,
-            cr_prediction,
+            buffers.prediction.cb,
+            buffers.prediction.cr,
             self.node,
             decision,
         ) {
@@ -49,8 +35,8 @@ impl VvcChromaInterCandidateContext<'_> {
         #[cfg(feature = "vvc-stats")]
         let residual_start = StageStart::now();
         let (cb_all_zero, cr_all_zero) = residual_chroma_pair_tu_at_into_and_detect_zero(
-            cb_residuals,
-            cr_residuals,
+            buffers.residuals.cb,
+            buffers.residuals.cr,
             &self.source_frame.cb,
             &self.source_frame.cr,
             self.source_frame.geometry,
@@ -59,8 +45,8 @@ impl VvcChromaInterCandidateContext<'_> {
             self.chroma_y,
             self.chroma_width,
             self.chroma_height,
-            cb_prediction,
-            cr_prediction,
+            buffers.prediction.cb,
+            buffers.prediction.cr,
         );
         #[cfg(feature = "vvc-stats")]
         stats.add_chroma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
