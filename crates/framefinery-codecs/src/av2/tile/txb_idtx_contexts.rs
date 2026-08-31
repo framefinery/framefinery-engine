@@ -9,13 +9,11 @@ fn idtx_bob_context(scan_index: usize) -> usize {
 }
 
 fn idtx_upper_levels_context(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> usize {
-    let mag = idtx_left_level(levels, pos).min(3) + idtx_above_level(levels, pos).min(3);
-    mag.min(6) as usize
+    idtx_neighbour_levels_context(levels, pos, 3)
 }
 
 fn idtx_br_context(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> usize {
-    let mag = idtx_left_level(levels, pos).min(5) + idtx_above_level(levels, pos).min(5);
-    mag.min(6) as usize
+    idtx_neighbour_levels_context(levels, pos, 5)
 }
 
 fn idtx_sign_context(
@@ -23,17 +21,13 @@ fn idtx_sign_context(
     coefficients: &[i32; TX4X4_SAMPLES],
     pos: usize,
 ) -> usize {
-    let mut sign_sum = 0i32;
-    if let Some(left) = idtx_left_pos(pos).filter(|&left| levels[left] != 0) {
-        sign_sum += idtx_sign_value(coefficients[left]);
-    }
-    if let Some(above) = idtx_above_pos(pos).filter(|&above| levels[above] != 0) {
-        sign_sum += idtx_sign_value(coefficients[above]);
-    }
-    if let Some(above_left) = idtx_above_left_pos(pos).filter(|&above_left| levels[above_left] != 0)
-    {
-        sign_sum += idtx_sign_value(coefficients[above_left]);
-    }
+    let neighbours = idtx_neighbour_positions(pos);
+    let sign_sum = [neighbours.left, neighbours.above, neighbours.above_left]
+        .into_iter()
+        .flatten()
+        .filter(|&neighbour| levels[neighbour] != 0)
+        .map(|neighbour| idtx_sign_value(coefficients[neighbour]))
+        .sum::<i32>();
     let mut ctx = if sign_sum > 2 {
         5
     } else if sign_sum < -2 {
@@ -59,34 +53,34 @@ fn idtx_sign_value(coefficient: i32) -> i32 {
     }
 }
 
-fn idtx_left_level(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> u32 {
-    idtx_left_pos(pos).map_or(0, |left| levels[left].min(127))
+fn idtx_neighbour_levels_context(
+    levels: &[u32; TX4X4_SAMPLES],
+    pos: usize,
+    neighbour_limit: u32,
+) -> usize {
+    let neighbours = idtx_neighbour_positions(pos);
+    let magnitude = idtx_neighbour_level(levels, neighbours.left).min(neighbour_limit)
+        + idtx_neighbour_level(levels, neighbours.above).min(neighbour_limit);
+    magnitude.min(6) as usize
 }
 
-fn idtx_above_level(levels: &[u32; TX4X4_SAMPLES], pos: usize) -> u32 {
-    idtx_above_pos(pos).map_or(0, |above| levels[above].min(127))
+fn idtx_neighbour_level(levels: &[u32; TX4X4_SAMPLES], neighbour: Option<usize>) -> u32 {
+    neighbour.map_or(0, |neighbour| levels[neighbour].min(127))
 }
 
-fn idtx_left_pos(pos: usize) -> Option<usize> {
-    if pos % TX4X4_SIZE != 0 {
-        Some(pos - 1)
-    } else {
-        None
-    }
+struct Av2IdtxNeighbourPositions {
+    left: Option<usize>,
+    above: Option<usize>,
+    above_left: Option<usize>,
 }
 
-fn idtx_above_pos(pos: usize) -> Option<usize> {
-    if pos >= TX4X4_SIZE {
-        Some(pos - TX4X4_SIZE)
-    } else {
-        None
-    }
-}
-
-fn idtx_above_left_pos(pos: usize) -> Option<usize> {
-    if pos % TX4X4_SIZE != 0 && pos >= TX4X4_SIZE {
-        Some(pos - TX4X4_SIZE - 1)
-    } else {
-        None
+fn idtx_neighbour_positions(pos: usize) -> Av2IdtxNeighbourPositions {
+    debug_assert!(pos < TX4X4_SAMPLES);
+    let row = pos / TX4X4_SIZE;
+    let col = pos % TX4X4_SIZE;
+    Av2IdtxNeighbourPositions {
+        left: (col > 0).then(|| pos - 1),
+        above: (row > 0).then(|| pos - TX4X4_SIZE),
+        above_left: (row > 0 && col > 0).then(|| pos - TX4X4_SIZE - 1),
     }
 }

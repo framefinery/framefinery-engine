@@ -229,4 +229,5 @@ mod coefficient_context_geometry_tests {
     use super::*;
 
     include!("txb_coefficient_context_geometry_tests.rs");
+    include!("txb_idtx_context_tests.rs");
 }
