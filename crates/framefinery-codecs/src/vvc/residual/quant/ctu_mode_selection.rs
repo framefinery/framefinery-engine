@@ -15,9 +15,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     selected_luma_inter_decisions: Option<&mut [Option<VvcLumaInterDecision>; MAX_VVC_LUMA_TUS]>,
     temporal_mode_hints: Option<&VvcQuantizedColor>,
 ) -> VvcQuantizedColor {
-    let mut luma_tu_metadata = VvcLumaTuMetadata::new();
     let mut chroma_tu_metadata = VvcChromaTuMetadata::new();
-    let mut applied_luma_inter_decisions = [None; MAX_VVC_LUMA_TUS];
     let VvcCtuQuantScratch {
         luma_nodes,
         chroma_nodes,
@@ -63,7 +61,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
 
     let score_metric = policy.score_metric();
     let chroma_syntax_tie_breaker = policy.chroma_syntax_tie_breaker();
-    let luma_max_leaf_size = policy.luma_max_leaf_size();
     let luma_ts_quant = transform_skip_quant_tables.luma();
     let chroma_ts_quant = transform_skip_quant_tables.chroma();
     let ctu_shape = VvcCtuPartitionShape {
@@ -75,125 +72,41 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         dual_tree_intra: policy.dual_tree_intra(),
     };
 
-    let mut luma_tu_count = 0usize;
-    vvc_luma_transform_nodes_into_for_kind(
-        luma_nodes,
+    let VvcLumaCtuPassResult {
+        metadata: luma_tu_metadata,
+        applied_inter_decisions: applied_luma_inter_decisions,
+        tu_count: luma_tu_count,
+    } = VvcLumaCtuPassContext {
+        source_frame,
+        region,
+        policy,
+        score_metric,
+        luma_qp,
+        luma_ts_quant,
+        luma_inter_decisions,
+        luma_scc_decisions,
+        inter_reference,
+        temporal_mode_hints,
         ctu_shape,
-        luma_max_leaf_size,
-        policy.luma_split_kind(),
-    );
-    for local_node in luma_nodes.iter().copied() {
-        if luma_tu_count >= MAX_VVC_LUMA_TUS {
-            break;
-        }
-        let node = vvc_global_ctu_node(local_node, region);
-        let scc_candidate = luma_scc_decisions.and_then(|decisions| {
-            decisions.iter().copied().flatten().find(|decision| {
-                decision.origin_x == usize::from(node.x) && decision.origin_y == usize::from(node.y)
-            })
-        });
-        if let Some(decision) = scc_candidate {
-            if !ctu_shape.dual_tree_intra
-                && source_frame.format.chroma_sampling == ChromaSampling::Cs444
-                && node.width == 8
-                && node.height == 8
-                && frame_recon.copy_ibc_444_8x8(decision)
-            {
-                luma_tu_metadata
-                    .record_scc_decision(luma_tu_count, decision.into_luma_scc_decision());
-                luma_tu_count += 1;
-                continue;
-            }
-        }
-        luma_rd_cache.reset(policy, node);
-        let left_luma_mode = luma_mode_search_state.left_of(node);
-        let above_luma_mode = luma_mode_search_state.above_of(node);
-        let temporal_luma_hint = vvc_luma_temporal_mode_hint(
-            temporal_mode_hints,
-            luma_tu_count,
-            luma_nodes.len(),
-            policy,
-            node,
-        );
-        let inter_decision = luma_inter_decisions
-            .and_then(|decisions| decisions.get(luma_tu_count))
-            .copied()
-            .flatten();
-        let selected_luma_candidate = VvcLumaTuSelectionContext {
-            policy,
-            metric: score_metric,
-            source_frame,
-            frame_recon: &*frame_recon,
-            mode_search_state: &*luma_mode_search_state,
-            node,
-            left: left_luma_mode,
-            above: above_luma_mode,
-            luma_qp,
-            luma_ts_quant,
-            temporal_hint: temporal_luma_hint,
-            inter_decision,
-            inter_reference,
-        }
-        .select_candidate(VvcLumaTuSelectionBuffers {
-            cache: &mut *luma_rd_cache,
-            prediction_scratch: &mut *prediction_scratch,
-            selected_prediction: &mut *predicted_luma,
-            selected_residuals: &mut *luma_residuals,
-            candidate_prediction: &mut *candidate_luma_prediction,
-            candidate_residuals: &mut *candidate_luma_residuals,
-            stats: &mut intra_search_stats,
-            transform_scratch: &mut *transform_scratch,
-            reconstructed_residual: &mut *reconstructed_residual,
-        });
-        let VvcSelectedLumaTuCandidate {
-            mode: luma_mode,
-            coding_decision: luma_coding_decision,
-            residual: selected_luma_residual,
-            inter_decision: selected_luma_inter_decision,
-        } = selected_luma_candidate;
-        if selected_luma_inter_decision.is_none() {
-            luma_mode_search_state.mark_node(node, luma_mode);
-        }
-        #[cfg(feature = "vvc-stats")]
-        residual_energy_stats.add_luma_residuals(
-            luma_residuals,
-            usize::from(node.width),
-            usize::from(node.height),
-        );
-        #[cfg(feature = "vvc-stats")]
-        let luma_finalize_start = StageStart::now();
-        let luma_tu = finalize_vvc_luma_tu(
-            luma_coding_decision,
-            source_frame,
-            frame_recon,
-            node,
-            predicted_luma,
-            luma_residuals,
-            luma_qp,
-            luma_ts_quant,
-            vvc_transform_skip_qp_reconstructs_exact(source_frame.format.bit_depth, luma_qp),
-            selected_luma_residual,
-            &mut intra_search_stats,
-            transform_scratch,
-            reconstructed_residual,
-        );
-        #[cfg(feature = "vvc-stats")]
-        intra_search_stats.add_luma_finalize_nanos(luma_finalize_start.elapsed().as_nanos() as u64);
-        luma_tu_metadata.record_finalized(luma_tu_count, luma_mode, luma_tu);
-        applied_luma_inter_decisions[luma_tu_count] = selected_luma_inter_decision;
-        #[cfg(feature = "vvc-stats")]
-        write_vvc_luma_tu_trace(
-            tu_trace_sink.as_mut(),
-            region,
-            luma_tu_count,
-            node,
-            luma_mode,
-            luma_tu,
-            predicted_luma,
-            luma_residuals,
-        );
-        luma_tu_count += 1;
     }
+    .quantize(VvcLumaCtuPassBuffers {
+        frame_recon,
+        mode_search_state: luma_mode_search_state,
+        nodes: luma_nodes,
+        prediction_scratch,
+        selected_prediction: predicted_luma,
+        selected_residuals: luma_residuals,
+        candidate_prediction: candidate_luma_prediction,
+        candidate_residuals: candidate_luma_residuals,
+        rd_cache: luma_rd_cache,
+        transform_scratch,
+        reconstructed_residual,
+        stats: &mut intra_search_stats,
+        #[cfg(feature = "vvc-stats")]
+        residual_energy_stats: &mut residual_energy_stats,
+        #[cfg(feature = "vvc-stats")]
+        trace_sink: tu_trace_sink.as_mut(),
+    });
 
     let mut chroma_tu_count = 0usize;
     if ctu_shape.dual_tree_intra {
@@ -390,5 +303,3 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
     }
     quantized
 }
-
-use crate::vvc::cabac::vvc_luma_transform_nodes_into_for_kind;
