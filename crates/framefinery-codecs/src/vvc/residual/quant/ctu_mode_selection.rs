@@ -136,57 +136,13 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
         luma_rd_cache.reset(policy, node);
         let left_luma_mode = luma_mode_search_state.left_of(node);
         let above_luma_mode = luma_mode_search_state.above_of(node);
-        if let Some(hint) = vvc_luma_temporal_mode_hint(
+        let temporal_luma_hint = vvc_luma_temporal_mode_hint(
             temporal_mode_hints,
             luma_tu_count,
             luma_nodes.len(),
             policy,
             node,
-        ) {
-            let luma_mode = hint.mode;
-            #[cfg(feature = "vvc-stats")]
-            let luma_finalize_start = StageStart::now();
-            if let Some(luma_tu) = finalize_vvc_luma_tu_with_temporal_mode_hint(
-                hint,
-                policy,
-                source_frame,
-                frame_recon,
-                node,
-                luma_qp,
-                luma_ts_quant,
-                &mut prediction_scratch,
-                &mut predicted_luma,
-                &mut luma_residuals,
-                &mut intra_search_stats,
-                &mut transform_scratch,
-                &mut reconstructed_residual,
-            ) {
-                #[cfg(feature = "vvc-stats")]
-                intra_search_stats
-                    .add_luma_finalize_nanos(luma_finalize_start.elapsed().as_nanos() as u64);
-                luma_mode_search_state.mark_node(node, luma_mode);
-                #[cfg(feature = "vvc-stats")]
-                residual_energy_stats.add_luma_residuals(
-                    &luma_residuals,
-                    usize::from(node.width),
-                    usize::from(node.height),
-                );
-                luma_tu_metadata.record_finalized(luma_tu_count, luma_mode, luma_tu);
-                #[cfg(feature = "vvc-stats")]
-                write_vvc_luma_tu_trace(
-                    tu_trace_sink.as_mut(),
-                    region,
-                    luma_tu_count,
-                    node,
-                    luma_mode,
-                    luma_tu,
-                    &predicted_luma,
-                    &luma_residuals,
-                );
-                luma_tu_count += 1;
-                continue;
-            }
-        }
+        );
         let inter_decision = luma_inter_decisions
             .and_then(|decisions| decisions.get(luma_tu_count))
             .copied()
@@ -202,6 +158,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
             above: above_luma_mode,
             luma_qp,
             luma_ts_quant,
+            temporal_hint: temporal_luma_hint,
             inter_decision,
             inter_reference,
         }
@@ -384,66 +341,6 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                 )
             })
             .flatten();
-        if let Some(hint) = temporal_chroma_hint {
-            #[cfg(feature = "vvc-stats")]
-            let chroma_finalize_start = StageStart::now();
-            if let Some(chroma_tu) = finalize_vvc_chroma_tu_with_temporal_mode_hint(
-                hint,
-                policy,
-                source_frame,
-                frame_recon,
-                node,
-                co_located_luma_mode,
-                chroma_width,
-                chroma_height,
-                chroma_qp,
-                chroma_ts_quant,
-                &mut prediction_scratch,
-                &mut predicted_cb,
-                &mut predicted_cr,
-                &mut cb_residuals,
-                &mut cr_residuals,
-                &mut intra_search_stats,
-                &mut transform_scratch,
-                &mut reconstructed_residual,
-            ) {
-                #[cfg(feature = "vvc-stats")]
-                intra_search_stats
-                    .add_chroma_finalize_nanos(chroma_finalize_start.elapsed().as_nanos() as u64);
-                #[cfg(feature = "vvc-stats")]
-                {
-                    residual_energy_stats.add_chroma_residuals(
-                        &cb_residuals,
-                        chroma_width,
-                        chroma_height,
-                    );
-                    residual_energy_stats.add_chroma_residuals(
-                        &cr_residuals,
-                        chroma_width,
-                        chroma_height,
-                    );
-                }
-                chroma_tu_metadata.record_finalized(chroma_tu_count, hint.mode, chroma_tu);
-                #[cfg(feature = "vvc-stats")]
-                write_vvc_chroma_tu_trace(
-                    tu_trace_sink.as_mut(),
-                    region,
-                    chroma_tu_count,
-                    node,
-                    hint.mode,
-                    co_located_luma_mode,
-                    chroma_tu,
-                    chroma_width,
-                    chroma_height,
-                    &predicted_cb,
-                    &predicted_cr,
-                    &cb_residuals,
-                    &cr_residuals,
-                );
-                chroma_tu_count += 1;
-                continue;
-            }
-        }
         let selected_chroma_candidate =
             if let Some(candidate) = selected_inter_chroma_candidate {
                 candidate
@@ -463,6 +360,7 @@ pub(in crate::vvc) fn quantize_vvc_residual_ctu_into_frame_reconstruction_with_q
                     syntax_tie_breaker_enabled: chroma_syntax_tie_breaker,
                     chroma_qp,
                     chroma_ts_quant,
+                    temporal_hint: temporal_chroma_hint,
                 }
                 .select_candidate(VvcChromaTuSelectionBuffers {
                     cache: &mut chroma_rd_cache,

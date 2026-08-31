@@ -62,6 +62,17 @@ fn shifted_444_frame_and_reference() -> (VvcSampledFrame, VvcReconstructionFrame
     (source_frame, reference)
 }
 
+fn test_intra_search_stats() -> VvcIntraSearchStats {
+    #[cfg(feature = "vvc-stats")]
+    {
+        VvcIntraSearchStats::default()
+    }
+    #[cfg(not(feature = "vvc-stats"))]
+    {
+        VvcIntraSearchStats
+    }
+}
+
 #[test]
 fn vvc_luma_prediction_score_matches_materialized_residual_score() {
     let frame = sampled_luma_frame(4, 4, (0..16).map(|idx| (idx * 7) as VvcSample).collect());
@@ -102,6 +113,7 @@ fn vvc_luma_exact_inter_candidate_prepares_shared_zero_residual_state() {
         above: None,
         luma_qp,
         luma_ts_quant: &luma_ts_quant,
+        temporal_hint: None,
         inter_decision: None,
         inter_reference: None,
     };
@@ -198,6 +210,149 @@ fn vvc_chroma_inter_candidate_prepares_shared_zero_residual_state() {
         assert!(!block.has_ac);
         assert!(block.ac_levels.iter().all(|level| *level == 0));
     }
+}
+
+#[test]
+fn vvc_luma_temporal_hint_candidate_preserves_cheap_residual_gate() {
+    let exact_frame = sampled_luma_frame(8, 8, vec![128; 64]);
+    let expensive_frame = sampled_luma_frame(8, 8, vec![200; 64]);
+    let frame_recon = VvcReconstructionFrame::new_neutral(exact_frame.geometry, exact_frame.format);
+    let mode_search_state = VvcLumaModeSearchState::new_for_geometry(exact_frame.geometry);
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
+    let policy = VvcResidualCodingPolicy::new(exact_frame.format, VvcResidualCodingMode::Lossless)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+    let luma_qp = 0;
+    let luma_ts_quant = VvcTransformSkipQuantTable::new(exact_frame.format.bit_depth, luma_qp);
+    let hint = VvcLumaTemporalModeHint {
+        mode: VvcIntraPredictionMode::Dc,
+        bdpcm_mode: VvcBdpcmMode::None,
+    };
+    let mut prediction_scratch = VvcDcPredictionScratch::default();
+    let mut prediction = Vec::new();
+    let mut residuals = Vec::new();
+    let mut stats = test_intra_search_stats();
+    let exact_context = VvcLumaTuSelectionContext {
+        policy,
+        metric: policy.score_metric(),
+        source_frame: &exact_frame,
+        frame_recon: &frame_recon,
+        mode_search_state: &mode_search_state,
+        node,
+        left: None,
+        above: None,
+        luma_qp,
+        luma_ts_quant: &luma_ts_quant,
+        temporal_hint: Some(hint),
+        inter_decision: None,
+        inter_reference: None,
+    };
+
+    let selected = exact_context
+        .select_temporal_hint_candidate(
+            hint,
+            &mut prediction_scratch,
+            &mut prediction,
+            &mut residuals,
+            &mut stats,
+        )
+        .expect("zero-residual luma temporal hint should be accepted");
+    assert_eq!(selected.mode, hint.mode);
+    assert!(selected.residual.is_none());
+    assert_eq!(residuals, vec![0; 64]);
+
+    let expensive_context = VvcLumaTuSelectionContext {
+        source_frame: &expensive_frame,
+        ..exact_context
+    };
+    assert!(expensive_context
+        .select_temporal_hint_candidate(
+            hint,
+            &mut prediction_scratch,
+            &mut prediction,
+            &mut residuals,
+            &mut stats,
+        )
+        .is_none());
+    assert!(residuals
+        .iter()
+        .all(|residual| residual.unsigned_abs() > 16));
+}
+
+#[test]
+fn vvc_chroma_temporal_hint_candidate_preserves_cheap_residual_gate() {
+    let exact_frame = sampled_luma_frame(8, 8, vec![128; 64]);
+    let mut expensive_frame = sampled_luma_frame(8, 8, vec![128; 64]);
+    expensive_frame.cb.fill(200);
+    expensive_frame.cr.fill(200);
+    let frame_recon = VvcReconstructionFrame::new_neutral(exact_frame.geometry, exact_frame.format);
+    let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeChroma);
+    let policy = VvcResidualCodingPolicy::new(exact_frame.format, VvcResidualCodingMode::Lossless)
+        .with_fast_search(VvcFastSearch::LosslessSpeed);
+    let chroma_qp = 0;
+    let chroma_ts_quant = VvcTransformSkipQuantTable::new(exact_frame.format.bit_depth, chroma_qp);
+    let hint = VvcChromaTemporalModeHint {
+        mode: VvcChromaIntraPredictionMode::Derived,
+        bdpcm_mode: VvcBdpcmMode::None,
+    };
+    let mut prediction_scratch = VvcDcPredictionScratch::default();
+    let mut predicted_cb = Vec::new();
+    let mut predicted_cr = Vec::new();
+    let mut cb_residuals = Vec::new();
+    let mut cr_residuals = Vec::new();
+    let mut stats = test_intra_search_stats();
+    let exact_context = VvcChromaTuSelectionContext {
+        policy,
+        metric: policy.score_metric(),
+        source_frame: &exact_frame,
+        frame_recon: &frame_recon,
+        node,
+        co_located_luma_mode: VvcIntraPredictionMode::Dc,
+        chroma_x: 0,
+        chroma_y: 0,
+        chroma_width: 4,
+        chroma_height: 4,
+        cclm_enabled: false,
+        syntax_tie_breaker_enabled: false,
+        chroma_qp,
+        chroma_ts_quant: &chroma_ts_quant,
+        temporal_hint: Some(hint),
+    };
+
+    let selected = exact_context
+        .select_temporal_hint_candidate(
+            hint,
+            &mut prediction_scratch,
+            &mut predicted_cb,
+            &mut predicted_cr,
+            &mut cb_residuals,
+            &mut cr_residuals,
+            &mut stats,
+        )
+        .expect("zero-residual chroma temporal hint should be accepted");
+    assert_eq!(selected.mode, hint.mode);
+    assert!(selected.residual.is_none());
+    assert_eq!(cb_residuals, vec![0; 16]);
+    assert_eq!(cr_residuals, vec![0; 16]);
+
+    let expensive_context = VvcChromaTuSelectionContext {
+        source_frame: &expensive_frame,
+        ..exact_context
+    };
+    assert!(expensive_context
+        .select_temporal_hint_candidate(
+            hint,
+            &mut prediction_scratch,
+            &mut predicted_cb,
+            &mut predicted_cr,
+            &mut cb_residuals,
+            &mut cr_residuals,
+            &mut stats,
+        )
+        .is_none());
+    assert!(cb_residuals
+        .iter()
+        .chain(&cr_residuals)
+        .all(|residual| residual.unsigned_abs() > 16));
 }
 
 #[test]

@@ -327,6 +327,11 @@ The following changes were behavior-preserving and independently validated:
   Inter-derived prediction still bypasses unnecessary intra search, but now
   enters the same residual finalization, reconstruction, metadata, and trace
   tail as ordinary selected chroma modes.
+- Accepted VVC luma and chroma temporal hints now return those same selected-
+  candidate records instead of invoking parallel finalizers. Temporal hints
+  retain their original priority and cheap-residual acceptance gates while
+  sharing finalization, reconstruction, metadata, and trace handling with all
+  other selected modes.
 - VVC SCC, temporal-hint, and finalized luma-TU metadata writes now share one
   bounded record type; temporal, exact-inter, and ordinary finalization no
   longer fan the same result out to parallel arrays through three duplicated
@@ -355,7 +360,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 844-line CTU helper, 640-line mode-selection sibling, 295/339-line luma/chroma TU selection orchestration, and 275/489-line luma/chroma search helpers | ordinary and inter-derived candidate finalization now converge; temporal-hint acceptance/finalization still needs a focused contract review |
+| VVC residual quantization | 485-line CTU helper, 538-line mode-selection sibling, 443/491-line luma/chroma TU selection orchestration, and 275/489-line luma/chroma search helpers | selected candidates now converge on shared finalization tails; residual materialization and cache handoff still need a focused call-graph review |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2

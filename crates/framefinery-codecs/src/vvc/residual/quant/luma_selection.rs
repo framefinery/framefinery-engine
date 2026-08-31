@@ -17,6 +17,7 @@ struct VvcLumaTuSelectionContext<'a> {
     above: Option<VvcIntraPredictionMode>,
     luma_qp: i32,
     luma_ts_quant: &'a VvcTransformSkipQuantTable,
+    temporal_hint: Option<VvcLumaTemporalModeHint>,
     inter_decision: Option<VvcLumaInterDecision>,
     inter_reference: Option<&'a VvcReconstructionFrame>,
 }
@@ -49,6 +50,17 @@ impl VvcLumaTuSelectionContext<'_> {
             transform_scratch,
             reconstructed_residual,
         } = buffers;
+        if let Some(hint) = self.temporal_hint {
+            if let Some(candidate) = self.select_temporal_hint_candidate(
+                hint,
+                prediction_scratch,
+                selected_prediction,
+                selected_residuals,
+                stats,
+            ) {
+                return candidate;
+            }
+        }
         if let (Some(decision), Some(reference)) = (self.inter_decision, self.inter_reference) {
             if let Some(candidate) = self.select_exact_inter_candidate(
                 decision,
@@ -234,6 +246,142 @@ impl VvcLumaTuSelectionContext<'_> {
             residual: selected_residual,
             inter_decision: selected_inter_decision,
         }
+    }
+
+    fn select_temporal_hint_candidate(
+        &self,
+        hint: VvcLumaTemporalModeHint,
+        prediction_scratch: &mut VvcDcPredictionScratch,
+        predicted_luma: &mut Vec<VvcSample>,
+        luma_residuals: &mut Vec<i16>,
+        stats: &mut VvcIntraSearchStats,
+    ) -> Option<VvcSelectedLumaTuCandidate> {
+        let coding_decision = if hint.bdpcm_mode.is_enabled() {
+            VvcLumaTuCodingDecision {
+                residual_coding: VvcTuResidualCodingMode::TransformSkip,
+                mrl_index: 0,
+                mts_index: 0,
+            }
+        } else {
+            self.policy
+                .select_luma_tu_coding_decision(self.node, hint.mode)
+        };
+        let preselected_residual = if hint.bdpcm_mode.is_enabled() {
+            #[cfg(feature = "vvc-stats")]
+            let prediction_start = StageStart::now();
+            predict_vvc_luma_bdpcm_block_into_with_availability(
+                predicted_luma,
+                prediction_scratch,
+                hint.bdpcm_mode,
+                &self.frame_recon.luma,
+                self.frame_recon.coded_geometry(),
+                self.node,
+                self.source_frame.format.bit_depth,
+                Some(self.frame_recon.luma_availability()),
+            );
+            #[cfg(feature = "vvc-stats")]
+            stats.add_luma_prediction_nanos(
+                VvcLumaPredictionStatsFamily::Bdpcm,
+                vvc_elapsed_nanos(prediction_start),
+            );
+            self.materialize_temporal_hint_residual(predicted_luma, luma_residuals, stats);
+            if !self.temporal_hint_residual_is_cheap(luma_residuals) {
+                return None;
+            }
+            Some(VvcScoredSelectedLumaResidual {
+                residual: VvcSelectedLumaResidual {
+                    block: finalize_vvc_luma_bdpcm_transform_skip_residual_block(
+                        luma_residuals,
+                        self.node.width,
+                        self.node.height,
+                        self.luma_ts_quant,
+                        hint.bdpcm_mode,
+                    ),
+                    mts_index: 0,
+                },
+                score: VvcResidualBlockScore {
+                    distortion: 0,
+                    rate_cost: 0,
+                },
+            })
+        } else {
+            #[cfg(feature = "vvc-stats")]
+            let prediction_start = StageStart::now();
+            if coding_decision.mrl_index == 0 {
+                predict_vvc_luma_intra_block_into_with_availability(
+                    predicted_luma,
+                    prediction_scratch,
+                    hint.mode,
+                    &self.frame_recon.luma,
+                    self.frame_recon.coded_geometry(),
+                    self.node,
+                    self.source_frame.format.bit_depth,
+                    Some(self.frame_recon.luma_availability()),
+                );
+            } else {
+                predict_vvc_luma_intra_block_into_with_mrl_and_availability(
+                    predicted_luma,
+                    prediction_scratch,
+                    hint.mode,
+                    &self.frame_recon.luma,
+                    self.frame_recon.coded_geometry(),
+                    self.node,
+                    self.source_frame.format.bit_depth,
+                    coding_decision.mrl_index,
+                    Some(self.frame_recon.luma_availability()),
+                );
+            }
+            #[cfg(feature = "vvc-stats")]
+            stats.add_luma_prediction_nanos(
+                vvc_luma_prediction_stats_family(hint.mode),
+                vvc_elapsed_nanos(prediction_start),
+            );
+            self.materialize_temporal_hint_residual(predicted_luma, luma_residuals, stats);
+            if !self.temporal_hint_residual_is_cheap(luma_residuals) {
+                return None;
+            }
+            None
+        };
+        #[cfg(not(feature = "vvc-stats"))]
+        let _ = stats;
+        Some(VvcSelectedLumaTuCandidate {
+            mode: hint.mode,
+            coding_decision,
+            residual: preselected_residual,
+            inter_decision: None,
+        })
+    }
+
+    fn materialize_temporal_hint_residual(
+        &self,
+        predicted_luma: &[VvcSample],
+        luma_residuals: &mut Vec<i16>,
+        stats: &mut VvcIntraSearchStats,
+    ) {
+        #[cfg(feature = "vvc-stats")]
+        let residual_start = StageStart::now();
+        residual_luma_tu_at_into(
+            luma_residuals,
+            self.source_frame,
+            usize::from(self.node.x),
+            usize::from(self.node.y),
+            usize::from(self.node.width),
+            usize::from(self.node.height),
+            predicted_luma,
+        );
+        #[cfg(feature = "vvc-stats")]
+        stats.add_luma_residual_build_nanos(vvc_elapsed_nanos(residual_start));
+        #[cfg(not(feature = "vvc-stats"))]
+        let _ = stats;
+    }
+
+    fn temporal_hint_residual_is_cheap(&self, residuals: &[i16]) -> bool {
+        vvc_temporal_mode_hint_residual_is_cheap(
+            residuals,
+            usize::from(self.node.width) * usize::from(self.node.height),
+            self.source_frame.format.bit_depth,
+            self.policy,
+        )
     }
 
     fn select_exact_inter_candidate(
