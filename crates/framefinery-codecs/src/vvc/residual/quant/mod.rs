@@ -10,6 +10,7 @@ include!("luma_search.rs");
 include!("luma_selection.rs");
 include!("chroma_search.rs");
 include!("chroma_mode.rs");
+include!("chroma_rd.rs");
 include!("chroma_tu_selection.rs");
 include!("luma_prediction.rs");
 include!("directional.rs");

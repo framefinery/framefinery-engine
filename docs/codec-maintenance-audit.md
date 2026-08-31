@@ -341,6 +341,11 @@ The following changes were behavior-preserving and independently validated:
   explicit inter comparison, and RD refinement. General timing is recorded in
   that shared boundary, while RD-only timing remains gated at its deepest
   callers.
+- VVC chroma quantized RD candidate scoring, reconstruction-error estimation,
+  coefficient cost estimation, and shortlist policy now live in a focused
+  289-line helper. It remains included in the original quantization module, so
+  top-level refinement and BDPCM selection call the same private functions as
+  before the split.
 - VVC SCC, temporal-hint, and finalized luma-TU metadata writes now share one
   bounded record type; temporal, exact-inter, and ordinary finalization no
   longer fan the same result out to parallel arrays through three duplicated
@@ -369,7 +374,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 479-line CTU helper, 538-line mode-selection sibling, 424/493-line luma/chroma TU selection orchestration, 275/489-line search helpers, and 416/1,021-line luma/chroma mode/RD helpers | selected candidates, cache transfers, and luma materialization now converge; the oversized chroma mode/RD helper and mutable scratch ownership need a focused split review |
+| VVC residual quantization | 479-line CTU helper, 538-line mode-selection sibling, 424/493-line luma/chroma TU selection orchestration, 275/489-line search helpers, a 416-line luma mode helper, and 728/289-line chroma mode/RD helpers | selected candidates, cache transfers, luma materialization, and chroma RD scoring now converge; BDPCM selection and mutable chroma scratch ownership still need a focused split review |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2
