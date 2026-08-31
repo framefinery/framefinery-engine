@@ -97,6 +97,62 @@ fn vvc_chroma_prediction_score_matches_materialized_residual_score() {
 }
 
 #[test]
+fn vvc_chroma_intra_search_promotes_only_strict_winners_and_records_ties() {
+    let explicit = VvcChromaIntraPredictionMode::Explicit(VvcIntraPredictionMode::Horizontal);
+    let cclm = VvcChromaIntraPredictionMode::Cclm(VvcChromaCclmMode::Linear);
+    let mut search = VvcChromaIntraSearch::new(100);
+    let mut selected_cb: Vec<VvcSample> = vec![1];
+    let mut selected_cr: Vec<VvcSample> = vec![10];
+    let mut candidate_cb: Vec<VvcSample> = vec![2];
+    let mut candidate_cr: Vec<VvcSample> = vec![20];
+
+    search.consider_candidate(
+        explicit,
+        80,
+        &mut selected_cb,
+        &mut selected_cr,
+        &mut candidate_cb,
+        &mut candidate_cr,
+    );
+    assert_eq!(search.best_mode(), explicit);
+    assert_eq!(search.best_score(), 80);
+    assert_eq!(selected_cb, vec![2]);
+    assert_eq!(selected_cr, vec![20]);
+    assert_eq!(candidate_cb, vec![1]);
+    assert_eq!(candidate_cr, vec![10]);
+
+    candidate_cb[0] = 3;
+    candidate_cr[0] = 30;
+    search.consider_candidate(
+        cclm,
+        80,
+        &mut selected_cb,
+        &mut selected_cr,
+        &mut candidate_cb,
+        &mut candidate_cr,
+    );
+    assert_eq!(search.best_mode(), explicit);
+    assert_eq!(selected_cb, vec![2]);
+    assert_eq!(selected_cr, vec![20]);
+    assert_eq!(candidate_cb, vec![3]);
+    assert_eq!(candidate_cr, vec![30]);
+
+    let costs: Vec<_> = search
+        .candidate_costs()
+        .iter()
+        .map(|candidate| (candidate.mode(), candidate.score()))
+        .collect();
+    assert_eq!(
+        costs,
+        vec![
+            (VvcChromaIntraPredictionMode::Derived, 100),
+            (explicit, 80),
+            (cclm, 80),
+        ]
+    );
+}
+
+#[test]
 fn vvc_source_luma_directional_seed_maps_integer_gradients() {
     let node = VvcCodingTreeNode::root(8, 8, VvcTreeType::DualTreeLuma);
     let flat = sampled_luma_frame(8, 8, vec![64; 64]);

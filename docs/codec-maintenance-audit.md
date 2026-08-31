@@ -305,6 +305,10 @@ The following changes were behavior-preserving and independently validated:
   dispatcher and one plane-region descriptor; luma MRL/filtering and chroma
   subsampling/4:2:2 angle mapping remain explicit only where their syntax and
   sample geometry differ.
+- VVC derived, explicit, and CCLM chroma candidate scoring now shares one
+  search context, while explicit and CCLM prediction/scoring also shares one
+  candidate evaluator and strict-winner promotion state; their distinct
+  legality and fast-search gates remain at mode selection.
 - Seven definition-only VVC residual test adapters were removed from sample
   extraction, quantization, and coefficient-stream construction; single-plane
   chroma extraction no longer carries an unreachable zero-tracking branch,
@@ -325,7 +329,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | 2,757 lines after mode-syntax split | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 943-line orchestration plus mode-selection sibling | luma/chroma selection should be unified only where types and gates truly match |
+| VVC residual quantization | 937-line CTU setup plus 1,328-line mode-selection sibling and focused helpers | chroma candidate evaluation is shared; luma/chroma TU result bookkeeping and remaining orchestration need call-graph review |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2
