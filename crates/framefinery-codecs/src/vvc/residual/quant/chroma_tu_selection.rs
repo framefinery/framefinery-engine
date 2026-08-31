@@ -279,26 +279,8 @@ impl VvcChromaTuSelectionContext<'_> {
 }
 
 fn vvc_zero_chroma_preselected_residual() -> VvcScoredSelectedChromaResidual {
-    VvcScoredSelectedChromaResidual {
-        residual: VvcSelectedChromaResidual {
-            cb: VvcFinalizedResidualBlock {
-                dc_level: 0,
-                ac_levels: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
-                has_ac: false,
-                transform_skip: true,
-                bdpcm_mode: VvcBdpcmMode::None,
-            },
-            cr: VvcFinalizedResidualBlock {
-                dc_level: 0,
-                ac_levels: [0; VVC_CHROMA_AC_COEFFS_PER_TU],
-                has_ac: false,
-                transform_skip: true,
-                bdpcm_mode: VvcBdpcmMode::None,
-            },
-        },
-        score: VvcResidualBlockScore {
-            distortion: 0,
-            rate_cost: 0,
-        },
-    }
+    VvcScoredSelectedChromaResidual::preselected(VvcSelectedChromaResidual {
+        cb: VvcFinalizedResidualBlock::zero_transform_skip(VvcBdpcmMode::None),
+        cr: VvcFinalizedResidualBlock::zero_transform_skip(VvcBdpcmMode::None),
+    })
 }

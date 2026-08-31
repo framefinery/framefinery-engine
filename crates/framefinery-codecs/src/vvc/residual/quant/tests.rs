@@ -2420,6 +2420,8 @@ fn vvc_zero_transform_skip_residuals_keep_zero_levels() {
     let luma = finalize_vvc_luma_transform_skip_residual_block(&[0; 64], 8, 8, &quant_table);
     assert_eq!(luma.dc_level, 0);
     assert!(!luma.has_ac);
+    assert!(luma.transform_skip);
+    assert_eq!(luma.bdpcm_mode, VvcBdpcmMode::None);
     assert!(luma.ac_levels.iter().all(|level| *level == 0));
 
     let luma_bdpcm = finalize_vvc_luma_bdpcm_transform_skip_residual_block(
@@ -2431,10 +2433,15 @@ fn vvc_zero_transform_skip_residuals_keep_zero_levels() {
     );
     assert_eq!(luma_bdpcm.dc_level, 0);
     assert!(!luma_bdpcm.has_ac);
+    assert!(luma_bdpcm.transform_skip);
+    assert_eq!(luma_bdpcm.bdpcm_mode, VvcBdpcmMode::Horizontal);
+    assert!(luma_bdpcm.ac_levels.iter().all(|level| *level == 0));
 
     let chroma = finalize_vvc_chroma_transform_skip_residual_block(&[0; 16], 4, 4, &quant_table);
     assert_eq!(chroma.dc_level, 0);
     assert!(!chroma.has_ac);
+    assert!(chroma.transform_skip);
+    assert_eq!(chroma.bdpcm_mode, VvcBdpcmMode::None);
     assert!(chroma.ac_levels.iter().all(|level| *level == 0));
 
     let chroma_bdpcm = finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
@@ -2446,6 +2453,9 @@ fn vvc_zero_transform_skip_residuals_keep_zero_levels() {
     );
     assert_eq!(chroma_bdpcm.dc_level, 0);
     assert!(!chroma_bdpcm.has_ac);
+    assert!(chroma_bdpcm.transform_skip);
+    assert_eq!(chroma_bdpcm.bdpcm_mode, VvcBdpcmMode::Vertical);
+    assert!(chroma_bdpcm.ac_levels.iter().all(|level| *level == 0));
 }
 
 #[test]

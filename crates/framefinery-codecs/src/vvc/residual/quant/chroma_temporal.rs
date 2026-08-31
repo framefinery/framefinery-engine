@@ -40,8 +40,8 @@ impl VvcChromaTuSelectionContext<'_> {
             if !self.temporal_hint_residuals_are_cheap(buffers.residuals.cb, buffers.residuals.cr) {
                 return None;
             }
-            Some(VvcScoredSelectedChromaResidual {
-                residual: VvcSelectedChromaResidual {
+            Some(VvcScoredSelectedChromaResidual::preselected(
+                VvcSelectedChromaResidual {
                     cb: finalize_vvc_chroma_bdpcm_transform_skip_residual_block(
                         buffers.residuals.cb,
                         self.chroma_width,
@@ -57,11 +57,7 @@ impl VvcChromaTuSelectionContext<'_> {
                         hint.bdpcm_mode,
                     ),
                 },
-                score: VvcResidualBlockScore {
-                    distortion: 0,
-                    rate_cost: 0,
-                },
-            })
+            ))
         } else {
             predict_vvc_chroma_mode_pair_blocks_into_with_availability(
                 buffers.prediction.cb,

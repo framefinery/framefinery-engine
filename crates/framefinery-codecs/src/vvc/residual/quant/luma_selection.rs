@@ -286,8 +286,8 @@ impl VvcLumaTuSelectionContext<'_> {
             if !self.temporal_hint_residual_is_cheap(luma_residuals) {
                 return None;
             }
-            Some(VvcScoredSelectedLumaResidual {
-                residual: VvcSelectedLumaResidual {
+            Some(VvcScoredSelectedLumaResidual::preselected(
+                VvcSelectedLumaResidual {
                     block: finalize_vvc_luma_bdpcm_transform_skip_residual_block(
                         luma_residuals,
                         self.node.width,
@@ -297,11 +297,7 @@ impl VvcLumaTuSelectionContext<'_> {
                     ),
                     mts_index: 0,
                 },
-                score: VvcResidualBlockScore {
-                    distortion: 0,
-                    rate_cost: 0,
-                },
-            })
+            ))
         } else {
             #[cfg(feature = "vvc-stats")]
             let prediction_start = StageStart::now();
@@ -380,11 +376,7 @@ impl VvcLumaTuSelectionContext<'_> {
                 self.node,
                 decision,
             )
-            || !vvc_luma_prediction_matches_source(
-                self.source_frame,
-                self.node,
-                inter_prediction,
-            )
+            || !vvc_luma_prediction_matches_source(self.source_frame, self.node, inter_prediction)
         {
             return None;
         }
@@ -405,20 +397,8 @@ impl VvcLumaTuSelectionContext<'_> {
 }
 
 fn vvc_zero_luma_preselected_residual() -> VvcScoredSelectedLumaResidual {
-    VvcScoredSelectedLumaResidual {
-        residual: VvcSelectedLumaResidual {
-            block: VvcFinalizedResidualBlock {
-                dc_level: 0,
-                ac_levels: [0; VVC_LUMA_AC_COEFFS_PER_TU],
-                has_ac: false,
-                transform_skip: true,
-                bdpcm_mode: VvcBdpcmMode::None,
-            },
-            mts_index: 0,
-        },
-        score: VvcResidualBlockScore {
-            distortion: 0,
-            rate_cost: 0,
-        },
-    }
+    VvcScoredSelectedLumaResidual::preselected(VvcSelectedLumaResidual {
+        block: VvcFinalizedResidualBlock::zero_transform_skip(VvcBdpcmMode::None),
+        mts_index: 0,
+    })
 }

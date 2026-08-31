@@ -384,13 +384,7 @@ fn finalize_vvc_transform_skip_residual_block<const AC_COEFFS: usize>(
     layout.debug_assert_coefficients_fit::<AC_COEFFS>();
     debug_assert_eq!(layout.coefficient_stride, layout.active_width);
     if residuals.iter().all(|&residual| residual == 0) {
-        return VvcFinalizedResidualBlock {
-            dc_level: 0,
-            ac_levels: [0; AC_COEFFS],
-            has_ac: false,
-            transform_skip: true,
-            bdpcm_mode: VvcBdpcmMode::None,
-        };
+        return VvcFinalizedResidualBlock::zero_transform_skip(VvcBdpcmMode::None);
     }
     let dc_level = residuals
         .first()
@@ -423,13 +417,7 @@ fn finalize_vvc_bdpcm_transform_skip_residual_block<const AC_COEFFS: usize>(
     layout.debug_assert_source_len(residuals.len());
     layout.debug_assert_coefficients_fit::<AC_COEFFS>();
     if residuals.iter().all(|&residual| residual == 0) {
-        return VvcFinalizedResidualBlock {
-            dc_level: 0,
-            ac_levels: [0; AC_COEFFS],
-            has_ac: false,
-            transform_skip: true,
-            bdpcm_mode,
-        };
+        return VvcFinalizedResidualBlock::zero_transform_skip(bdpcm_mode);
     }
     let mut quantized_levels = [0i16; VVC_TRANSFORM_SKIP_MAX_SAMPLES];
     let mut ac_levels = [0; AC_COEFFS];

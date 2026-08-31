@@ -53,6 +53,16 @@ struct VvcFinalizedResidualBlock<const AC_COEFFS: usize> {
 }
 
 impl<const AC_COEFFS: usize> VvcFinalizedResidualBlock<AC_COEFFS> {
+    fn zero_transform_skip(bdpcm_mode: VvcBdpcmMode) -> Self {
+        Self {
+            dc_level: 0,
+            ac_levels: [0; AC_COEFFS],
+            has_ac: false,
+            transform_skip: true,
+            bdpcm_mode,
+        }
+    }
+
     fn abs_remainder(self) -> u8 {
         self.dc_level.unsigned_abs().min(u8::MAX as u16) as u8
     }
@@ -86,6 +96,17 @@ struct VvcScoredResidual<T> {
 }
 
 impl<T> VvcScoredResidual<T> {
+    // The caller has accepted this candidate outside ordinary RD competition.
+    fn preselected(residual: T) -> Self {
+        Self {
+            residual,
+            score: VvcResidualBlockScore {
+                distortion: 0,
+                rate_cost: 0,
+            },
+        }
+    }
+
     fn selects_over(self, best: Self) -> bool {
         self.score.selects_over(best.score)
     }

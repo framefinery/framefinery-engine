@@ -445,6 +445,12 @@ The following changes were behavior-preserving and independently validated:
   QP/quantization tables, legal mode inputs, and component-specific state, so
   shared setup no longer drifts without hiding the deepest mode-selection
   gates.
+- VVC luma/chroma exact-inter and temporal-hint candidates now share one
+  explicit preselected-residual constructor, and regular/BDPCM zero
+  transform-skip blocks share one const-generic constructor. Component
+  selectors still own candidate legality, MTS/chroma pairing, temporal cost
+  gates, and BDPCM direction; only the identical accepted score and finalized
+  zero-block representation are shared.
 
 All of these remain included in their original parent module scope, so the
 split does not create an alternate coding path or change name resolution.
@@ -459,7 +465,7 @@ current call graph rather than by line count alone:
 | VVC CABAC CTU generation | approximately 2,616 lines after removing disabled leaf-skip syntax | tightly coupled partition traversal, neighbour state, and syntax emission |
 | VVC residual prediction | 294-line orchestration before focused tests plus prediction siblings | regular luma/chroma dispatch is shared; angular and CCLM scratch ownership still need call-graph review |
 | AV2 tile transform syntax helpers | 672-line core plus 360-line chroma, 320-line context, and 722-line low-level writer siblings | the low-level field/CDF writer sibling remains large and should be grouped only after syntax-by-syntax equivalence review |
-| VVC residual quantization | 486-line CTU helper, 163-line CTU orchestrator plus a 10-line shared immutable context, focused 175/210-line luma/chroma passes, and a 107-line result assembler, 424/304-line luma/chroma TU selection orchestration plus a 123-line chroma temporal helper, 275/443-line search helpers, a 416-line luma mode helper, and 312/440/289-line chroma mode/BDPCM/RD helpers | top-level traversal, shared immutable setup, and transient sample-buffer lifecycle are explicit; remaining work should inspect lower selectors without hiding component-specific selection, syntax, or reconstruction contracts |
+| VVC residual quantization | 486-line CTU helper, 163-line CTU orchestrator plus a 10-line shared immutable context, focused 175/210-line luma/chroma passes, and a 107-line result assembler, 404/286-line luma/chroma TU selection orchestration plus a 119-line chroma temporal helper, 275/443-line search helpers, a 408-line luma mode helper, and 325/440/290-line chroma mode/BDPCM/RD helpers | top-level traversal, shared immutable setup, transient sample-buffer lifecycle, and accepted zero-residual representation are explicit; remaining work should inspect lower selectors without hiding component-specific selection, syntax, or reconstruction contracts |
 
 For the next functional cleanup, prefer extracting a small shared helper with
 bit-exact scalar tests over introducing a broad cross-codec abstraction. AV2
