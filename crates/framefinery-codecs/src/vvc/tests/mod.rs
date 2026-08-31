@@ -1379,6 +1379,60 @@ fn vvc_inter_transform_nodes_match_cabac_luma_leaves_at_edge_ctu() {
 }
 
 #[test]
+fn vvc_luma_transform_node_and_cabac_traversals_match_geometry_sweep() {
+    let visible_extents = [
+        1, 2, 3, 4, 5, 7, 8, 9, 14, 15, 16, 17, 23, 24, 31, 32, 33, 47, 48, 55, 56, 63, 64,
+    ];
+    for split_kind in [
+        VvcLumaSplitAvailabilityKind::Intra,
+        VvcLumaSplitAvailabilityKind::Inter,
+    ] {
+        for max_leaf_size in [VVC_LOSSLESS_LUMA_LEAF_SIZE, VVC_CURRENT_MAX_LUMA_LEAF_SIZE] {
+            for visible_width in visible_extents {
+                for visible_height in visible_extents {
+                    let shape = VvcCtuPartitionShape {
+                        root_width: VVC_CTU_SIZE as u16,
+                        root_height: VVC_CTU_SIZE as u16,
+                        visible_width,
+                        visible_height,
+                        chroma_sampling: ChromaSampling::Cs420,
+                        dual_tree_intra: false,
+                    };
+                    let cabac_ops = match split_kind {
+                        VvcLumaSplitAvailabilityKind::Intra => {
+                            VvcCtuCabacOp::intra_ctu_partition(shape, max_leaf_size)
+                        }
+                        VvcLumaSplitAvailabilityKind::Inter => {
+                            VvcCtuCabacOp::inter_skip_ctu_partition(shape, max_leaf_size)
+                        }
+                    };
+                    let mut cabac_luma_nodes = Vec::new();
+                    for op in cabac_ops {
+                        if let VvcCtuCabacOp::LumaLeafWithSplitCtx {
+                            node,
+                            write_split_flag,
+                            split_ctx,
+                        } = op
+                        {
+                            assert!(
+                                write_split_flag || split_ctx == 0,
+                                "{split_kind:?} leaf={max_leaf_size} visible={visible_width}x{visible_height} node={node:?}",
+                            );
+                            cabac_luma_nodes.push(node);
+                        }
+                    }
+                    assert_eq!(
+                        vvc_luma_transform_nodes_for_kind(shape, max_leaf_size, split_kind),
+                        cabac_luma_nodes,
+                        "{split_kind:?} leaf={max_leaf_size} visible={visible_width}x{visible_height}",
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn vvc_inter_transform_nodes_match_global_edge_ctu_coordinates() {
     let shape = VvcCtuPartitionShape {
         root_width: VVC_CTU_SIZE as u16,

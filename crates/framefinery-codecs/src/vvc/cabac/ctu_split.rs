@@ -1330,10 +1330,15 @@ impl VvcCtuCabacOp {
                 visible_height,
                 split_kind,
             );
+            let write_split_flag = split.has_mtt() || split.allow_qt;
             emit_op(Self::LumaLeafWithSplitCtx {
                 node,
-                write_split_flag: split.has_mtt() || split.allow_qt,
-                split_ctx: Self::luma_split_ctx(node, split, neighbours),
+                write_split_flag,
+                split_ctx: if write_split_flag {
+                    Self::luma_split_ctx(node, split, neighbours)
+                } else {
+                    0
+                },
             });
             neighbours.mark_leaf(node);
             return;

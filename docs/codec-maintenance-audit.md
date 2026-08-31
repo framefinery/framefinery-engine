@@ -564,6 +564,12 @@ The following changes were behavior-preserving and independently validated:
   available above-left entry. A focused 120-line contract covers every edge,
   BOB bucket, magnitude limit, sparse neighbour, sign combination, and the
   current-level context threshold.
+- VVC terminal luma leaves at the MTT-depth limit now derive a CABAC split
+  context only when the corresponding split flag is signaled, matching the
+  ordinary terminal-leaf path. A geometry contract covers intra and inter
+  traversal, both production leaf-size policies, and 2,116 unusual visible
+  width/height combinations; it also pins transform-node/CABAC-leaf agreement
+  and the zero-context invariant for every unsignaled leaf split flag.
 
 All of these remain included in their original parent module scope, so the
 split does not create an alternate coding path or change name resolution.
