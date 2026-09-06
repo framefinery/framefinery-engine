@@ -162,6 +162,10 @@ exist yet.
 - Read `README.md`, `docs/architecture.md`, and `docs/validation.md` before
   changing code or project structure. Also read any focused docs relevant to
   the files being changed.
+- For nontrivial implementation, optimization, validation, CLI/API, or
+  mode-search work, read `docs/agent-goal-discipline.md` and follow its
+  internal pull-request process before editing, before committing, and before
+  reporting completion.
 - Check `git status --short` before edits.
 - Keep commits small and scoped.
 - Do not copy large chunks from FrameFinery Engine without preserving attribution and
@@ -171,6 +175,31 @@ exist yet.
   exists.
 - Keep generated artifacts out of version control unless they are intentionally
   committed fixtures.
+- Treat nontrivial codec, validation, CLI/API, performance, and mode-search
+  changes as an internal pull request. Before editing, write a short preflight
+  note that names the goal, the shared path affected, the policy or mode hook
+  being changed, the likely split-path risk, the broader contracts at risk, and
+  the tests or validation planned. If the shared path cannot be named, inspect
+  more before changing code.
+- During that internal pull request, do not create a new lossless/lossy,
+  intra/inter, screen/camera, RGB/YUV, chroma/profile, traversal, residual,
+  reconstruction, entropy, or validation path unless the codec specification or
+  reference validation proves the shared path cannot represent the behavior.
+  Record that boundary before implementing the split.
+- After the diff, review it as a pull request against this file and the focused
+  docs before committing. Look specifically for copied loops, weakened gates,
+  broad defaults changed for a narrow case, removed tests, relaxed validation,
+  hidden dead code, and behavior changes outside the stated goal. Include the
+  architecture outcome, validation run, and remaining risk in the final note or
+  commit message.
+- Do not remove, ignore, downgrade, or loosen a failing test, reference check,
+  validation manifest, lint, or assertion to make a change pass. If an existing
+  check is obsolete, replace it with a more accurate check in the same change
+  and document the contract change.
+- Before finalizing a narrow fix, run a tablecloth check: identify nearby modes,
+  formats, callers, settings, and validation rows that share the changed code,
+  and make sure the fix did not solve one case by pulling behavior out from
+  under another.
 
 ## Best Coding Practices
 
