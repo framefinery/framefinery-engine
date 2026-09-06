@@ -28,6 +28,36 @@ pub(in crate::vvc) enum VvcLumaSplitAvailabilityKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct VvcLumaSplitLimits {
+    max_mtt_depth: u8,
+    max_bt_size: u16,
+    max_tt_size: u16,
+    require_qt_parent: bool,
+}
+
+impl VvcLumaSplitAvailabilityKind {
+    fn limits(self) -> VvcLumaSplitLimits {
+        match self {
+            Self::Intra => VvcLumaSplitLimits {
+                max_mtt_depth: VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
+                max_bt_size: VVC_CURRENT_MAX_LUMA_BT_SIZE,
+                max_tt_size: VVC_CURRENT_MAX_LUMA_TT_SIZE.min(VVC_CTU_SIZE as u16),
+                require_qt_parent: false,
+            },
+            Self::Inter => VvcLumaSplitLimits {
+                // The SPS advertises an inter-slice maximum MTT depth of 3.
+                // Intra leaf/TU limits must not leak into P-slice all-skip
+                // split-context derivation.
+                max_mtt_depth: 3,
+                max_bt_size: VVC_CTU_SIZE as u16,
+                max_tt_size: VVC_CTU_SIZE as u16,
+                require_qt_parent: true,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::vvc) enum VvcCtuCabacOp {
     QtSplit {
         node: VvcCodingTreeNode,
@@ -349,132 +379,75 @@ impl VvcCtuCabacOp {
         }
     }
 
-    fn luma_split_availability(
-        node: VvcCodingTreeNode,
-        visible_width: u16,
-        visible_height: u16,
-    ) -> VvcSplitCtxInput {
-        // H.266 7.4.12.4 derives allowSplitQt/BT/TT by invoking 6.4.1,
-        // 6.4.2 and 6.4.3. This implementation is intentionally written in
-        // those terms so future SPS/profile changes update one availability
-        // model instead of geometry-specific branches.
-        let allow_qt = Self::qt_flag_can_be_signaled(node);
-        let max_mtt_depth = VVC_CURRENT_MAX_LUMA_MTT_DEPTH + node.depth_offset;
-        let allow_bt_vertical =
-            Self::allow_luma_bt_split(node, true, visible_width, visible_height, max_mtt_depth);
-        let allow_bt_horizontal =
-            Self::allow_luma_bt_split(node, false, visible_width, visible_height, max_mtt_depth);
-        let allow_tt_vertical =
-            Self::allow_luma_tt_split(node, true, visible_width, visible_height, max_mtt_depth);
-        let allow_tt_horizontal =
-            Self::allow_luma_tt_split(node, false, visible_width, visible_height, max_mtt_depth);
-
-        VvcSplitCtxInput {
-            available_left: false,
-            available_above: false,
-            condition_left: false,
-            condition_above: false,
-            allow_bt_vertical,
-            allow_bt_horizontal,
-            allow_tt_vertical,
-            allow_tt_horizontal,
-            allow_qt,
-        }
-    }
-
-    fn luma_inter_split_availability(
-        node: VvcCodingTreeNode,
-        visible_width: u16,
-        visible_height: u16,
-    ) -> VvcSplitCtxInput {
-        // The SPS advertises an inter-slice maximum MTT depth of 3. The
-        // intra encoder's smaller luma leaf/TU limits must not leak into
-        // P-slice split-context derivation for all-skip CUs.
-        let allow_qt = node.mtt_depth == 0
-            && node.width > VVC_CURRENT_MIN_LUMA_QT_SIZE
-            && node.height > VVC_CURRENT_MIN_LUMA_QT_SIZE
-            && matches!(node.parent_split, VvcPartSplit::None | VvcPartSplit::Quad);
-        let max_mtt_depth = 3 + node.depth_offset;
-        let allow_bt_vertical = Self::allow_luma_bt_split_with_max_size(
-            node,
-            true,
-            visible_width,
-            visible_height,
-            max_mtt_depth,
-            VVC_CTU_SIZE as u16,
-        );
-        let allow_bt_horizontal = Self::allow_luma_bt_split_with_max_size(
-            node,
-            false,
-            visible_width,
-            visible_height,
-            max_mtt_depth,
-            VVC_CTU_SIZE as u16,
-        );
-        let allow_tt_vertical = Self::allow_luma_tt_split_with_max_size(
-            node,
-            true,
-            visible_width,
-            visible_height,
-            max_mtt_depth,
-            VVC_CTU_SIZE as u16,
-        );
-        let allow_tt_horizontal = Self::allow_luma_tt_split_with_max_size(
-            node,
-            false,
-            visible_width,
-            visible_height,
-            max_mtt_depth,
-            VVC_CTU_SIZE as u16,
-        );
-
-        VvcSplitCtxInput {
-            available_left: false,
-            available_above: false,
-            condition_left: false,
-            condition_above: false,
-            allow_bt_vertical,
-            allow_bt_horizontal,
-            allow_tt_vertical,
-            allow_tt_horizontal,
-            allow_qt,
-        }
-    }
-
-    fn luma_split_availability_for_kind(
+    #[cfg(test)]
+    pub(in crate::vvc) fn luma_split_availability_for_kind(
         node: VvcCodingTreeNode,
         visible_width: u16,
         visible_height: u16,
         kind: VvcLumaSplitAvailabilityKind,
     ) -> VvcSplitCtxInput {
-        match kind {
-            VvcLumaSplitAvailabilityKind::Intra => {
-                Self::luma_split_availability(node, visible_width, visible_height)
-            }
-            VvcLumaSplitAvailabilityKind::Inter => {
-                Self::luma_inter_split_availability(node, visible_width, visible_height)
-            }
+        Self::luma_split_availability(node, visible_width, visible_height, kind.limits())
+    }
+
+    fn luma_split_availability(
+        node: VvcCodingTreeNode,
+        visible_width: u16,
+        visible_height: u16,
+        limits: VvcLumaSplitLimits,
+    ) -> VvcSplitCtxInput {
+        // H.266 7.4.12.4 derives allowSplitQt/BT/TT by invoking 6.4.1,
+        // 6.4.2 and 6.4.3. Intra and inter select only their legal limits
+        // here; all availability derivation below remains shared.
+        let allow_qt = Self::qt_flag_can_be_signaled(node)
+            && (!limits.require_qt_parent
+                || matches!(node.parent_split, VvcPartSplit::None | VvcPartSplit::Quad));
+        let allow_bt_vertical = Self::allow_luma_bt_split(
+            node,
+            true,
+            visible_width,
+            visible_height,
+            limits.max_mtt_depth + node.depth_offset,
+            limits.max_bt_size,
+        );
+        let allow_bt_horizontal = Self::allow_luma_bt_split(
+            node,
+            false,
+            visible_width,
+            visible_height,
+            limits.max_mtt_depth + node.depth_offset,
+            limits.max_bt_size,
+        );
+        let allow_tt_vertical = Self::allow_luma_tt_split(
+            node,
+            true,
+            visible_width,
+            visible_height,
+            limits.max_mtt_depth + node.depth_offset,
+            limits.max_tt_size,
+        );
+        let allow_tt_horizontal = Self::allow_luma_tt_split(
+            node,
+            false,
+            visible_width,
+            visible_height,
+            limits.max_mtt_depth + node.depth_offset,
+            limits.max_tt_size,
+        );
+
+        VvcSplitCtxInput {
+            available_left: false,
+            available_above: false,
+            condition_left: false,
+            condition_above: false,
+            allow_bt_vertical,
+            allow_bt_horizontal,
+            allow_tt_vertical,
+            allow_tt_horizontal,
+            allow_qt,
         }
     }
 
     fn allow_luma_bt_split(
-        node: VvcCodingTreeNode,
-        vertical: bool,
-        visible_width: u16,
-        visible_height: u16,
-        max_mtt_depth: u8,
-    ) -> bool {
-        Self::allow_luma_bt_split_with_max_size(
-            node,
-            vertical,
-            visible_width,
-            visible_height,
-            max_mtt_depth,
-            VVC_CURRENT_MAX_LUMA_BT_SIZE,
-        )
-    }
-
-    fn allow_luma_bt_split_with_max_size(
         node: VvcCodingTreeNode,
         vertical: bool,
         visible_width: u16,
@@ -515,23 +488,6 @@ impl VvcCtuCabacOp {
         visible_width: u16,
         visible_height: u16,
         max_mtt_depth: u8,
-    ) -> bool {
-        Self::allow_luma_tt_split_with_max_size(
-            node,
-            vertical,
-            visible_width,
-            visible_height,
-            max_mtt_depth,
-            VVC_CURRENT_MAX_LUMA_TT_SIZE.min(64),
-        )
-    }
-
-    fn allow_luma_tt_split_with_max_size(
-        node: VvcCodingTreeNode,
-        vertical: bool,
-        visible_width: u16,
-        visible_height: u16,
-        max_mtt_depth: u8,
         max_tt_size: u16,
     ) -> bool {
         // H.266 6.4.3, luma intra subset. TT is not available for boundary
@@ -562,16 +518,12 @@ impl VvcCtuCabacOp {
     fn luma_square_leaf_at_mtt_limit(
         node: VvcCodingTreeNode,
         max_leaf_size: u16,
-        split_kind: VvcLumaSplitAvailabilityKind,
+        split_limits: VvcLumaSplitLimits,
     ) -> bool {
         if node.width != node.height || node.width <= max_leaf_size || node.mtt_depth == 0 {
             return false;
         }
-        let max_mtt_depth = match split_kind {
-            VvcLumaSplitAvailabilityKind::Intra => VVC_CURRENT_MAX_LUMA_MTT_DEPTH,
-            VvcLumaSplitAvailabilityKind::Inter => 3,
-        } + node.depth_offset;
-        node.mtt_depth >= max_mtt_depth
+        node.mtt_depth >= split_limits.max_mtt_depth + node.depth_offset
     }
 
     pub(in crate::vvc) fn mtt_binary_ctx(vertical: bool, mtt_depth: u8) -> u8 {

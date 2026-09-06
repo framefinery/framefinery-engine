@@ -2635,6 +2635,84 @@ fn vvc_inter_skip_64x64_root_uses_inter_split_context() {
 }
 
 #[test]
+fn vvc_luma_split_availability_uses_shared_mode_limits() {
+    let root = VvcCodingTreeNode::root(64, 64, VvcTreeType::SingleTree);
+    let intra = VvcCtuCabacOp::luma_split_availability_for_kind(
+        root,
+        64,
+        64,
+        VvcLumaSplitAvailabilityKind::Intra,
+    );
+    let inter = VvcCtuCabacOp::luma_split_availability_for_kind(
+        root,
+        64,
+        64,
+        VvcLumaSplitAvailabilityKind::Inter,
+    );
+    assert_eq!(
+        (
+            intra.allow_qt,
+            intra.allow_bt_vertical,
+            intra.allow_bt_horizontal,
+            intra.allow_tt_vertical,
+            intra.allow_tt_horizontal,
+        ),
+        (true, false, false, false, false),
+    );
+    assert_eq!(
+        (
+            inter.allow_qt,
+            inter.allow_bt_vertical,
+            inter.allow_bt_horizontal,
+            inter.allow_tt_vertical,
+            inter.allow_tt_horizontal,
+        ),
+        (true, true, true, true, true),
+    );
+
+    let mut non_qt_parent = root;
+    non_qt_parent.parent_split = VvcPartSplit::VerticalBinary;
+    assert!(
+        VvcCtuCabacOp::luma_split_availability_for_kind(
+            non_qt_parent,
+            64,
+            64,
+            VvcLumaSplitAvailabilityKind::Intra,
+        )
+        .allow_qt
+    );
+    assert!(
+        !VvcCtuCabacOp::luma_split_availability_for_kind(
+            non_qt_parent,
+            64,
+            64,
+            VvcLumaSplitAvailabilityKind::Inter,
+        )
+        .allow_qt
+    );
+
+    let mut depth_limited = VvcCodingTreeNode::root(32, 32, VvcTreeType::SingleTree);
+    depth_limited.mtt_depth = 3;
+    depth_limited.parent_split = VvcPartSplit::VerticalBinary;
+    let intra = VvcCtuCabacOp::luma_split_availability_for_kind(
+        depth_limited,
+        64,
+        64,
+        VvcLumaSplitAvailabilityKind::Intra,
+    );
+    let inter = VvcCtuCabacOp::luma_split_availability_for_kind(
+        depth_limited,
+        64,
+        64,
+        VvcLumaSplitAvailabilityKind::Inter,
+    );
+    assert!(intra.allow_bt_vertical && intra.allow_bt_horizontal);
+    assert!(intra.allow_tt_vertical && intra.allow_tt_horizontal);
+    assert!(!inter.allow_bt_vertical && !inter.allow_bt_horizontal);
+    assert!(!inter.allow_tt_vertical && !inter.allow_tt_horizontal);
+}
+
+#[test]
 fn vvc_mtt_binary_flag_context_uses_table_132_formula() {
     // ITU-T H.266 (V4) clause 9.3.4.2.1, Table 132:
     // ctxInc = (2 * mtt_split_cu_vertical_flag) + (mttDepth <= 1 ? 1 : 0).
