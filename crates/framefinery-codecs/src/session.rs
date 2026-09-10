@@ -219,7 +219,7 @@ pub(crate) fn encode_stream_from_source(
         .map_err(MediaError::Message)
 }
 
-fn complete_frame_metrics<'a>(
+pub(crate) fn complete_frame_metrics<'a>(
     config: &VideoEncoderConfig,
     total_bitstream_bytes: &mut usize,
     mut frame: VideoEncodeFrameMetrics<'a>,

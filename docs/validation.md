@@ -17,6 +17,34 @@ syntax or geometry should fail visibly until implemented. Manifest `codecs`
 gates may keep future vectors generateable while excluding them from a codec's
 validation run, but an enabled row is expected to pass.
 
+## Incremental Session Reference Check
+
+The AV2 session regression uses generated six-frame 8/10-bit YUV420 sequences
+with lossless and QP24 coding, changed predictive frames, repeated frames and GOP
+resets. It decodes each ordered output prefix **before session finalization**,
+requiring the exact frame count and reference/internal reconstruction agreement;
+lossless reference bytes must also equal source. No external media is needed.
+
+First build/select the pinned AVM decoder using the revision and override checks
+in [reference-decoder-smoke.md](reference-decoder-smoke.md). Then run from the
+repository root, with `AVM_DECODER` set to that verified executable and
+`TEST_ARTIFACT_DIR` set to a writable local directory outside the checkout:
+
+```sh
+FRAMEFINERY_AV2_DECODER="${AVM_DECODER:?verified AVM executable required}" \
+FRAMEFINERY_TEST_ARTIFACT_DIR="${TEST_ARTIFACT_DIR:?artifact directory required}" \
+cargo test --locked -p framefinery-codecs --release --features av2 \
+  --test av2_reference_streaming -- --ignored --test-threads=1 --nocapture
+```
+
+This external-only test is explicitly selected with `--ignored`; ordinary unit
+tests do not require installed reference tools. Once selected it requires the
+decoder and fails on missing tools, decode errors or mismatches, with no reference
+skip. It preserves uniquely named bitstreams, source/internal/reference samples
+and decoder logs under the supplied artifact directory. The unit tests in
+`av2/session_tests.rs` independently cover ownership bounds, source/write order,
+source/session byte parity and terminal lifecycle without external tools.
+
 ## Batch Fixtures
 
 Portable generated-vector manifests live under:

@@ -338,8 +338,9 @@ the same per-codec state machine; AV2 and VVC need not share entropy or block-tr
 internals. Recreating an encoder for every frame does not satisfy this contract.
 
 For current no-reordering modes, `encode_frame` must encode the accepted frame
-and return its output before accepting the next frame. Output must be observable
-before finalization. Internal storage must be bounded by frame geometry, coding
+and return its complete frame/access-unit output before accepting the next frame.
+An early sequence header alone does not satisfy output before finalization.
+Internal storage must be bounded by frame geometry, coding
 configuration and documented reference/scratch requirements, independent of
 stream duration. Consumed input and transmitted output must not be retained as
 history. Future B-frame or lookahead modes must declare bounded delay and storage
@@ -365,21 +366,43 @@ or acknowledging transport delivery; the adapter owns those operations and their
 errors. Any asynchronous adapter must make its queue and backpressure bounds
 explicit.
 
+### AV2 implementation and coverage
+
+AV2 source and owned-frame entrypoints use the same persistent per-frame codec
+state. Each accepted frame returns one `Frame` chunk containing its complete
+coded output, including configuration when required, plus the requested
+reconstruction/metrics for that frame. Current modes have no delayed output;
+terminal flush returns an empty result and releases references.
+
+Between calls, AV2 retains at most one coded source reference and one coded
+reconstruction reference, plus fixed configuration, counters and instrumentation
+state. Coded dimensions include codec padding. Per-call input conversion,
+analysis, reconstruction and output scratch are bounded by frame geometry; they
+are released or transferred to the caller before another frame is accepted.
+There is no retained input or packet-history queue. A source adapter additionally
+holds its fixed frame buffers and writes each frame before pulling another.
+
+Portable regressions in
+[`av2/session_tests.rs`](../crates/framefinery-codecs/src/av2/session_tests.rs)
+cover source/session prefix parity, pull/write order, fixed retained frame slots,
+input rejection, terminal failure and idempotent flush. The
+[required AVM prefix check](validation.md#incremental-session-reference-check)
+decodes complete multi-frame prefixes while the session is still open, including
+predictive coding and lossless/lossy 8/10-bit YUV420. This is focused streaming
+coverage, not a claim that every AV2 mode has full release validation.
+
 ### Open implementation gaps
 
-The current AV2 and VVC owned-frame sessions still collect input and return one
-whole-stream result on flush. The source-driven path writes during encoding, but
-does not make those session implementations incremental. The unpublished WASM
-capture demo creates an encoder per frame and retains cumulative encoded output.
-These are unfinished implementation gaps against the requirements above, not
-compliant exceptions. The example uses today's signatures and avoids consumer
-history retention; it does not repair buffering inside the current sessions.
+VVC owned-frame sessions still collect input and return one whole-stream result
+on flush. The unpublished WASM capture demo creates an encoder per frame and
+retains cumulative encoded output. These are unfinished implementation gaps
+against the requirements above, not compliant exceptions. The primary example
+uses today's signatures and avoids consumer history retention; it does not
+repair buffering inside unfinished adapters.
 
-Closing these gaps requires portable behavioral tests for output before
-finalization, persistent multi-frame state, bounded retention, lifecycle errors
-and source/session parity, with required-reference validation for affected modes.
-Record actual coverage as each implementation lands; pending VVC/WASM behavior
-must not be presented as tested or complete.
+VVC/WASM need their own portable output/lifetime/state and lifecycle regressions,
+source/session parity checks and required multi-frame reference validation.
+They are not covered by the AV2 session tests.
 
 ## Encoded Chunks
 
@@ -413,7 +436,7 @@ acknowledgements.
 
 `Stream` remains in the public enum for whole-stream values, including explicit
 caller-owned recording. Its presence does not authorize a streaming session to
-collect an entire input or defer frame output until flush. The current buffered
+collect an entire input or defer frame output until flush. The current buffered VVC
 session use of this variant is part of the open implementation gap above.
 
 ## Reconstruction And Metrics

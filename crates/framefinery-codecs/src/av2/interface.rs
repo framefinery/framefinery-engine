@@ -10,10 +10,7 @@ use super::{
     av2_encode_fixed_black_444_with_options_and_frame_metrics, Av2EncodeFrameMetrics,
     Av2EncodeOptions, Av2EncodeParams, Av2EncodeRequest, Av2VideoGeometry,
 };
-use crate::session::{
-    buffered_stream_session, encode_stream_from_source, StreamEncoderManifest,
-    VideoEncodeStreamRequest,
-};
+use crate::session::{encode_stream_from_source, StreamEncoderManifest, VideoEncodeStreamRequest};
 use crate::settings::{GopMode, GOP_SETTING, QP_SETTING};
 
 const AV2_SETTINGS: &[SettingManifest] = &[QP_SETTING, GOP_SETTING];
@@ -39,7 +36,7 @@ pub(crate) const AV2_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManife
 fn create_av2_session(
     config: framefinery_api::VideoEncoderConfig,
 ) -> framefinery_api::Result<Box<dyn framefinery_api::VideoEncoderSession>> {
-    buffered_stream_session(AV2_STREAM_ENCODER, config)
+    Ok(Box::new(super::session::Av2EncoderSession::new(config)?))
 }
 
 fn encode_av2_source(
@@ -93,16 +90,7 @@ fn encode_av2_with_manifest(
     let mut frame_metrics = frame_metrics;
     let mut callback = |metrics: Av2EncodeFrameMetrics<'_>| {
         if let Some(callback) = frame_metrics.as_mut() {
-            callback(VideoEncodeFrameMetrics {
-                frame_idx: metrics.frame_idx,
-                frame_count: metrics.frame_count,
-                bitstream_bytes: metrics.bitstream_bytes,
-                total_bitstream_bytes: metrics.total_bitstream_bytes,
-                encode_elapsed: metrics.encode_elapsed,
-                psnr: None,
-                source: metrics.source,
-                reconstruction: metrics.reconstruction,
-            });
+            callback(public_frame_metrics(metrics));
         }
     };
     let callback = if has_frame_metrics {
@@ -115,7 +103,22 @@ fn encode_av2_with_manifest(
     )
 }
 
-fn av2_options_from_settings(
+pub(super) fn public_frame_metrics(
+    metrics: Av2EncodeFrameMetrics<'_>,
+) -> VideoEncodeFrameMetrics<'_> {
+    VideoEncodeFrameMetrics {
+        frame_idx: metrics.frame_idx,
+        frame_count: metrics.frame_count,
+        bitstream_bytes: metrics.bitstream_bytes,
+        total_bitstream_bytes: metrics.total_bitstream_bytes,
+        encode_elapsed: metrics.encode_elapsed,
+        psnr: None,
+        source: metrics.source,
+        reconstruction: metrics.reconstruction,
+    }
+}
+
+pub(super) fn av2_options_from_settings(
     lossless: bool,
     settings: &[String],
 ) -> Result<Av2EncodeOptions, String> {

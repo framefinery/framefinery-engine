@@ -13,7 +13,7 @@ use framefinery::{
 };
 
 #[test]
-fn facade_drives_source_and_buffered_encoders() -> Result<()> {
+fn facade_drives_source_and_incremental_encoders() -> Result<()> {
     let info = FrameInfo::new(16, 16, PixelFormat::Yuv420p8)?;
     let config = VideoEncoderConfig::new(CodecId::new("av2")?, info)
         .with_rate_control(VideoRateControl::Lossless)
@@ -62,12 +62,14 @@ fn facade_drives_source_and_buffered_encoders() -> Result<()> {
 
     let mut encoder = create_encoder(config)?;
     let step = encoder.encode_frame(Frame::blank(info))?;
-    assert!(step.chunks.is_empty());
+    assert_eq!(step.chunks.len(), 1);
+    assert_eq!(step.chunks[0].kind, framefinery::VideoChunkKind::Frame);
+    assert_eq!(step.chunks[0].data, bitstream);
+    assert_eq!(step.reconstructions, vec![Frame::blank(info)]);
+    drop(step);
 
-    let output = encoder.flush()?;
-    assert_eq!(output.chunks.len(), 1);
-    assert!(!output.chunks[0].data.is_empty());
-    assert_eq!(output.reconstructions, vec![Frame::blank(info)]);
+    assert_eq!(encoder.flush()?, framefinery::VideoEncodeOutput::default());
+    assert_eq!(encoder.flush()?, framefinery::VideoEncodeOutput::default());
     Ok(())
 }
 

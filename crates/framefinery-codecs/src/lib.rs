@@ -99,7 +99,11 @@ pub fn effective_encoder_settings(config: &VideoEncoderConfig) -> Result<Vec<Str
     fetch_encoder_manifest(config.codec.as_str())?.effective_setting_specs(config)
 }
 
-/// Create a buffered encoder session from a codec-neutral config.
+/// Create a persistent encoder session from a codec-neutral config.
+///
+/// AV2 emits complete frame chunks per call. VVC still buffers input until
+/// flush, an open implementation gap against the streaming contract documented
+/// on [`VideoEncoderSession`].
 pub fn create_encoder(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>> {
     let manifest = fetch_encoder_manifest(config.codec.as_str())?;
     manifest.validate_config(&config)?;
@@ -160,20 +164,30 @@ mod tests {
     };
 
     #[test]
-    fn generic_encoder_session_encodes_buffered_av2_stream() {
+    fn generic_encoder_session_emits_av2_frames_before_terminal_flush() {
         let info = FrameInfo::new(8, 8, PixelFormat::Yuv420p8).unwrap();
         let config = VideoEncoderConfig::new(CodecId::new("av2").unwrap(), info)
             .with_rate_control(VideoRateControl::Lossless)
             .with_reconstruction(ReconstructionMode::Frames);
         let mut encoder = create_encoder(config).expect("generic av2 encoder");
-        encoder
-            .encode_frame(Frame::blank(info))
-            .expect("queue frame through generic session");
-        let output = encoder.flush().expect("flush generic session");
-
-        assert_eq!(output.chunks.len(), 1);
-        assert!(!output.chunks[0].data.is_empty());
-        assert_eq!(output.reconstructions.len(), 1);
-        assert_eq!(output.reconstructions[0], Frame::blank(info));
+        for frame_index in 0..2 {
+            let output = encoder
+                .encode_frame(Frame::blank(info))
+                .expect("encode frame through generic session");
+            assert_eq!(output.chunks.len(), 1);
+            assert_eq!(
+                output.chunks[0].kind,
+                framefinery_api::VideoChunkKind::Frame
+            );
+            assert_eq!(output.chunks[0].frame_index, Some(frame_index));
+            assert!(!output.chunks[0].data.is_empty());
+            assert_eq!(output.reconstructions, vec![Frame::blank(info)]);
+        }
+        assert_eq!(encoder.flush().unwrap(), VideoEncodeOutput::default());
+        assert_eq!(encoder.flush().unwrap(), VideoEncodeOutput::default());
+        assert_eq!(
+            encoder.encode_frame(Frame::blank(info)),
+            Err(MediaError::EncodeAfterFlush)
+        );
     }
 }

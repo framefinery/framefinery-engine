@@ -54,12 +54,19 @@ bounds. Adapters must consume/drain output with backpressure; history retention
 is an explicit caller-owned recording choice. Terminal encoder flush, writer
 flush and transport acknowledgement are distinct lifecycle operations.
 
-Open implementation gaps: current AV2/VVC owned-frame sessions buffer input until
-flush; the unpublished WASM capture wrapper recreates an encoder per frame and
-retains transmitted output. Source-driven encoding already writes during its
-frame loop, but does not resolve those gaps. These behaviors must be fixed to
-meet the contract, with portable output/lifetime/state regression tests and
-required multi-frame reference validation; they are not supported exceptions.
+AV2 implements this shared state in `av2/stream.rs`; source and owned-frame
+adapters call its single per-frame coding operation. It retains at most a coded
+source reference and a coded reconstruction reference between calls, with no
+input or output history. Each frame's complete bytes are written/returned before
+another input is requested; per-call scratch is released or handed to the caller.
+The [API implementation notes](api-v0.md#av2-implementation-and-coverage) describe
+lifecycle and focused behavioral/reference coverage.
+
+Open implementation gaps: VVC owned-frame sessions buffer input until flush;
+the unpublished WASM capture wrapper recreates an encoder per frame and retains
+transmitted output. These behaviors must be fixed to meet the contract, with
+portable output/lifetime/state regression tests and required multi-frame
+reference validation; they are not supported exceptions.
 
 Optional codecs and filters should be selected at build time using Cargo
 features or separate crates. The Makefile default enables the normal product

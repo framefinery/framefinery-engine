@@ -100,7 +100,7 @@ pub enum MediaError {
     },
     /// A caller attempted to encode another frame after flushing a session.
     EncodeAfterFlush,
-    /// A buffered session received more frames than its configured limit.
+    /// An encoder session received more frames than its configured limit.
     FrameLimitExceeded {
         /// Configured frame limit that was exceeded.
         limit: usize,

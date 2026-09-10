@@ -93,7 +93,8 @@ pub enum VideoChunkKind {
     Frame,
     /// End-of-stream marker.
     EndOfStream,
-    /// Whole stream payload used by compatibility encoders.
+    /// Whole-stream value, including explicit caller-owned recording.
+    /// This variant does not permit sessions to defer all output until flush.
     Stream,
 }
 
@@ -125,7 +126,7 @@ pub struct FrameEncodeMetrics {
     pub frame_index: usize,
     /// Optional total frame count when known by the caller.
     pub frame_count: Option<usize>,
-    /// Number of encoded bytes produced through this frame.
+    /// Number of encoded bytes produced for this frame.
     pub encoded_bytes: usize,
     /// Optional aggregate PSNR for this frame.
     pub psnr: Option<f64>,
@@ -142,11 +143,18 @@ pub struct VideoEncodeOutput {
     pub metrics: Vec<FrameEncodeMetrics>,
 }
 
-/// Buffered frame-session video encoder interface.
+/// One continuous video stream with persistent codec state.
 ///
-/// This API is convenient for filtered frame flows and tests. Long file streams
-/// should prefer source-driven encoding until the experimental codec sessions
-/// become fully incremental.
+/// Current no-reordering modes must return complete frame output per call,
+/// before finalization. Internal storage must be bounded by frame geometry and
+/// codec reference/scratch requirements, independent of stream duration. Future
+/// reordering/lookahead modes must declare explicit delay and storage bounds.
+/// Consume or transfer each returned step before submitting another frame;
+/// recording output history is an explicit caller-owned allocation.
+///
+/// AV2 implements incremental sessions. VVC's buffered session is an open
+/// implementation gap against this contract; see `docs/api-v0.md` in the
+/// repository for current implementation status.
 pub trait VideoEncoderSession {
     /// Codec id for this encoder session.
     fn codec(&self) -> &CodecId;
@@ -154,10 +162,20 @@ pub trait VideoEncoderSession {
     /// Configuration used to create this session.
     fn config(&self) -> &VideoEncoderConfig;
 
-    /// Submit one frame to the encoder session.
+    /// Encode one frame and transfer this step's output to the caller.
+    ///
+    /// Invalid input must not advance state. An error after codec state advances
+    /// terminally fails the session; later encode/flush calls must report failure.
+    /// This synchronous operation has no internal input queue or async readiness
+    /// protocol. Consumer backpressure is applied by waiting before the next call.
     fn encode_frame(&mut self, frame: Frame) -> Result<VideoEncodeOutput>;
 
-    /// Finish the stream and return any delayed output.
+    /// Terminally finish the stream and release retained reference frames.
+    ///
+    /// Return any remaining output. Successful repeated flushes return empty
+    /// output; encoding afterward returns [`MediaError::EncodeAfterFlush`]. A
+    /// failed session must continue reporting failure. This does not flush a
+    /// caller's writer or acknowledge transport delivery.
     fn flush(&mut self) -> Result<VideoEncodeOutput> {
         Ok(VideoEncodeOutput::default())
     }

@@ -28,6 +28,7 @@ mod planar;
 #[cfg(feature = "av2-sb-bit-profile")]
 #[path = "bitstream/sb_bits.rs"]
 mod sb_bits;
+mod session;
 mod stats;
 #[path = "bitstream/syntax.rs"]
 mod syntax;
@@ -66,6 +67,7 @@ include!("layout.rs");
 include!("geometry.rs");
 include!("api.rs");
 include!("frame_mode.rs");
+include!("stream.rs");
 include!("encode.rs");
 include!("image/rgb.rs");
 include!("predictive.rs");
