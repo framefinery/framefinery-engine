@@ -78,4 +78,6 @@ include!("obu.rs");
 pub use interface::AV2_CODEC;
 
 #[cfg(test)]
+mod sequence_state_tests;
+#[cfg(test)]
 mod tests;

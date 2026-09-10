@@ -780,7 +780,11 @@ fn av2_lossless_subsampled_predictive_key_bitstream_and_reconstruction_for_frame
     } else {
         None
     };
-    let profile = if ibc.is_some() {
+    // The sequence header fixes BVP capacity and disables frame-level
+    // overrides. Later pictures may find IntraBC matches even when the first
+    // picture did not, so advertise the enabled tool's capacity consistently.
+    // Actual IntraBC selection still follows this picture's search results.
+    let profile = if AV2_ENABLE_LOSSLESS_SUBSAMPLED_IBC {
         Av2Black444MvpProfile::current().with_local_ibc_candidates()
     } else {
         Av2Black444MvpProfile::current()
