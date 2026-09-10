@@ -36,15 +36,30 @@ Codec-specific helpers may be shared opportunistically inside
 `framefinery-codecs`, but those helpers are not public API and do not define
 what future codecs must use.
 
-Long-running encodes should enter codecs through the source-driven API:
+Source-driven encoding uses the raw-frame pull API:
 `RawVideoFrameSource` fills one raw frame buffer per pull, and the selected
 codec consumes those frames until source EOF or an optional caller-provided
 frame limit. Total frame counts are a CLI/source concern for bounded tests,
 synthetic filters, and progress reporting; they are not an encoder
-construction requirement. `VideoEncoderSession` remains useful for owned
-`Frame` flows after filters and for future incremental implementations. Until
-AV2/VVC are rewritten as truly incremental sessions, their session path is a
-compatibility bridge and should not be the default for large files.
+construction requirement. `VideoEncoderSession` accepts owned `Frame` values
+after filters. Both entrypoints must reuse one persistent state machine per
+codec, preserving headers, reference frames and frame order without copying
+codec loops or unifying AV2/VVC entropy and block-tree internals.
+
+The normative [API streaming contract](api-v0.md#encoder-sessions) requires output
+per frame in current no-reordering modes and internal retention bounded by frame
+geometry, configuration and documented codec/reference requirements, independent
+of stream duration. Future B-frame/lookahead delay and storage must have explicit
+bounds. Adapters must consume/drain output with backpressure; history retention
+is an explicit caller-owned recording choice. Terminal encoder flush, writer
+flush and transport acknowledgement are distinct lifecycle operations.
+
+Open implementation gaps: current AV2/VVC owned-frame sessions buffer input until
+flush; the unpublished WASM capture wrapper recreates an encoder per frame and
+retains transmitted output. Source-driven encoding already writes during its
+frame loop, but does not resolve those gaps. These behaviors must be fixed to
+meet the contract, with portable output/lifetime/state regression tests and
+required multi-frame reference validation; they are not supported exceptions.
 
 Optional codecs and filters should be selected at build time using Cargo
 features or separate crates. The Makefile default enables the normal product

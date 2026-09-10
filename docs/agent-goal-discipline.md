@@ -100,6 +100,25 @@ signs during preflight and review.
   unless the user explicitly accepts the product tradeoff.
 - Stale public contracts: CLI/API/settings changes must update parser behavior,
   manifest/config ownership, docs, help text, and contract tests together.
+- Goals rewritten to fit implementation: official product documentation is
+  normative. Repair divergent code rather than weakening the documented goal.
+  Keep signatures and examples accurate and runnable; identify unfinished
+  behavior, including VVC/WASM streaming work, as implementation gaps rather
+  than compliant exceptions. Make intended contract changes explicit.
+- Recurring whole-stream buffering: a per-frame facade can still retain every
+  input, recreate the encoder on each frame, retain transmitted chunks, or
+  silently aggregate history in examples. Review against the
+  [API streaming contract](api-v0.md#encoder-sessions): verify observable output
+  before finalization, persistent codec state, and bounded internal retention
+  independent of stream duration. Current no-reordering modes must emit output
+  per frame. Future B-frame/lookahead delay and storage require explicit bounds;
+  whole-stream retention is permitted only as explicit caller-owned recording.
+  Primary streaming examples must consume/drain each step before accepting more
+  input. Each relevant fix must add portable generated-data behavioral tests
+  for these properties, source/session parity and lifecycle behavior, with
+  required-reference multi-frame coverage for affected codec modes. Cite the
+  actual test locations and results as they land; do not claim pending tests
+  or unfinished frontends are covered.
 - Validation manifest drift: skipped rows, local manifests, renamed columns, or
   generated-vector changes are not neutral. Explain skips and keep strict claims
   on required validation.

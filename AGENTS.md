@@ -162,6 +162,15 @@ exist yet.
 - Read `README.md`, `docs/architecture.md`, and `docs/validation.md` before
   changing code or project structure. Also read any focused docs relevant to
   the files being changed.
+- Official product documentation is normative. Fix implementation divergence;
+  do not redefine the goal to bless current behavior. Keep API signatures and
+  examples accurate, and label unfinished behavior as an implementation gap.
+- Streaming reviews must check the authoritative
+  [API streaming contract](docs/api-v0.md#encoder-sessions): current
+  no-reordering modes require output per frame, persistent codec state, and
+  internal retention independent of stream duration. Future B-frame/lookahead
+  delay must have an explicit bound. Apply the recurring-buffering review and
+  regression-test requirements in `docs/agent-goal-discipline.md`.
 - For nontrivial implementation, optimization, validation, CLI/API, or
   mode-search work, read `docs/agent-goal-discipline.md` and follow its
   internal pull-request process before editing, before committing, and before

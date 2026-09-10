@@ -304,39 +304,82 @@ a time, the lower-level session API is:
 
 ```rust
 use framefinery::{
-    create_encoder, encode_frame, Frame, Result, VideoEncodeOutput, VideoEncoderConfig,
+    create_encoder, Frame, Result, VideoEncodeOutput, VideoEncoderConfig,
 };
 
 fn drive_encoder(
     config: VideoEncoderConfig,
     frames: impl IntoIterator<Item = Frame>,
-) -> Result<VideoEncodeOutput> {
-    // For a single frame, prefer:
-    // let output = encode_frame(config, frame)?;
-    //
-    // Sessions are useful when the caller naturally owns a sequence of frames.
+    mut consume: impl FnMut(VideoEncodeOutput) -> Result<()>,
+) -> Result<()> {
     let mut encoder = create_encoder(config)?;
-    let mut output = VideoEncodeOutput::default();
     for frame in frames {
         let step = encoder.encode_frame(frame)?;
-        output.chunks.extend(step.chunks);
-        output.reconstructions.extend(step.reconstructions);
-        output.metrics.extend(step.metrics);
+        // Write/process/drop this step's chunks, reconstructions and metrics
+        // before accepting another frame. A slow consumer applies backpressure.
+        consume(step)?;
     }
-    let tail = encoder.flush()?;
-    output.chunks.extend(tail.chunks);
-    output.reconstructions.extend(tail.reconstructions);
-    output.metrics.extend(tail.metrics);
-    Ok(output)
+    consume(encoder.flush()?)
 }
 ```
 
-The session path is the natural API for post-filter frame ownership and future
-incremental encoders. The current AV2/VVC session implementation is a
-compatibility bridge over whole-stream codec internals, so long CLI streams use
-source-driven encoding instead of accumulating all frames in a session buffer.
-Session semantics are still defined: frames must match `config.input`, `flush`
-is idempotent, and encoding after `flush` is an error.
+The consumer owns each returned step. It must finish consuming or transferring
+that step before this driver requests another frame. Accumulating chunks,
+reconstructions or metrics is an explicit caller-owned recording choice, with
+memory proportional to the retained history. The driver itself does not keep
+that history. If encoding or consumption fails, this driver returns the error
+and drops the session; handling any partial output belongs to the caller.
+
+### Required streaming behavior
+
+One session represents one continuous codec stream with persistent header,
+reference and frame-order state. Source-driven and owned-frame callers must use
+the same per-codec state machine; AV2 and VVC need not share entropy or block-tree
+internals. Recreating an encoder for every frame does not satisfy this contract.
+
+For current no-reordering modes, `encode_frame` must encode the accepted frame
+and return its output before accepting the next frame. Output must be observable
+before finalization. Internal storage must be bounded by frame geometry, coding
+configuration and documented reference/scratch requirements, independent of
+stream duration. Consumed input and transmitted output must not be retained as
+history. Future B-frame or lookahead modes must declare bounded delay and storage
+requirements; they cannot use whole-stream retention as an implicit queue.
+
+Frames must match `config.input`, and a configured frame limit is an upper
+bound. Input rejection before encoding must not silently consume a frame or
+advance codec state. A failure after encoding has advanced state must leave the
+session terminally failed: subsequent encode/flush calls must report failure,
+not apparent success. The error representation must remain explicit to callers.
+
+`flush` is terminal finalization: return any remaining codec output and release
+retained frame/reference state. A successful flush is idempotent; later flushes
+return empty output, and encoding afterward returns `MediaError::EncodeAfterFlush`.
+An empty flush result is valid when no codec output remains. Finalization must
+not trigger encoding of a secretly accumulated input stream.
+
+The API is synchronous: consumers must handle each returned step before feeding
+more frames, and source-driven encoding waits on the caller's source and writer.
+These calls do not promise asynchronous readiness or automatic retry after a
+partial write. Encoder finalization is distinct from flushing a buffered writer
+or acknowledging transport delivery; the adapter owns those operations and their
+errors. Any asynchronous adapter must make its queue and backpressure bounds
+explicit.
+
+### Open implementation gaps
+
+The current AV2 and VVC owned-frame sessions still collect input and return one
+whole-stream result on flush. The source-driven path writes during encoding, but
+does not make those session implementations incremental. The unpublished WASM
+capture demo creates an encoder per frame and retains cumulative encoded output.
+These are unfinished implementation gaps against the requirements above, not
+compliant exceptions. The example uses today's signatures and avoids consumer
+history retention; it does not repair buffering inside the current sessions.
+
+Closing these gaps requires portable behavioral tests for output before
+finalization, persistent multi-frame state, bounded retention, lifecycle errors
+and source/session parity, with required-reference validation for affected modes.
+Record actual coverage as each implementation lands; pending VVC/WASM behavior
+must not be presented as tested or complete.
 
 ## Encoded Chunks
 
@@ -362,9 +405,16 @@ Chunk kinds are:
 - `EndOfStream`
 - `Stream`
 
-`Stream` exists for compatibility with current whole-stream encoders. The long
-term goal is frame/access-unit chunks suitable for CLI writing, WASM callbacks,
-packetizers, muxers, and streaming sinks.
+Streaming sessions must return frame/access-unit output suitable for CLI writing,
+WASM callbacks, packetizers, muxers and streaming sinks. Required codec
+configuration may accompany a frame or be emitted as a `Config` chunk; consumers
+must preserve emitted byte order. Chunk boundaries are not transport-delivery
+acknowledgements.
+
+`Stream` remains in the public enum for whole-stream values, including explicit
+caller-owned recording. Its presence does not authorize a streaming session to
+collect an entire input or defer frame output until flush. The current buffered
+session use of this variant is part of the open implementation gap above.
 
 ## Reconstruction And Metrics
 
