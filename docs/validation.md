@@ -258,6 +258,11 @@ reference tools are reported as a skip. Use `VALIDATION_REFERENCE_MODE=required`
 to make missing reference tools a failure, or `VALIDATION_REFERENCE_MODE=off`
 for encode-only validation.
 
+For pinned decoder-only builds and a portable one-frame lossless check, see
+[`reference-decoder-smoke.md`](reference-decoder-smoke.md). That procedure uses
+generated fixtures by default and requires source/internal/reference agreement;
+it does not replace the full release validation matrix.
+
 Reference encoder compression comparisons are intentionally separate from
 decode-side validation. `make compare-compression` uses AVM/VTM encoders by
 default to produce codec-native size baselines. These default reference outputs
