@@ -13,6 +13,7 @@ struct VvcLumaModeNeighbourState {
     valid: Vec<bool>,
     modes: Vec<VvcIntraPredictionMode>,
     mip_flags: Vec<bool>,
+    ibc_flags: Vec<bool>,
 }
 
 impl VvcLumaModeNeighbourState {
@@ -27,6 +28,7 @@ impl VvcLumaModeNeighbourState {
             valid: vec![false; samples],
             modes: vec![VvcIntraPredictionMode::Planar; samples],
             mip_flags: vec![false; samples],
+            ibc_flags: Vec::new(),
         }
     }
 
@@ -102,6 +104,30 @@ impl VvcLumaModeNeighbourState {
             .saturating_add(node.height >> 1)
             .min(self.height.saturating_sub(1));
         self.mode_at(x, y)
+    }
+
+    fn ibc_ctx(&self, node: VvcCodingTreeNode) -> u8 {
+        let ibc_at = |x, y| {
+            self.index(x, y)
+                .and_then(|i| self.ibc_flags.get(i))
+                .copied()
+                .unwrap_or(false)
+        };
+        u8::from(node.x.checked_sub(1).is_some_and(|x| ibc_at(x, node.y)))
+            + u8::from(node.y.checked_sub(1).is_some_and(|y| ibc_at(node.x, y)))
+    }
+
+    fn mark_ibc_leaf(&mut self, node: VvcCodingTreeNode) {
+        // Allocate only for SCC; this picture-sized map has no stream history.
+        self.ibc_flags.resize(self.valid.len(), false);
+        let step = usize::from(VVC_LUMA_MODE_NEIGHBOUR_CELL_SIZE);
+        for y in (node.y..(node.y + node.height).min(self.height)).step_by(step) {
+            for x in (node.x..(node.x + node.width).min(self.width)).step_by(step) {
+                if let Some(index) = self.index(x, y) {
+                    self.ibc_flags[index] = true;
+                }
+            }
+        }
     }
 
     fn mark_leaf(&mut self, node: VvcCodingTreeNode, mode: VvcIntraPredictionMode) {

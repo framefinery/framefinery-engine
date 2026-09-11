@@ -45,6 +45,36 @@ and decoder logs under the supplied artifact directory. The unit tests in
 `av2/session_tests.rs` independently cover ownership bounds, source/write order,
 source/session byte parity and terminal lifecycle without external tools.
 
+## Lossless VVC Screen-Content Reference Check
+
+The generated regression in `tests/vvc_reference_scc.rs` within
+`framefinery-codecs` exercises six-frame YUV444 streams at every depth from
+8 through 12 bits, with lossless coding, `gop=0` and
+`fast-search=lossless-speed`. Distinct constant planes followed by changed and
+repeated half-frames reproduce the original decoder failure at 128x64. Mixed
+8x8 blocks at 192x128 and 640x128 also exercise regular intra/IBC transitions,
+CTU rows and the IBC virtual sample-buffer window in the shared single-tree path.
+The checks guard I-slice merge/root-CBF CABAC initialization, coding-order
+neighbour contexts, spatial/history BV prediction and reference availability.
+The state tests in `vvc/inter/ibc.rs` additionally check cross-CTU predictor
+priority and the distinct lifetimes of sample, neighbour and history state.
+
+Select the pinned VTM decoder as described in
+[reference-decoder-smoke.md](reference-decoder-smoke.md), then run:
+
+```sh
+FRAMEFINERY_VVC_DECODER="${VTM_DECODER:?verified VTM executable required}" \
+FRAMEFINERY_TEST_ARTIFACT_DIR="${TEST_ARTIFACT_DIR:?artifact directory required}" \
+cargo test --locked -p framefinery-codecs --release --features vvc \
+  --test vvc_reference_scc -- --ignored --test-threads=1 --nocapture
+```
+
+The explicitly selected test requires source/internal/reference equality for
+all six frames at each depth. Missing decoders, decode failures and mismatches
+fail without a skip. Artifacts are preserved under the supplied directory
+outside the checkout. This is focused conformance coverage; VVC session and
+WASM streaming remain the open implementation gaps described in the API contract.
+
 ## Batch Fixtures
 
 Portable generated-vector manifests live under:

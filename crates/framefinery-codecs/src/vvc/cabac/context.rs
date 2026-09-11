@@ -318,7 +318,8 @@ impl VvcCabacContext {
                 const I_SLICE_INIT: [u8; 2] = [34, 34];
                 I_SLICE_INIT[ctx as usize]
             }
-            VvcCabacContext::QtRootCbf => 12,
+            // IBC uses root CBF even in an I-slice; use the I row, not B.
+            VvcCabacContext::QtRootCbf => 6,
             VvcCabacContext::QtCbfY(ctx) => {
                 const I_SLICE_INIT: [u8; 4] = [15, 12, 5, 7];
                 I_SLICE_INIT[ctx as usize]
@@ -359,7 +360,8 @@ impl VvcCabacContext {
                 const I_SLICE_INIT: [u8; 9] = [17, 42, 36, 0, 57, 44, 0, 43, 45];
                 I_SLICE_INIT[ctx as usize]
             }
-            VvcCabacContext::MergeFlag => 6,
+            // IBC merge_flag is present in I-slices (VTM MergeFlag I row).
+            VvcCabacContext::MergeFlag => 26,
             VvcCabacContext::PredModeFlag(ctx) => {
                 // H.266 pred_mode_flag is only emitted by this encoder for
                 // predictive P slices, so use the P-slice initialization row.

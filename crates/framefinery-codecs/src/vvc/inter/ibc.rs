@@ -174,7 +174,20 @@ impl VvcIbcHashSearch {
         self.ctu_origin_y = ctu_origin_y;
         self.ibc_mode_by_cu.fill(false);
         self.bv_by_cu.fill(VvcIbcBv { x: 0, y: 0 });
-        self.hmvp.clear();
+        // The single-tile production path resets IBC history and its sample
+        // buffer at a CTU row (VTM DecSlice::decompressSlice). Neighbour mode
+        // information survives: an above-row BV can still be a predictor.
+        if ctu_origin_x == 0 {
+            self.hmvp.clear();
+            self.entries.clear();
+        }
+        // H.266's 256*128-sample IBC buffer invalidates the half-buffer-ahead
+        // VPDU before reconstruction. With our 64x64 CTUs/VPDU, only the three
+        // preceding CTUs in this row still contain usable reference samples.
+        let half_buffer_width = (256 * 128) / VVC_CTU_SIZE / 2;
+        self.entries.retain(|entry| {
+            (entry.origin_x / VVC_CTU_SIZE) * VVC_CTU_SIZE + half_buffer_width > ctu_origin_x
+        });
     }
 
     #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
@@ -312,23 +325,16 @@ impl VvcIbcHashSearch {
         decision: VvcIbcCuDecision,
     ) {
         self.record_ibc_decision(decision);
-        let bv = VvcIbcBv {
-            x: decision.bv_x,
-            y: decision.bv_y,
-        };
-        self.record_hmvp(bv);
         self.record_hash_if_full_visible(frame, decision.origin_x, decision.origin_y);
     }
 
     pub(super) fn record_ibc_decision(&mut self, decision: VvcIbcCuDecision) {
-        self.record_ibc_mode(
-            decision.origin_x,
-            decision.origin_y,
-            VvcIbcBv {
-                x: decision.bv_x,
-                y: decision.bv_y,
-            },
-        );
+        let bv = VvcIbcBv {
+            x: decision.bv_x,
+            y: decision.bv_y,
+        };
+        self.record_ibc_mode(decision.origin_x, decision.origin_y, bv);
+        self.record_hmvp(bv);
     }
 
     fn record_ibc_mode(&mut self, origin_x: usize, origin_y: usize, bv: VvcIbcBv) {
@@ -365,16 +371,16 @@ impl VvcIbcHashSearch {
                 return bv;
             }
         }
-        if local_y >= VVC_IBC_CU_SIZE {
-            if let Some(bv) = self.ibc_bv_at_local(local_x, local_y - VVC_IBC_CU_SIZE) {
-                return bv;
-            }
-        }
         if local_x < VVC_IBC_CU_SIZE {
             if let Some(bv) = origin_x
                 .checked_sub(VVC_IBC_CU_SIZE)
                 .and_then(|x| self.coded_mode_at(x, origin_y))
             {
+                return bv;
+            }
+        }
+        if local_y >= VVC_IBC_CU_SIZE {
+            if let Some(bv) = self.ibc_bv_at_local(local_x, local_y - VVC_IBC_CU_SIZE) {
                 return bv;
             }
         }
@@ -477,7 +483,6 @@ impl VvcIbcHashSearch {
         })
     }
 
-    #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
     fn record_hmvp(&mut self, bv: VvcIbcBv) {
         if let Some(pos) = self.hmvp.iter().position(|entry| *entry == bv) {
             self.hmvp.remove(pos);
@@ -745,4 +750,61 @@ fn vvc_ibc_hash_byte(hash: u32, value: u8) -> u32 {
 
 fn vvc_ibc_mvd_component_is_supported(value: i16) -> bool {
     (-131_072..=131_071).contains(&i32::from(value))
+}
+
+#[cfg(test)]
+mod state_tests {
+    use super::*;
+
+    fn record(search: &mut VvcIbcHashSearch, x: usize, y: usize, bv_x: i16) {
+        search.record_ibc_decision(VvcIbcCuDecision {
+            origin_x: x,
+            origin_y: y,
+            ref_origin_x: x.saturating_sub(8),
+            ref_origin_y: y,
+            bv_x,
+            bv_y: 0,
+            mvd_x: 0,
+            mvd_y: 0,
+            pred_mode_ibc_ctx: 0,
+        });
+    }
+
+    #[test]
+    fn ibc_predictor_prioritizes_cross_ctu_left_over_local_above_and_history() {
+        let mut search = VvcIbcHashSearch::new();
+        record(&mut search, 56, 8, -128);
+        search.prepare_for_ctu(64, 0);
+        record(&mut search, 64, 0, -1024);
+        assert_eq!(search.bvp_for(64, 8).x, -128, "A1 precedes B1");
+        assert_eq!(search.bvp_for(80, 16).x, -1024, "history fallback");
+        search.prepare_for_ctu(128, 0);
+        assert_eq!(search.bvp_for(128, 16).x, -1024, "same-row history");
+        search.prepare_for_ctu(0, 64);
+        assert_eq!(search.bvp_for(0, 64).x, 0, "new row resets history");
+    }
+
+    #[test]
+    fn ibc_sample_window_expires_without_erasing_above_row_mode_context() {
+        let mut search = VvcIbcHashSearch::new();
+        for x in [0, 64, 128, 192] {
+            search.entries.push(VvcIbcHashEntry {
+                hash: 1,
+                origin_x: x,
+                origin_y: 0,
+            });
+        }
+        search.prepare_for_ctu(256, 0);
+        assert_eq!(search.entries.len(), 3);
+        assert_eq!(
+            search.global_hash_candidate(256, 0, 1).unwrap().origin_x,
+            64
+        );
+        record(&mut search, 256, 56, -128);
+        search.prepare_for_ctu(0, 64);
+        assert!(search.entries.is_empty(), "decoder sample buffer resets");
+        search.prepare_for_ctu(256, 64);
+        assert_eq!(search.pred_mode_ibc_ctx(256, 64), 1);
+        assert_eq!(search.bvp_for(256, 64).x, -128, "B1 mode survives");
+    }
 }

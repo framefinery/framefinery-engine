@@ -76,30 +76,38 @@ fn vvc_ctu_regions(geometry: VvcVideoGeometry) -> impl Iterator<Item = VvcCtuReg
 fn vvc_ibc_decisions_for_region(
     source_frame: &VvcSampledFrame,
     frame_recon: &VvcReconstructionFrame,
-    ibc_search: &VvcIbcHashSearch,
+    ibc_search: &mut VvcIbcHashSearch,
     region: VvcCtuRegion,
 ) -> [Option<VvcIbcCuDecision>; MAX_VVC_LUMA_TUS] {
     let mut decisions = [None; MAX_VVC_LUMA_TUS];
-    let x_end = region
-        .origin_x
-        .saturating_add(region.geometry.width)
-        .min(source_frame.geometry.width);
-    let y_end = region
-        .origin_y
-        .saturating_add(region.geometry.height)
-        .min(source_frame.geometry.height);
-    for origin_y in (region.origin_y..y_end).step_by(8) {
-        for origin_x in (region.origin_x..x_end).step_by(8) {
-            let local_x = origin_x.saturating_sub(region.origin_x);
-            let local_y = origin_y.saturating_sub(region.origin_y);
-            let index = (local_y / 8) * (VVC_CTU_SIZE / 8) + (local_x / 8);
-            if index < decisions.len() {
-                decisions[index] = ibc_search.decide_8x8_against_reconstruction(
-                    source_frame,
-                    frame_recon,
-                    origin_x,
-                    origin_y,
-                );
+    let shape = VvcCtuPartitionShape {
+        root_width: VVC_CTU_SIZE as u16,
+        root_height: VVC_CTU_SIZE as u16,
+        visible_width: region.geometry.coded_width() as u16,
+        visible_height: region.geometry.coded_height() as u16,
+        chroma_sampling: ChromaSampling::Cs444,
+        dual_tree_intra: false,
+    };
+    // Derive BVD and IBC contexts after earlier coding-tree leaves, not from
+    // one stale CTU snapshot. Candidate samples still come from the existing
+    // reconstructed CTUs; recording syntax state does not add search candidates.
+    for node in vvc_luma_transform_nodes_for_kind(
+        shape,
+        VVC_CURRENT_MAX_LUMA_LEAF_SIZE,
+        VvcLumaSplitAvailabilityKind::Intra,
+    ) {
+        let origin_x = region.origin_x + usize::from(node.x);
+        let origin_y = region.origin_y + usize::from(node.y);
+        let index = (usize::from(node.y) / 8) * (VVC_CTU_SIZE / 8) + usize::from(node.x) / 8;
+        if node.width == 8 && node.height == 8 && index < decisions.len() {
+            decisions[index] = ibc_search.decide_8x8_against_reconstruction(
+                source_frame,
+                frame_recon,
+                origin_x,
+                origin_y,
+            );
+            if let Some(decision) = decisions[index] {
+                ibc_search.record_ibc_decision(decision);
             }
         }
     }

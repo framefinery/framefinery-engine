@@ -3,6 +3,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         &mut self,
         cabac: &mut VvcCabacEncoder,
         node: VvcCodingTreeNode,
+        ibc_ctx: u8,
     ) {
         if self.inter_slice {
             // Mixed P-slice SCC syntax also has to order pred_mode_flag,
@@ -18,7 +19,7 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
         if self.slice_config.tools.ibc_enabled && vvc_scc_ibc_luma_node_allowed(node) {
             self.contexts.encode_cu_skip_flag(cabac, 0, false);
             self.contexts
-                .encode(cabac, VvcCabacContext::PredModeIbcFlag(0), false);
+                .encode(cabac, VvcCabacContext::PredModeIbcFlag(ibc_ctx), false);
         }
         if self.slice_config.tools.palette_enabled && vvc_scc_palette_luma_node_allowed(node) {
             self.contexts

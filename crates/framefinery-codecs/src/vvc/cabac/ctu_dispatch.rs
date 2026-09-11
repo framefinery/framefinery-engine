@@ -48,10 +48,11 @@ impl<'a, 'p> VvcCtuCabacGenerator<'a, 'p> {
                     }
                 }
                 if self.emit_luma_scc_selected_leaf(cabac, node) {
+                    luma_mode_neighbours.mark_ibc_leaf(node);
                     return;
                 }
                 self.emit_luma_inter_slice_intra_prefix(cabac, node, luma_mode_neighbours);
-                self.emit_luma_scc_regular_intra_prefix(cabac, node);
+                self.emit_luma_scc_regular_intra_prefix(cabac, node, luma_mode_neighbours.ibc_ctx(node));
                 if !self.emit_luma_bdpcm_mode(cabac, node, luma_mode_neighbours) {
                     if !self.emit_luma_mip_mode(cabac, node, luma_mode_neighbours) {
                         self.emit_luma_multi_ref_line(cabac, node);

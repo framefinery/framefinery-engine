@@ -1594,6 +1594,20 @@ fn vvc_contexts_include_residual_init_tables() {
 }
 
 #[test]
+fn vvc_ibc_contexts_use_i_slice_rows_without_changing_p_slice_rows() {
+    // VTM ContextSetCfg tables are ordered B, P, I, adaptation window.
+    // IBC makes these otherwise inter-associated contexts observable in I slices.
+    for (context, i_value, p_value) in [
+        (VvcCabacContext::MergeFlag, 26, 21),
+        (VvcCabacContext::QtRootCbf, 6, 5),
+    ] {
+        assert_eq!(context.init_value_for(VvcCabacInitType::I), i_value);
+        assert_eq!(context.init_value_for(VvcCabacInitType::P), p_value);
+        assert_eq!(context.log2_window_size(), 4);
+    }
+}
+
+#[test]
 fn vvc_contexts_include_p_slice_intra_residual_init_rows() {
     let p = VvcCabacInitType::P;
 
