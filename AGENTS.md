@@ -177,6 +177,19 @@ exist yet.
   reporting completion.
 - Check `git status --short` before edits.
 - Keep commits small and scoped.
+- Full checkpoint acceptance requires the [six-stream gate](docs/validation.md#mandatory-six-stream-change-gate)
+  and neighboring contract checks. Name the exact candidate,
+  binaries, inputs, settings and per-row evidence; missing evidence stays pending.
+  Preserve all supported features and actual prediction. Do not evade failures
+  with altered defaults, settings, dimensions, frame counts or omitted rows.
+  Scores and averages cannot waive individual regressions. A minor necessary
+  cost is eligible only for a major repair with measured companion improvements
+  compensating for it; no automatic percentage allowance or future promise.
+- Review individual working fixes case by case under
+  [agent goal discipline](docs/agent-goal-discipline.md#internal-pull-request-cycle).
+  A small commit is not checkpoint or performance acceptance. Carry unresolved
+  feature and performance issues forward against both the original fixed
+  baseline and immediate parent; retain failures and revisit excessive costs.
 - Do not copy large chunks from FrameFinery Engine without preserving attribution and
   checking license compatibility.
 - Prefer `rg` for search.
@@ -254,8 +267,10 @@ enough to benchmark and review independently.
   Classify validation-only, benchmark-only, experimental, and product code
   explicitly instead of hiding unused code with crate-wide lint allowances.
 - Commit one coherent change at a time, with the measured baseline, result, and
-  remaining risk recorded in the relevant documentation. Revert experiments
-  that fail compliance or create an unexplained measurement regression.
+  remaining risk linked in the review packet. Keep empirical records, local
+  manifests, media and comparison artifacts outside Git; commit portable
+  implementation, tests and normative documentation. Revert experiments that
+  fail compliance or create an unexplained measurement regression.
 
 ## Current Build And CLI Contract
 

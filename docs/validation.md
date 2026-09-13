@@ -17,6 +17,88 @@ syntax or geometry should fail visibly until implemented. Manifest `codecs`
 gates may keep future vectors generateable while excluding them from a codec's
 validation run, but an enabled row is expected to pass.
 
+## Mandatory Six-Stream Change Gate
+
+Full checkpoint acceptance requires the complete six-stream gate and neighboring
+contract checks for every change. The existing `release-six-vectors-full.csv` defines
+the corpus: Scene Composition YUV4208/YUV4228, Mission Control YUV42010/YUV42210/
+YUV44410 (130 frames per row), and Wayland GBR8 (500 frames). Preserve native
+geometry, declared source rates, source identity and conversion. These are
+user-provided fixtures, not distributed portable test data. Resolve and verify
+them on the target machine; missing fixtures mean pending evidence. Do not
+commit machine-specific manifests or change the existing manifest to hide a
+missing row. Short or generated probes supplement this gate, never replace it.
+
+Use both AV2 and VVC, lossless and QP24 neighboring modes, with unchanged
+predictive `gop=-1`, preset and effective search/profile settings. Additional
+intra/GOP-reset controls do not replace normal prediction. Do not disable a
+supported feature, change defaults/QP/search, reduce dimensions/frame counts or
+omit rows to evade a defect. Check real changed-frame prediction, repeated-frame
+reuse and resets where supported; distinguish inherited capability gaps from
+preservation. Header labels or a P picture summary alone do not establish block
+prediction or its compression benefit.
+
+Freeze the following before long runs and present the preflight for review:
+
+- Parent and fixed campaign baseline revisions, candidate revision/diff,
+  binary hashes, compiler, ordinary-release options/features and reference
+  decoder revisions/binary hashes. Isolate historical builds; preserve failures.
+- Full source hashes, geometry/format/depth, intervals, frame rates and conversion
+  provenance. Match exact effective setting key/value pairs across revisions.
+- Same-host hardware/storage, actual threading policy, one heavy job at a time,
+  fixed run order/warmups and initially three matched repetitions. Record
+  thermal/clock, memory/swap and contention conditions; retain every observation.
+- Metric definitions and timing boundaries. Prepare input conversion before
+  timing; exclude compilation, decoding and metrics from encoder throughput.
+  Diagnostic instrumentation is separate from ordinary release measurements.
+
+For every row report parent and fixed-baseline deltas, individual repetitions
+and spread for bytes/bitrate/compression, encode wall time/FPS, peak process RSS,
+quality and applicable latency. Bitrate uses source duration; define the raw-byte
+basis for compression. Pooled sequence PSNR uses total sample SSE and count at
+the declared depth, not the mean of frame PSNRs. Infinity requires zero SSE.
+Require source/internal/reference equality for lossless and internal/reference
+equality plus valid source-relative quality for lossy. Missing, contradictory or
+incomplete counts/settings/metrics/reference/prediction evidence stays pending;
+two missing values never establish parity. Required decoders must execute.
+
+The CLI/source path supplies the full-corpus throughput comparison. Also measure
+owned sessions over a documented changed/repeated multi-frame interval of the
+same content, pairing source/session bytes, reconstruction, settings and input
+identity. Require complete output before finalization, persistent state and
+duration-independent retention. Record first complete-frame availability at the
+same observation boundary, distinguish writer/transport delivery, and preserve
+historical buffered pre-flush counts rather than treating zero as missing.
+RSS is a process peak, not a whole-machine peak; current swap use is not a
+historical peak. Longer-duration retention probes remain complementary.
+
+Default acceptance preserves correctness, supported features, compression/
+quality, speed, memory and latency. Decision-preserving refactors require
+identical bytes/reconstruction at matched settings. Necessary syntax changes
+need a separate correctness explanation and measured cost. Invalid historical
+streams remain visible and cannot serve as valid quality/performance baselines.
+
+No score or average may conceal a harmed row. A minor necessary cost is eligible
+only for a major repair, with explicit measured cause/benefit and companion
+improvements compensating for the loss, reviewed together. Substantial or
+unexplained losses block final performance acceptance. There is no automatic percentage allowance
+or credit for promised future work. Investigate adverse deltas against measured
+uncertainty; repeat runs only when noise or unresolved results justify it.
+
+Individual working-fix commits require the case-by-case evidence and cost review
+in [agent goal discipline](agent-goal-discipline.md#internal-pull-request-cycle);
+they do not close this gate. Carry all open issues and original-baseline plus
+immediate-parent comparisons forward without resetting historical obligations.
+
+Each commit/review packet must bind this evidence and neighboring API/CLI/WASM,
+lifecycle, format/depth, lossless/lossy, intra/inter, safe shared-path and feature
+checks to the actual candidate. Reuse earlier artifacts only after proving
+unchanged binaries/inputs/settings and relevant validation applicability; a
+prior green label is insufficient. Collection completion is not acceptance.
+Keep empirical scripts, manifests, inputs, results, comparisons and prior/rejected
+records outside the checkout and Git. Portable policy and behavioral regressions
+belong in Git. Stop for independent review with remaining gaps explicit.
+
 ## Incremental Session Reference Check
 
 The AV2 session regression uses generated six-frame 8/10-bit YUV420 sequences
@@ -322,17 +404,18 @@ score = 10*log2(current_fps / baseline_fps)
       + 8*(current_psnr_db - baseline_psnr_db)
 ```
 
-Use that score only after correctness gates pass. It is a probe triage rule,
-not a codec-quality metric: `accept` means the speed/rate/quality tradeoff is a
-clear local win, `watch` means useful but risky or noisy, and `regress` means
-the change should be fixed, narrowed, or reverted before it is committed.
-The report also aggregates scored rows by codec/mode. Any hard row regression
-currently fails the aggregate result: FPS below 0.90x, bytes above 1.20x, or
-PSNR below -1.0 dB versus the comparable baseline. Without a hard regression,
-an average score of at least 2.0 is an aggregate `accept`; a non-negative
-average is `watch`; and a negative average is `regress`.
-For optimization probes that should be mechanically rejected when the score
-fails, run the matrix through:
+The existing score implementation is a legacy probe-triage helper, not an
+acceptance gate or codec-quality metric. Its `accept`/`watch` labels and percentage
+thresholds do not authorize a regression, waive missing evidence or override the
+[mandatory gate](#mandatory-six-stream-change-gate). It can score incomplete
+metric sets and aggregate rows, and includes a rate/quality compensation shortcut.
+Its quality input is mean frame PSNR, not pooled sequence PSNR. These are open
+measurement/gate gaps; use verified raw-sample metrics and explicit per-row review
+until repaired. Preserve historical scores with their definitions, but do not
+present them as satisfying the intended product contract.
+
+The existing optional score rejection command remains useful for triage; a zero
+exit is insufficient for acceptance:
 
 ```sh
 make benchmark-encode-matrix \

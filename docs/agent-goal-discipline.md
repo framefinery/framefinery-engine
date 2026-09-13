@@ -21,6 +21,7 @@ Potential split-path risk:
 Broader contracts at risk:
 Prior probes or docs checked:
 Validation planned:
+Full six-stream evidence and neighboring contract map:
 ```
 
 If the shared path cannot be named, inspect more before changing code. If a new
@@ -49,6 +50,7 @@ Shared path preserved or changed:
 Retained split paths and justification:
 Tests changed and contract strength:
 Validation and metrics:
+Per-row parent/fixed-baseline evidence, uncertainty and unresolved holds:
 Generated artifacts created:
 Public API/CLI/settings/docs impact:
 Remaining risk:
@@ -57,6 +59,32 @@ Remaining risk:
 The review must check for copied loops, broad defaults changed for one case,
 weakened gates, hidden dead code, stale docs/help, relaxed validation, removed
 tests, and behavior changes outside the stated goal.
+
+Every change is subject to the
+[mandatory six-stream gate](validation.md#mandatory-six-stream-change-gate).
+Bind the review to the actual diff/revision, binary, settings and inputs. Reuse
+earlier measurements only with demonstrated unchanged artifacts and applicability;
+a prior PASS label does not establish this. Map feature preservation, compression/
+quality, FPS/resources, streaming/lifecycle, neighboring modes/frontends, shared
+safe architecture, validation integrity, documentation and portability to named
+evidence. Missing, stale or contradictory evidence stays pending. Reload the
+current contract and owner amendments after compaction/resume/project switches
+and before checkpoint or commit decisions; summaries are navigation aids.
+
+An individual working fix may be committed after an issue-specific review of
+its functional evidence and the tractability of remaining performance costs.
+This is not a blanket fix-now/optimize-later policy or a regression waiver. Record
+why retaining the fix is justified, the open losses, the next performance step,
+and when to revert or replace the approach in a new reviewed commit. Functional
+acceptance, commit authorization and full checkpoint/performance acceptance are
+separate decisions; the final gates above remain required.
+
+Carry stable unresolved issue IDs and the full neighboring-contract map into
+each review and append-only history record. Bind the actual tree, parent and
+applicable binary/evidence; compare both the original fixed baseline and immediate
+parent. A slower parent, narrower passing test or favorable average cannot close
+an older failure. Close an issue only with the resolving revision and comparable
+evidence, preserving the original failure and rejected attempts.
 
 ## Tablecloth check
 
@@ -82,7 +110,9 @@ signs during preflight and review.
 
 - Reference-clean but product-bad changes: a stream can decode correctly while
   bytes, PSNR, or FPS regress. Required reference validation is necessary but
-  not sufficient for optimization acceptance.
+  not sufficient for full checkpoint acceptance. Every change needs full six-stream
+  per-row evidence and neighboring correctness, including correctness repairs
+  and streaming refactors; short synthetic probes cannot replace that gate.
 - Broad gates from narrow wins: a policy that helps one format, bit depth, or
   content class can damage adjacent ones. Start new gates as explicit allow
   lists with neighboring counterexamples checked.
@@ -96,8 +126,18 @@ signs during preflight and review.
   counters, or partially wired tools must remain default-off until the complete
   production path passes required reference validation and representative
   metrics.
-- Average-score masking: an aggregate win does not excuse a hard row regression
-  unless the user explicitly accepts the product tradeoff.
+- Average-score masking: an aggregate win cannot excuse a harmed row or mode.
+  A minor necessary cost is eligible only for a major repair with a measured
+  cause/benefit and compensating companion improvements, reviewed together.
+  Substantial or unexplained losses block final performance acceptance; no automatic
+  percentage allowance or credit for a promise of future optimization.
+- Feature loss disguised as a fix: disabling prediction/SCC, forcing intra,
+  changing QP/defaults or narrowing formats/geometry/length can produce a valid
+  stream while abandoning the product goal. Verify emitted prediction and
+  reference behavior on changed frames, repeated frames and GOP resets. Labels
+  and decoder success alone do not prove block prediction or compression benefit.
+  Use portable generated-data regressions that fail under all-intra substitution,
+  with exact lossless or appropriate full-sequence lossy quality controls.
 - Stale public contracts: CLI/API/settings changes must update parser behavior,
   manifest/config ownership, docs, help text, and contract tests together.
 - Goals rewritten to fit implementation: official product documentation is
