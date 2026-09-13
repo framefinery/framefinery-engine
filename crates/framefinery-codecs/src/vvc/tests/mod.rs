@@ -2,6 +2,8 @@ use super::cabac::{VvcCabacInitType, VvcLumaNeighbourState};
 use super::ibc::{VvcIbcCuDecision, VvcIbcHashSearch};
 use super::*;
 
+mod reconstruction;
+
 fn vvc_test_slice_config() -> VvcSliceSyntaxConfig {
     VvcSliceSyntaxConfig::yuv420_residual()
 }
