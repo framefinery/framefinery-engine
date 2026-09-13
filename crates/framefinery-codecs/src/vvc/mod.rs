@@ -38,6 +38,7 @@ mod nal;
 #[cfg(any(test, feature = "bench-internals"))]
 mod palette;
 mod residual;
+mod session;
 #[path = "bitstream/syntax.rs"]
 mod syntax;
 #[cfg(any(test, feature = "bench-internals", feature = "vvc-stats"))]
@@ -128,6 +129,8 @@ include!("ctu_params.rs");
 include!("cabac_dump.rs");
 include!("stats.rs");
 include!("stats_analysis.rs");
+include!("stream_config.rs");
+include!("stream.rs");
 include!("encode.rs");
 include!("encode_predictive.rs");
 include!("predictive_policy.rs");

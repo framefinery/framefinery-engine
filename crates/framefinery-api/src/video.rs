@@ -152,9 +152,9 @@ pub struct VideoEncodeOutput {
 /// Consume or transfer each returned step before submitting another frame;
 /// recording output history is an explicit caller-owned allocation.
 ///
-/// AV2 implements incremental sessions. VVC's buffered session is an open
-/// implementation gap against this contract; see `docs/api-v0.md` in the
-/// repository for current implementation status.
+/// Native AV2 and VVC implement incremental sessions through their shared
+/// per-codec state. See `docs/api-v0.md` in the repository for retention,
+/// validation coverage and the separate unfinished WASM wrapper.
 pub trait VideoEncoderSession {
     /// Codec id for this encoder session.
     fn codec(&self) -> &CodecId;

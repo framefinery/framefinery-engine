@@ -62,11 +62,19 @@ another input is requested; per-call scratch is released or handed to the caller
 The [API implementation notes](api-v0.md#av2-implementation-and-coverage) describe
 lifecycle and focused behavioral/reference coverage.
 
-Open implementation gaps: VVC owned-frame sessions buffer input until flush;
-the unpublished WASM capture wrapper recreates an encoder per frame and retains
-transmitted output. These behaviors must be fixed to meet the contract, with
-portable output/lifetime/state regression tests and required multi-frame
-reference validation; they are not supported exceptions.
+VVC implements its shared state in `vvc/stream.rs`, with fixed validated
+configuration in `vvc/stream_config.rs`. Both adapters use the existing single
+frame coding operation. Predictive state retains one source/reconstruction pair
+and at most one decision per picture CTU; cached skip-slice payload templates
+are bounded by geometry and configuration. Conversion, search, IBC and entropy
+scratch are per-frame. Output transfers to the caller, and terminal flush or
+failure releases references, payload caches and picture instrumentation state.
+See the [VVC API notes](api-v0.md#vvc-implementation-and-coverage) for details.
+
+Open implementation gap: the unpublished WASM capture wrapper recreates an
+encoder per frame and retains transmitted output. It must reuse native sessions
+and drain output with bounded backpressure. Native session validation does not
+prove browser/WASM behavior; this remains unfinished against the contract.
 
 Optional codecs and filters should be selected at build time using Cargo
 features or separate crates. The Makefile default enables the normal product

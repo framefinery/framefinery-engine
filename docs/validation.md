@@ -45,6 +45,36 @@ and decoder logs under the supplied artifact directory. The unit tests in
 `av2/session_tests.rs` independently cover ownership bounds, source/write order,
 source/session byte parity and terminal lifecycle without external tools.
 
+## VVC Incremental Session Reference Check
+
+`tests/vvc_reference_streaming.rs` in `framefinery-codecs` decodes each of six
+ordered output prefixes while the same VVC session remains open. Generated
+changed/repeated frames exercise GOP3 in lossless and QP24 modes for YUV420,
+YUV422 and YUV444 at 8–12 bits and GBR8. Additional lossless YUV444/GOP0 rows
+exercise SCC at every supported depth. Exact frame count and reference/internal
+equality are required; lossless reference output must also equal source.
+The VTM picture trace must show repeated-frame P slices with their reference
+pictures and the GOP-reset I picture. The lossy YUV4208 row additionally requires
+P slices for changed frames, so all-intra output cannot satisfy that regression.
+
+After selecting the pinned VTM executable using
+[reference-decoder-smoke.md](reference-decoder-smoke.md), run:
+
+```sh
+FRAMEFINERY_VVC_DECODER="${VTM_DECODER:?verified VTM executable required}" \
+FRAMEFINERY_TEST_ARTIFACT_DIR="${TEST_ARTIFACT_DIR:?artifact directory required}" \
+cargo test --locked -p framefinery-codecs --release --features vvc \
+  --test vvc_reference_streaming -- --ignored --test-threads=1 --nocapture
+```
+
+The explicitly selected check fails on missing tools, decode errors or mismatches
+and preserves uniquely named artifacts outside the checkout. Ordinary Rust tests
+do not invoke the external decoder. `vvc/session_tests.rs` separately covers
+complete source/session prefix parity, source consumption order, bounded state,
+rejection, terminal errors, flush and reconstruction/metrics ownership. These
+tests replace the obsolete whole-input buffering facade expectations; neither
+test group claims browser/WASM execution or full release coverage.
+
 ## Lossless VVC Screen-Content Reference Check
 
 The generated regression in `tests/vvc_reference_scc.rs` within
@@ -72,8 +102,8 @@ cargo test --locked -p framefinery-codecs --release --features vvc \
 The explicitly selected test requires source/internal/reference equality for
 all six frames at each depth. Missing decoders, decode failures and mismatches
 fail without a skip. Artifacts are preserved under the supplied directory
-outside the checkout. This is focused conformance coverage; VVC session and
-WASM streaming remain the open implementation gaps described in the API contract.
+outside the checkout. This complements the open-session prefix check above;
+the separate WASM wrapper remains unfinished as described in the API contract.
 
 ## Batch Fixtures
 

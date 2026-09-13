@@ -16,12 +16,14 @@ receiver and writes binary messages to a `.part` file as they arrive. When the
 browser sends the final frame count, the server renames the partial file to the
 normal `screen_capture_<codec>_<frames>f_<timestamp>` filename.
 
-Because the native AV2/VVC sessions are still buffered internally, each browser
-`encode_frame` call currently produces an immediate one-frame encode through
-the native API shape rather than one long predictive encoder session. The demo
-transport is stream-first; replacing the one-frame bridge with a predictive
-incremental session should happen in the Rust encoder API rather than in the
-browser upload layer.
+Native AV2/VVC source and owned-frame sessions now share persistent per-codec
+state and emit complete frames incrementally. This demo's WASM wrapper still
+creates a fresh encoder for each frame and retains cumulative encoded output.
+Those wrapper behaviors are open gaps against the
+[API streaming contract](../../docs/api-v0.md#encoder-sessions). The next wrapper
+change must reuse the generic registry/session API, drain each returned step and
+bound transport queues. The current demo does not yet provide one continuous
+predictive stream, and native session tests do not validate browser behavior.
 
 Build and run:
 

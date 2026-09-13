@@ -1,13 +1,11 @@
-use std::io::{Cursor, Read, Write};
+use std::io::{Read, Write};
 #[cfg(test)]
 use std::time::Duration;
 
 use framefinery_api::{
-    frame_psnr, CodecId, EncodedVideoChunk, Frame, FrameEncodeMetrics, MediaError,
-    RawVideoFrameSource, RawVideoFrameSourceReadAdapter, ReconstructionMode, Result,
-    VideoChunkKind, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback, VideoEncodeOutput,
-    VideoEncodeSourceRequest, VideoEncoderConfig, VideoEncoderManifest, VideoEncoderSession,
-    VideoRateControl,
+    frame_psnr, MediaError, RawVideoFrameSource, RawVideoFrameSourceReadAdapter,
+    ReconstructionMode, Result, VideoEncodeFrameMetrics, VideoEncodeFrameMetricsCallback,
+    VideoEncodeSourceRequest, VideoEncoderConfig, VideoEncoderManifest, VideoRateControl,
 };
 
 pub(crate) type VideoEncodeStreamFn =
@@ -33,148 +31,6 @@ pub(crate) struct VideoEncodeStreamRequest<'a> {
     pub format: framefinery_api::PixelFormat,
     pub lossless: bool,
     pub settings: &'a [String],
-}
-
-pub(crate) fn buffered_stream_session(
-    manifest: StreamEncoderManifest,
-    config: VideoEncoderConfig,
-) -> Result<Box<dyn VideoEncoderSession>> {
-    manifest.public.validate_config(&config)?;
-
-    Ok(Box::new(BufferedStreamEncoderSession {
-        manifest,
-        config,
-        frames: Vec::new(),
-        flushed: false,
-    }))
-}
-
-struct BufferedStreamEncoderSession {
-    manifest: StreamEncoderManifest,
-    config: VideoEncoderConfig,
-    frames: Vec<Frame>,
-    flushed: bool,
-}
-
-impl VideoEncoderSession for BufferedStreamEncoderSession {
-    fn codec(&self) -> &CodecId {
-        &self.config.codec
-    }
-
-    fn config(&self) -> &VideoEncoderConfig {
-        &self.config
-    }
-
-    fn encode_frame(&mut self, frame: Frame) -> Result<VideoEncodeOutput> {
-        if self.flushed {
-            return Err(MediaError::EncodeAfterFlush);
-        }
-        if frame.info() != self.config.input {
-            return Err(MediaError::IncompatibleFormat {
-                format: frame.info().format.name(),
-                reason: format!(
-                    "expected {}x{}:{}, got {}x{}:{}",
-                    self.config.input.width,
-                    self.config.input.height,
-                    self.config.input.format,
-                    frame.info().width,
-                    frame.info().height,
-                    frame.info().format
-                ),
-            });
-        }
-        if self
-            .config
-            .frame_limit
-            .is_some_and(|limit| self.frames.len() >= limit)
-        {
-            return Err(MediaError::FrameLimitExceeded {
-                limit: self.config.frame_limit.unwrap(),
-            });
-        }
-        self.frames.push(frame);
-        Ok(VideoEncodeOutput::default())
-    }
-
-    fn flush(&mut self) -> Result<VideoEncodeOutput> {
-        if self.flushed {
-            return Ok(VideoEncodeOutput::default());
-        }
-        self.flushed = true;
-
-        let frame_count = self.frames.len();
-        let input_len = self
-            .config
-            .input
-            .expected_len()
-            .checked_mul(frame_count)
-            .ok_or(MediaError::LengthOverflow)?;
-        let mut input = Vec::with_capacity(input_len);
-        for frame in &self.frames {
-            input.extend_from_slice(frame.data());
-        }
-
-        let mut bitstream = Vec::new();
-        let mut recon = Vec::new();
-        let settings = self.config.setting_specs();
-        let request = VideoEncodeStreamRequest {
-            frame_limit: Some(frame_count),
-            width: self.config.input.width,
-            height: self.config.input.height,
-            format: self.config.input.format,
-            lossless: matches!(self.config.rate_control, VideoRateControl::Lossless),
-            settings: &settings,
-        };
-        let mut metrics = Vec::new();
-        let mut total_bitstream_bytes = 0usize;
-        let mut metrics_callback = |frame: VideoEncodeFrameMetrics<'_>| {
-            let frame = complete_frame_metrics(&self.config, &mut total_bitstream_bytes, frame);
-            metrics.push(FrameEncodeMetrics {
-                frame_index: frame.frame_idx,
-                frame_count: frame.frame_count,
-                encoded_bytes: frame.bitstream_bytes,
-                psnr: frame.psnr.map(|psnr| psnr.all),
-            });
-        };
-        let should_collect_metrics = self.config.reconstruction != ReconstructionMode::None;
-        let metrics_callback = if should_collect_metrics {
-            Some(
-                &mut metrics_callback
-                    as &mut dyn for<'frame> FnMut(VideoEncodeFrameMetrics<'frame>),
-            )
-        } else {
-            None
-        };
-        let recon_writer = match self.config.reconstruction {
-            ReconstructionMode::Frames => Some(&mut recon as &mut dyn Write),
-            ReconstructionMode::None | ReconstructionMode::MetricsOnly => None,
-        };
-
-        (self.manifest.encode_stream)(
-            &mut Cursor::new(input),
-            &mut bitstream,
-            recon_writer,
-            request,
-            metrics_callback,
-        )
-        .map_err(MediaError::Message)?;
-
-        let mut chunk =
-            EncodedVideoChunk::new(self.config.codec.clone(), VideoChunkKind::Stream, bitstream);
-        chunk.keyframe = true;
-
-        let reconstructions = if self.config.reconstruction == ReconstructionMode::Frames {
-            split_reconstructions(&self.config, recon)?
-        } else {
-            Vec::new()
-        };
-
-        Ok(VideoEncodeOutput {
-            chunks: vec![chunk],
-            reconstructions,
-            metrics,
-        })
-    }
 }
 
 pub(crate) fn encode_stream_from_source(
@@ -238,28 +94,11 @@ pub(crate) fn complete_frame_metrics<'a>(
     frame
 }
 
-fn split_reconstructions(config: &VideoEncoderConfig, recon: Vec<u8>) -> Result<Vec<Frame>> {
-    let frame_len = config.input.expected_len();
-    if recon.is_empty() {
-        return Ok(Vec::new());
-    }
-    if recon.len() % frame_len != 0 {
-        return Err(MediaError::BufferLength {
-            expected: frame_len * (recon.len().div_ceil(frame_len)),
-            actual: recon.len(),
-        });
-    }
-    recon
-        .chunks_exact(frame_len)
-        .map(|frame| Frame::new(config.input, frame.to_vec()))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::picture::{read_input_frame, FrameLimit};
-    use framefinery_api::{FrameInfo, PixelFormat, VideoEncoderSetting};
+    use framefinery_api::{CodecId, FrameInfo, PixelFormat, VideoEncoderSession};
 
     const TEST_CODEC: VideoEncoderManifest = VideoEncoderManifest::new(
         "test",
@@ -283,8 +122,8 @@ mod tests {
         format == PixelFormat::Rgb24
     }
 
-    fn test_create_session(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>> {
-        buffered_stream_session(TEST_STREAM_ENCODER, config)
+    fn test_create_session(_: VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>> {
+        Err(MediaError::Message("source-only test manifest".into()))
     }
 
     fn test_encode_source(
@@ -302,11 +141,6 @@ mod tests {
             request,
             frame_metrics,
         )
-    }
-
-    fn create_test_encoder(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>> {
-        TEST_CODEC.validate_config(&config)?;
-        (TEST_CODEC.session_factory())(config)
     }
 
     fn encode_test_source<'a>(
@@ -398,61 +232,6 @@ mod tests {
     }
 
     #[test]
-    fn buffered_session_flush_is_idempotent_and_then_closed() {
-        let info = FrameInfo::new(2, 2, PixelFormat::Rgb24).unwrap();
-        let mut encoder = create_test_encoder(config(info)).expect("create test encoder session");
-
-        encoder
-            .encode_frame(Frame::new(info, vec![1u8; info.expected_len()]).unwrap())
-            .expect("first frame");
-        encoder
-            .encode_frame(Frame::new(info, vec![2u8; info.expected_len()]).unwrap())
-            .expect("second frame");
-        let first = encoder.flush().expect("first flush");
-        let second = encoder.flush().expect("second flush");
-
-        assert_eq!(first.chunks.len(), 1);
-        assert!(second.chunks.is_empty());
-        assert!(matches!(
-            encoder
-                .encode_frame(Frame::new(info, vec![3u8; info.expected_len()]).unwrap())
-                .unwrap_err(),
-            MediaError::EncodeAfterFlush
-        ));
-    }
-
-    #[test]
-    fn buffered_session_rejects_frame_limit_overflow_structurally() {
-        let info = FrameInfo::new(2, 2, PixelFormat::Rgb24).unwrap();
-        let mut encoder = create_test_encoder(config(info)).expect("create test encoder session");
-
-        encoder
-            .encode_frame(Frame::new(info, vec![1u8; info.expected_len()]).unwrap())
-            .expect("first frame");
-        encoder
-            .encode_frame(Frame::new(info, vec![2u8; info.expected_len()]).unwrap())
-            .expect("second frame");
-        assert!(matches!(
-            encoder
-                .encode_frame(Frame::new(info, vec![3u8; info.expected_len()]).unwrap())
-                .unwrap_err(),
-            MediaError::FrameLimitExceeded { limit: 2 }
-        ));
-    }
-
-    #[test]
-    fn buffered_session_rejects_wrong_frame_info() {
-        let info = FrameInfo::new(2, 2, PixelFormat::Rgb24).unwrap();
-        let other = FrameInfo::new(4, 2, PixelFormat::Rgb24).unwrap();
-        let mut encoder = create_test_encoder(config(info)).expect("create test encoder session");
-
-        let err = encoder
-            .encode_frame(Frame::new(other, vec![0; other.expected_len()]).unwrap())
-            .unwrap_err();
-        assert!(err.to_string().contains("expected 2x2:rgb24"));
-    }
-
-    #[test]
     fn source_encode_reads_until_eof_without_frame_limit() {
         let info = FrameInfo::new(2, 2, PixelFormat::Rgb24).unwrap();
         let config = VideoEncoderConfig::new(CodecId::new("test").unwrap(), info);
@@ -479,22 +258,5 @@ mod tests {
             output,
             [frames[0].as_slice(), frames[1].as_slice()].concat()
         );
-    }
-
-    #[test]
-    fn buffered_session_validates_config_before_creation() {
-        let info = FrameInfo::new(2, 2, PixelFormat::Rgb24).unwrap();
-        let config =
-            config(info).with_setting(VideoEncoderSetting::boolean("missing", true).unwrap());
-
-        let err = match create_test_encoder(config) {
-            Ok(_) => panic!("unknown setting should reject encoder creation"),
-            Err(err) => err,
-        };
-        assert!(matches!(
-            err,
-            MediaError::UnknownSetting { codec, setting }
-                if codec == "test" && setting == "missing"
-        ));
     }
 }

@@ -258,7 +258,8 @@ let mut source = |frame: &mut [u8]| -> Result<bool> {
     emitted = true;
     Ok(true)
 };
-let mut bitstream = Vec::new();
+// Replace this discard sink with the caller's file or transport writer.
+let mut bitstream = std::io::sink();
 let mut frames = 0usize;
 let mut on_frame = |metrics: framefinery::VideoEncodeFrameMetrics<'_>| {
     frames = metrics.frame_idx + 1;
@@ -283,7 +284,8 @@ File, Y4M, WebCodecs, screen-capture, and test-vector code should be adapters
 that implement this callback shape.
 
 The frame callback is called after each encoded frame. `bitstream_bytes` is the
-frame payload size, `total_bitstream_bytes` is the encoded stream size observed
+frame's emitted byte count, including any configuration emitted with that frame;
+`total_bitstream_bytes` is the encoded stream size observed
 through that frame, and `encode_elapsed` is per-frame wall time after the source
 frame has been read. `psnr` is populated when
 `VideoEncoderConfig::reconstruction` is `MetricsOnly`; callers can also use the
@@ -391,18 +393,52 @@ decodes complete multi-frame prefixes while the session is still open, including
 predictive coding and lossless/lossy 8/10-bit YUV420. This is focused streaming
 coverage, not a claim that every AV2 mode has full release validation.
 
+### VVC implementation and coverage
+
+VVC source and owned-frame callers use one private persistent codec state.
+Each accepted frame returns one `Frame` chunk containing a complete access unit,
+with SPS/PPS bytes included in the first frame. Per-frame byte metrics include
+those initial bytes; cumulative bytes still count the entire stream. Previously
+VVC source callbacks excluded the initial parameter sets from the first frame's
+byte count. Empty finalization emits nothing. Current modes have no delayed
+output, and successful terminal flush is empty and idempotent.
+
+For an unknown-length source, clean EOF before the first frame produces no
+header-only output, reconstruction, metrics or writer flush. A first-pull error
+is reported before any output attempt. Unlike the previous eager-header source
+adapter, parameter sets are emitted only after a valid frame is accepted;
+nonempty source byte parity does not imply the old empty-source output.
+
+Keyframe metadata follows emitted IDR/CRA NAL types. Later intra pictures at a
+predictive GOP reset currently use TRAIL NALs; resetting prediction state alone
+does not mark them as random-access chunks. This preserves the existing syntax.
+
+Between calls, predictive VVC retains one cache containing the previous source,
+reconstruction and at most one decision per picture CTU. Reused CTU decisions
+can share ownership across a frame transition without retaining earlier frame
+caches. Skip-slice payload templates are keyed by fixed geometry, configuration
+and CTU position, not frame number. Intra-only streams do not retain a predictive
+frame cache. Configuration and transform-skip tables remain fixed for the session.
+Per-call sampling, reconstruction, mode search, IBC, entropy and encoded output
+storage depend on geometry; old and new reference data may coexist during that
+call. The source adapter holds fixed frame buffers. No input/packet history is
+retained; terminal flush or failure releases references, payload caches and
+picture instrumentation state. This describes ownership, not a universal RSS bound.
+
+Portable tests in `vvc/session_tests.rs` cover source/session prefix parity,
+source pull/write ordering, ownership bounds, invalid input/configuration,
+terminal partial-write failures, consumer errors and reconstruction/metrics modes.
+The [required VTM prefix check](validation.md#vvc-incremental-session-reference-check)
+decodes ordered prefixes before finalization, including changed/repeated frames,
+predictive GOP resets, native format/depth neighbors and lossless SCC.
+
 ### Open implementation gaps
 
-VVC owned-frame sessions still collect input and return one whole-stream result
-on flush. The unpublished WASM capture demo creates an encoder per frame and
-retains cumulative encoded output. These are unfinished implementation gaps
-against the requirements above, not compliant exceptions. The primary example
-uses today's signatures and avoids consumer history retention; it does not
-repair buffering inside unfinished adapters.
-
-VVC/WASM need their own portable output/lifetime/state and lifecycle regressions,
-source/session parity checks and required multi-frame reference validation.
-They are not covered by the AV2 session tests.
+The unpublished WASM capture demo creates an encoder per frame and retains
+cumulative encoded output. It must reuse persistent native sessions and drain
+each step with bounded browser/transport queues. This remains an implementation
+gap, not a compliant exception. The primary example avoids caller-owned history;
+native tests do not prove WASM execution, browser backpressure or wrapper lifecycle.
 
 ## Encoded Chunks
 
@@ -436,8 +472,8 @@ acknowledgements.
 
 `Stream` remains in the public enum for whole-stream values, including explicit
 caller-owned recording. Its presence does not authorize a streaming session to
-collect an entire input or defer frame output until flush. The current buffered VVC
-session use of this variant is part of the open implementation gap above.
+collect an entire input or defer frame output until flush. Native AV2/VVC sessions
+emit `Frame` chunks; aggregation into a whole-stream value belongs to the caller.
 
 ## Reconstruction And Metrics
 

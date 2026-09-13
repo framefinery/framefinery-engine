@@ -192,15 +192,20 @@ That makes the browser package a direct encoder SDK instead of a CLI emulator.
 
 ## Immediate Cleanup Path
 
-1. Define the public video encoder session trait in `framefinery-api`.
-2. Define stable config, settings, chunk, reconstruction, and metrics types.
-3. Expose AV2/VVC encoder structs in `framefinery-codecs`.
-4. Rework the CLI to consume those encoder structs through the shared API.
-5. Add packetizer/muxer traits after the encoded chunk contract is proven.
-6. Add a small `framefinery-wasm` crate only after native API shape settles.
-7. Keep the browser demo stream-first: capture one screen frame, encode it,
-   expose the per-call encoded output across the WASM ABI, and send those bytes
-   to the local WebSocket receiver before scheduling the next frame. The
-   current one-frame AV2/VVC bridge should be replaced by a true predictive
-   incremental session in the Rust encoder API, not hidden behind batch WASM
-   glue.
+1. Use the existing codec-neutral registry, `VideoEncoderConfig`,
+   `VideoEncoderSession` and output/metrics types defined by
+   [api-v0.md](api-v0.md#encoder-sessions). Codec-specific state remains private;
+   public AV2/VVC encoder structs are not the frontend boundary.
+2. Preserve the shared per-codec operation already used by native CLI/source
+   and owned-frame callers. Do not introduce another encoding path in WASM.
+3. Replace the demo wrapper's fresh encoder per frame with one persistent
+   session, including explicit finalize, error and drop behavior. Its current
+   cumulative output retention is also an open implementation gap.
+4. Drain each complete returned step through the WASM ABI and bound browser and
+   transport queues before scheduling more input. Keep intentional server-side
+   file recording separate from internal output history. Verify real WASM
+   execution, backpressure and multi-frame reference decoding; native tests or
+   WASM compilation alone do not establish this behavior.
+5. Defer new packetizer/muxer traits and published WASM packaging until their
+   contracts are needed and validated; they are not prerequisites for using the
+   current generic session boundary.

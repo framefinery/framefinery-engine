@@ -425,6 +425,12 @@ pub(in crate::vvc) struct VvcCtuInterSkipSlicePayloadCache {
 }
 
 impl VvcCtuInterSkipSlicePayloadCache {
+    #[cfg(test)]
+    pub(in crate::vvc) fn retained_payload_count(&self) -> usize {
+        let Self { entries } = self;
+        entries.len()
+    }
+
     fn slice_unit_for(
         &mut self,
         picture_kind: VvcPictureKind,

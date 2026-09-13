@@ -13,10 +13,7 @@ use super::{
     VvcVideoGeometry, VvcVideoLimits,
 };
 use crate::picture::Picture;
-use crate::session::{
-    buffered_stream_session, encode_stream_from_source, StreamEncoderManifest,
-    VideoEncodeStreamRequest,
-};
+use crate::session::{encode_stream_from_source, StreamEncoderManifest, VideoEncodeStreamRequest};
 use crate::settings::{GopMode, GOP_SETTING, QP_SETTING};
 
 const VVC_FAST_SEARCH_SPEC_FORMS: &[SettingSpecForm] = &[SettingSpecForm {
@@ -122,7 +119,7 @@ pub(crate) const VVC_STREAM_ENCODER: StreamEncoderManifest = StreamEncoderManife
 fn create_vvc_session(
     config: framefinery_api::VideoEncoderConfig,
 ) -> framefinery_api::Result<Box<dyn framefinery_api::VideoEncoderSession>> {
-    buffered_stream_session(VVC_STREAM_ENCODER, config)
+    Ok(Box::new(super::session::VvcEncoderSession::new(config)?))
 }
 
 fn encode_vvc_source(
@@ -194,16 +191,7 @@ fn encode_vvc_with_manifest(
     let mut frame_metrics = frame_metrics;
     let mut callback = |metrics: VvcEncodeFrameMetrics<'_>| {
         if let Some(callback) = frame_metrics.as_mut() {
-            callback(VideoEncodeFrameMetrics {
-                frame_idx: metrics.frame_idx,
-                frame_count: metrics.frame_count,
-                bitstream_bytes: metrics.bitstream_bytes,
-                total_bitstream_bytes: metrics.total_bitstream_bytes,
-                encode_elapsed: metrics.encode_elapsed,
-                psnr: None,
-                source: metrics.source,
-                reconstruction: metrics.reconstruction,
-            });
+            callback(public_frame_metrics(metrics));
         }
     };
     let callback = if has_frame_metrics {
@@ -224,7 +212,22 @@ fn encode_vvc_with_manifest(
     )
 }
 
-fn vvc_options_from_settings(
+pub(super) fn public_frame_metrics(
+    metrics: VvcEncodeFrameMetrics<'_>,
+) -> VideoEncodeFrameMetrics<'_> {
+    VideoEncodeFrameMetrics {
+        frame_idx: metrics.frame_idx,
+        frame_count: metrics.frame_count,
+        bitstream_bytes: metrics.bitstream_bytes,
+        total_bitstream_bytes: metrics.total_bitstream_bytes,
+        encode_elapsed: metrics.encode_elapsed,
+        psnr: None,
+        source: metrics.source,
+        reconstruction: metrics.reconstruction,
+    }
+}
+
+pub(super) fn vvc_options_from_settings(
     lossless: bool,
     settings: &[String],
 ) -> Result<VvcEncodeOptions, String> {

@@ -101,9 +101,9 @@ pub fn effective_encoder_settings(config: &VideoEncoderConfig) -> Result<Vec<Str
 
 /// Create a persistent encoder session from a codec-neutral config.
 ///
-/// AV2 emits complete frame chunks per call. VVC still buffers input until
-/// flush, an open implementation gap against the streaming contract documented
-/// on [`VideoEncoderSession`].
+/// AV2 and VVC emit complete frame chunks per call using the same per-codec
+/// state as their source adapters. Consume each returned step before submitting
+/// more input; see [`VideoEncoderSession`] for lifecycle and ownership rules.
 pub fn create_encoder(config: VideoEncoderConfig) -> Result<Box<dyn VideoEncoderSession>> {
     let manifest = fetch_encoder_manifest(config.codec.as_str())?;
     manifest.validate_config(&config)?;
