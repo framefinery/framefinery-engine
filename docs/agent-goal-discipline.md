@@ -19,7 +19,9 @@ Shared path affected:
 Policy or mode hook being changed:
 Potential split-path risk:
 Broader contracts at risk:
-Prior probes or docs checked:
+Existing foundations, prior attempts and docs checked:
+Research applicability or reason not needed:
+Smallest next step, disproof and stop condition:
 Validation planned:
 Full six-stream evidence and neighboring contract map:
 ```
@@ -46,7 +48,7 @@ reporting completion:
 
 ```text
 Architecture outcome:
-Shared path preserved or changed:
+Shared path and working foundation preserved or changed:
 Retained split paths and justification:
 Tests changed and contract strength:
 Validation and metrics:
@@ -54,6 +56,7 @@ Per-row parent/fixed-baseline evidence, uncertainty and unresolved holds:
 Generated artifacts created:
 Public API/CLI/settings/docs impact:
 Remaining risk:
+Outcome and next evidence:
 ```
 
 The review must check for copied loops, broad defaults changed for one case,
@@ -85,6 +88,76 @@ applicable binary/evidence; compare both the original fixed baseline and immedia
 parent. A slower parent, narrower passing test or favorable average cannot close
 an older failure. Close an issue only with the resolving revision and comparable
 evidence, preserving the original failure and rejected attempts.
+
+### Research and staged improvements
+
+Apply this process to nontrivial algorithm, compression, performance and memory
+improvements through the existing preflight and completion fields. It adds no
+parallel approval system. An obvious local repair needs proportionate source and
+evidence reasoning, not a compulsory paper search. Research and experiments stay
+within the authorized scope and independent review requirements.
+
+Name the measured problem, affected shared path, workload, baseline revisions,
+constraints and intended benefit. Separate observations from hypotheses. For
+memory, distinguish live ownership, requested heap, allocator residency, process
+RSS and whole-host memory; one does not establish another. Whole-stream buffering
+is not evidence of compliant streaming. Preserve valid historical
+byte/quality/performance measurements with their capability and resource
+qualifications; it does not waive the fixed-baseline comparisons. Invalid
+bitstreams remain invalid quality baselines under the existing gate; preserve
+their failure evidence.
+
+Inventory working primitives, callers, tests, instrumentation, reference tools
+and prior attempts before designing a replacement. Reuse the shared foundation;
+explain what new evidence makes a rejected idea worth reconsidering. Keep working
+production foundations and portable regression tests versioned in product Git.
+Preserve rejected patches, empirical measurements and external research/comparator
+material outside product Git. Do not retain dead experimental production paths
+or erase useful tests. Replacing a foundation requires evidence that its
+contracts survive.
+
+Both the coding worker and supervisor may initiate focused online research and
+upstream-code inspection when evidence or understanding is missing. The worker
+does not wait for all ideas from the supervisor or a later roadmap phase. Use
+primary sources and follow relevant foundations, assumptions, later corrections
+and limitations. Pin source versions and record sections/functions actually read,
+unavailable sources, discrepancies, provenance and license boundaries. Bound the
+search by a concrete question and the next discriminating experiment; stop when
+that evidence is sufficient. External claims need local applicability checks.
+Research initiative authorizes neither another actor or heavy job nor bypassing
+independent experiment review.
+
+Distinguish previous-FFE product baselines from a technique's simpler algorithmic
+baseline. Reuse a validated foundation or establish the smallest applicable
+method before advanced extensions. Any new simple scalar oracle is
+validation-only, never a second production path. Map equations, state, numerical
+rules and boundary assumptions to the shared implementation; check independent
+examples and required exactness or tolerances. Do not reproduce an entire upstream
+system for one primitive. Record when existing validated foundations already
+satisfy this stage. A local lifetime fix needs no artificial paper algorithm.
+
+Separate reproduction, adaptation and optimization into minimal independently
+evaluated steps. Each needs a predicted effect, a falsifying observation and a
+stop condition before execution. Preserve the shared implementation and normative
+codec syntax/reconstruction. Check extensions separately after their prerequisites;
+a small interaction experiment may combine steps when its mechanism is explicit.
+Avoid changing algorithm, coding policy, data representation and lifetime together
+without that justification.
+
+Reuse useful profiles first. Choose the smallest diagnostic that distinguishes
+hypotheses and record its overhead, timing boundaries and resource effects.
+Diagnostic cost is not ordinary performance: judge with ordinary release runs.
+Focused failures can reject a candidate early; surviving production changes
+still face the existing gates. Do not repeat expensive unchanged runs for
+paperwork or collect evidence indefinitely instead of making a bounded decision.
+
+Review actual diffs, commands and evidence. Compare the immediate parent and
+original fixed baseline, plus the algorithmic baseline where applicable. Retain
+adverse rows, unknowns and stable issue IDs; neither a favorable average nor a
+slower parent erases a loss. Record accepted, rejected or inconclusive scope,
+the foundation preserved and next evidence needed. Agreement between agents is
+not an oracle. Existing acceptance requirements remain: no performance waiver
+or reset of cumulative debt.
 
 ## Tablecloth check
 

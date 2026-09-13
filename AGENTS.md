@@ -175,6 +175,9 @@ exist yet.
   mode-search work, read `docs/agent-goal-discipline.md` and follow its
   internal pull-request process before editing, before committing, and before
   reporting completion.
+- Apply [research and staged improvements](docs/agent-goal-discipline.md#research-and-staged-improvements)
+  within that process: both worker and supervisor may initiate bounded research;
+  reuse working foundations and independently evaluate minimal steps.
 - Check `git status --short` before edits.
 - Keep commits small and scoped.
 - Full checkpoint acceptance requires the [six-stream gate](docs/validation.md#mandatory-six-stream-change-gate)
