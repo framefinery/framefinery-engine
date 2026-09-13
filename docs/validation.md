@@ -75,6 +75,38 @@ rejection, terminal errors, flush and reconstruction/metrics ownership. These
 tests replace the obsolete whole-input buffering facade expectations; neither
 test group claims browser/WASM execution or full release coverage.
 
+## Prediction Preservation Regression
+
+`tests/prediction_preservation.rs` supplements the open-session prefix checks
+with generated six-frame lossless YUV4208/10 texture for both codecs. Changed
+frames retain textured regions; repeated frames and a GOP3 reset are separate
+controls. The source and owned-session paths must emit identical streams and
+reconstructions. Each complete six-frame stream is decoded before session flush,
+and both predictive and intra-only controls must match source exactly.
+
+For this deliberately textured fixture, changed pictures outside the reset must
+use less than half their intra-control bytes, and the whole stream must shrink.
+This fixture-specific assertion excludes small header differences masquerading
+as texture reuse; it is not a universal compression threshold or a performance
+allowance. A decoded all-intra substitution must fail the check. Ordinary
+negative controls also reject missing/empty chunks, corrupt reconstruction and
+repeated-frame-only savings. Neither test replaces the full six-stream gate or
+proves wide-layout AV2 lossless inter support, all lossy modes, or browser behavior.
+
+With both pinned decoders selected as above, run the required check explicitly:
+
+```sh
+FRAMEFINERY_AV2_DECODER="${AVM_DECODER:?verified AVM executable required}" \
+FRAMEFINERY_VVC_DECODER="${VTM_DECODER:?verified VTM executable required}" \
+FRAMEFINERY_TEST_ARTIFACT_DIR="${TEST_ARTIFACT_DIR:?external artifact directory required}" \
+cargo test --locked -p framefinery-codecs --release --features 'av2 vvc' \
+  --test prediction_preservation -- --include-ignored --test-threads=1 --nocapture
+```
+
+The selected reference test fails if an enabled codec's decoder is unavailable,
+fails to execute/decode, produces a wrong frame count or differs from source.
+Its ordinary CI control does not invoke decoders or imply reference validation.
+
 ## Lossless VVC Screen-Content Reference Check
 
 The generated regression in `tests/vvc_reference_scc.rs` within
