@@ -57,6 +57,23 @@ impl VvcStreamEncoder {
         }
     }
 
+    fn sample_previous_motion_source<T>(
+        &self,
+        predictive_frame: bool,
+        mixed_slice_supported: bool,
+        sample: impl FnOnce(&[u8]) -> Option<T>,
+    ) -> Option<T> {
+        if !predictive_frame
+            || self.config.residual_mode.is_lossless()
+            || !(mixed_slice_supported || cfg!(feature = "vvc-stats"))
+        {
+            return None;
+        }
+        self.previous_predictive_cache
+            .as_ref()
+            .and_then(|cache| sample(&cache.source))
+    }
+
     fn release_frame_state(&mut self) {
         self.pending_parameter_sets = None;
         self.previous_predictive_cache = None;
@@ -233,21 +250,18 @@ impl VvcStreamEncoder {
                 sample_vvc_yuv_frame(frame_buf, VvcEncodeParams { frames: 1 }, geometry, format)?;
             #[cfg(feature = "vvc-stats")]
             frame_stats.add_elapsed("sample_frame", stage_start);
-            let previous_motion_source_frame = if predictive_frame && !residual_mode.is_lossless() {
-                self.previous_predictive_cache.as_ref().and_then(|cache| {
-                    sample_vvc_yuv_frame(
-                        &cache.source,
-                        VvcEncodeParams { frames: 1 },
-                        geometry,
-                        format,
-                    )
-                    .ok()
-                })
-            } else {
-                None
-            };
             let lossy_mixed_single_p_slice_supported = !residual_mode.is_lossless()
                 && vvc_lossy_mixed_single_p_slice_supported(stream_format, geometry);
+            // Only mixed-slice analysis and optional motion statistics consume
+            // the previous sampled frame. Keep conversion lazy for other modes.
+            let previous_motion_source_frame = self.sample_previous_motion_source(
+                predictive_frame,
+                lossy_mixed_single_p_slice_supported,
+                |previous| {
+                    sample_vvc_yuv_frame(previous, VvcEncodeParams { frames: 1 }, geometry, format)
+                        .ok()
+                },
+            );
             let explicit_luma_inter_decisions_by_ctu =
                 if predictive_frame && lossy_mixed_single_p_slice_supported {
                     self.previous_predictive_cache

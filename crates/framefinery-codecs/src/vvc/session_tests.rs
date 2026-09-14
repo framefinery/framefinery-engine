@@ -558,6 +558,94 @@ fn retained_state_has_fixed_frame_slots_and_no_packet_history() {
 }
 
 #[test]
+fn previous_motion_sampling_preserves_production_and_stats_consumers() {
+    for (format, height, production_consumer) in [
+        (PixelFormat::Yuv420p8, 64, true),
+        (PixelFormat::yuv420(10).unwrap(), 64, true),
+        (PixelFormat::Yuv420p8, 62, false),
+        (PixelFormat::yuv422(10).unwrap(), 64, false),
+        (PixelFormat::yuv444(10).unwrap(), 64, false),
+    ] {
+        let mut config = fixtures::config(format, false, -1);
+        config.input = FrameInfo::new(128, height, format).unwrap();
+        let first = frame(config.input, 75);
+        let mut session = VvcEncoderSession::new(config).unwrap();
+        // Missing history must not call even a required consumer.
+        assert!(session
+            .encoder
+            .sample_previous_motion_source(true, true, |_| -> Option<()> {
+                panic!("no previous source exists")
+            })
+            .is_none());
+        session.encode_frame(first.clone()).unwrap();
+        let encoder = &session.encoder;
+        let mixed_slice_supported = crate::vvc::vvc_lossy_mixed_single_p_slice_supported(
+            encoder.config.stream_format,
+            encoder.config.geometry,
+        );
+        assert_eq!(mixed_slice_supported, production_consumer);
+        let mut calls = 0;
+        let sampled = encoder.sample_previous_motion_source(true, mixed_slice_supported, |raw| {
+            calls += 1;
+            assert_eq!(raw, first.data(), "sample source, not reconstruction");
+            crate::vvc::sample_vvc_yuv_frame(
+                raw,
+                crate::vvc::VvcEncodeParams { frames: 1 },
+                encoder.config.geometry,
+                format,
+            )
+            .ok()
+        });
+        let expected = production_consumer || cfg!(feature = "vvc-stats");
+        assert_eq!(calls, usize::from(expected), "{format} height={height}");
+        assert_eq!(sampled.is_some(), expected);
+        if let Some(sampled) = sampled {
+            // Independent scalar expectations for all three fixture planes.
+            let scale = 1u16 << (format.bit_depth().bits() - 8);
+            let chroma_width =
+                if format.chroma_sampling() == Some(framefinery_api::ChromaSampling::Cs444) {
+                    128
+                } else {
+                    64
+                };
+            let widths = [128, chroma_width, chroma_width];
+            for (channel, (plane, width)) in [sampled.luma, sampled.cb, sampled.cr]
+                .into_iter()
+                .zip(widths)
+                .enumerate()
+            {
+                for (index, value) in plane.iter().enumerate() {
+                    let phase = if index % width >= width / 2 { 75 } else { 0 };
+                    assert_eq!(*value, (16 + channel as u16 * 32 + phase) * scale);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn previous_motion_sampling_skips_nonpredictive_and_lossless_frames() {
+    for lossless in [false, true] {
+        let config = fixtures::config(PixelFormat::Yuv420p8, lossless, -1);
+        let first = frame(config.input, 0);
+        let mut session = VvcEncoderSession::new(config).unwrap();
+        session.encode_frame(first).unwrap();
+        assert!(session.encoder.previous_predictive_cache.is_some());
+        for predictive_frame in [false, true] {
+            if predictive_frame && !lossless {
+                continue;
+            }
+            assert!(session
+                .encoder
+                .sample_previous_motion_source(predictive_frame, true, |_| -> Option<()> {
+                    panic!("no motion consumer on this frame")
+                })
+                .is_none());
+        }
+    }
+}
+
+#[test]
 fn changed_frame_releases_consumed_cache_before_output_and_preserves_reuse() {
     struct CacheWriter {
         cache: Weak<crate::vvc::VvcPredictiveFrameCache>,
