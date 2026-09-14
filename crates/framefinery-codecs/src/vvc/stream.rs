@@ -770,6 +770,12 @@ impl VvcStreamEncoder {
                             payload,
                         });
                     }
+                    // Completed payloads own their data and reused decisions have
+                    // independent Arcs. Release consumed inputs before entropy and
+                    // reconstruction allocate the next frame's output and cache.
+                    drop(source_frame);
+                    drop(previous_motion_source_frame);
+                    self.previous_predictive_cache = None;
                     #[cfg(feature = "vvc-stats")]
                     let stage_start = StageStart::now();
                     #[cfg(feature = "vvc-stats")]

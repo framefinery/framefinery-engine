@@ -4,7 +4,7 @@ use framefinery_api::{FrameInfo, PixelFormat, VideoEncodeFrameMetrics, VideoEnco
 use std::cell::RefCell;
 use std::io::{self, Write};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 #[path = "../../tests/support/vvc_streaming.rs"]
 mod fixtures;
@@ -554,6 +554,136 @@ fn retained_state_has_fixed_frame_slots_and_no_packet_history() {
                 .retained_payload_count(),
             0
         );
+    }
+}
+
+#[test]
+fn changed_frame_releases_consumed_cache_before_output_and_preserves_reuse() {
+    struct CacheWriter {
+        cache: Weak<crate::vvc::VvcPredictiveFrameCache>,
+        decision: Weak<crate::vvc::VvcQuantizedCtuLeafDecision>,
+        expect_released: bool,
+        checked: bool,
+        bytes: Vec<u8>,
+    }
+    impl Write for CacheWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if !bytes.is_empty() && !self.checked {
+                assert!(
+                    self.decision.upgrade().is_some(),
+                    "reused decision survives"
+                );
+                assert_eq!(
+                    self.cache.upgrade().is_none(),
+                    self.expect_released,
+                    "consumed cache lifetime at first entropy output"
+                );
+                self.checked = true;
+            }
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            panic!("encoder must not flush the caller's writer")
+        }
+    }
+
+    for format in [PixelFormat::Yuv420p8, PixelFormat::yuv444(10).unwrap()] {
+        let config = fixtures::config(format, true, -1);
+        let first = frame(config.input, 0);
+        // The existing two-CTU fixture changes only the right CTU in each plane.
+        let changed = frame(config.input, 90);
+        assert_ne!(first, changed);
+        let mut session = VvcEncoderSession::new(config.clone()).unwrap();
+        let first_output = session.encode_frame(first.clone()).unwrap();
+        let mut prefix = first_output.chunks[0].data.clone();
+        assert_eq!(first_output.reconstructions, [first.clone()]);
+        assert!(session.encoder.pending_parameter_sets.is_none());
+        let old_cache = session.encoder.previous_predictive_cache.as_ref().unwrap();
+        assert_eq!(old_cache.ctu_decisions.len(), 2);
+        let reused = Arc::downgrade(&old_cache.ctu_decisions[0]);
+        let replaced = Arc::downgrade(&old_cache.ctu_decisions[1]);
+        let mut writer = CacheWriter {
+            cache: Arc::downgrade(old_cache),
+            decision: reused.clone(),
+            expect_released: true,
+            checked: false,
+            bytes: Vec::new(),
+        };
+        let mut recon = Vec::new();
+        #[cfg(feature = "vvc-stats")]
+        let stats = session.encoder.frame_stats();
+        let encoded = session
+            .encoder
+            .encode_frame(
+                changed.data(),
+                &mut VvcFrameSinks {
+                    output: &mut writer,
+                    recon: Some(&mut recon),
+                    frame_metrics: None,
+                },
+                #[cfg(feature = "vvc-stats")]
+                stats,
+            )
+            .unwrap();
+        assert!(writer.checked);
+        assert!(!writer.bytes.is_empty());
+        assert_eq!(encoded.frame_index, 1);
+        assert!(!encoded.keyframe);
+        assert_eq!(recon, changed.data());
+        assert!(writer.cache.upgrade().is_none());
+        assert!(replaced.upgrade().is_none(), "changed CTU was not reused");
+        let next = session.encoder.previous_predictive_cache.as_ref().unwrap();
+        assert!(Weak::ptr_eq(
+            &reused,
+            &Arc::downgrade(&next.ctu_decisions[0])
+        ));
+        prefix.extend_from_slice(&writer.bytes);
+        assert_eq!(
+            prefix,
+            source_encode(&config, &[first.clone(), changed.clone()]).0
+        );
+
+        // Exact-repeat output must keep this cache and the same reused decision.
+        writer.cache = Arc::downgrade(next);
+        writer.expect_released = false;
+        writer.checked = false;
+        writer.bytes.clear();
+        recon.clear();
+        #[cfg(feature = "vvc-stats")]
+        let stats = session.encoder.frame_stats();
+        session
+            .encoder
+            .encode_frame(
+                changed.data(),
+                &mut VvcFrameSinks {
+                    output: &mut writer,
+                    recon: Some(&mut recon),
+                    frame_metrics: None,
+                },
+                #[cfg(feature = "vvc-stats")]
+                stats,
+            )
+            .unwrap();
+        assert!(writer.checked);
+        assert!(!writer.bytes.is_empty());
+        assert_eq!(recon, changed.data());
+        let repeated = session.encoder.previous_predictive_cache.as_ref().unwrap();
+        assert!(Weak::ptr_eq(&writer.cache, &Arc::downgrade(repeated)));
+        assert!(Weak::ptr_eq(
+            &reused,
+            &Arc::downgrade(&repeated.ctu_decisions[0])
+        ));
+        prefix.extend_from_slice(&writer.bytes);
+        assert_eq!(
+            prefix,
+            source_encode(&config, &[first, changed.clone(), changed]).0
+        );
+        assert_eq!(session.flush().unwrap(), VideoEncodeOutput::default());
+        assert_eq!(session.flush().unwrap(), VideoEncodeOutput::default());
+        assert!(writer.cache.upgrade().is_none());
+        assert!(reused.upgrade().is_none());
     }
 }
 
