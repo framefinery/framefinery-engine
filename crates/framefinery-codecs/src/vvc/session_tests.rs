@@ -363,44 +363,84 @@ fn partial_write_failure_is_terminal_in_shared_codec_state() {
 
 #[test]
 fn reconstruction_write_failure_is_terminal_and_suppresses_metrics() {
-    let config = config(PixelFormat::Yuv420p8, true);
-    let input = frame(config.input, 0);
-    let mut session = VvcEncoderSession::new(config).unwrap();
-    session.encode_frame(input.clone()).unwrap();
-    let reference = Arc::downgrade(session.encoder.previous_predictive_cache.as_ref().unwrap());
-    let state = Rc::new(RefCell::new(Observation::default()));
-    let mut writer = ProbeWriter {
-        state: state.clone(),
-        fail_at: Some(5),
-    };
-    let mut bytes = Vec::new();
-    let mut callbacks = 0;
-    let mut callback = |_: VvcEncodeFrameMetrics<'_>| callbacks += 1;
-    #[cfg(feature = "vvc-stats")]
-    let stats = session.encoder.frame_stats();
-    let error = session
-        .encoder
-        .encode_frame(
-            input.data(),
-            &mut VvcFrameSinks {
-                output: &mut bytes,
-                recon: Some(&mut writer),
-                frame_metrics: Some(&mut callback),
-            },
+    for lossless in [true, false] {
+        for changed in [false, true] {
+            let config = config(PixelFormat::Yuv420p8, lossless);
+            let first = frame(config.input, 0);
+            let input = frame(config.input, if changed { 90 } else { 0 });
+            assert_eq!(input != first, changed);
+            let (expected_bytes, expected_recon) =
+                source_encode(&config, &[first.clone(), input.clone()]);
+            let mut session = VvcEncoderSession::new(config).unwrap();
+            let first_output = session.encode_frame(first).unwrap();
+            assert!(session.encoder.config.options.gop.is_predictive_frame(1));
+            let cache = session.encoder.previous_predictive_cache.as_ref().unwrap();
+            let reference = Arc::downgrade(cache);
+            let decisions: Vec<_> = cache.ctu_decisions.iter().map(Arc::downgrade).collect();
+            let state = Rc::new(RefCell::new(Observation::default()));
+            let mut writer = ProbeWriter {
+                state: state.clone(),
+                fail_at: Some(5),
+            };
+            let mut bytes = Vec::new();
+            let mut callbacks = 0;
+            let mut callback = |_: VvcEncodeFrameMetrics<'_>| callbacks += 1;
             #[cfg(feature = "vvc-stats")]
-            stats,
-        )
-        .err()
-        .unwrap();
-    assert!(
-        !bytes.is_empty(),
-        "encoded output may already have been delivered"
-    );
-    assert_eq!(callbacks, 0);
-    assert_eq!(state.borrow().bytes.len(), 5);
-    assert!(reference.upgrade().is_none());
-    assert_eq!(session.flush(), Err(MediaError::Message(error.clone())));
-    assert_eq!(session.encode_frame(input), Err(MediaError::Message(error)));
+            let stats = session.encoder.frame_stats();
+            let error = session
+                .encoder
+                .encode_frame(
+                    input.data(),
+                    &mut VvcFrameSinks {
+                        output: &mut bytes,
+                        recon: Some(&mut writer),
+                        frame_metrics: Some(&mut callback),
+                    },
+                    #[cfg(feature = "vvc-stats")]
+                    stats,
+                )
+                .err()
+                .expect("injected reconstruction failure");
+            assert!(error.contains("injected output failure"));
+            assert!(
+                !bytes.is_empty(),
+                "encoded output may already have been delivered"
+            );
+            // Complete entropy output can precede a partial reconstruction failure.
+            let mut prefix = first_output.chunks[0].data.clone();
+            prefix.extend_from_slice(&bytes);
+            assert_eq!(prefix, expected_bytes);
+            assert_eq!(callbacks, 0);
+            assert_eq!(state.borrow().bytes.len(), 5);
+            let second_offset = input.data().len();
+            assert_eq!(
+                state.borrow().bytes,
+                expected_recon[second_offset..second_offset + 5]
+            );
+            assert_eq!(state.borrow().flushes, 0);
+            assert!(reference.upgrade().is_none());
+            assert!(decisions
+                .iter()
+                .all(|decision| decision.upgrade().is_none()));
+            // Weak(old) alone misses a retained replacement after a changed frame.
+            assert!(session.encoder.previous_predictive_cache.is_none());
+            assert!(session.encoder.pending_parameter_sets.is_none());
+            assert_eq!(
+                session
+                    .encoder
+                    .ctu_inter_skip_slice_payload_cache
+                    .retained_payload_count(),
+                0
+            );
+            assert_eq!(
+                session.encode_frame(input),
+                Err(MediaError::Message(error.clone()))
+            );
+            assert_eq!(session.flush(), Err(MediaError::Message(error.clone())));
+            assert_eq!(session.flush(), Err(MediaError::Message(error)));
+            eprintln!("reconstruction failure: lossless={lossless} changed={changed} passed");
+        }
+    }
 }
 
 #[test]
