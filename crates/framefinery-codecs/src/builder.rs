@@ -158,7 +158,7 @@ impl VideoEncoderBuilder {
         Ok(config)
     }
 
-    /// Create a buffered encoder session from this builder.
+    /// Create a persistent encoder session that emits output for each frame.
     pub fn build(self) -> Result<Box<dyn VideoEncoderSession>> {
         crate::create_encoder(self.into_config()?)
     }

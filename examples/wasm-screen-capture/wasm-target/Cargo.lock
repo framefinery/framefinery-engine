@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "framefinery"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "framefinery-api",
  "framefinery-codecs",
@@ -12,18 +12,18 @@ dependencies = [
 
 [[package]]
 name = "framefinery-api"
-version = "0.0.3"
+version = "0.0.4"
 
 [[package]]
 name = "framefinery-codecs"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "framefinery-api",
 ]
 
 [[package]]
 name = "framefinery-wasm-target"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "framefinery",
 ]

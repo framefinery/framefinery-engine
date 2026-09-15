@@ -1,13 +1,23 @@
 # Publishing Readiness Notes
 
-Last updated: 2026-08-09.
+Last updated: 2026-09-14.
 
 These notes track work to finish before the next crates.io publish and before
 each later versioned release.
 
 ## Current Status
 
-- Workspace packages are set to version `0.0.3`.
+The 0.0.4 gate requires external reference decoding, checks all current CI
+corpora with intra/inter/reset GOPs and lossless/QP24, and explicitly runs the
+open-session reference tests. Previous dated passes below describe historical
+revisions and do not certify this candidate. VVC now signals the standards-defined
+level 15.5/high-tier pair for its unconstrained rate/resource policy; ordinary
+bounded-level compatibility is not claimed. Rust 1.87–1.97 compatibility
+verification is deferred at the owner's request; local release checks use the
+installed compiler. No additional local toolchain installation is required.
+
+- Workspace packages and internal dependencies are set to version `0.0.4`.
+- Version `0.0.3` is already published. The current candidate remains unpublished.
 - Publishable crate names are:
   - `framefinery-api`
   - `framefinery-codecs`
@@ -57,6 +67,7 @@ version:
 
 ```sh
 make ci
+make package-verify
 
 cargo publish --dry-run -p framefinery-api
 cargo publish -p framefinery-api
@@ -81,13 +92,13 @@ Before a manual publish:
 ## Remaining Before Next Publish
 
 - Confirm the remote GitHub Actions run passes on Rust `1.87.0` and `stable`.
-  Until that happens for the release commit, the declared MSRV and
-  `wasm32-unknown-unknown` check are still only locally proven for that
-  revision.
-- Decide whether package archives should carry local copies of `LICENSE` and
-  `COMMERCIAL-LICENSE.md`. The manifests use standard SPDX
-  `license = "AGPL-3.0-or-later"`; adding `license-file` as well makes Cargo
-  warn because AGPL is a standard SPDX license.
+  Rust-version compatibility checks are deferred at the owner's request;
+  the installed compiler and WASM target checks do not establish the declared
+  MSRV. Remote CI evidence must name the actual release commit.
+- All three archives must carry byte-identical copies of the root `LICENSE`
+  and `COMMERCIAL-LICENSE.md`. `make package-verify` checks these files and
+  internal dependency versions after Cargo builds the archives. Keep the SPDX
+  license declaration; no duplicate `license-file` metadata is needed.
 - Keep `CHANGELOG.md` current. Cargo releases are permanent; each public
   version should have a curated note and a git tag.
 - Keep package-specific README files current for `framefinery-api` and
@@ -96,13 +107,13 @@ Before a manual publish:
 - Keep public API stability expectations visible. Version `0.0.x` can move
   quickly, but users should know which APIs are intended public surface and
   which internals remain experimental.
-- Clean stale local package artifacts before final dry runs. `target/package`
-  was cleaned during 0.0.3 preparation and should be empty before the final
-  package inspection starts.
+- Inspect the exact candidate-version archives after `make package-verify`;
+  older archives are not evidence for a new release. Remove disposable package
+  build directories after verification to limit disk use.
 - Optionally clean old ignored benchmark artifacts under `verification/generated`
-  before longer release validation runs to reduce disk pressure. Do not depend
-  on persistent source fixtures inside `verification/generated`; release scripts
-  should create and remove generated raw vectors themselves.
+  before longer release validation runs to reduce disk pressure. Preserve the
+  persistent Wayland source under `verification/generated/test_vectors/screen_capture/`;
+  remove only disposable derivatives and successful test outputs.
 
 ## Post-0.0.3 TODOs
 
@@ -152,19 +163,18 @@ Before a manual publish:
   reconstruction artifacts. The release validation/performance targets should
   continue cleaning successful outputs by default.
 
-### 0.0.3 Release-Candidate Validation Profile
+### Release-Candidate Validation Profile
 
-Use this profile before the `0.0.3` publish, and as the starting point for the
-next release-candidate gate when geometry, reference compatibility, or
-lossy-quality-sensitive codec work changes:
+`make ci` now runs portable cases with required decoding across intra,
+predictive and reset GOPs. The commands below are additional focused probes;
+their intra controls do not replace predictive validation:
 
 ```sh
 make validate-geometry-sweep GEOMETRY_SWEEP_REFERENCE_MODE=required
 ```
 
-Then run the source-filter unusual geometry set in both codec modes. Keep AV2
-lossless intra-only for this pass so geometry behavior is isolated from
-temporal prediction:
+Then run the source-filter unusual geometry set in both codec modes. The explicit intra runs below isolate geometry; `make ci` also runs
+the same corpus with predictive and reset GOPs:
 
 ```sh
 python3 scripts/run_validation_set.py --ff ./ff --codec av2 unusual-geometry-smoke \
@@ -265,7 +275,7 @@ python3 scripts/benchmark_encode_matrix.py release-six-vectors-full \
   --set-dir verification/test_vector_sets \
   --vector-dir verification/generated/test_vectors \
   --out-dir verification/generated/encode_matrix \
-  --run-name release-0.0.3-six-vectors-50f \
+  --run-name release-0.0.4-six-vectors-full \
   --av2-lossy-qp 24 \
   --vvc-lossy-qp 19 \
   --vvc-fast-search lossless-speed \
@@ -311,9 +321,8 @@ Current observations:
 - `README.md` is included in the `framefinery` package.
 - `framefinery-api` and `framefinery-codecs` use package-specific README
   files.
-- `LICENSE` and `COMMERCIAL-LICENSE.md` are root repository files; member crate
-  package archives do not include them with the current SPDX-only manifest
-  setup.
+- `LICENSE` and `COMMERCIAL-LICENSE.md` are included in each member crate.
+  Their canonical versions remain at the repository root.
 - `framefinery-codecs` includes Criterion benchmark source files. This is
   acceptable, but decide whether benchmarks are useful to publish.
 - Generated fixtures, encoded streams, reconstructions, reference checkouts,

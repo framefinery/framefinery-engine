@@ -129,7 +129,7 @@ native RGB path is planar.
 
 ### Current Codec Support Matrix
 
-This table describes the default 0.0.3 product build. "Native" means the
+This table describes the default 0.0.4 product build. "Native" means the
 compiled encoder manifest accepts the format through `VideoEncoderConfig`.
 "CLI fallback" means the CLI converts each pulled frame before calling the
 encoder. `--set lossless` never uses the 8-bit fallback converter.

@@ -4,7 +4,22 @@ All notable release-facing changes should be recorded here before publishing a
 crate version. FrameFinery is still in the `0.0.x` line, so API names and
 behavior may change quickly while the public contract settles.
 
-## 0.0.3 - Unreleased
+## 0.0.4 - Unreleased
+
+- Make native AV2/VVC source and owned-frame sessions emit complete frames
+  before finalization while preserving predictive state and bounded retention.
+- Release consumed VVC frame storage earlier and avoid unused reference-frame
+  conversion without changing coding decisions.
+- Signal VVC level 15.5 with its required high-tier flag for the encoder's
+  unconstrained rate/resource policy, as specified in H.266 (09/2023).
+- Require reference decoding in CI and by default in validation commands.
+  Exercise both codecs in lossless and QP24 modes, intra/predictive/reset GOPs,
+  native depths/chroma, RGB, visible padding, filters, and open sessions.
+  Preserve failures and reject unspecified profile/level decoder warnings.
+- Include LICENSE and COMMERCIAL-LICENSE.md in all three published crates;
+  verify actual archives and coordinated dependency versions before publishing.
+
+## 0.0.3 - 2026-08-20
 
 - Shape the v0 Rust encoder API around codec-neutral configs and registry
   helpers.

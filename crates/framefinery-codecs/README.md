@@ -26,7 +26,7 @@ you want:
 
 ```toml
 framefinery-codecs = {
-  version = "0.0.3",
+  version = "0.0.4",
   features = ["av2", "vvc"]
 }
 ```

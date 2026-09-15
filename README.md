@@ -193,6 +193,8 @@ records all failing groups and retains their artifacts for investigation.
 It does not require private media files; the full six-vector release check
 remains an additional local gate.
 `make release-check` is kept as the explicit release-oriented target name.
+Use `make package-verify` with current Cargo to build the actual archives and
+verify their license files and dependency versions before publication.
 
 The first target-practice browser WASM demo is intentionally not a published
 web package. Build it and serve the local screen-capture/upload example with:

@@ -437,7 +437,11 @@ package-list:
 	$(CARGO) package --allow-dirty --list -p framefinery-codecs
 	$(CARGO) package --allow-dirty --list -p framefinery
 
-.PHONY: ci-policy-tests
+.PHONY: package-verify ci-policy-tests
+package-verify:
+	$(CARGO) package --locked --workspace --allow-dirty
+	$(PYTHON) scripts/check_package_contents.py --target-dir "$(BUILD_TARGET_DIR)"
+
 ci-policy-tests:
 	$(PYTHON) -m unittest discover -s scripts -p 'test_*.py'
 
