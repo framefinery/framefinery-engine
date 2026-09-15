@@ -87,6 +87,14 @@ Future discovery scaffolds should stay out of that default until they have
 implementations and validation. Instrumentation features should stay behind
 explicit Makefile switches such as `AV2_SB_BITS=1` or `AV2_LOSSY_STATS=1`.
 
+VVC profile and level are separate declarations. The shared SPS writer uses
+level 15.5 with high tier, as required by H.266 (09/2023), Annex A.4, for the
+current unconstrained rate/resource policy. A bounded level cannot be selected
+from geometry alone: this API has no enforced bitrate, HRD or picture-rate
+ceiling. This policy preserves existing prediction and residual coding. It
+does not promise that a decoder restricted to an ordinary level can play every
+stream. Ordinary bounded-level output requires explicit resource enforcement.
+
 ## CLI Contract
 
 The `ff` CLI should remain easy to use for common work while staying explicit

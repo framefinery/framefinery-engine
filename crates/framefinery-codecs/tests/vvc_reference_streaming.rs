@@ -75,10 +75,18 @@ fn vvc_required_reference_decodes_complete_prefixes_before_flush() {
             .unwrap();
             fs::write(
                 directory.join(format!("prefix-{count}.stderr")),
-                result.stderr,
+                &result.stderr,
             )
             .unwrap();
             assert!(result.status.success(), "VTM failed: {}", input.display());
+            for diagnostic in [&result.stdout, &result.stderr] {
+                let diagnostic = String::from_utf8_lossy(diagnostic);
+                assert!(
+                    !diagnostic.contains("Level set to none")
+                        && !diagnostic.contains("Profile set to none"),
+                    "VTM rejected declared profile/tier/level: {diagnostic}"
+                );
+            }
             let reference = fs::read(&output).unwrap();
             assert_eq!(reference.len(), info.expected_len() * count);
             assert!(

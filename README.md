@@ -396,6 +396,10 @@ tools/                    Future development and validation helper scripts.
   and Y4M inputs.
 - AV2 and VVC encoders are experimental software implementations, not production codec
   implementations.
+- VVC signals level 15.5/high tier under H.266 (09/2023), reflecting that the
+  encoder does not enforce ordinary level bitrate/resource ceilings. Decoders
+  must assess the stream's actual requirements; bounded-level compatibility
+  is not promised.
 - `crop` requires chroma-aligned rectangles for subsampled planar formats.
 - `scale` currently uses nearest-neighbor sampling rather than a resampling
   kernel intended for display-quality resizing.

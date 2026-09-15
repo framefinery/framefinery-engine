@@ -560,8 +560,14 @@ pub(in crate::vvc) fn vvc_sps_rbsp(
         vvc_general_profile_idc(slice_config.profile, bit_depth) as u64,
         7,
     );
-    writer.write_flag("general_tier_flag", false);
-    writer.write_u("general_level_idc", 0, 8);
+    // H.266 (09/2023), A.4: level 15.5 labels streams without the ordinary
+    // level resource limits and requires general_tier_flag = 1. This encoder
+    // has no bitrate/HRD or picture-rate ceiling, so geometry alone cannot
+    // justify declaring a bounded level. All our video profiles allow 15.5.
+    // Keep the shared coding paths intact; do not constrain prediction or
+    // silently pick a lower level merely to satisfy a decoder capability check.
+    writer.write_flag("general_tier_flag", true);
+    writer.write_u("general_level_idc", 255, 8);
     writer.write_flag("ptl_frame_only_constraint_flag", true);
     writer.write_flag("ptl_multilayer_enabled_flag", false);
     writer.write_flag("gci_present_flag", false);

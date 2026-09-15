@@ -2,6 +2,12 @@
 
 FrameFinery Engine should keep validation strict and reproducible.
 
+VVC SPS checks assert level 15.5 and the mandatory high-tier flag under
+[H.266 (09/2023), Annex A.4](https://www.itu.int/rec/T-REC-H.266-202309-S/en).
+VTM accepts a reserved zero tier flag for that level, so syntax assertions
+are required in addition to successful reference reconstruction. The encoder
+does not claim ordinary bounded-level decoder capability.
+
 Expected validation layers:
 
 - unit tests for frame, packet, syntax, and reconstruction primitives;

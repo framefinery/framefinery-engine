@@ -2,6 +2,7 @@ use super::cabac::{VvcCabacInitType, VvcLumaNeighbourState};
 use super::ibc::{VvcIbcCuDecision, VvcIbcHashSearch};
 use super::*;
 
+mod profile_tier_level;
 mod reconstruction;
 
 fn vvc_test_slice_config() -> VvcSliceSyntaxConfig {
