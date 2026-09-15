@@ -1,7 +1,22 @@
-# description=Tiny source-filter vectors for CI encode sanity checks.
-name,width,height,frames,format,pattern,fps
-black_420_16x16,16,16,1,yuv420p8,black,30
-checker_420_16x24,16,24,1,yuv420p8,checker,30
-checker_420_32x16,32,16,1,yuv420p8,checker,30
-blocks_444_32x32,32,32,1,yuv444p8,color_blocks,30
-blocks_444_64x32,64,32,1,yuv444p8,color_blocks,30
+# description=Portable source-filter CI coverage: temporal frames, supported native depths/chroma, RGB and visible padding. Nine/eleven/twelve-bit lossless rows belong to VVC because AV2 does not advertise these native depths.
+name,width,height,frames,format,pattern,fps,lossless,codecs
+black_420_16x16,16,16,6,yuv420p8,black,30,true,av2|vvc
+checker_420_16x24,16,24,6,yuv420p8,checker,30,true,av2|vvc
+checker_420_32x16,32,16,6,yuv420p8,checker,30,true,av2|vvc
+blocks_444_32x32,32,32,6,yuv444p8,color_blocks,30,true,av2|vvc
+blocks_444_64x32,64,32,6,yuv444p8,color_blocks,30,true,av2|vvc
+checker_420_10bit,66,50,6,yuv420p10le,checker,30,true,av2|vvc
+blocks_422_8bit,70,46,6,yuv422p8,color_blocks,30,true,av2|vvc
+blocks_422_10bit,70,46,6,yuv422p10le,color_blocks,30,true,av2|vvc
+gradient_444_10bit,67,39,6,yuv444p10le,gradient,30,true,av2|vvc
+blocks_gbrp,67,39,6,gbrp8,color_blocks,30,true,av2|vvc
+blocks_rgb24,67,39,6,rgb24,color_blocks,30,true,av2|vvc
+checker_420_9bit,66,50,6,yuv420p9le,checker,30,true,vvc
+checker_420_11bit,66,50,6,yuv420p11le,checker,30,true,vvc
+checker_420_12bit,66,50,6,yuv420p12le,checker,30,true,vvc
+blocks_422_9bit,70,46,6,yuv422p9le,color_blocks,30,true,vvc
+blocks_422_11bit,70,46,6,yuv422p11le,color_blocks,30,true,vvc
+blocks_422_12bit,70,46,6,yuv422p12le,color_blocks,30,true,vvc
+gradient_444_9bit,67,39,6,yuv444p9le,gradient,30,true,vvc
+gradient_444_11bit,67,39,6,yuv444p11le,gradient,30,true,vvc
+gradient_444_12bit,67,39,6,yuv444p12le,gradient,30,true,vvc

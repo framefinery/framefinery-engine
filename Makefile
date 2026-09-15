@@ -94,7 +94,7 @@ VALIDATION_FORCE_LOSSY ?= 0
 VALIDATION_CLEANUP_RECON ?= 0
 VALIDATION_CLEANUP_OUTPUT ?= 0
 VALIDATION_CLEANUP_VECTORS ?= 0
-CI_ENCODE_SET ?= ci-smoke
+CI_VALIDATION_OUT ?= verification/generated/ci
 RELEASE_AOMCTC_SET ?= release-aomctc
 RELEASE_AOMCTC_FRAMES ?= 50
 RELEASE_AOMCTC_REFERENCE_MODE ?= required
@@ -437,6 +437,10 @@ package-list:
 	$(CARGO) package --allow-dirty --list -p framefinery-codecs
 	$(CARGO) package --allow-dirty --list -p framefinery
 
+.PHONY: ci-policy-tests
+ci-policy-tests:
+	$(PYTHON) -m unittest discover -s scripts -p 'test_*.py'
+
 build:
 	$(BUILD_ENV) $(CARGO) build $(BUILD_CARGO_PROFILE_FLAG) -p framefinery $(CARGO_FLAGS)
 	# Copy to a sibling first, then replace the launcher atomically so a
@@ -593,10 +597,9 @@ regression: build
 release-check: check-tools fmt-check check feature-matrix test api-docs-strict doc package-list build
 
 ci-encode-smoke: build
-	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec av2 "$(CI_ENCODE_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode off --source-filters --setting "gop=0" --cleanup-recon --cleanup-output --stop-on-fail
-	$(PYTHON) scripts/run_validation_set.py --ff "$(abspath $(BUILD_BINARY))" --codec vvc "$(CI_ENCODE_SET)" --set-dir "$(VALIDATION_SET_DIR)" --vector-dir "$(VALIDATION_OUT_DIR)" --encoded-dir "$(VALIDATION_ENCODED_DIR)" --log-dir "$(VALIDATION_LOG_DIR)" --reference-mode off --source-filters --cleanup-recon --cleanup-output --stop-on-fail
+	$(PYTHON) scripts/ci_validation.py --ff "$(abspath $(BUILD_BINARY))" --output "$(CI_VALIDATION_OUT)" --cargo "$(CARGO)"
 
-ci: release-check wasm-check ci-encode-smoke
+ci: release-check wasm-check ci-policy-tests ci-encode-smoke
 
 clean:
 	$(CARGO) clean

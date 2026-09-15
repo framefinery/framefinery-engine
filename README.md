@@ -184,9 +184,14 @@ make release-check
 
 `make ci` is the same gate used by GitHub Actions. It runs the release check,
 the strict exported-API documentation audit, a `wasm32-unknown-unknown`
-type-check for the browser target-practice artifact, and a tiny AV2/VVC encode
-smoke using generated black, checker, and color-block `pattern` source filters
-across a few small geometries, so it does not depend on local media files.
+type-check, and required-reference AV2/VVC validation. Portable generated
+fixtures cover lossless/QP24, intra/predictive/reset GOPs, native depths and
+chroma formats, RGB, padding, filters, and complete per-frame session output.
+Both reference decoders must already be available locally; missing tools fail
+the gate. CI builds pinned AVM/VTM revisions before running it. The suite
+records all failing groups and retains their artifacts for investigation.
+It does not require private media files; the full six-vector release check
+remains an additional local gate.
 `make release-check` is kept as the explicit release-oriented target name.
 
 The first target-practice browser WASM demo is intentionally not a published
@@ -237,7 +242,7 @@ Validation uses `VALIDATION_REFERENCE_MODE=required` by default: the runner
 decodes the FrameFinery Engine bitstream and compares the reference output
 against the encoder's internal reconstruction. A missing decoder is a failure.
 Explicit `auto` and `off` remain available for diagnostic runs; those runs
-cannot establish release compatibility.
+cannot establish release compatibility. CI always requires external decoding.
 
 ## Build-Time Composition
 
@@ -402,7 +407,7 @@ tools/                    Future development and validation helper scripts.
 - `crop` requires chroma-aligned rectangles for subsampled planar formats.
 - `scale` currently uses nearest-neighbor sampling rather than a resampling
   kernel intended for display-quality resizing.
-- Validation defaults to required reference decoding. Release claims
+- Validation defaults to required reference decoding. CI and release claims
   require the decoders; explicit `auto`/`off` diagnostic runs do not establish
   reference compatibility.
 

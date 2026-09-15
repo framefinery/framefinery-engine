@@ -12,6 +12,7 @@ jobs:
   release-check:
     name: release-check (${{ matrix.rust }})
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -37,5 +38,55 @@ jobs:
           python3 --version
           make --version
 
+      - name: Cache pinned reference tools
+        uses: actions/cache@v4
+        with:
+          path: verification/references
+          key: references-${{ runner.os }}-${{ runner.arch }}-avm-966a7d7-vtm-ca331de-generic-decoders-v1
+
+      - name: Build pinned reference tools
+        env:
+          FRAMEFINERY_AV2_REF: v1.0.0
+          FRAMEFINERY_VTM_REF: VTM-24.0
+          FRAMEFINERY_AV2_CMAKE_ARGS: -DAVM_TARGET_CPU=generic -DENABLE_TESTS=OFF -DENABLE_DOCS=OFF
+          FRAMEFINERY_BUILD_JOBS: "2"
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          import sys
+          sys.path.insert(0, "scripts")
+          import reference_tools
+          manifests = reference_tools.load_manifests(reference_tools.DEFAULT_MANIFEST_DIR)
+          pins = {
+              "av2": "966a7d7cd6fcf60360caf5dc413b2aeeb65e144d",
+              "vvc": "ca331de230f27e0489df9d2fa6c006e2dcd2ed89",
+          }
+          for codec, revision in pins.items():
+              manifest = manifests[codec]
+              root = reference_tools.reference_root(manifest)
+              if not root.exists():
+                  reference_tools.clone_reference(manifest, root)
+              actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+              if actual != revision:
+                  raise SystemExit(f"{codec}: expected {revision}, found {actual}")
+              subprocess.run(["git", "diff", "--exit-code", "HEAD"], cwd=root, check=True)
+              build = reference_tools.build_dir_for(manifest, root)
+              configure = ["cmake", "-S", str(root), "-B", str(build), "-DCMAKE_BUILD_TYPE=Release"]
+              configure.extend(reference_tools.cmake_args(manifest))
+              subprocess.run(configure, check=True)
+              target = "avmdec" if codec == "av2" else "DecoderApp"
+              subprocess.run(["cmake", "--build", str(build), "--config", "Release",
+                              "--target", target, "--parallel", "2"], check=True)
+              reference_tools.resolve_tool(manifest, "decoder", no_build=True)
+          PY
+
       - name: Run Local CI Gate
         run: make ci
+
+      - name: Preserve validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-${{ matrix.rust }}
+          path: verification/generated/ci
+          retention-days: 7

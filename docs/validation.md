@@ -2,15 +2,24 @@
 
 FrameFinery Engine should keep validation strict and reproducible.
 
-Default validation commands require reference decoding. Missing decoders,
-decode failures, checksum mismatches and unspecified VVC profile/level
-diagnostics fail validation; selecting no cases also fails.
-
+CI and the default validation commands require reference decoding. `make ci`
+executes the existing open-session AVM/VTM regressions, including ignored
+external-tool tests, plus `ci-smoke`, `regression`, `multictu-regression`,
+`unusual-geometry-smoke`, and `pipeline-smoke` for both codecs in lossless and
+QP24 modes with GOP 0, -1 and 3. The native format/depth exclusions in
+`ci-smoke` reflect the codec support matrix; they are not failure waivers.
+Missing decoders, decode failures, checksum mismatches and unspecified VVC
+profile/level diagnostics fail the gate. Every group runs and the aggregate
+status retains earlier failures. Portable cases complement the six-stream gate.
+Each CI run has its own output directory. Successful media and generated
+inputs are removed; failures and their logs remain available.
 Source-filter lossless comparisons use the public `PatternSource` semantics:
 full-range high-depth scaling and RGB tuples packed into the requested order.
 The historical file-fixture generator uses zero-padded high-depth samples and
 a GBR tuple interpretation. The source-filter oracle adapts the shared Python
 renderer at that boundary; file fixtures and their checksums remain unchanged.
+GitHub Actions builds the pinned AVM v1.0.0 and VTM 24.0 revisions declared in
+the workflow. Local CI uses already available tools and never installs them.
 
 VVC SPS checks assert level 15.5 and the mandatory high-tier flag under
 [H.266 (09/2023), Annex A.4](https://www.itu.int/rec/T-REC-H.266-202309-S/en).
