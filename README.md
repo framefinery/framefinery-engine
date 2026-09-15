@@ -224,8 +224,8 @@ make validate-set CODEC=av2 VALIDATION_SET=smoke VALIDATION_SOURCE_FILTERS=1
 make validate-set CODEC=av2 VALIDATION_SET=pipeline-smoke
 ```
 
-Reference decoders are optional but recommended for strict bitstream checks.
-Declared reference toolchains can be listed and built with:
+Reference decoders are required for validation. Declared reference toolchains
+can be listed and built with:
 
 ```sh
 make reference-list
@@ -233,12 +233,11 @@ make reference-setup
 make reference-setup REFERENCE_CODEC=av2
 ```
 
-Validation uses `VALIDATION_REFERENCE_MODE=auto` by default: if a declared
-reference decoder is already built or configured, the runner decodes the
-FrameFinery Engine bitstream and compares that reconstruction against the encoder's
-internal reconstruction. Use `VALIDATION_REFERENCE_MODE=required` to fail when
-the reference decoder is missing, or `VALIDATION_REFERENCE_MODE=off` to skip
-external decoding.
+Validation uses `VALIDATION_REFERENCE_MODE=required` by default: the runner
+decodes the FrameFinery Engine bitstream and compares the reference output
+against the encoder's internal reconstruction. A missing decoder is a failure.
+Explicit `auto` and `off` remain available for diagnostic runs; those runs
+cannot establish release compatibility.
 
 ## Build-Time Composition
 
@@ -403,9 +402,9 @@ tools/                    Future development and validation helper scripts.
 - `crop` requires chroma-aligned rectangles for subsampled planar formats.
 - `scale` currently uses nearest-neighbor sampling rather than a resampling
   kernel intended for display-quality resizing.
-- Reference decoders are optional local tools. Use
-  `VALIDATION_REFERENCE_MODE=required` when a release or compatibility claim
-  depends on external decode validation.
+- Validation defaults to required reference decoding. Release claims
+  require the decoders; explicit `auto`/`off` diagnostic runs do not establish
+  reference compatibility.
 
 ## Safety Posture
 

@@ -2,6 +2,16 @@
 
 FrameFinery Engine should keep validation strict and reproducible.
 
+Default validation commands require reference decoding. Missing decoders,
+decode failures, checksum mismatches and unspecified VVC profile/level
+diagnostics fail validation; selecting no cases also fails.
+
+Source-filter lossless comparisons use the public `PatternSource` semantics:
+full-range high-depth scaling and RGB tuples packed into the requested order.
+The historical file-fixture generator uses zero-padded high-depth samples and
+a GBR tuple interpretation. The source-filter oracle adapts the shared Python
+renderer at that boundary; file fixtures and their checksums remain unchanged.
+
 VVC SPS checks assert level 15.5 and the mandatory high-tier flag under
 [H.266 (09/2023), Annex A.4](https://www.itu.int/rec/T-REC-H.266-202309-S/en).
 VTM accepts a reserved zero tier flag for that level, so syntax assertions

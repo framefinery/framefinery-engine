@@ -8,7 +8,7 @@ import hashlib
 import shlex
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import generate_test_vectors
@@ -61,7 +61,7 @@ def main() -> int:
     parser.add_argument(
         "--reference-mode",
         choices=("auto", "required", "off"),
-        default="auto",
+        default="required",
         help="decode and compare with reference tools when available",
     )
     parser.add_argument(
@@ -149,6 +149,9 @@ def main() -> int:
     cases = cases[args.offset :]
     if args.limit:
         cases = cases[: args.limit]
+    if not cases:
+        print("error: validation selected no cases", file=sys.stderr)
+        return 2
     if skipped_by_codec:
         print(
             f"Skipped {len(skipped_by_codec)} vector(s) not enabled for codec {args.codec}",
@@ -582,7 +585,7 @@ def validate_lossless_source(
         expected_bytes = generate_test_vectors.raw_frame_len(source) * source.frames
         return validate_lossless_file_prefix(source_path, recon, expected_bytes)
     else:
-        source_bytes = generate_test_vectors.generate_yuv(source, {})
+        source_bytes = source_filter_pattern_bytes(source)
     recon_bytes = recon.read_bytes()
     if source_bytes != recon_bytes:
         if len(source_bytes) != len(recon_bytes):
@@ -592,6 +595,33 @@ def validate_lossless_source(
             )
         return ("FAIL", "lossless reconstruction differs from source")
     return ("PASS", "lossless reconstruction matches source")
+
+
+def source_filter_pattern_bytes(vector: generate_test_vectors.TestVector) -> bytes:
+    """Independent PatternSource oracle; leave historical file fixtures unchanged.
+
+    File fixtures zero-pad high-depth samples and interpret pattern tuples as
+    GBR. Rust PatternSource uses full-range scaling and RGB tuples. Share the
+    existing renderer and adapt only this source boundary's sample semantics.
+    """
+    if vector.pattern == "bitdepth_canary":
+        return generate_test_vectors.generate_yuv(vector, {})
+    depth = generate_test_vectors.yuv_bit_depth(vector.fmt)
+    if depth is not None and depth > 8:
+        base = replace(vector, fmt=vector.fmt.split("p", 1)[0] + "p8")
+        maximum = (1 << depth) - 1
+        return b"".join(((sample * maximum + 127) // 255).to_bytes(2, "little")
+                        for sample in generate_test_vectors.generate_yuv(base, {}))
+    if vector.fmt in {"gbrp8", "rgb24"}:
+        output = bytearray()
+        for frame in range(vector.frames):
+            red, green, blue = generate_test_vectors.render_frame(vector, frame)
+            if vector.fmt == "gbrp8":
+                output.extend(green + blue + red)
+            else:
+                output.extend(value for pixel in zip(red, green, blue) for value in pixel)
+        return bytes(output)
+    return generate_test_vectors.generate_yuv(vector, {})
 
 
 def validate_lossless_y4m_file_prefix(
@@ -756,6 +786,11 @@ def validate_reference_decode(
 
     if not reference_recon.exists():
         return ("FAIL", "reference decoder returned success but did not create reconstruction")
+    if any(warning in process.stdout for warning in (
+        "Level set to none, invalid or unknown value",
+        "Profile set to none or unknown value",
+    )):
+        return ("FAIL", "reference decoder reported invalid or unspecified profile/level")
     if reference_recon.stat().st_size == 0:
         return ("FAIL", "reference decoder returned success but reconstruction is empty")
 
